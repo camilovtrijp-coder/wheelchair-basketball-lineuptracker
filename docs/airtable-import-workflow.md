@@ -4,7 +4,7 @@
 
 ## 1. Doel
 
-Een nieuwe wedstrijd — geëxporteerd vanuit `roba-tracker.html` — volledig en gecontroleerd verwerken in de Airtable-base **"ROBA Statistieken 2026-2027"**, inclusief lineup-herkenning over wedstrijden heen.
+Een nieuwe wedstrijd — geëxporteerd vanuit `index.html` — volledig en gecontroleerd verwerken in de Airtable-base **"ROBA Statistieken 2026-2027"**, inclusief lineup-herkenning over wedstrijden heen.
 
 ## 2. Vereiste toegang
 
