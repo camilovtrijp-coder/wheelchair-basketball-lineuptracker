@@ -1,0 +1,719 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
+<meta name="theme-color" content="#00aa3c" />
+<title>ROBA Lineup Tracker</title>
+<style>
+  :root {
+    /* ROBA-huisstijl: kleuren exact gemeten uit het aangeleverde logo + styleguide.
+       Variabelnamen blijven ongewijzigd (minder risico bij herschrijven), alleen de waarden zijn vervangen. */
+    --bg: #0b0c0b; --card: #171916; --card2: #262a24; --line: #33372f;
+    --txt: #ffffff; --mut: #a9b0a4; --mut2: #737b6e;
+    --amber: #00aa3c;   /* ROBA-groen — primair/team/selectie (was generiek amber) */
+    --sky: #ff4c00;     /* ROBA-oranje — tegenstander-score, bewust contrast bínnen de huisstijl (was blauw) */
+    --emerald: #16c458; /* lichtere ROBA-groentint — positieve status (binnen klassegrens, +/-) */
+    --rose: #f43f5e;    /* ongewijzigd: universeel waarschuwingsrood, geen ROBA-kleur maar functioneel nodig */
+    --fuchsia: #c026d3; --teal: #0d9488; /* ongewijzigd: functionele Vrouw/U19-badges, geen brand-kleuren */
+  }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body { margin: 0; padding: 0; background: var(--bg); color: var(--txt);
+    font-family: Roboto, system-ui, -apple-system, "Segoe UI", sans-serif; }
+  h1, h2, .brand-caps { font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+    font-weight: 900; text-transform: uppercase; letter-spacing: -0.02em; }
+  #app { max-width: 30rem; margin: 0 auto; padding: 1rem; overflow-x: hidden; }
+  h1 { font-size: 1.05rem; margin: 0; }
+  h2 { font-size: 0.9rem; margin: 0 0 0.75rem; }
+  .mut { color: var(--mut); } .mut2 { color: var(--mut2); }
+  .xs { font-size: 0.72rem; } .sm { font-size: 0.82rem; }
+  .row { display: flex; align-items: center; gap: 0.5rem; }
+  .between { justify-content: space-between; }
+  .tab { font-variant-numeric: tabular-nums; }
+  .card { background: var(--card); border-radius: 1rem; padding: 0.75rem; margin-bottom: 1rem; }
+  .mb2 { margin-bottom: 0.5rem; } .mb3 { margin-bottom: 0.75rem; } .mb4 { margin-bottom: 1rem; }
+  input, select, button { font-family: inherit; }
+  input, select {
+    background: var(--bg); border: 1px solid var(--line); border-radius: 0.5rem;
+    color: var(--txt); padding: 0.5rem; font-size: 0.95rem;
+  }
+  input:focus, select:focus { outline: 2px solid var(--amber); outline-offset: -1px; }
+  .num { text-align: center; font-variant-numeric: tabular-nums; }
+  button { cursor: pointer; border: none; border-radius: 0.75rem; font-weight: 700; color: var(--bg); }
+  .btn-amber { background: var(--amber); } .btn-amber:active { background: #048f33; }
+  .btn-sky { background: var(--sky); } .btn-sky:active { background: #d93f00; }
+  .btn-emerald { background: var(--emerald); } .btn-emerald:active { background: #10a34a; }
+  .btn-rose { background: var(--rose); color: #fff; } .btn-rose:active { background: #e11d48; }
+  .btn-ghost { background: var(--card2); color: var(--txt); }
+  .btn-ghost:active { background: #475569; }
+  .btn-outline { background: transparent; color: var(--mut); border: 1px solid var(--line); font-weight: 600; }
+  .disabled { opacity: 0.3; pointer-events: none; }
+  .grid5 { display: grid; grid-template-columns: repeat(5, 1fr); gap: 0.375rem; }
+  .grid3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 0.375rem; }
+  .chip {
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    border-radius: 1rem; padding: 0.5rem 0.25rem; min-height: 68px;
+    background: var(--card2); border: 1px solid #475569; color: var(--txt);
+  }
+  .chip.sel { background: var(--amber); border-color: #22c55e; color: var(--bg); }
+  .chip .nr { font-size: 1rem; font-weight: 700; line-height: 1; font-variant-numeric: tabular-nums; }
+  .chip .nm { font-size: 0.69rem; margin-top: 0.15rem; line-height: 1; max-width: 100%;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .chip .kl { font-size: 0.62rem; margin-top: 0.15rem; line-height: 1; color: var(--mut);
+    font-variant-numeric: tabular-nums; }
+  .chip.sel .kl { color: #04421d; }
+  .toggle { padding: 0.35rem 0.55rem; border-radius: 0.5rem; font-size: 0.72rem; font-weight: 600;
+    border: 1px solid #475569; background: var(--card2); color: var(--mut); }
+  .toggle.on-v { background: var(--fuchsia); border-color: #e879f9; color: #fff; }
+  .toggle.on-u { background: var(--teal); border-color: #2dd4bf; color: #fff; }
+  .toggle.on-st { background: var(--emerald); border-color: #22c55e; color: var(--bg); }
+  .warn { background: rgba(244,63,94,0.15); border: 1px solid rgba(244,63,94,0.4);
+    color: #fda4af; border-radius: 0.75rem; padding: 0.5rem 0.75rem; font-size: 0.72rem; }
+  .ok { color: var(--emerald); } .bad { color: var(--rose); }
+  .q { flex: 1; border-radius: 0.5rem; padding: 0.5rem 0; font-size: 0.85rem; font-weight: 600;
+    background: var(--card2); color: var(--txt); }
+  .q.on { background: var(--amber); color: var(--bg); }
+  .scoresel {
+    width: 5rem; flex-shrink: 0; border-radius: 0.75rem; padding: 0.65rem 0.5rem;
+    text-align: center; font-size: 1.5rem; font-weight: 700; font-variant-numeric: tabular-nums;
+    -webkit-appearance: none; appearance: none;
+  }
+  .scoresel.amber { background: rgba(0,170,60,0.15); border: 1px solid rgba(0,170,60,0.4); color: #7ce6a0; }
+  .scoresel.sky { background: rgba(255,76,0,0.15); border: 1px solid rgba(255,76,0,0.4); color: #ffb088; }
+  .scorebtn { padding: 0.65rem 0; font-size: 1rem; }
+  .timesel { flex: 1; min-width: 0; border-radius: 0.5rem; padding: 0.55rem 0.25rem;
+    text-align: center; font-size: 1.05rem; font-weight: 700; font-variant-numeric: tabular-nums;
+    -webkit-appearance: none; appearance: none; }
+  .seg { background: var(--card); border-radius: 0.75rem; padding: 0.5rem 0.75rem;
+    font-size: 0.72rem; display: flex; align-items: center; justify-content: space-between; gap: 0.5rem; }
+  textarea { width: 100%; height: 7rem; background: var(--bg); color: #cbd5e1;
+    font-size: 0.69rem; font-family: ui-monospace, monospace; border-radius: 0.5rem;
+    padding: 0.5rem; border: 1px solid var(--line); }
+  .overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.7); z-index: 50;
+    display: flex; align-items: center; justify-content: center; padding: 1rem; }
+  .overlay.bottom { align-items: flex-end; }
+  .modal { background: var(--card); border: 1px solid var(--line); border-radius: 1rem;
+    padding: 1rem; width: 100%; max-width: 30rem; max-height: 88vh; overflow-y: auto; }
+  .icon { width: 1em; height: 1em; vertical-align: -0.125em; }
+  .pill { display: inline-flex; align-items: center; gap: 0.35rem; }
+  .brand-row { display: flex; align-items: center; gap: 0.5rem; }
+  .brand-logo { height: 1.9rem; width: auto; flex: none; }
+</style>
+</head>
+<body>
+<div id="app"></div>
+<script>
+"use strict";
+
+// ---------- constants ----------
+var STORAGE_KEY = "roba-tracker-v1";
+// ROBA-logo, ingebed als base64 (geen externe link, blijft volledig offline werken).
+var LOGO_URI = "data:image/png;base64,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";
+// Bron: Airtable "ROBA Statistieken" > Spelers (Weergavenaam-veld), bijgewerkt 04-07-2026.
+// Kolommen: [naam (voornaam), rugnummer, classificatie, vrouw, jeugd/U19]
+var DEFAULT_DATA = [
+  ["Henk",0,1.0,false,false],
+  ["Anouk",1,2.5,true,false],
+  ["Jitske",6,1.0,true,false],
+  ["Frank",7,1.5,false,false],
+  ["Bert",8,4.0,false,false],
+  ["Ilias",9,3.5,false,false],
+  ["Johan",11,4.0,false,false],
+  ["Bart",13,4.0,false,false],
+  ["Maykel",15,4.0,false,false],
+  ["Robert",20,4.5,false,false],
+  ["Camilo",21,1.0,false,false],
+  ["JinHu",22,4.5,false,true]
+];
+var DEFAULT_LIMIT = "14.5";
+var MAX_BONUS = 2.5, MAX_SCORE = 150, MAX_MIN = 10;
+
+function defaultPlayers() {
+  return DEFAULT_DATA.map(function (d, i) {
+    return { id: i + 1, nr: String(d[1]), naam: d[0], kl: d[2].toFixed(1), vrouw: d[3], jeugd: d[4], start: false };
+  });
+}
+function freshState() {
+  return {
+    phase: "setup", players: defaultPlayers(), clockDown: true, limitStr: DEFAULT_LIMIT,
+    nextId: DEFAULT_DATA.length + 1, onCourt: [], selected: null, segments: [], curQuarter: 1,
+    beginMin: MAX_MIN, beginSec: 0, endMin: MAX_MIN, endSec: 0,
+    scoreFor: 0, scoreAgainst: 0, segStartFor: 0, segStartAgainst: 0, savedAt: null
+  };
+}
+
+var state = freshState();
+
+// ---------- persistence ----------
+function save() {
+  try {
+    state.savedAt = Date.now();
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+  } catch (e) { /* opslag kan vol/geblokkeerd zijn; app blijft werken */ }
+}
+function loadSaved() {
+  try {
+    var raw = localStorage.getItem(STORAGE_KEY);
+    if (!raw) return null;
+    return JSON.parse(raw);
+  } catch (e) { return null; }
+}
+function commit() { save(); render(); }
+
+// ---------- helpers ----------
+function esc(s) {
+  return String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+}
+function fmt(sec) {
+  if (sec == null || isNaN(sec)) return "—";
+  var neg = sec < 0, a = Math.abs(sec);
+  return (neg ? "-" : "") + Math.floor(a / 60) + ":" + String(a % 60).padStart(2, "0");
+}
+function playerBonus(p) {
+  if (!p) return 0;
+  if (p.vrouw) return p.jeugd ? 2.0 : 1.5;
+  return p.jeugd ? 1.0 : 0;
+}
+function playerById(id) {
+  for (var i = 0; i < state.players.length; i++) if (state.players[i].id === id) return state.players[i];
+  return null;
+}
+function label(id) { var p = playerById(id); return p ? (p.naam + " #" + p.nr) : "?"; }
+function limitVal() { var v = parseFloat(state.limitStr); return isNaN(v) ? 14.5 : v; }
+function sumClass(lineup) {
+  return lineup.reduce(function (a, id) {
+    var p = playerById(id); var v = p ? parseFloat(p.kl) : NaN;
+    return a + (isNaN(v) ? 0 : v);
+  }, 0);
+}
+function sumBonus(lineup) {
+  return Math.min(MAX_BONUS, lineup.reduce(function (a, id) { return a + playerBonus(playerById(id)); }, 0));
+}
+
+// ---------- setup actions ----------
+function updPlayer(id, field, value) {
+  for (var i = 0; i < state.players.length; i++) if (state.players[i].id === id) state.players[i][field] = value;
+  save();
+}
+function setNr(id, v) { updPlayer(id, "nr", v); refreshSetupStatus(); }
+function setNaam(id, v) { updPlayer(id, "naam", v); refreshSetupStatus(); }
+function setKl(id, v) { updPlayer(id, "kl", v); }
+function setLimit(v) { state.limitStr = v; save(); }
+function setClock(v) { state.clockDown = v; save(); }
+function toggleField(id, field) {
+  var p = playerById(id); if (p) p[field] = !p[field];
+  commit();
+}
+function addPlayer() {
+  state.players.push({ id: state.nextId, nr: String(state.players.length + 1), naam: "", kl: "3.0", vrouw: false, jeugd: false, start: false });
+  state.nextId += 1; commit();
+}
+function startCount() {
+  return state.players.filter(function (p) { return p.start && p.naam.trim() !== ""; }).length;
+}
+function removePlayer(id) {
+  state.players = state.players.filter(function (p) { return p.id !== id; });
+  commit();
+}
+function validPlayers() { return state.players.filter(function (p) { return p.naam.trim() !== ""; }); }
+function dupNrs() {
+  var counts = {}, vp = validPlayers();
+  vp.forEach(function (p) { var k = p.nr.trim(); if (k) counts[k] = (counts[k] || 0) + 1; });
+  return Object.keys(counts).filter(function (nr) { return counts[nr] > 1; });
+}
+function canStart() {
+  var sc = startCount();
+  return validPlayers().length >= 5 && dupNrs().length === 0 && (sc === 0 || sc === 5);
+}
+
+function startGame() {
+  if (!canStart()) return;
+  var chosen = validPlayers().filter(function (p) { return p.start; });
+  if (chosen.length === 5) {
+    state.onCourt = chosen.map(function (p) { return p.id; });
+  } else {
+    // Automatische fallback: expliciet sorteren op rugnummer (laagste 5),
+    // niet op toevallige volgorde in de lijst.
+    var sorted = validPlayers().slice().sort(function (a, b) {
+      return (parseInt(a.nr, 10) || 0) - (parseInt(b.nr, 10) || 0);
+    });
+    state.onCourt = sorted.slice(0, 5).map(function (p) { return p.id; });
+  }
+  var m = state.clockDown ? MAX_MIN : 0;
+  state.beginMin = m; state.beginSec = 0; state.endMin = m; state.endSec = 0;
+  state.selected = null; state.curQuarter = 1;
+  state.phase = "tracking"; commit();
+}
+
+// ---------- tracking actions ----------
+function tapPlayer(id) {
+  var where = state.onCourt.indexOf(id) >= 0 ? "court" : "bank";
+  if (state.selected == null) { state.selected = { id: id, where: where }; return commit(); }
+  if (state.selected.id === id) { state.selected = null; return commit(); }
+  if (state.selected.where !== where) {
+    var courtId = where === "court" ? id : state.selected.id;
+    var bankId = where === "bank" ? id : state.selected.id;
+    state.onCourt = state.onCourt.map(function (x) { return x === courtId ? bankId : x; });
+    state.selected = null;
+  } else {
+    state.selected = { id: id, where: where };
+  }
+  commit();
+}
+function selectQuarter(q) {
+  if (q !== state.curQuarter) {
+    var m = state.clockDown ? MAX_MIN : 0;
+    state.beginMin = m; state.beginSec = 0; state.endMin = m; state.endSec = 0;
+  }
+  state.curQuarter = q; commit();
+}
+function setScore(team, v) {
+  v = Math.max(0, Math.min(MAX_SCORE, v));
+  if (team === "for") state.scoreFor = v; else state.scoreAgainst = v;
+  commit();
+}
+function addScore(team, n) { setScore(team, (team === "for" ? state.scoreFor : state.scoreAgainst) + n); }
+function setTime(field, v) { state[field] = Number(v); commit(); }
+
+function segDur() {
+  var b = state.beginMin * 60 + state.beginSec, e = state.endMin * 60 + state.endSec;
+  return state.clockDown ? b - e : e - b;
+}
+function saveSegment() {
+  var dur = segDur();
+  if (!(dur > 0) || state.onCourt.length !== 5) return;
+  var courtSum = sumClass(state.onCourt);
+  var allowed = limitVal() + sumBonus(state.onCourt);
+  state.segments.push({
+    quarter: state.curQuarter,
+    beginSec: state.beginMin * 60 + state.beginSec,
+    endSec: state.endMin * 60 + state.endSec,
+    durSec: dur, lineup: state.onCourt.slice(),
+    pf: state.scoreFor - state.segStartFor, pa: state.scoreAgainst - state.segStartAgainst,
+    classSum: courtSum, over: courtSum > allowed + 0.001,
+    // score van vóór dit segment, nodig om veilig terug te draaien bij wijzigen/verwijderen
+    preScoreFor: state.segStartFor, preScoreAgainst: state.segStartAgainst
+  });
+  state.segStartFor = state.scoreFor; state.segStartAgainst = state.scoreAgainst;
+  state.beginMin = state.endMin; state.beginSec = state.endSec;
+  commit();
+}
+function removeSegment(idx) {
+  var isLast = idx === state.segments.length - 1;
+  if (isLast) {
+    var seg = state.segments[idx];
+    if (seg.preScoreFor == null || seg.preScoreAgainst == null) {
+      if (!window.confirm("Dit segment is opgeslagen vóór deze update — de score kan niet automatisch worden teruggedraaid. Controleer de score zo nodig zelf. Toch verwijderen?")) return;
+    } else {
+      if (!window.confirm("Laatste segment verwijderen? De score van ROBA/tegenstander wordt teruggezet naar " + seg.preScoreFor + "-" + seg.preScoreAgainst + " (vóór dit segment).")) return;
+      state.scoreFor = seg.preScoreFor; state.scoreAgainst = seg.preScoreAgainst;
+      state.segStartFor = seg.preScoreFor; state.segStartAgainst = seg.preScoreAgainst;
+    }
+  } else {
+    if (!window.confirm("Dit is niet het laatste segment. De score van ROBA/tegenstander wordt NIET aangepast — controleer die zo nodig zelf. Doorgaan met verwijderen?")) return;
+  }
+  state.segments = state.segments.filter(function (_, i) { return i !== idx; });
+  commit();
+}
+function editLastSegment() {
+  var idx = state.segments.length - 1;
+  if (idx < 0) return;
+  var seg = state.segments[idx];
+  if (seg.preScoreFor == null || seg.preScoreAgainst == null) {
+    window.alert("Dit segment is opgeslagen vóór deze update en kan niet automatisch worden gewijzigd (geen bewaarde score-vóór-segment). Verwijder het handmatig en voer opnieuw in.");
+    return;
+  }
+  if (!window.confirm("Laatste segment terughalen om te wijzigen? De score wordt teruggezet naar " + seg.preScoreFor + "-" + seg.preScoreAgainst + " (vóór dit segment). Punten die je daarna eventueel al hebt ingevoerd gaan verloren.")) return;
+  state.scoreFor = seg.preScoreFor; state.scoreAgainst = seg.preScoreAgainst;
+  state.segStartFor = seg.preScoreFor; state.segStartAgainst = seg.preScoreAgainst;
+  state.curQuarter = seg.quarter;
+  state.onCourt = seg.lineup.slice();
+  state.beginMin = Math.floor(seg.beginSec / 60); state.beginSec = seg.beginSec % 60;
+  state.endMin = Math.floor(seg.endSec / 60); state.endSec = seg.endSec % 60;
+  state.selected = null;
+  state.segments = state.segments.filter(function (_, i) { return i !== idx; });
+  commit();
+}
+function resetAll() {
+  if (!window.confirm("Alles wissen en opnieuw beginnen? De huidige wedstrijd gaat verloren.")) return;
+  state = freshState(); save(); render();
+}
+
+// ---------- export ----------
+function lineupCode(lineup) {
+  return lineup.slice().sort(function (a, b) {
+    var pa = playerById(a), pb = playerById(b);
+    return (parseInt(pa ? pa.nr : 0, 10) || 0) - (parseInt(pb ? pb.nr : 0, 10) || 0);
+  }).map(function (id) {
+    var p = playerById(id);
+    return p ? p.nr : "?";
+  }).join("-");
+}
+function stintCsv() {
+  var head = "Opstelling,Kwart,Begin,Eind,Speeltijd,Seconden,Punten voor,Punten tegen,Plusminus,Som classificatie,Bonus,Toegestane grens,Binnen klassegrens,Lineup code";
+  var rows = state.segments.map(function (s) {
+    var lineup = s.lineup.map(function (id) { return label(id); }).join(" | ");
+    var b = sumBonus(s.lineup), allow = limitVal() + b;
+    var ok = s.classSum <= allow + 0.001 ? "OK" : "Te hoog";
+    return '"' + lineup + '",' + s.quarter + "," + fmt(s.beginSec) + "," + fmt(s.endSec) + "," +
+      fmt(s.durSec) + "," + s.durSec + "," + s.pf + "," + s.pa + "," + (s.pf - s.pa) + "," +
+      s.classSum.toFixed(1) + "," + b.toFixed(1) + "," + allow.toFixed(1) + "," + ok + "," + lineupCode(s.lineup);
+  });
+  return [head].concat(rows).join("\n");
+}
+function minutesCsv() {
+  var play = {}, cnt = {};
+  state.players.forEach(function (p) { play[p.id] = 0; cnt[p.id] = 0; });
+  state.segments.forEach(function (s) {
+    s.lineup.forEach(function (id) { play[id] += s.durSec; cnt[id] += 1; });
+  });
+  var head = "Speler,Nummer,Classificatie,Geslacht,Jeugd U19,Speeltijd,Seconden,Aantal beurten";
+  var rows = state.players.filter(function (p) { return play[p.id] > 0; }).map(function (p) {
+    return p.naam + "," + p.nr + "," + p.kl + "," + (p.vrouw ? "Vrouw" : "Man") + "," +
+      (p.jeugd ? "Ja" : "Nee") + "," + fmt(play[p.id]) + "," + play[p.id] + "," + cnt[p.id];
+  });
+  return [head].concat(rows).join("\n");
+}
+function combinedCsv() {
+  return "Opstellingen (+/- en klassegrens)\n" + stintCsv() +
+    "\n\nSpeeltijd per speler\n" + minutesCsv();
+}
+function copyAll(btn) {
+  var text = combinedCsv();
+  var ta = document.createElement("textarea");
+  ta.value = text;
+  ta.style.position = "fixed"; ta.style.left = "-9999px"; ta.style.top = "0";
+  document.body.appendChild(ta);
+  ta.focus(); ta.select();
+  var ok = false;
+  try { ok = document.execCommand("copy"); } catch (e) { ok = false; }
+  document.body.removeChild(ta);
+  if (!ok && navigator.clipboard) {
+    try { navigator.clipboard.writeText(text); ok = true; } catch (e) { ok = false; }
+  }
+  btn.textContent = ok ? "✓ Alles gekopieerd (beide blokken)" : "Kopiëren mislukt — gebruik de losse knoppen hieronder";
+  setTimeout(function () { btn.textContent = "📋 Kopieer alles (beide blokken + titels)"; }, 2500);
+}
+function copyText(which, btn) {
+  var ta = document.getElementById(which);
+  if (!ta) return;
+  ta.focus(); ta.select();
+  try { ta.setSelectionRange(0, ta.value.length); } catch (e) {}
+  var ok = false;
+  try { ok = document.execCommand("copy"); } catch (e) { ok = false; }
+  if (!ok && navigator.clipboard) {
+    try { navigator.clipboard.writeText(ta.value); ok = true; } catch (e) { ok = false; }
+  }
+  btn.textContent = ok ? "Gekopieerd" : "Geselecteerd";
+  setTimeout(function () { btn.textContent = "Kopieer"; }, 2000);
+}
+
+// ---------- modal state ----------
+var exportOpen = false, resumeOpen = false, resumeWhen = "";
+function openExport() { exportOpen = true; render(); }
+function closeExport() { exportOpen = false; render(); }
+
+// ---------- rendering ----------
+var app = document.getElementById("app");
+
+function optionList(max, sel, pad) {
+  var out = "";
+  for (var i = 0; i <= max; i++) {
+    var txt = pad ? String(i).padStart(2, "0") : String(i);
+    out += '<option value="' + i + '"' + (i === sel ? " selected" : "") + ">" + txt + "</option>";
+  }
+  return out;
+}
+
+function renderSetup() {
+  var dn = dupNrs();
+  var rows = state.players.map(function (p) {
+    var dup = dn.indexOf(p.nr.trim()) >= 0;
+    return '' +
+      '<div class="card" style="padding:0.5rem;margin-bottom:0.5rem">' +
+        '<div class="row">' +
+          '<input class="nrinput num" style="width:2.75rem;flex:none' + (dup ? ";border-color:var(--rose);color:#fda4af" : "") + '" inputmode="numeric" value="' + esc(p.nr) + '" oninput="setNr(' + p.id + ',this.value)" />' +
+          '<input style="flex:1;min-width:0" placeholder="Naam" value="' + esc(p.naam) + '" oninput="setNaam(' + p.id + ',this.value)" />' +
+          '<button class="btn-outline" style="width:2.25rem;height:2.25rem;flex:none;padding:0;color:var(--mut2)" onclick="removePlayer(' + p.id + ')">🗑</button>' +
+        '</div>' +
+        '<div class="row" style="margin-top:0.5rem;padding-left:0.25rem">' +
+          '<span class="xs mut">Klasse</span>' +
+          '<input class="num" style="width:3.5rem;flex:none" inputmode="decimal" value="' + esc(p.kl) + '" oninput="setKl(' + p.id + ',this.value)" />' +
+          '<span style="flex:1"></span>' +
+          '<button class="toggle ' + (p.start ? "on-st" : "") + '" onclick="toggleField(' + p.id + ',\'start\')">Start</button>' +
+          '<button class="toggle ' + (p.vrouw ? "on-v" : "") + '" onclick="toggleField(' + p.id + ',\'vrouw\')">Vrouw</button>' +
+          '<button class="toggle ' + (p.jeugd ? "on-u" : "") + '" onclick="toggleField(' + p.id + ',\'jeugd\')">U19</button>' +
+        '</div>' +
+      '</div>';
+  }).join("");
+
+  var sc = startCount();
+  var startLabel = validPlayers().length < 5 ? "Minimaal 5 spelers met een naam nodig"
+    : dn.length > 0 ? "Los dubbele rugnummers op"
+    : (sc !== 0 && sc !== 5) ? "Kies precies 5 starters (of 0 voor automatisch)"
+    : "Start wedstrijd";
+  var startInfo = sc === 0
+    ? "Geen starters gekozen — automatisch de 5 laagste rugnummers."
+    : sc + "/5 gekozen als starter" + (sc === 5 ? " ✓" : "");
+
+  app.innerHTML = '' +
+    '<div class="brand-row mb2"><img class="brand-logo" src="' + LOGO_URI + '" alt="ROBA" /><h1>ROBA Lineup Tracker</h1></div>' +
+    '<p class="xs mut mb4">Stel je selectie in: rugnummer, naam, classificatie (1.0–4.5) en — voor de klassegrens — vink Vrouw en/of U19 aan. Tik "Start" om zelf de starting lineup te kiezen (max 5); laat je niemand aan, dan starten automatisch de 5 laagste rugnummers.</p>' +
+    rows +
+    '<div id="dupwarn">' + (dn.length > 0 ? '<div class="warn mb3 pill">⚠ Rugnummer ' + dn.join(", ") + ' komt dubbel voor — geef elke speler een uniek nummer.</div>' : '') + '</div>' +
+    '<button class="btn-outline" style="width:100%;padding:0.6rem;margin-bottom:1rem" onclick="addPlayer()">+ Speler toevoegen</button>' +
+    '<div id="startinfo" class="xs mut mb3" style="text-align:center">' + startInfo + '</div>' +
+    '<div class="card row between" style="padding:0.75rem">' +
+      '<span class="sm">Basis klassegrens <span class="mut2">(NBB 14,5 + bonus)</span></span>' +
+      '<input class="num" style="width:4rem;flex:none" inputmode="decimal" value="' + esc(state.limitStr) + '" oninput="setLimit(this.value)" />' +
+    '</div>' +
+    '<label class="card row between" style="padding:0.75rem">' +
+      '<span class="sm">Wedstrijdklok telt af <span class="mut2">(10:00 → 0:00)</span></span>' +
+      '<input type="checkbox" style="width:1.25rem;height:1.25rem;flex:none;accent-color:var(--amber)" ' + (state.clockDown ? "checked" : "") + ' onchange="setClock(this.checked)" />' +
+    '</label>' +
+    '<button id="startbtn" class="btn-amber ' + (canStart() ? "" : "disabled") + '" style="width:100%;padding:0.75rem" onclick="startGame()">' + startLabel + '</button>';
+}
+
+// targeted update so text inputs keep focus while typing
+function refreshSetupStatus() {
+  if (state.phase !== "setup") return;
+  var dn = dupNrs();
+  var dw = document.getElementById("dupwarn");
+  if (dw) dw.innerHTML = dn.length > 0 ? '<div class="warn mb3 pill">⚠ Rugnummer ' + dn.join(", ") + ' komt dubbel voor — geef elke speler een uniek nummer.</div>' : '';
+  var sc = startCount();
+  var si = document.getElementById("startinfo");
+  if (si) si.textContent = sc === 0
+    ? "Geen starters gekozen — automatisch de 5 laagste rugnummers."
+    : sc + "/5 gekozen als starter" + (sc === 5 ? " ✓" : "");
+  var sb = document.getElementById("startbtn");
+  if (sb) {
+    sb.textContent = validPlayers().length < 5 ? "Minimaal 5 spelers met een naam nodig"
+      : dn.length > 0 ? "Los dubbele rugnummers op"
+      : (sc !== 0 && sc !== 5) ? "Kies precies 5 starters (of 0 voor automatisch)"
+      : "Start wedstrijd";
+    sb.className = "btn-amber " + (canStart() ? "" : "disabled");
+  }
+}
+
+function chipHtml(id) {
+  var p = playerById(id);
+  var sel = state.selected && state.selected.id === id;
+  var tag = p && p.vrouw ? (p.jeugd ? "♀U19" : "♀") : (p && p.jeugd ? "U19" : "");
+  return '<button class="chip ' + (sel ? "sel" : "") + '" onclick="tapPlayer(' + id + ')">' +
+    '<span class="nr">' + esc(p ? p.nr : "?") + '</span>' +
+    '<span class="nm">' + esc(p ? p.naam : "?") + '</span>' +
+    '<span class="kl">' + esc(p ? p.kl : "") + (tag ? " " + tag : "") + '</span>' +
+  '</button>';
+}
+
+function scoreRow(team) {
+  var isFor = team === "for";
+  var score = isFor ? state.scoreFor : state.scoreAgainst;
+  var start = isFor ? state.segStartFor : state.segStartAgainst;
+  var delta = score - start;
+  var cls = isFor ? "amber" : "sky";
+  var name = isFor ? "ROBA" : "Tegenstander";
+  var btnCls = isFor ? "btn-amber" : "btn-sky";
+  return '<div style="margin-bottom:0.75rem">' +
+    '<div class="row between mb2">' +
+      '<span class="sm" style="font-weight:600;color:' + (isFor ? "var(--amber)" : "var(--sky)") + '">' + name +
+      ' <span class="xs mut2" style="font-weight:400">segment: ' + (delta >= 0 ? "+" : "") + delta + '</span></span>' +
+    '</div>' +
+    '<div class="row">' +
+      '<select class="scoresel ' + cls + '" onchange="setScore(\'' + team + '\',Number(this.value))">' + optionList(MAX_SCORE, score, false) + '</select>' +
+      '<div style="flex:1;display:grid;grid-template-columns:repeat(3,1fr);gap:0.375rem">' +
+        '<button class="' + btnCls + ' scorebtn" onclick="addScore(\'' + team + '\',1)">+1</button>' +
+        '<button class="' + btnCls + ' scorebtn" onclick="addScore(\'' + team + '\',2)">+2</button>' +
+        '<button class="' + btnCls + ' scorebtn" onclick="addScore(\'' + team + '\',3)">+3</button>' +
+        '<button class="btn-ghost" style="grid-column:span 3;padding:0.4rem;font-size:0.8rem" onclick="addScore(\'' + team + '\',-1)">−1 corrigeren</button>' +
+      '</div>' +
+    '</div>' +
+  '</div>';
+}
+
+function renderTracking() {
+  var courtSum = sumClass(state.onCourt);
+  var courtBonus = sumBonus(state.onCourt);
+  var courtAllowed = limitVal() + courtBonus;
+  var courtOver = courtSum > courtAllowed + 0.001;
+  var segDeltaFor = state.scoreFor - state.segStartFor;
+  var segDeltaAgainst = state.scoreAgainst - state.segStartAgainst;
+  var segPM = segDeltaFor - segDeltaAgainst;
+  var dur = segDur();
+  var durValid = dur > 0;
+  var lineupValid = state.onCourt.length === 5;
+  var pmColor = segPM > 0 ? "var(--emerald)" : (segPM < 0 ? "var(--rose)" : "var(--mut)");
+
+  var bank = state.players.filter(function (p) { return state.onCourt.indexOf(p.id) < 0; });
+
+  var segHtml = "";
+  if (state.segments.length > 0) {
+    segHtml = '<div class="mb4"><div class="row between mb2">' +
+      '<span class="sm" style="font-weight:600">Segmenten (' + state.segments.length + ')</span>' +
+      '<button class="btn-outline" style="font-size:0.72rem;padding:0.25rem 0.5rem" onclick="editLastSegment()">✏️ Wijzig laatste</button>' +
+      '</div><div style="display:flex;flex-direction:column;gap:0.25rem">' +
+      state.segments.map(function (s, i) {
+        var pm = s.pf - s.pa;
+        var isLast = i === state.segments.length - 1;
+        var c = pm > 0 ? "var(--emerald)" : (pm < 0 ? "var(--rose)" : "var(--mut)");
+        var nrs = s.lineup.map(function (id) { var p = playerById(id); return p ? p.nr : "?"; }).join("-");
+        return '<div class="seg">' +
+          '<span class="mut" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0">' +
+            (s.over ? "⚠ " : "") + '<span class="mut2">Q' + s.quarter + '</span> ' + esc(nrs) +
+            (isLast ? ' <span class="mut2">(laatste)</span>' : '') + '</span>' +
+          '<span class="row tab" style="flex:none">' +
+            '<span class="mut">' + fmt(s.durSec) + '</span>' +
+            '<span style="font-weight:700;color:' + c + '">' + (pm > 0 ? "+" : "") + pm + '</span>' +
+            '<button class="btn-outline" style="border:none;padding:0 0.25rem;color:var(--mut2)" onclick="removeSegment(' + i + ')">🗑</button>' +
+          '</span>' +
+        '</div>';
+      }).join("") + '</div></div>';
+  }
+
+  app.innerHTML = '' +
+    '<div class="row between mb3">' +
+      '<div class="row" style="min-width:0">' +
+        '<img class="brand-logo" src="' + LOGO_URI + '" alt="ROBA" />' +
+        '<div style="min-width:0">' +
+          '<h1>ROBA Lineup Tracker</h1>' +
+          '<p class="xs mut" style="margin:0.15rem 0 0">Deze opstelling staat al <span class="tab" style="font-weight:700;color:' + pmColor + '">' + (segPM > 0 ? "+" : "") + segPM + '</span></p>' +
+        '</div>' +
+      '</div>' +
+      '<button class="btn-outline" style="padding:0.25rem 0.5rem;font-size:0.72rem;flex:none" onclick="resetAll()">↻ Reset</button>' +
+    '</div>' +
+
+    '<div class="card">' + scoreRow("for") + scoreRow("against") + '</div>' +
+
+    '<div class="mb2">' +
+      '<div class="row between mb2">' +
+        '<span class="sm" style="font-weight:600">Op de vloer (5)</span>' +
+        '<span class="xs tab" style="font-weight:700;color:' + (courtOver ? "var(--rose)" : "var(--emerald)") + '">' +
+          courtSum.toFixed(1) + " / " + courtAllowed.toFixed(1) + (courtBonus > 0 ? " (+" + courtBonus.toFixed(1) + ")" : "") + '</span>' +
+      '</div>' +
+      '<div class="grid5">' + state.onCourt.map(chipHtml).join("") + '</div>' +
+    '</div>' +
+
+    (courtOver ? '<div class="warn mb2 pill">⚠ Te veel klassepunten op het veld (' + courtSum.toFixed(1) + " &gt; " + courtAllowed.toFixed(1) + ").</div>" : "") +
+
+    '<div class="row xs mut mb2" style="min-height:18px">↔ ' +
+      (state.selected != null
+        ? '<span style="min-width:0"><span style="color:var(--amber);font-weight:600">' + esc(label(state.selected.id)) + '</span> gekozen — tik de speler om mee te ruilen.</span>'
+        : '<span style="min-width:0">Wisselen? Tik een speler (vloer óf bank), dan de ander.</span>') +
+    '</div>' +
+
+    '<div class="mb4"><span class="sm" style="font-weight:600">Bank</span>' +
+      '<div class="grid5" style="margin-top:0.5rem">' + bank.map(function (p) { return chipHtml(p.id); }).join("") + '</div>' +
+    '</div>' +
+
+    '<div class="card">' +
+      '<h2>Segment vastleggen</h2>' +
+      '<div class="row mb3">' +
+        '<span class="xs mut" style="width:3rem;flex:none">Kwart</span>' +
+        [1, 2, 3, 4].map(function (q) {
+          return '<button class="q ' + (state.curQuarter === q ? "on" : "") + '" onclick="selectQuarter(' + q + ')">' + q + '</button>';
+        }).join("") +
+      '</div>' +
+      '<div style="display:flex;flex-direction:column;gap:0.5rem;margin-bottom:0.25rem">' +
+        '<div class="row">' +
+          '<span class="xs mut" style="width:3rem;flex:none">Begin</span>' +
+          '<select class="timesel" onchange="setTime(\'beginMin\',this.value)">' + optionList(MAX_MIN, state.beginMin, false) + '</select>' +
+          '<span class="mut2" style="flex:none">:</span>' +
+          '<select class="timesel" onchange="setTime(\'beginSec\',this.value)">' + optionList(59, state.beginSec, true) + '</select>' +
+        '</div>' +
+        '<div class="row">' +
+          '<span class="xs mut" style="width:3rem;flex:none">Eind</span>' +
+          '<select class="timesel" onchange="setTime(\'endMin\',this.value)">' + optionList(MAX_MIN, state.endMin, false) + '</select>' +
+          '<span class="mut2" style="flex:none">:</span>' +
+          '<select class="timesel" onchange="setTime(\'endSec\',this.value)">' + optionList(59, state.endSec, true) + '</select>' +
+        '</div>' +
+      '</div>' +
+      '<p class="xs" style="text-align:center;margin:0.5rem 0">' +
+        (durValid ? '<span class="ok">Speeltijd dit segment: ' + fmt(dur) + '</span>' : '<span class="bad">Eind moet ná begin liggen.</span>') +
+      '</p>' +
+      '<button class="btn-emerald ' + (durValid && lineupValid ? "" : "disabled") + '" style="width:100%;padding:0.75rem" onclick="saveSegment()">💾 Segment opslaan (+/- ' + (segPM >= 0 ? "+" : "") + segPM + ')</button>' +
+      (lineupValid ? "" : '<p class="xs bad" style="text-align:center;margin-top:0.5rem">Er moeten precies 5 spelers op de vloer staan.</p>') +
+    '</div>' +
+
+    segHtml +
+
+    '<button class="btn-rose ' + (state.segments.length === 0 ? "disabled" : "") + '" style="width:100%;padding:0.75rem;margin-bottom:1rem" onclick="openExport()">⚑ Afronden &amp; exporteren</button>';
+
+  if (exportOpen) renderExport();
+}
+
+function renderExport() {
+  var overlay = document.createElement("div");
+  overlay.className = "overlay bottom";
+  overlay.onclick = closeExport;
+  overlay.innerHTML =
+    '<div class="modal" onclick="event.stopPropagation()">' +
+      '<div class="row between mb2"><h2 style="margin:0">Export voor Airtable</h2>' +
+        '<button class="btn-outline" style="border:none;padding:0;color:var(--mut)" onclick="closeExport()">✕</button></div>' +
+      '<p class="xs mut mb3">Punten per speler vul je achteraf bij vanuit de boxscore.</p>' +
+      '<button class="btn-emerald" style="width:100%;padding:0.75rem;margin-bottom:1rem" onclick="copyAll(this)">📋 Kopieer alles (beide blokken + titels)</button>' +
+      '<p class="xs mut mb3" style="margin-top:-0.5rem">Of los kopiëren per blok:</p>' +
+      exportBlock("Opstellingen (+/- en klassegrens)", "csvStint", stintCsv()) +
+      exportBlock("Speeltijd per speler", "csvMin", minutesCsv()) +
+    '</div>';
+  app.appendChild(overlay);
+}
+function exportBlock(title, id, text) {
+  return '<div class="mb3">' +
+    '<div class="row between mb2"><span class="xs" style="font-weight:600">' + title + '</span>' +
+      '<button class="btn-ghost" style="font-size:0.72rem;padding:0.25rem 0.5rem" onclick="copyText(\'' + id + '\',this)">Kopieer</button></div>' +
+    '<textarea id="' + id + '" readonly onfocus="this.select()">' + esc(text) + '</textarea>' +
+  '</div>';
+}
+
+function render() {
+  if (resumeOpen) { renderResume(); return; }
+  if (state.phase === "setup") renderSetup();
+  else renderTracking();
+}
+
+function renderResume() {
+  app.innerHTML =
+    '<div style="padding-top:20vh">' +
+    '<img class="brand-logo" style="height:2.6rem;margin-bottom:0.75rem" src="' + LOGO_URI + '" alt="ROBA" />' +
+    '<h1 style="margin-bottom:0.5rem">Opgeslagen wedstrijd gevonden</h1>' +
+    '<p class="sm mut mb4">Er staat nog een wedstrijd opgeslagen' + (resumeWhen ? " (" + resumeWhen + ")" : "") +
+      ', met ' + state.segments.length + ' segment(en). Wil je verder of opnieuw beginnen?</p>' +
+    '<button class="btn-emerald" style="width:100%;padding:0.85rem;margin-bottom:0.75rem" onclick="doResume()">Hervatten</button>' +
+    '<button class="btn-outline" style="width:100%;padding:0.85rem" onclick="doNew()">Nieuwe wedstrijd</button>' +
+    '</div>';
+}
+function doResume() { resumeOpen = false; render(); }
+function doNew() {
+  if (!window.confirm("Nieuwe wedstrijd starten? De opgeslagen wedstrijd wordt gewist.")) return;
+  state = freshState(); resumeOpen = false; save(); render();
+}
+
+// expose handlers
+window.setNr = setNr; window.setNaam = setNaam; window.setKl = setKl; window.setLimit = setLimit;
+window.setClock = setClock; window.toggleField = toggleField; window.addPlayer = addPlayer;
+window.removePlayer = removePlayer; window.startGame = startGame; window.tapPlayer = tapPlayer;
+window.selectQuarter = selectQuarter; window.setScore = setScore; window.addScore = addScore;
+window.setTime = setTime; window.saveSegment = saveSegment; window.removeSegment = removeSegment;
+window.editLastSegment = editLastSegment;
+window.resetAll = resetAll; window.openExport = openExport; window.closeExport = closeExport;
+window.copyText = copyText; window.copyAll = copyAll; window.doResume = doResume; window.doNew = doNew;
+
+// ---------- init ----------
+(function init() {
+  var saved = loadSaved();
+  if (saved && saved.players && (saved.phase === "tracking" || (saved.segments && saved.segments.length > 0))) {
+    state = Object.assign(freshState(), saved);
+    if (saved.savedAt) {
+      try {
+        var d = new Date(saved.savedAt);
+        resumeWhen = d.toLocaleDateString("nl-NL") + " " + d.toLocaleTimeString("nl-NL", { hour: "2-digit", minute: "2-digit" });
+      } catch (e) { resumeWhen = ""; }
+    }
+    resumeOpen = true;
+  }
+  render();
+})();
+</script>
+</body>
+</html>
