@@ -86,9 +86,6 @@
     -webkit-appearance: none; appearance: none; }
   .seg { background: var(--card); border-radius: 0.75rem; padding: 0.5rem 0.75rem;
     font-size: 0.72rem; display: flex; align-items: center; justify-content: space-between; gap: 0.5rem; }
-  textarea { width: 100%; height: 7rem; background: var(--bg); color: #cbd5e1;
-    font-size: 0.69rem; font-family: ui-monospace, monospace; border-radius: 0.5rem;
-    padding: 0.5rem; border: 1px solid var(--line); }
   .overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.7); z-index: 50;
     display: flex; align-items: center; justify-content: center; padding: 1rem; }
   .overlay.bottom { align-items: flex-end; }
@@ -254,11 +251,42 @@ function tapPlayer(id) {
   if (state.selected.where !== where) {
     var courtId = where === "court" ? id : state.selected.id;
     var bankId = where === "bank" ? id : state.selected.id;
+    // Meerdere wissels achter elkaar zijn mogelijk; pas bij "Klaar met wisselen" wordt
+    // de kloktijd gevraagd en het segment met de opstelling van vóór dit hele blokje wissels afgesloten.
+    if (pendingSwapLineup == null) pendingSwapLineup = state.onCourt.slice();
     state.onCourt = state.onCourt.map(function (x) { return x === courtId ? bankId : x; });
     state.selected = null;
   } else {
     state.selected = { id: id, where: where };
   }
+  commit();
+}
+function discardSwaps() {
+  if (pendingSwapLineup == null) return;
+  state.onCourt = pendingSwapLineup.slice();
+  pendingSwapLineup = null;
+  commit();
+}
+function openSwapConfirm() {
+  if (pendingSwapLineup == null) return;
+  swapConfirmDraft = { endMin: state.endMin, endSec: state.endSec };
+  render();
+}
+function closeSwapConfirm() { swapConfirmDraft = null; render(); }
+function setSwapConfirmTime(field, v) { if (swapConfirmDraft) swapConfirmDraft[field] = Number(v); render(); }
+function swapConfirmDur() {
+  var b = state.beginMin * 60 + state.beginSec, e = swapConfirmDraft.endMin * 60 + swapConfirmDraft.endSec;
+  return state.clockDown ? b - e : e - b;
+}
+function confirmSwapBatch() {
+  if (pendingSwapLineup == null || !swapConfirmDraft) return;
+  if (!(swapConfirmDur() > 0)) return;
+  var newLineup = state.onCourt.slice(); // opstelling na dit hele blokje wissels
+  state.onCourt = pendingSwapLineup.slice(); // opstelling vóór de wissels, voor het af te sluiten segment
+  state.endMin = swapConfirmDraft.endMin; state.endSec = swapConfirmDraft.endSec;
+  saveSegment(); // sluit het segment af (oude lineup) op de bevestigde tijd, opent een nieuw segment
+  state.onCourt = newLineup; // de daadwerkelijke opstelling na de wissels gaat verder
+  pendingSwapLineup = null; swapConfirmDraft = null;
   commit();
 }
 function selectQuarter(q) {
@@ -291,53 +319,27 @@ function saveSegment() {
     endSec: state.endMin * 60 + state.endSec,
     durSec: dur, lineup: state.onCourt.slice(),
     pf: state.scoreFor - state.segStartFor, pa: state.scoreAgainst - state.segStartAgainst,
-    classSum: courtSum, over: courtSum > allowed + 0.001,
-    // score van vóór dit segment, nodig om veilig terug te draaien bij wijzigen/verwijderen
-    preScoreFor: state.segStartFor, preScoreAgainst: state.segStartAgainst
+    classSum: courtSum, over: courtSum > allowed + 0.001
   });
   state.segStartFor = state.scoreFor; state.segStartAgainst = state.scoreAgainst;
   state.beginMin = state.endMin; state.beginSec = state.endSec;
+  pendingSwapLineup = null; // dit segment dekt nu alle wissels tot nu toe
   commit();
 }
-function removeSegment(idx) {
-  var isLast = idx === state.segments.length - 1;
-  if (isLast) {
-    var seg = state.segments[idx];
-    if (seg.preScoreFor == null || seg.preScoreAgainst == null) {
-      if (!window.confirm("Dit segment is opgeslagen vóór deze update — de score kan niet automatisch worden teruggedraaid. Controleer de score zo nodig zelf. Toch verwijderen?")) return;
-    } else {
-      if (!window.confirm("Laatste segment verwijderen? De score van ROBA/tegenstander wordt teruggezet naar " + seg.preScoreFor + "-" + seg.preScoreAgainst + " (vóór dit segment).")) return;
-      state.scoreFor = seg.preScoreFor; state.scoreAgainst = seg.preScoreAgainst;
-      state.segStartFor = seg.preScoreFor; state.segStartAgainst = seg.preScoreAgainst;
-    }
-  } else {
-    if (!window.confirm("Dit is niet het laatste segment. De score van ROBA/tegenstander wordt NIET aangepast — controleer die zo nodig zelf. Doorgaan met verwijderen?")) return;
-  }
-  state.segments = state.segments.filter(function (_, i) { return i !== idx; });
-  commit();
-}
-function editLastSegment() {
-  var idx = state.segments.length - 1;
-  if (idx < 0) return;
-  var seg = state.segments[idx];
-  if (seg.preScoreFor == null || seg.preScoreAgainst == null) {
-    window.alert("Dit segment is opgeslagen vóór deze update en kan niet automatisch worden gewijzigd (geen bewaarde score-vóór-segment). Verwijder het handmatig en voer opnieuw in.");
-    return;
-  }
-  if (!window.confirm("Laatste segment terughalen om te wijzigen? De score wordt teruggezet naar " + seg.preScoreFor + "-" + seg.preScoreAgainst + " (vóór dit segment). Punten die je daarna eventueel al hebt ingevoerd gaan verloren.")) return;
-  state.scoreFor = seg.preScoreFor; state.scoreAgainst = seg.preScoreAgainst;
-  state.segStartFor = seg.preScoreFor; state.segStartAgainst = seg.preScoreAgainst;
-  state.curQuarter = seg.quarter;
-  state.onCourt = seg.lineup.slice();
-  state.beginMin = Math.floor(seg.beginSec / 60); state.beginSec = seg.beginSec % 60;
-  state.endMin = Math.floor(seg.endSec / 60); state.endSec = seg.endSec % 60;
-  state.selected = null;
-  state.segments = state.segments.filter(function (_, i) { return i !== idx; });
-  commit();
+// De cumulatieve score is afgeleid van de som van alle segment-pf/pa's, niet gecachet.
+// Bij het wijzigen/verwijderen van een willekeurig (ook niet-laatste) segment recomputen we
+// die som, met behoud van de nog niet opgeslagen "lopende" score-toename van het huidige segment.
+function recalcRunningScore() {
+  var liveFor = state.scoreFor - state.segStartFor;
+  var liveAgainst = state.scoreAgainst - state.segStartAgainst;
+  var sumFor = 0, sumAgainst = 0;
+  state.segments.forEach(function (s) { sumFor += s.pf; sumAgainst += s.pa; });
+  state.segStartFor = sumFor; state.segStartAgainst = sumAgainst;
+  state.scoreFor = sumFor + liveFor; state.scoreAgainst = sumAgainst + liveAgainst;
 }
 function resetAll() {
   if (!window.confirm("Alles wissen en opnieuw beginnen? De huidige wedstrijd gaat verloren.")) return;
-  state = freshState(); save(); render();
+  state = freshState(); pendingSwapLineup = null; swapConfirmDraft = null; save(); render();
 }
 
 // ---------- export ----------
@@ -379,38 +381,33 @@ function combinedCsv() {
   return "Opstellingen (+/- en klassegrens)\n" + stintCsv() +
     "\n\nSpeeltijd per speler\n" + minutesCsv();
 }
-function copyAll(btn) {
-  var text = combinedCsv();
-  var ta = document.createElement("textarea");
-  ta.value = text;
-  ta.style.position = "fixed"; ta.style.left = "-9999px"; ta.style.top = "0";
-  document.body.appendChild(ta);
-  ta.focus(); ta.select();
-  var ok = false;
-  try { ok = document.execCommand("copy"); } catch (e) { ok = false; }
-  document.body.removeChild(ta);
-  if (!ok && navigator.clipboard) {
-    try { navigator.clipboard.writeText(text); ok = true; } catch (e) { ok = false; }
-  }
-  btn.textContent = ok ? "✓ Alles gekopieerd (beide blokken)" : "Kopiëren mislukt — gebruik de losse knoppen hieronder";
-  setTimeout(function () { btn.textContent = "📋 Kopieer alles (beide blokken + titels)"; }, 2500);
+function csvFilename() {
+  var d = new Date(), pad = function (n) { return String(n).padStart(2, "0"); };
+  return "roba-" + d.getFullYear() + pad(d.getMonth() + 1) + pad(d.getDate()) + "-" + pad(d.getHours()) + pad(d.getMinutes()) + ".csv";
 }
-function copyText(which, btn) {
-  var ta = document.getElementById(which);
-  if (!ta) return;
-  ta.focus(); ta.select();
-  try { ta.setSelectionRange(0, ta.value.length); } catch (e) {}
-  var ok = false;
-  try { ok = document.execCommand("copy"); } catch (e) { ok = false; }
-  if (!ok && navigator.clipboard) {
-    try { navigator.clipboard.writeText(ta.value); ok = true; } catch (e) { ok = false; }
+function shareOrDownloadCsv(btn) {
+  var filename = csvFilename();
+  var blob = new Blob([combinedCsv()], { type: "text/csv" });
+  var file = null;
+  try { file = new File([blob], filename, { type: "text/csv" }); } catch (e) { file = null; }
+  if (file && navigator.canShare && navigator.canShare({ files: [file] })) {
+    navigator.share({ files: [file], title: "ROBA export" }).catch(function () {});
+    return;
   }
-  btn.textContent = ok ? "Gekopieerd" : "Geselecteerd";
-  setTimeout(function () { btn.textContent = "Kopieer"; }, 2000);
+  var url = URL.createObjectURL(blob);
+  var a = document.createElement("a");
+  a.href = url; a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  setTimeout(function () { URL.revokeObjectURL(url); }, 2000);
 }
 
 // ---------- modal state ----------
 var exportOpen = false, resumeOpen = false, resumeWhen = "";
+var pendingSwapLineup = null; // opstelling vóór het huidige, nog niet bevestigde blokje wissels
+var swapConfirmDraft = null; // { endMin, endSec } — open zolang de kloktijd-modal getoond wordt
+var editSegIdx = null, editSegDraft = null; // segment dat in de bewerk-modal open staat
 function openExport() { exportOpen = true; render(); }
 function closeExport() { exportOpen = false; render(); }
 
@@ -551,21 +548,18 @@ function renderTracking() {
   if (state.segments.length > 0) {
     segHtml = '<div class="mb4"><div class="row between mb2">' +
       '<span class="sm" style="font-weight:600">Segmenten (' + state.segments.length + ')</span>' +
-      '<button class="btn-outline" style="font-size:0.72rem;padding:0.25rem 0.5rem" onclick="editLastSegment()">✏️ Wijzig laatste</button>' +
+      '<span class="xs mut2">Tik om te bewerken</span>' +
       '</div><div style="display:flex;flex-direction:column;gap:0.25rem">' +
       state.segments.map(function (s, i) {
         var pm = s.pf - s.pa;
-        var isLast = i === state.segments.length - 1;
         var c = pm > 0 ? "var(--emerald)" : (pm < 0 ? "var(--rose)" : "var(--mut)");
         var nrs = s.lineup.map(function (id) { var p = playerById(id); return p ? p.nr : "?"; }).join("-");
-        return '<div class="seg">' +
+        return '<div class="seg" style="cursor:pointer" onclick="openEditSegment(' + i + ')">' +
           '<span class="mut" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0">' +
-            (s.over ? "⚠ " : "") + '<span class="mut2">Q' + s.quarter + '</span> ' + esc(nrs) +
-            (isLast ? ' <span class="mut2">(laatste)</span>' : '') + '</span>' +
+            (s.over ? "⚠ " : "") + '<span class="mut2">Q' + s.quarter + '</span> ' + esc(nrs) + '</span>' +
           '<span class="row tab" style="flex:none">' +
             '<span class="mut">' + fmt(s.durSec) + '</span>' +
             '<span style="font-weight:700;color:' + c + '">' + (pm > 0 ? "+" : "") + pm + '</span>' +
-            '<button class="btn-outline" style="border:none;padding:0 0.25rem;color:var(--mut2)" onclick="removeSegment(' + i + ')">🗑</button>' +
           '</span>' +
         '</div>';
       }).join("") + '</div></div>';
@@ -599,8 +593,14 @@ function renderTracking() {
     '<div class="row xs mut mb2" style="min-height:18px">↔ ' +
       (state.selected != null
         ? '<span style="min-width:0"><span style="color:var(--amber);font-weight:600">' + esc(label(state.selected.id)) + '</span> gekozen — tik de speler om mee te ruilen.</span>'
-        : '<span style="min-width:0">Wisselen? Tik een speler (vloer óf bank), dan de ander.</span>') +
+        : '<span style="min-width:0">Wisselen? Tik een speler (vloer óf bank), dan de ander. Meerdere wissels achter elkaar kan.</span>') +
     '</div>' +
+
+    (pendingSwapLineup != null ? '' +
+      '<div class="row mb3" style="gap:0.5rem">' +
+        '<button class="btn-emerald" style="flex:1;padding:0.65rem" onclick="openSwapConfirm()">✓ Klaar met wisselen — kloktijd</button>' +
+        '<button class="btn-outline" style="flex:none;padding:0.65rem 0.75rem" onclick="discardSwaps()">Annuleer</button>' +
+      '</div>' : '') +
 
     '<div class="mb4"><span class="sm" style="font-weight:600">Bank</span>' +
       '<div class="grid5" style="margin-top:0.5rem">' + bank.map(function (p) { return chipHtml(p.id); }).join("") + '</div>' +
@@ -640,6 +640,8 @@ function renderTracking() {
     '<button class="btn-rose ' + (state.segments.length === 0 ? "disabled" : "") + '" style="width:100%;padding:0.75rem;margin-bottom:1rem" onclick="openExport()">⚑ Afronden &amp; exporteren</button>';
 
   if (exportOpen) renderExport();
+  if (swapConfirmDraft) renderSwapConfirm();
+  if (editSegIdx != null) renderEditSegment();
 }
 
 function renderExport() {
@@ -650,20 +652,142 @@ function renderExport() {
     '<div class="modal" onclick="event.stopPropagation()">' +
       '<div class="row between mb2"><h2 style="margin:0">Export voor Airtable</h2>' +
         '<button class="btn-outline" style="border:none;padding:0;color:var(--mut)" onclick="closeExport()">✕</button></div>' +
-      '<p class="xs mut mb3">Punten per speler vul je achteraf bij vanuit de boxscore.</p>' +
-      '<button class="btn-emerald" style="width:100%;padding:0.75rem;margin-bottom:1rem" onclick="copyAll(this)">📋 Kopieer alles (beide blokken + titels)</button>' +
-      '<p class="xs mut mb3" style="margin-top:-0.5rem">Of los kopiëren per blok:</p>' +
-      exportBlock("Opstellingen (+/- en klassegrens)", "csvStint", stintCsv()) +
-      exportBlock("Speeltijd per speler", "csvMin", minutesCsv()) +
+      '<p class="xs mut mb3">Eén CSV-bestand met opstellingen (+/- en klassegrens) en speeltijd per speler. Punten per speler vul je achteraf bij vanuit de boxscore.</p>' +
+      '<button class="btn-emerald" style="width:100%;padding:0.85rem" onclick="shareOrDownloadCsv(this)">📤 Deel / download CSV</button>' +
     '</div>';
   app.appendChild(overlay);
 }
-function exportBlock(title, id, text) {
-  return '<div class="mb3">' +
-    '<div class="row between mb2"><span class="xs" style="font-weight:600">' + title + '</span>' +
-      '<button class="btn-ghost" style="font-size:0.72rem;padding:0.25rem 0.5rem" onclick="copyText(\'' + id + '\',this)">Kopieer</button></div>' +
-    '<textarea id="' + id + '" readonly onfocus="this.select()">' + esc(text) + '</textarea>' +
-  '</div>';
+
+function renderSwapConfirm() {
+  var dur = swapConfirmDur();
+  var durValid = dur > 0;
+  var overlay = document.createElement("div");
+  overlay.className = "overlay bottom";
+  overlay.onclick = closeSwapConfirm;
+  overlay.innerHTML =
+    '<div class="modal" onclick="event.stopPropagation()">' +
+      '<h2 style="margin:0 0 0.75rem">Wissel(s) — kloktijd?</h2>' +
+      '<p class="xs mut mb3">Het segment tot nu toe wordt afgesloten met de opstelling van vóór deze wissel(s), op het tijdstip hieronder. Daarna gaat het nieuwe segment verder met de huidige opstelling.</p>' +
+      '<div class="row mb3">' +
+        '<span class="xs mut" style="width:3rem;flex:none">Tijd</span>' +
+        '<select class="timesel" onchange="setSwapConfirmTime(\'endMin\',this.value)">' + optionList(MAX_MIN, swapConfirmDraft.endMin, false) + '</select>' +
+        '<span class="mut2" style="flex:none">:</span>' +
+        '<select class="timesel" onchange="setSwapConfirmTime(\'endSec\',this.value)">' + optionList(59, swapConfirmDraft.endSec, true) + '</select>' +
+      '</div>' +
+      '<p class="xs" style="text-align:center;margin:0.5rem 0 0.75rem">' +
+        (durValid ? '<span class="ok">Segment tot nu toe: ' + fmt(dur) + '</span>' : '<span class="bad">Tijd moet ná het begin van dit segment liggen.</span>') +
+      '</p>' +
+      '<div class="row">' +
+        '<button class="btn-outline" style="flex:1;padding:0.65rem" onclick="closeSwapConfirm()">Terug</button>' +
+        '<button class="btn-emerald ' + (durValid ? "" : "disabled") + '" style="flex:1;padding:0.65rem" onclick="confirmSwapBatch()">Bevestigen</button>' +
+      '</div>' +
+    '</div>';
+  app.appendChild(overlay);
+}
+
+function editSegDur() {
+  var b = editSegDraft.beginMin * 60 + editSegDraft.beginSec, e = editSegDraft.endMin * 60 + editSegDraft.endSec;
+  return state.clockDown ? b - e : e - b;
+}
+function openEditSegment(idx) {
+  var s = state.segments[idx];
+  editSegIdx = idx;
+  editSegDraft = {
+    quarter: s.quarter,
+    beginMin: Math.floor(s.beginSec / 60), beginSec: s.beginSec % 60,
+    endMin: Math.floor(s.endSec / 60), endSec: s.endSec % 60,
+    lineup: s.lineup.slice(), pf: s.pf, pa: s.pa
+  };
+  render();
+}
+function closeEditSegment() { editSegIdx = null; editSegDraft = null; render(); }
+function setEditQuarter(q) { editSegDraft.quarter = q; render(); }
+function setEditTime(field, v) { editSegDraft[field] = Number(v); render(); }
+// Geen render() hier: anders wordt de modal bij elke toetsaanslag herbouwd
+// en verliest het invoerveld focus/cursorpositie halverwege het typen.
+function setEditPts(field, v) { editSegDraft[field] = v; }
+function toggleEditLineup(id) {
+  var i = editSegDraft.lineup.indexOf(id);
+  if (i >= 0) editSegDraft.lineup.splice(i, 1); else editSegDraft.lineup.push(id);
+  render();
+}
+function saveEditSegment() {
+  var dur = editSegDur();
+  if (!(dur > 0) || editSegDraft.lineup.length !== 5) return;
+  var lineup = editSegDraft.lineup.slice();
+  var courtSum = sumClass(lineup);
+  var allowed = limitVal() + sumBonus(lineup);
+  state.segments[editSegIdx] = {
+    quarter: editSegDraft.quarter,
+    beginSec: editSegDraft.beginMin * 60 + editSegDraft.beginSec,
+    endSec: editSegDraft.endMin * 60 + editSegDraft.endSec,
+    durSec: dur, lineup: lineup,
+    pf: Number(editSegDraft.pf) || 0, pa: Number(editSegDraft.pa) || 0,
+    classSum: courtSum, over: courtSum > allowed + 0.001
+  };
+  recalcRunningScore();
+  editSegIdx = null; editSegDraft = null;
+  commit();
+}
+function deleteEditSegment() {
+  if (!window.confirm("Dit segment verwijderen? De score wordt automatisch herberekend.")) return;
+  state.segments.splice(editSegIdx, 1);
+  recalcRunningScore();
+  editSegIdx = null; editSegDraft = null;
+  commit();
+}
+function renderEditSegment() {
+  var dur = editSegDur();
+  var durValid = dur > 0;
+  var lineupValid = editSegDraft.lineup.length === 5;
+  var overlay = document.createElement("div");
+  overlay.className = "overlay bottom";
+  overlay.onclick = closeEditSegment;
+  overlay.innerHTML =
+    '<div class="modal" onclick="event.stopPropagation()">' +
+      '<div class="row between mb2"><h2 style="margin:0">Segment bewerken</h2>' +
+        '<button class="btn-outline" style="border:none;padding:0;color:var(--mut)" onclick="closeEditSegment()">✕</button></div>' +
+      '<div class="row mb3">' +
+        '<span class="xs mut" style="width:3rem;flex:none">Kwart</span>' +
+        [1, 2, 3, 4].map(function (q) {
+          return '<button class="q ' + (editSegDraft.quarter === q ? "on" : "") + '" onclick="setEditQuarter(' + q + ')">' + q + '</button>';
+        }).join("") +
+      '</div>' +
+      '<div style="display:flex;flex-direction:column;gap:0.5rem;margin-bottom:0.75rem">' +
+        '<div class="row">' +
+          '<span class="xs mut" style="width:3rem;flex:none">Begin</span>' +
+          '<select class="timesel" onchange="setEditTime(\'beginMin\',this.value)">' + optionList(MAX_MIN, editSegDraft.beginMin, false) + '</select>' +
+          '<span class="mut2" style="flex:none">:</span>' +
+          '<select class="timesel" onchange="setEditTime(\'beginSec\',this.value)">' + optionList(59, editSegDraft.beginSec, true) + '</select>' +
+        '</div>' +
+        '<div class="row">' +
+          '<span class="xs mut" style="width:3rem;flex:none">Eind</span>' +
+          '<select class="timesel" onchange="setEditTime(\'endMin\',this.value)">' + optionList(MAX_MIN, editSegDraft.endMin, false) + '</select>' +
+          '<span class="mut2" style="flex:none">:</span>' +
+          '<select class="timesel" onchange="setEditTime(\'endSec\',this.value)">' + optionList(59, editSegDraft.endSec, true) + '</select>' +
+        '</div>' +
+      '</div>' +
+      '<p class="xs" style="text-align:center;margin:0 0 0.75rem">' +
+        (durValid ? '<span class="ok">Speeltijd: ' + fmt(dur) + '</span>' : '<span class="bad">Eind moet ná begin liggen.</span>') +
+      '</p>' +
+      '<div class="row between mb2"><span class="sm" style="font-weight:600">Lineup</span>' +
+        '<span class="xs ' + (lineupValid ? "mut" : "bad") + '">' + editSegDraft.lineup.length + '/5 gekozen</span></div>' +
+      '<div class="grid5 mb3">' + state.players.map(function (p) {
+        var sel = editSegDraft.lineup.indexOf(p.id) >= 0;
+        return '<button class="chip ' + (sel ? "sel" : "") + '" onclick="toggleEditLineup(' + p.id + ')">' +
+          '<span class="nr">' + esc(p.nr) + '</span><span class="nm">' + esc(p.naam) + '</span>' +
+          '<span class="kl">' + esc(p.kl) + '</span></button>';
+      }).join("") + '</div>' +
+      '<div class="row mb3">' +
+        '<div style="flex:1"><div class="xs mut mb2">Punten voor</div>' +
+          '<input class="num" type="number" style="width:100%" value="' + editSegDraft.pf + '" oninput="setEditPts(\'pf\',this.value)" /></div>' +
+        '<div style="flex:1"><div class="xs mut mb2">Punten tegen</div>' +
+          '<input class="num" type="number" style="width:100%" value="' + editSegDraft.pa + '" oninput="setEditPts(\'pa\',this.value)" /></div>' +
+      '</div>' +
+      '<button class="btn-emerald ' + (durValid && lineupValid ? "" : "disabled") + '" style="width:100%;padding:0.75rem;margin-bottom:0.5rem" onclick="saveEditSegment()">💾 Opslaan</button>' +
+      '<button class="btn-rose" style="width:100%;padding:0.6rem" onclick="deleteEditSegment()">🗑 Verwijderen</button>' +
+    '</div>';
+  app.appendChild(overlay);
 }
 
 function render() {
@@ -686,7 +810,7 @@ function renderResume() {
 function doResume() { resumeOpen = false; render(); }
 function doNew() {
   if (!window.confirm("Nieuwe wedstrijd starten? De opgeslagen wedstrijd wordt gewist.")) return;
-  state = freshState(); resumeOpen = false; save(); render();
+  state = freshState(); resumeOpen = false; pendingSwapLineup = null; swapConfirmDraft = null; save(); render();
 }
 
 // expose handlers
@@ -694,10 +818,16 @@ window.setNr = setNr; window.setNaam = setNaam; window.setKl = setKl; window.set
 window.setClock = setClock; window.toggleField = toggleField; window.addPlayer = addPlayer;
 window.removePlayer = removePlayer; window.startGame = startGame; window.tapPlayer = tapPlayer;
 window.selectQuarter = selectQuarter; window.setScore = setScore; window.addScore = addScore;
-window.setTime = setTime; window.saveSegment = saveSegment; window.removeSegment = removeSegment;
-window.editLastSegment = editLastSegment;
+window.setTime = setTime; window.saveSegment = saveSegment;
+window.discardSwaps = discardSwaps; window.openSwapConfirm = openSwapConfirm;
+window.closeSwapConfirm = closeSwapConfirm; window.setSwapConfirmTime = setSwapConfirmTime;
+window.confirmSwapBatch = confirmSwapBatch;
+window.openEditSegment = openEditSegment; window.closeEditSegment = closeEditSegment;
+window.setEditQuarter = setEditQuarter; window.setEditTime = setEditTime; window.setEditPts = setEditPts;
+window.toggleEditLineup = toggleEditLineup; window.saveEditSegment = saveEditSegment;
+window.deleteEditSegment = deleteEditSegment;
 window.resetAll = resetAll; window.openExport = openExport; window.closeExport = closeExport;
-window.copyText = copyText; window.copyAll = copyAll; window.doResume = doResume; window.doNew = doNew;
+window.shareOrDownloadCsv = shareOrDownloadCsv; window.doResume = doResume; window.doNew = doNew;
 
 // ---------- init ----------
 (function init() {
