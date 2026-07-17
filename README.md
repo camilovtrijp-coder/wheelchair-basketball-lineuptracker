@@ -12,7 +12,7 @@ Een mobiele, offline bruikbare lineuptracker voor teamsporten met wisselspelers 
 
 ## Starten
 
-Open `index.html` in een moderne browser (lokaal, of via de gepubliceerde GitHub Pages-URL — zie hieronder). Er is geen installatie, server of externe afhankelijkheid nodig.
+Open `index.html` in een moderne browser (lokaal, of via de gepubliceerde Netlify-URL — zie hieronder). Er is geen installatie, server of externe afhankelijkheid nodig.
 
 1. Stel via het instellingenscherm (⚙, rechtsboven) je teamnaam, logo, kleuren, aantal periodes en — indien gewenst — het klassegrens-systeem in.
 2. Voer de spelers en rugnummers in (de lijst start leeg; er staat geen teamdata in de broncode).
@@ -39,9 +39,9 @@ De actuele wedstrijd en de instellingen worden opgeslagen in `localStorage` van 
 
 Let op: de gegevens verdwijnen wanneer browseropslag wordt gewist. Er worden geen gegevens naar een externe server verzonden.
 
-## Publicatie (GitHub Pages)
+## Publicatie (Netlify)
 
-Bij elke push naar `main` wordt `index.html` automatisch gepubliceerd via GitHub Pages (zie `.github/workflows/pages.yml`). De gepubliceerde site bevat geen teamdata — spelersnamen, classificaties en teaminstellingen worden door elke gebruiker zelf ingevoerd en blijven lokaal in de browser van dat toestel.
+Bij elke push naar `main` wordt `index.html` automatisch gepubliceerd via Netlify (zie `netlify.toml` — de repo blijft privé, alleen het HTML-bestand wordt gepubliceerd). De gepubliceerde site bevat geen teamdata — spelersnamen, classificaties en teaminstellingen worden door elke gebruiker zelf ingevoerd en blijven lokaal in de browser van dat toestel.
 
 ## Documentatie
 
