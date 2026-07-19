@@ -29,7 +29,14 @@
     font-family: Roboto, system-ui, -apple-system, "Segoe UI", sans-serif; }
   h1, h2, .brand-caps { font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
     font-weight: 900; text-transform: uppercase; letter-spacing: -0.02em; }
-  #app { max-width: 30rem; margin: 0 auto; padding: 1rem; overflow-x: hidden; }
+  #app { max-width: 30rem; margin: 0 auto; padding: 1rem 1rem 5.25rem; overflow-x: hidden; }
+  .tabbar { position: fixed; left: 0; right: 0; bottom: 0; z-index: 40; background: var(--card);
+    border-top: 1px solid var(--line); display: flex; max-width: 30rem; margin: 0 auto; }
+  .tabbar .tabbtn { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center;
+    gap: 0.15rem; padding: 0.5rem 0 calc(0.4rem + env(safe-area-inset-bottom)); background: transparent;
+    border: none; border-radius: 0; color: var(--mut); font-size: 0.62rem; font-weight: 600; }
+  .tabbar .tabbtn.on { color: var(--amber); }
+  .tabbar .tabbtn .ic { font-size: 1.15rem; line-height: 1; }
   h1 { font-size: 1.05rem; margin: 0; }
   h2 { font-size: 0.9rem; margin: 0 0 0.75rem; }
   .mut { color: var(--mut); } .mut2 { color: var(--mut2); }
@@ -115,6 +122,9 @@ var STORAGE_KEY = "lineup-tracker-v1";
 // wedstrijd" niet de hele spelerslijst wist — alleen het rugnummer/naam/classificatie/
 // categorieën blijven staan; wie start is per wedstrijd opnieuw te kiezen.
 var ROSTER_KEY = "lineup-tracker-roster";
+// Afgeronde wedstrijden blijven bewaard (los van STORAGE_KEY, dat alleen de actieve
+// wedstrijd bevat) zodat Stats/History over meerdere wedstrijden kunnen tonen.
+var GAMES_KEY = "lineup-tracker-games";
 // Geen echte spelersdata hardcoded: deze app wordt publiek gepubliceerd (GitHub Pages),
 // dus namen/classificaties (gezondheidsgegeven) mogen niet in de broncode staan.
 // Elke gebruiker vult zijn eigen spelerslijst in via het instelscherm; die blijft
@@ -132,7 +142,7 @@ var STRINGS = {
   nl: {
     appNameFallback: "Lineup Tracker",
     teamFallbackLabel: "Team",
-    setupIntro: 'Stel je selectie in: rugnummer, naam en — als je het classificatiesysteem gebruikt (instellingen ⚙) — een classificatiewaarde en categorieën. Tik "Start" om zelf de starting lineup te kiezen (max 5); laat je niemand aan, dan starten automatisch de 5 laagste rugnummers.',
+    setupIntro: 'Beheer hier je spelerslijst: rugnummer, naam en — als je het classificatiesysteem gebruikt (instellingen ⚙) — een classificatiewaarde en categorieën. Wie meedoet en start kies je bij het opzetten van een wedstrijd (tabblad Wedstrijd).',
     namePlaceholder: "Naam",
     classLabel: "Klasse",
     toggleStart: "Start",
@@ -173,7 +183,6 @@ var STRINGS = {
     segmentsTitle: "Segmenten ({n})",
     tapToEdit: "Tik om te bewerken",
     lineupStandingPrefix: "Deze opstelling staat al ",
-    finishExportBtn: "⚑ Afronden &amp; exporteren",
     exportTitle: "Export voor Airtable",
     exportDesc: "Eén CSV-bestand met opstellingen (+/-) en speeltijd per speler. Punten per speler vul je achteraf bij vanuit de boxscore.",
     exportShareBtn: "📤 Deel / download CSV",
@@ -181,7 +190,7 @@ var STRINGS = {
     swapConfirmDesc: "Het segment tot nu toe wordt afgesloten met de opstelling van vóór deze wissel(s), op het tijdstip hieronder. Daarna gaat het nieuwe segment verder met de huidige opstelling.",
     timeLabel: "Tijd",
     segSoFar: "Segment tot nu toe: {fmt}",
-    timeAfterSegStart: "Tijd moet ná het begin van dit segment liggen.",
+    timeAfterSegStart: "Tijd mag niet vóór het begin van dit segment liggen.",
     backBtn: "Terug",
     confirmBtn: "Bevestigen",
     editSegmentTitle: "Segment bewerken",
@@ -219,12 +228,44 @@ var STRINGS = {
     bonusTag2OnlyLabel: "Bonus bij categorie 2",
     bonusBothLabel: "Bonus bij beide categorieën",
     settingsResetBtn: "↺ Standaardinstellingen herstellen",
-    confirmResetSettings: "Instellingen terugzetten naar standaard? Teamnaam, logo, kleuren en classificatie-instellingen gaan verloren."
+    confirmResetSettings: "Instellingen terugzetten naar standaard? Teamnaam, logo, kleuren en classificatie-instellingen gaan verloren.",
+    tabRoster: "Team", tabTrack: "Wedstrijd", tabStats: "Stats", tabHistory: "Historie",
+    opponentPlaceholder: "Naam tegenstander (optioneel)",
+    finishGameBtn: "🏁 Wedstrijd afronden",
+    exportOnlyBtn: "📤 Alleen CSV exporteren",
+    confirmFinishGame: "Wedstrijd afronden en opslaan in de wedstrijdgeschiedenis? Er start daarna een nieuwe, lege wedstrijd.",
+    confirmDeleteGame: "Deze wedstrijd definitief verwijderen uit de geschiedenis?",
+    preGameIntro: "Kies wie er meedoet en wie start. Spelersgegevens (naam, rugnummer, classificatie) pas je aan op Team.",
+    participateToggle: "Meedoen",
+    startNeedFiveParticipating: "Minimaal 5 deelnemende spelers nodig",
+    noPlayersYet: "Nog geen spelers. Voeg ze toe via Team.",
+    goToTeamBtn: "Naar Team →",
+    statsPer10: "Per 10 min",
+    statsGamesBtn: "Wedstrijden",
+    statsFilterBtn: "Filter spelers",
+    statsGamesTitle: "Filter op wedstrijd",
+    statsFilterTitle: "Filter spelers",
+    statsFilterHint: "✓ = moet op de vloer staan · ✗ = moet op de bank staan · — = geen filter",
+    statsCurrentGame: "Huidige wedstrijd",
+    statsNoData: "Nog geen wedstrijddata. Speel en rond een wedstrijd af om hier stats te zien.",
+    statsNoCombos: "Geen combinaties gevonden met dit filter.",
+    statsColTime: "Tijd", statsColPts: "Pnt", statsColOpp: "Teg", statsColOn: "Aan", statsColOff: "Uit",
+    historyEmpty: "Nog geen afgeronde wedstrijden.",
+    clearBtn: "Wissen",
+    doneBtn: "Klaar",
+    backupTitle: "Back-up",
+    backupDesc: "Bewaar een kopie van je hele team (spelers, instellingen, wedstrijdgeschiedenis) — handig bij een nieuw toestel of gewiste browseropslag. Alles blijft lokaal; er gaat niets naar een server.",
+    backupExportBtn: "⬇ Exporteer alle data",
+    backupImportBtn: "⬆ Importeer back-up",
+    confirmImportBackup: "Back-up importeren? Alle huidige data (spelers, instellingen, geschiedenis, lopende wedstrijd) wordt overschreven.",
+    importBackupInvalid: "Dit bestand lijkt geen geldige Lineup Tracker-back-up te zijn.",
+    competitionLabel: "Competitie/toernooi",
+    competitionPlaceholder: "Naam competitie of toernooi (optioneel)"
   },
   en: {
     appNameFallback: "Lineup Tracker",
     teamFallbackLabel: "Team",
-    setupIntro: 'Set up your roster: shirt number, name and — if you use the classification system (settings ⚙) — a classification value and categories. Tap "Start" to pick the starting lineup yourself (max 5); leave everyone untapped and the 5 lowest shirt numbers start automatically.',
+    setupIntro: 'Manage your player roster here: shirt number, name and — if you use the classification system (settings ⚙) — a classification value and categories. Who plays and starts is chosen when setting up a match (Track tab).',
     namePlaceholder: "Name",
     classLabel: "Class",
     toggleStart: "Start",
@@ -265,7 +306,6 @@ var STRINGS = {
     segmentsTitle: "Segments ({n})",
     tapToEdit: "Tap to edit",
     lineupStandingPrefix: "This lineup is already ",
-    finishExportBtn: "⚑ Finish &amp; export",
     exportTitle: "Export for Airtable",
     exportDesc: "One CSV file with lineups (+/-) and playing time per player. Fill in per-player points afterwards from the box score.",
     exportShareBtn: "📤 Share / download CSV",
@@ -273,7 +313,7 @@ var STRINGS = {
     swapConfirmDesc: "The segment so far will be closed with the lineup from before this/these substitution(s), at the time below. The new segment then continues with the current lineup.",
     timeLabel: "Time",
     segSoFar: "Segment so far: {fmt}",
-    timeAfterSegStart: "Time must be after the start of this segment.",
+    timeAfterSegStart: "Time can't be before the start of this segment.",
     backBtn: "Back",
     confirmBtn: "Confirm",
     editSegmentTitle: "Edit segment",
@@ -311,7 +351,39 @@ var STRINGS = {
     bonusTag2OnlyLabel: "Bonus for category 2",
     bonusBothLabel: "Bonus for both categories",
     settingsResetBtn: "↺ Reset to defaults",
-    confirmResetSettings: "Reset settings to default? Team name, logo, colors and classification settings will be lost."
+    confirmResetSettings: "Reset settings to default? Team name, logo, colors and classification settings will be lost.",
+    tabRoster: "Roster", tabTrack: "Track", tabStats: "Stats", tabHistory: "History",
+    opponentPlaceholder: "Opponent name (optional)",
+    finishGameBtn: "🏁 Finish match",
+    exportOnlyBtn: "📤 Export CSV only",
+    confirmFinishGame: "Finish this match and save it to game history? A new, empty match will start afterwards.",
+    confirmDeleteGame: "Permanently delete this match from history?",
+    preGameIntro: "Choose who's playing and who starts. Edit player details (name, shirt number, classification) on the Roster tab.",
+    participateToggle: "Play",
+    startNeedFiveParticipating: "At least 5 participating players needed",
+    noPlayersYet: "No players yet. Add them on the Roster tab.",
+    goToTeamBtn: "Go to Roster →",
+    statsPer10: "Per 10 min",
+    statsGamesBtn: "Games",
+    statsFilterBtn: "Filter players",
+    statsGamesTitle: "Filter by game",
+    statsFilterTitle: "Filter players",
+    statsFilterHint: "✓ = must be on court · ✗ = must be on bench · — = no filter",
+    statsCurrentGame: "Current match",
+    statsNoData: "No match data yet. Play and finish a match to see stats here.",
+    statsNoCombos: "No combinations found with this filter.",
+    statsColTime: "Time", statsColPts: "Pts", statsColOpp: "Opp", statsColOn: "On", statsColOff: "Off",
+    historyEmpty: "No finished matches yet.",
+    clearBtn: "Clear",
+    doneBtn: "Done",
+    backupTitle: "Backup",
+    backupDesc: "Keep a copy of your whole team (players, settings, match history) — handy for a new device or a cleared browser storage. Everything stays local; nothing is sent to a server.",
+    backupExportBtn: "⬇ Export all data",
+    backupImportBtn: "⬆ Import backup",
+    confirmImportBackup: "Import this backup? All current data (players, settings, history, active match) will be overwritten.",
+    importBackupInvalid: "This file doesn't look like a valid Lineup Tracker backup.",
+    competitionLabel: "Competition/tournament",
+    competitionPlaceholder: "Competition or tournament name (optional)"
   }
 };
 var lang = (function () {
@@ -382,15 +454,25 @@ function slugify(s) {
 
 function defaultPlayers() {
   return DEFAULT_DATA.map(function (d, i) {
-    return { id: i + 1, nr: String(d[1]), naam: d[0], kl: d[2].toFixed(1), vrouw: d[3], jeugd: d[4], start: false };
+    return { id: i + 1, nr: String(d[1]), naam: d[0], kl: d[2].toFixed(1), vrouw: d[3], jeugd: d[4], start: false, participate: true };
   });
+}
+// Houdt de spelerslijst automatisch op volgorde van rugnummer, zodat je nooit
+// handmatig hoeft te slepen: wijzig een nummer of voeg een speler toe, en de
+// lijst (Team, Wedstrijd-opzet, bank/veld-chips) springt vanzelf op de juiste plek.
+function sortPlayers() {
+  state.players.sort(function (a, b) { return (parseInt(a.nr, 10) || 0) - (parseInt(b.nr, 10) || 0); });
 }
 function loadRoster() {
   try {
     var raw = localStorage.getItem(ROSTER_KEY);
     if (!raw) return defaultPlayers();
     var roster = JSON.parse(raw);
-    return roster.map(function (p) { return Object.assign({}, p, { start: false }); });
+    // "start" en "participate" zijn per-wedstrijd keuzes, geen teamgegevens: bij elke
+    // nieuwe wedstrijd doet iedereen weer standaard mee, starters kies je opnieuw.
+    var players = roster.map(function (p) { return Object.assign({}, p, { start: false, participate: true }); });
+    players.sort(function (a, b) { return (parseInt(a.nr, 10) || 0) - (parseInt(b.nr, 10) || 0); });
+    return players;
   } catch (e) { return defaultPlayers(); }
 }
 function saveRoster(players) {
@@ -401,12 +483,26 @@ function saveRoster(players) {
     localStorage.setItem(ROSTER_KEY, JSON.stringify(roster));
   } catch (e) { /* opslag kan vol/geblokkeerd zijn */ }
 }
+
+function loadGames() {
+  try {
+    var raw = localStorage.getItem(GAMES_KEY);
+    if (!raw) return [];
+    var games = JSON.parse(raw);
+    return Array.isArray(games) ? games : [];
+  } catch (e) { return []; }
+}
+function saveGames() {
+  try { localStorage.setItem(GAMES_KEY, JSON.stringify(games)); } catch (e) { /* opslag kan vol/geblokkeerd zijn */ }
+}
+var games = loadGames();
 function freshState() {
   var roster = loadRoster();
   return {
     phase: "setup", players: roster, clockDown: true, limitStr: String(settings.classBaseLimit),
     nextId: roster.reduce(function (m, p) { return Math.max(m, p.id); }, 0) + 1,
     onCourt: [], selected: null, segments: [], curQuarter: 1,
+    opponent: "", competition: "",
     beginMin: MAX_MIN, beginSec: 0, endMin: MAX_MIN, endSec: 0,
     scoreFor: 0, scoreAgainst: 0, segStartFor: 0, segStartAgainst: 0, savedAt: null
   };
@@ -472,8 +568,12 @@ function updPlayer(id, field, value) {
   for (var i = 0; i < state.players.length; i++) if (state.players[i].id === id) state.players[i][field] = value;
   save();
 }
-function setNr(id, v) { updPlayer(id, "nr", v); refreshSetupStatus(); }
-function setNaam(id, v) { updPlayer(id, "naam", v); refreshSetupStatus(); }
+function setNr(id, v) { updPlayer(id, "nr", v); sortPlayers(); refreshTeamStatus(); }
+// Sorteert het rugnummer pas zichtbaar zodra het invoerveld de focus verliest: zo
+// springt de rij niet al tussentijds terwijl je nog aan het typen bent (dat zou de
+// focus/cursor uit het veld gooien), maar zie je het resultaat direct na het typen.
+function commitTeamOrder() { render(); }
+function setNaam(id, v) { updPlayer(id, "naam", v); refreshTeamStatus(); }
 function setKl(id, v) { updPlayer(id, "kl", v); }
 function setLimit(v) { state.limitStr = v; save(); }
 function setClock(v) { state.clockDown = v; save(); }
@@ -482,17 +582,20 @@ function toggleField(id, field) {
   commit();
 }
 function addPlayer() {
-  state.players.push({ id: state.nextId, nr: String(state.players.length + 1), naam: "", kl: "3.0", vrouw: false, jeugd: false, start: false });
-  state.nextId += 1; commit();
+  state.players.push({ id: state.nextId, nr: String(state.players.length + 1), naam: "", kl: "3.0", vrouw: false, jeugd: false, start: false, participate: true });
+  state.nextId += 1; sortPlayers(); commit();
 }
 function startCount() {
-  return state.players.filter(function (p) { return p.start && p.naam.trim() !== ""; }).length;
+  return state.players.filter(function (p) { return p.start && p.naam.trim() !== "" && p.participate !== false; }).length;
 }
 function removePlayer(id) {
   state.players = state.players.filter(function (p) { return p.id !== id; });
   commit();
 }
 function validPlayers() { return state.players.filter(function (p) { return p.naam.trim() !== ""; }); }
+// Spelers die voor déze wedstrijd meedoen (uitgezet met de "Meedoen"-toggle op het
+// Wedstrijd-tabblad blijven wel gewoon in de teamlijst staan, maar tellen hier niet mee).
+function participatingPlayers() { return validPlayers().filter(function (p) { return p.participate !== false; }); }
 function dupNrs() {
   var counts = {}, vp = validPlayers();
   vp.forEach(function (p) { var k = p.nr.trim(); if (k) counts[k] = (counts[k] || 0) + 1; });
@@ -500,18 +603,29 @@ function dupNrs() {
 }
 function canStart() {
   var sc = startCount();
-  return validPlayers().length >= 5 && dupNrs().length === 0 && (sc === 0 || sc === 5);
+  return validPlayers().length >= 5 && dupNrs().length === 0 && participatingPlayers().length >= 5 && (sc === 0 || sc === 5);
+}
+function setOpponent(v) { state.opponent = v; save(); }
+function setCompetition(v) { state.competition = v; save(); }
+function toggleParticipate(id) {
+  var p = playerById(id);
+  if (p) {
+    var participating = p.participate !== false;
+    p.participate = !participating;
+    if (!p.participate) p.start = false;
+  }
+  commit();
 }
 
 function startGame() {
   if (!canStart()) return;
-  var chosen = validPlayers().filter(function (p) { return p.start; });
+  var chosen = participatingPlayers().filter(function (p) { return p.start; });
   if (chosen.length === 5) {
     state.onCourt = chosen.map(function (p) { return p.id; });
   } else {
     // Automatische fallback: expliciet sorteren op rugnummer (laagste 5),
     // niet op toevallige volgorde in de lijst.
-    var sorted = validPlayers().slice().sort(function (a, b) {
+    var sorted = participatingPlayers().slice().sort(function (a, b) {
       return (parseInt(a.nr, 10) || 0) - (parseInt(b.nr, 10) || 0);
     });
     state.onCourt = sorted.slice(0, 5).map(function (p) { return p.id; });
@@ -519,7 +633,7 @@ function startGame() {
   var m = state.clockDown ? MAX_MIN : 0;
   state.beginMin = m; state.beginSec = 0; state.endMin = m; state.endSec = 0;
   state.selected = null; state.curQuarter = 1;
-  state.phase = "tracking"; commit();
+  state.phase = "tracking"; currentTab = "track"; commit();
 }
 
 // ---------- tracking actions ----------
@@ -559,13 +673,19 @@ function swapConfirmDur() {
 }
 function confirmSwapBatch() {
   if (pendingSwapLineup == null || !swapConfirmDraft) return;
-  if (!(swapConfirmDur() > 0)) return;
-  var newLineup = state.onCourt.slice(); // opstelling na dit hele blokje wissels
-  state.onCourt = pendingSwapLineup.slice(); // opstelling vóór de wissels, voor het af te sluiten segment
-  state.endMin = swapConfirmDraft.endMin; state.endSec = swapConfirmDraft.endSec;
-  saveSegment(); // sluit het segment af (oude lineup) op de bevestigde tijd, opent een nieuw segment
-  state.onCourt = newLineup; // de daadwerkelijke opstelling na de wissels gaat verder
-  pendingSwapLineup = null; swapConfirmDraft = null;
+  var dur = swapConfirmDur();
+  if (dur < 0) return;
+  if (dur > 0) {
+    state.endMin = swapConfirmDraft.endMin; state.endSec = swapConfirmDraft.endSec;
+    // state.onCourt staat al op de nieuwe opstelling (bijgewerkt bij het tikken);
+    // saveSegment() gebruikt zelf pendingSwapLineup voor het af te sluiten segment
+    // en laat state.onCourt verder ongemoeid.
+    saveSegment();
+  } else {
+    // Bij 0 seconden (bv. direct na een kwartwissel) is er niets af te sluiten.
+    pendingSwapLineup = null;
+  }
+  swapConfirmDraft = null;
   commit();
 }
 function selectQuarter(q) {
@@ -589,16 +709,21 @@ function segDur() {
 }
 function saveSegment() {
   var dur = segDur();
-  if (!(dur > 0) || state.onCourt.length !== 5) return;
-  var courtSum = sumClass(state.onCourt);
-  var allowed = limitVal() + sumBonus(state.onCourt);
+  // Als er nog een wissel openstaat (getikt maar nog niet bevestigd), hoort dit
+  // segment bij de opstelling van vóór die wissel(s) — state.onCourt is namelijk al
+  // bijgewerkt naar de nieuwe opstelling zodra je op een speler tikt, ongeacht of je
+  // via "Klaar met wisselen" bevestigt of hier direct op "Segment opslaan" klikt.
+  var lineupForSegment = pendingSwapLineup != null ? pendingSwapLineup : state.onCourt;
+  if (!(dur > 0) || lineupForSegment.length !== 5) return;
+  var courtSum = sumClass(lineupForSegment);
+  var allowed = limitVal() + sumBonus(lineupForSegment);
   state.segments.push({
     quarter: state.curQuarter,
     beginSec: state.beginMin * 60 + state.beginSec,
     endSec: state.endMin * 60 + state.endSec,
-    durSec: dur, lineup: state.onCourt.slice(),
+    durSec: dur, lineup: lineupForSegment.slice(),
     pf: state.scoreFor - state.segStartFor, pa: state.scoreAgainst - state.segStartAgainst,
-    classSum: courtSum, over: courtSum > allowed + 0.001
+    classSum: courtSum, allowed: allowed, over: courtSum > allowed + 0.001
   });
   state.segStartFor = state.scoreFor; state.segStartAgainst = state.scoreAgainst;
   state.beginMin = state.endMin; state.beginSec = state.endSec;
@@ -618,61 +743,100 @@ function recalcRunningScore() {
 }
 function resetAll() {
   if (!window.confirm(t("confirmResetAll"))) return;
-  state = freshState(); pendingSwapLineup = null; swapConfirmDraft = null; save(); render();
+  state = freshState(); pendingSwapLineup = null; swapConfirmDraft = null; save();
+  currentTab = "track";
+  render();
+}
+function finishGame() {
+  if (state.segments.length === 0) return;
+  if (!window.confirm(t("confirmFinishGame"))) return;
+  games.unshift({
+    id: "g" + Date.now(),
+    opponent: state.opponent || "",
+    competition: state.competition || "",
+    date: new Date().toISOString(),
+    players: state.players.map(function (p) {
+      return { id: p.id, nr: p.nr, naam: p.naam, kl: p.kl, vrouw: p.vrouw, jeugd: p.jeugd };
+    }),
+    segments: state.segments,
+    scoreFor: state.scoreFor, scoreAgainst: state.scoreAgainst,
+    quarterCount: settings.quarterCount, periodLabel: settings.periodLabel,
+    useClassLimit: settings.useClassLimit
+  });
+  saveGames();
+  state = freshState(); pendingSwapLineup = null; swapConfirmDraft = null; save();
+  currentTab = "history"; historyOpenId = games[0].id;
+  render();
+}
+function deleteGame(id) {
+  if (!window.confirm(t("confirmDeleteGame"))) return;
+  games = games.filter(function (g) { return g.id !== id; });
+  saveGames();
+  if (historyOpenId === id) historyOpenId = null;
+  render();
 }
 
 // ---------- export ----------
-function lineupCode(lineup) {
-  return lineup.slice().sort(function (a, b) {
-    var pa = playerById(a), pb = playerById(b);
-    return (parseInt(pa ? pa.nr : 0, 10) || 0) - (parseInt(pb ? pb.nr : 0, 10) || 0);
-  }).map(function (id) {
-    var p = playerById(id);
-    return p ? p.nr : "?";
-  }).join("-");
-}
-function stintCsv() {
-  var classCols = settings.useClassLimit ? ",Som classificatie,Bonus,Toegestane grens,Binnen klassegrens" : "";
+// Generieke CSV-opbouw op basis van expliciete segmenten/spelers, zodat zowel de
+// lopende wedstrijd als een afgeronde wedstrijd uit de geschiedenis dezelfde export
+// kunnen gebruiken zonder de huidige instellingen (settings/state) nodig te hebben.
+// classSum/allowed/over staan al per segment vastgelegd op het moment van opslaan.
+function segmentsCsvFor(segments, players, useClassLimit) {
+  var byId = {}; players.forEach(function (p) { byId[p.id] = p; });
+  function lbl(id) { var p = byId[id]; return p ? (p.naam + " #" + p.nr) : "?"; }
+  function nr(id) { var p = byId[id]; return p ? p.nr : "?"; }
+  var classCols = useClassLimit ? ",Som classificatie,Toegestane grens,Binnen klassegrens" : "";
   var head = "Opstelling,Kwart,Begin,Eind,Speeltijd,Seconden,Punten voor,Punten tegen,Plusminus" + classCols + ",Lineup code";
-  var rows = state.segments.map(function (s) {
-    var lineup = s.lineup.map(function (id) { return label(id); }).join(" | ");
+  var rows = segments.map(function (s) {
+    var lineup = s.lineup.map(lbl).join(" | ");
     var base = '"' + lineup + '",' + s.quarter + "," + fmt(s.beginSec) + "," + fmt(s.endSec) + "," +
       fmt(s.durSec) + "," + s.durSec + "," + s.pf + "," + s.pa + "," + (s.pf - s.pa);
     var classPart = "";
-    if (settings.useClassLimit) {
-      var b = sumBonus(s.lineup), allow = limitVal() + b;
-      var ok = s.classSum <= allow + 0.001 ? "OK" : "Te hoog";
-      classPart = "," + s.classSum.toFixed(1) + "," + b.toFixed(1) + "," + allow.toFixed(1) + "," + ok;
+    if (useClassLimit) {
+      var ok = !s.over ? "OK" : "Te hoog";
+      classPart = "," + (s.classSum != null ? s.classSum.toFixed(1) : "") + "," + (s.allowed != null ? s.allowed.toFixed(1) : "") + "," + ok;
     }
-    return base + classPart + "," + lineupCode(s.lineup);
+    var code = s.lineup.slice().sort(function (a, b) {
+      return (parseInt(nr(a), 10) || 0) - (parseInt(nr(b), 10) || 0);
+    }).map(nr).join("-");
+    return base + classPart + "," + code;
   });
   return [head].concat(rows).join("\n");
 }
-function minutesCsv() {
+function minutesCsvFor(segments, players, useClassLimit) {
   var play = {}, cnt = {};
-  state.players.forEach(function (p) { play[p.id] = 0; cnt[p.id] = 0; });
-  state.segments.forEach(function (s) {
-    s.lineup.forEach(function (id) { play[id] += s.durSec; cnt[id] += 1; });
+  players.forEach(function (p) { play[p.id] = 0; cnt[p.id] = 0; });
+  segments.forEach(function (s) {
+    s.lineup.forEach(function (id) { if (play[id] === undefined) { play[id] = 0; cnt[id] = 0; } play[id] += s.durSec; cnt[id] += 1; });
   });
-  var classCols = settings.useClassLimit ? ",Classificatie,Geslacht,Jeugd U19" : "";
+  var classCols = useClassLimit ? ",Classificatie,Geslacht,Jeugd U19" : "";
   var head = "Speler,Nummer" + classCols + ",Speeltijd,Seconden,Aantal beurten";
-  var rows = state.players.filter(function (p) { return play[p.id] > 0; }).map(function (p) {
-    var classPart = settings.useClassLimit ? "," + p.kl + "," + (p.vrouw ? "Vrouw" : "Man") + "," + (p.jeugd ? "Ja" : "Nee") : "";
+  var rows = players.filter(function (p) { return play[p.id] > 0; }).map(function (p) {
+    var classPart = useClassLimit ? "," + p.kl + "," + (p.vrouw ? "Vrouw" : "Man") + "," + (p.jeugd ? "Ja" : "Nee") : "";
     return p.naam + "," + p.nr + classPart + "," + fmt(play[p.id]) + "," + play[p.id] + "," + cnt[p.id];
   });
   return [head].concat(rows).join("\n");
 }
-function combinedCsv() {
-  return "Opstellingen (+/-" + (settings.useClassLimit ? " en classificatie" : "") + ")\n" + stintCsv() +
-    "\n\nSpeeltijd per speler\n" + minutesCsv();
+function combinedCsvFor(segments, players, useClassLimit) {
+  return "Opstellingen (+/-" + (useClassLimit ? " en classificatie" : "") + ")\n" + segmentsCsvFor(segments, players, useClassLimit) +
+    "\n\nSpeeltijd per speler\n" + minutesCsvFor(segments, players, useClassLimit);
 }
+function combinedCsv() { return combinedCsvFor(state.segments, state.players, settings.useClassLimit); }
 function csvFilename() {
   var d = new Date(), pad = function (n) { return String(n).padStart(2, "0"); };
   return slugify(settings.teamName) + "-" + d.getFullYear() + pad(d.getMonth() + 1) + pad(d.getDate()) + "-" + pad(d.getHours()) + pad(d.getMinutes()) + ".csv";
 }
-function shareOrDownloadCsv(btn) {
-  var filename = csvFilename();
-  var blob = new Blob([combinedCsv()], { type: "text/csv" });
+function csvFilenameFor(g) {
+  var d = new Date(g.date), pad = function (n) { return String(n).padStart(2, "0"); };
+  return slugify(g.opponent || "wedstrijd") + "-" + d.getFullYear() + pad(d.getMonth() + 1) + pad(d.getDate()) + "-" + pad(d.getHours()) + pad(d.getMinutes()) + ".csv";
+}
+function exportHistoryGame(id) {
+  var g = games.filter(function (x) { return x.id === id; })[0];
+  if (!g) return;
+  shareOrDownloadCsv(combinedCsvFor(g.segments, g.players, g.useClassLimit), csvFilenameFor(g));
+}
+function shareOrDownloadCsv(csvText, filename) {
+  var blob = new Blob([csvText], { type: "text/csv" });
   var file = null;
   try { file = new File([blob], filename, { type: "text/csv" }); } catch (e) { file = null; }
   if (file && navigator.canShare && navigator.canShare({ files: [file] })) {
@@ -703,6 +867,50 @@ var editSegIdx = null, editSegDraft = null; // segment dat in de bewerk-modal op
 function openExport() { exportOpen = true; render(); }
 function closeExport() { exportOpen = false; render(); }
 
+// ---------- tabs ----------
+var TABS = ["roster", "track", "stats", "history"];
+var currentTab = "track";
+function switchTab(tabName) {
+  currentTab = tabName;
+  render();
+}
+function tabIcon(tabName) {
+  return { roster: "👥", track: "🏀", stats: "📊", history: "📜" }[tabName];
+}
+
+// ---------- history tab state ----------
+var historyOpenId = null; // id van de wedstrijd die in detailweergave open staat
+function openHistoryGame(id) { historyOpenId = id; render(); }
+function closeHistoryGame() { historyOpenId = null; render(); }
+
+// ---------- stats tab state ----------
+var statsComboSize = 5;
+var statsPer10 = false;
+var statsSortDesc = true;
+var statsGameIds = null; // null = alle wedstrijden (incl. actieve); anders Set van geselecteerde id's
+var statsPlayerFilter = {}; // playerId -> "on" | "off" (afwezig = geen filter)
+var statsFilterModalOpen = false, statsGameModalOpen = false;
+function setStatsComboSize(n) { statsComboSize = n; render(); }
+function toggleStatsPer10() { statsPer10 = !statsPer10; render(); }
+function toggleStatsSort() { statsSortDesc = !statsSortDesc; render(); }
+function openStatsFilter() { statsFilterModalOpen = true; render(); }
+function closeStatsFilter() { statsFilterModalOpen = false; render(); }
+function clearStatsFilter() { statsPlayerFilter = {}; render(); }
+function cycleStatsPlayerFilter(id) {
+  var cur = statsPlayerFilter[id];
+  var next = cur === "on" ? "off" : cur === "off" ? undefined : "on";
+  if (next === undefined) delete statsPlayerFilter[id]; else statsPlayerFilter[id] = next;
+  render();
+}
+function openStatsGameFilter() { statsGameModalOpen = true; render(); }
+function closeStatsGameFilter() { statsGameModalOpen = false; render(); }
+function toggleStatsGame(id) {
+  if (statsGameIds == null) statsGameIds = new Set(statsScopeGames().map(function (g) { return g.id; }));
+  if (statsGameIds.has(id)) statsGameIds.delete(id); else statsGameIds.add(id);
+  render();
+}
+function clearStatsGameFilter() { statsGameIds = null; render(); }
+
 var settingsOpen = false;
 function openSettings() { settingsOpen = true; render(); }
 function closeSettings() { settingsOpen = false; render(); }
@@ -723,6 +931,51 @@ function handleLogoFile(file) {
   reader.readAsDataURL(file);
 }
 
+// ---------- back-up (export/import van alle lokale data) ----------
+// Alles staat alleen in localStorage van dit toestel/deze browser; een back-up is
+// de enige manier om data mee te nemen naar een nieuw toestel of te herstellen na
+// een gewiste browseropslag.
+var BACKUP_KEYS = [STORAGE_KEY, ROSTER_KEY, GAMES_KEY, SETTINGS_KEY, LANG_KEY];
+function exportBackup() {
+  var data = {};
+  BACKUP_KEYS.forEach(function (k) {
+    var raw = localStorage.getItem(k);
+    if (raw == null) return;
+    try { data[k] = JSON.parse(raw); } catch (e) { data[k] = raw; }
+  });
+  var payload = { type: "lineup-tracker-backup", version: 1, exportedAt: new Date().toISOString(), data: data };
+  var blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" });
+  var d = new Date(), pad = function (n) { return String(n).padStart(2, "0"); };
+  var filename = slugify(settings.teamName || "lineup-tracker") + "-backup-" + d.getFullYear() + pad(d.getMonth() + 1) + pad(d.getDate()) + ".json";
+  var url = URL.createObjectURL(blob);
+  var a = document.createElement("a");
+  a.href = url; a.download = filename;
+  document.body.appendChild(a); a.click(); document.body.removeChild(a);
+  setTimeout(function () { URL.revokeObjectURL(url); }, 2000);
+}
+function handleImportBackupFile(file) {
+  if (!file) return;
+  var reader = new FileReader();
+  reader.onload = function () {
+    var payload;
+    try { payload = JSON.parse(reader.result); } catch (e) { window.alert(t("importBackupInvalid")); return; }
+    if (!payload || payload.type !== "lineup-tracker-backup" || !payload.data) { window.alert(t("importBackupInvalid")); return; }
+    if (!window.confirm(t("confirmImportBackup"))) return;
+    BACKUP_KEYS.forEach(function (k) {
+      if (Object.prototype.hasOwnProperty.call(payload.data, k)) {
+        var v = payload.data[k];
+        localStorage.setItem(k, typeof v === "string" ? v : JSON.stringify(v));
+      } else {
+        localStorage.removeItem(k);
+      }
+    });
+    // Herlaad de app zodat alle in-memory state (roster, settings, games, taal,
+    // actieve wedstrijd) opnieuw vanuit de geïmporteerde localStorage wordt opgebouwd.
+    location.reload();
+  };
+  reader.readAsText(file);
+}
+
 // ---------- rendering ----------
 var app = document.getElementById("app");
 
@@ -735,52 +988,94 @@ function optionList(max, sel, pad) {
   return out;
 }
 
-function renderSetup() {
+// Team-tabblad: alleen spelerslijst beheren (rugnummer, naam, classificatie,
+// categorieën). Wie meedoet/start en de wedstrijd starten gebeurt op Wedstrijd.
+function renderTeamTab() {
   var dn = dupNrs();
   var rows = state.players.map(function (p) {
     var dup = dn.indexOf(p.nr.trim()) >= 0;
     return '' +
       '<div class="card" style="padding:0.5rem;margin-bottom:0.5rem">' +
         '<div class="row">' +
-          '<input class="nrinput num" style="width:2.75rem;flex:none' + (dup ? ";border-color:var(--rose);color:#fda4af" : "") + '" inputmode="numeric" value="' + esc(p.nr) + '" oninput="setNr(' + p.id + ',this.value)" />' +
+          '<input class="nrinput num" style="width:2.75rem;flex:none' + (dup ? ";border-color:var(--rose);color:#fda4af" : "") + '" inputmode="numeric" value="' + esc(p.nr) + '" oninput="setNr(' + p.id + ',this.value)" onblur="commitTeamOrder()" />' +
           '<input style="flex:1;min-width:0" placeholder="' + esc(t("namePlaceholder")) + '" value="' + esc(p.naam) + '" oninput="setNaam(' + p.id + ',this.value)" />' +
           '<button class="btn-outline" style="width:2.25rem;height:2.25rem;flex:none;padding:0;color:var(--mut2)" onclick="removePlayer(' + p.id + ')">🗑</button>' +
         '</div>' +
-        '<div class="row" style="margin-top:0.5rem;padding-left:0.25rem">' +
-          (settings.useClassLimit ?
+        (settings.useClassLimit ? '' +
+          '<div class="row" style="margin-top:0.5rem;padding-left:0.25rem">' +
             '<span class="xs mut">' + esc(t("classLabel")) + '</span>' +
-            '<input class="num" style="width:3.5rem;flex:none" inputmode="decimal" value="' + esc(p.kl) + '" oninput="setKl(' + p.id + ',this.value)" />'
-            : '') +
-          '<span style="flex:1"></span>' +
-          '<button class="toggle ' + (p.start ? "on-st" : "") + '" onclick="toggleField(' + p.id + ',\'start\')">' + esc(t("toggleStart")) + '</button>' +
-          (settings.useClassLimit ?
+            '<input class="num" style="width:3.5rem;flex:none" inputmode="decimal" value="' + esc(p.kl) + '" oninput="setKl(' + p.id + ',this.value)" />' +
+            '<span style="flex:1"></span>' +
             '<button class="toggle ' + (p.vrouw ? "on-v" : "") + '" onclick="toggleField(' + p.id + ',\'vrouw\')">' + esc(settings.tag1Label || t("toggleTag1Default")) + '</button>' +
-            '<button class="toggle ' + (p.jeugd ? "on-u" : "") + '" onclick="toggleField(' + p.id + ',\'jeugd\')">' + esc(settings.tag2Label || t("toggleTag2Default")) + '</button>'
-            : '') +
-        '</div>' +
+            '<button class="toggle ' + (p.jeugd ? "on-u" : "") + '" onclick="toggleField(' + p.id + ',\'jeugd\')">' + esc(settings.tag2Label || t("toggleTag2Default")) + '</button>' +
+          '</div>' : '') +
       '</div>';
   }).join("");
 
+  app.innerHTML = topBarHtml() +
+    '<p class="xs mut mb4">' + t("setupIntro") + '</p>' +
+    rows +
+    '<div id="dupwarn">' + (dn.length > 0 ? '<div class="warn mb3 pill">' + esc(t("dupWarning", { nrs: dn.join(", ") })) + '</div>' : '') + '</div>' +
+    '<button class="btn-outline" style="width:100%;padding:0.6rem;margin-bottom:1rem" onclick="addPlayer()">' + t("addPlayer") + '</button>';
+}
+
+// targeted update so text inputs keep focus while typing
+function refreshTeamStatus() {
+  if (currentTab !== "roster") return;
+  var dn = dupNrs();
+  var dw = document.getElementById("dupwarn");
+  if (dw) dw.innerHTML = dn.length > 0 ? '<div class="warn mb3 pill">' + esc(t("dupWarning", { nrs: dn.join(", ") })) + '</div>' : '';
+}
+
+// Wedstrijd-tabblad vóór de wedstrijd start: wie doet mee, wie start, tegenstander
+// en wedstrijdinstellingen. Spelersgegevens zelf (naam/nr/classificatie) wijzig je
+// op Team.
+function renderPreGame() {
+  var vp = validPlayers();
+  if (vp.length === 0) {
+    app.innerHTML = topBarHtml() +
+      '<div style="text-align:center;padding-top:3rem">' +
+        '<p class="sm mut mb3">' + esc(t("noPlayersYet")) + '</p>' +
+        '<button class="btn-amber" style="padding:0.65rem 1.25rem" onclick="switchTab(\'roster\')">' + esc(t("goToTeamBtn")) + '</button>' +
+      '</div>';
+    return;
+  }
+  var dn = dupNrs();
   var sc = startCount();
-  var startLabel = validPlayers().length < 5 ? t("startNeedFive")
+  var startLabel = vp.length < 5 ? t("startNeedFive")
     : dn.length > 0 ? t("startFixDup")
+    : participatingPlayers().length < 5 ? t("startNeedFiveParticipating")
     : (sc !== 0 && sc !== 5) ? t("startChooseFive")
     : t("startGameBtn");
   var startInfo = sc === 0
     ? t("noStarters")
     : t("startersChosen", { n: sc }) + (sc === 5 ? " ✓" : "");
 
-  app.innerHTML = '' +
-    '<div class="brand-row mb2 between"><div class="brand-row">' +
-      (settings.logoUri ? '<img class="brand-logo" src="' + settings.logoUri + '" alt="' + esc(settings.teamName || t("appNameFallback")) + '" />' : '') +
-      '<h1>' + (settings.teamName ? esc(settings.teamName) + ' ' : '') + esc(t("appNameFallback")) + '</h1></div>' +
-      '<div class="row" style="gap:0.375rem;flex:none">' + langSwitchHtml() + settingsGearHtml() + '</div>' +
-    '</div>' +
-    '<p class="xs mut mb4">' + t("setupIntro") + '</p>' +
+  var rows = vp.map(function (p) {
+    var participating = p.participate !== false;
+    return '' +
+      '<div class="card row between" style="padding:0.6rem 0.75rem;margin-bottom:0.4rem">' +
+        '<span class="sm" style="min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;opacity:' + (participating ? "1" : "0.5") + '">#' + esc(p.nr) + ' ' + esc(p.naam) + '</span>' +
+        '<div class="row" style="flex:none;gap:0.375rem">' +
+          '<button class="toggle ' + (participating ? "on-u" : "") + '" onclick="toggleParticipate(' + p.id + ')">' + esc(t("participateToggle")) + '</button>' +
+          (participating ? '<button class="toggle ' + (p.start ? "on-st" : "") + '" onclick="toggleField(' + p.id + ',\'start\')">' + esc(t("toggleStart")) + '</button>' : '') +
+        '</div>' +
+      '</div>';
+  }).join("");
+
+  app.innerHTML = topBarHtml() +
+    '<p class="xs mut mb3">' + esc(t("preGameIntro")) + '</p>' +
     rows +
-    '<div id="dupwarn">' + (dn.length > 0 ? '<div class="warn mb3 pill">' + esc(t("dupWarning", { nrs: dn.join(", ") })) + '</div>' : '') + '</div>' +
-    '<button class="btn-outline" style="width:100%;padding:0.6rem;margin-bottom:1rem" onclick="addPlayer()">' + t("addPlayer") + '</button>' +
-    '<div id="startinfo" class="xs mut mb3" style="text-align:center">' + startInfo + '</div>' +
+    (dn.length > 0 ? '<div class="warn mb3 pill">' + esc(t("dupWarning", { nrs: dn.join(", ") })) + '</div>' : '') +
+    '<div class="xs mut mb3" style="text-align:center">' + startInfo + '</div>' +
+    '<div class="card row between" style="padding:0.75rem">' +
+      '<span class="sm">' + t("teamOpponent") + '</span>' +
+      '<input style="flex:1;min-width:0;text-align:right" placeholder="' + esc(t("opponentPlaceholder")) + '" value="' + esc(state.opponent) + '" oninput="setOpponent(this.value)" />' +
+    '</div>' +
+    '<div class="card row between" style="padding:0.75rem">' +
+      '<span class="sm">' + t("competitionLabel") + '</span>' +
+      '<input style="flex:1;min-width:0;text-align:right" placeholder="' + esc(t("competitionPlaceholder")) + '" value="' + esc(state.competition) + '" oninput="setCompetition(this.value)" />' +
+    '</div>' +
     (settings.useClassLimit ? '' +
       '<div class="card row between" style="padding:0.75rem">' +
         '<span class="sm">' + t("classLimitLabel") + ' <span class="mut2">' + t("classLimitHint") + '</span></span>' +
@@ -791,29 +1086,6 @@ function renderSetup() {
       '<input type="checkbox" style="width:1.25rem;height:1.25rem;flex:none;accent-color:var(--amber)" ' + (state.clockDown ? "checked" : "") + ' onchange="setClock(this.checked)" />' +
     '</label>' +
     '<button id="startbtn" class="btn-amber ' + (canStart() ? "" : "disabled") + '" style="width:100%;padding:0.75rem" onclick="startGame()">' + startLabel + '</button>';
-
-  if (settingsOpen) renderSettingsModal();
-}
-
-// targeted update so text inputs keep focus while typing
-function refreshSetupStatus() {
-  if (state.phase !== "setup") return;
-  var dn = dupNrs();
-  var dw = document.getElementById("dupwarn");
-  if (dw) dw.innerHTML = dn.length > 0 ? '<div class="warn mb3 pill">' + esc(t("dupWarning", { nrs: dn.join(", ") })) + '</div>' : '';
-  var sc = startCount();
-  var si = document.getElementById("startinfo");
-  if (si) si.textContent = sc === 0
-    ? t("noStarters")
-    : t("startersChosen", { n: sc }) + (sc === 5 ? " ✓" : "");
-  var sb = document.getElementById("startbtn");
-  if (sb) {
-    sb.textContent = validPlayers().length < 5 ? t("startNeedFive")
-      : dn.length > 0 ? t("startFixDup")
-      : (sc !== 0 && sc !== 5) ? t("startChooseFive")
-      : t("startGameBtn");
-    sb.className = "btn-amber " + (canStart() ? "" : "disabled");
-  }
 }
 
 function chipHtml(id) {
@@ -871,7 +1143,7 @@ function renderTracking() {
   var lineupValid = state.onCourt.length === 5;
   var pmColor = segPM > 0 ? "var(--emerald)" : (segPM < 0 ? "var(--rose)" : "var(--mut)");
 
-  var bank = state.players.filter(function (p) { return state.onCourt.indexOf(p.id) < 0; });
+  var bank = state.players.filter(function (p) { return p.participate !== false && state.onCourt.indexOf(p.id) < 0; });
 
   var segHtml = "";
   if (state.segments.length > 0) {
@@ -967,11 +1239,8 @@ function renderTracking() {
 
     segHtml +
 
-    '<button class="btn-rose ' + (state.segments.length === 0 ? "disabled" : "") + '" style="width:100%;padding:0.75rem;margin-bottom:1rem" onclick="openExport()">' + t("finishExportBtn") + '</button>';
-
-  if (exportOpen) renderExport();
-  if (swapConfirmDraft) renderSwapConfirm();
-  if (editSegIdx != null) renderEditSegment();
+    '<button class="btn-emerald ' + (state.segments.length === 0 ? "disabled" : "") + '" style="width:100%;padding:0.75rem;margin-bottom:0.5rem" onclick="finishGame()">' + t("finishGameBtn") + '</button>' +
+    '<button class="btn-outline ' + (state.segments.length === 0 ? "disabled" : "") + '" style="width:100%;padding:0.6rem;margin-bottom:1rem" onclick="openExport()">' + t("exportOnlyBtn") + '</button>';
 }
 
 function renderSettingsModal() {
@@ -1038,7 +1307,15 @@ function renderSettingsModal() {
         : '') +
 
       '<button class="btn-emerald" style="width:100%;padding:0.75rem;margin-top:0.25rem;margin-bottom:0.5rem" onclick="closeSettings()">' + esc(t("saveBtn")) + '</button>' +
-      '<button class="btn-outline" style="width:100%;padding:0.5rem;font-size:0.8rem" onclick="resetSettingsToDefault()">' + esc(t("settingsResetBtn")) + '</button>' +
+      '<button class="btn-outline" style="width:100%;padding:0.5rem;font-size:0.8rem;margin-bottom:1rem" onclick="resetSettingsToDefault()">' + esc(t("settingsResetBtn")) + '</button>' +
+
+      '<div style="border-top:1px solid var(--line);padding-top:0.75rem">' +
+        '<h2 style="margin:0 0 0.35rem">' + esc(t("backupTitle")) + '</h2>' +
+        '<p class="xs mut mb3">' + esc(t("backupDesc")) + '</p>' +
+        '<button class="btn-outline" style="width:100%;padding:0.6rem;margin-bottom:0.5rem" onclick="exportBackup()">' + esc(t("backupExportBtn")) + '</button>' +
+        '<input type="file" accept="application/json" id="backupFileInput" style="display:none" onchange="handleImportBackupFile(this.files[0])" />' +
+        '<button class="btn-outline" style="width:100%;padding:0.6rem" onclick="document.getElementById(\'backupFileInput\').click()">' + esc(t("backupImportBtn")) + '</button>' +
+      '</div>' +
     '</div>';
   app.appendChild(overlay);
 }
@@ -1052,14 +1329,14 @@ function renderExport() {
       '<div class="row between mb2"><h2 style="margin:0">' + esc(t("exportTitle")) + '</h2>' +
         '<button class="btn-outline" style="border:none;padding:0;color:var(--mut)" onclick="closeExport()">✕</button></div>' +
       '<p class="xs mut mb3">' + esc(t("exportDesc")) + '</p>' +
-      '<button class="btn-emerald" style="width:100%;padding:0.85rem" onclick="shareOrDownloadCsv(this)">' + esc(t("exportShareBtn")) + '</button>' +
+      '<button class="btn-emerald" style="width:100%;padding:0.85rem" onclick="shareOrDownloadCsv(combinedCsv(), csvFilename())">' + esc(t("exportShareBtn")) + '</button>' +
     '</div>';
   app.appendChild(overlay);
 }
 
 function renderSwapConfirm() {
   var dur = swapConfirmDur();
-  var durValid = dur > 0;
+  var durValid = dur >= 0;
   var overlay = document.createElement("div");
   overlay.className = "overlay bottom";
   overlay.onclick = closeSwapConfirm;
@@ -1122,7 +1399,7 @@ function saveEditSegment() {
     endSec: editSegDraft.endMin * 60 + editSegDraft.endSec,
     durSec: dur, lineup: lineup,
     pf: Number(editSegDraft.pf) || 0, pa: Number(editSegDraft.pa) || 0,
-    classSum: courtSum, over: courtSum > allowed + 0.001
+    classSum: courtSum, allowed: allowed, over: courtSum > allowed + 0.001
   };
   recalcRunningScore();
   editSegIdx = null; editSegDraft = null;
@@ -1189,10 +1466,246 @@ function renderEditSegment() {
   app.appendChild(overlay);
 }
 
+// ---------- stats: lineup combinations ----------
+// Alle wedstrijden waaruit stats getrokken kunnen worden: de opgeslagen geschiedenis,
+// plus (indien aanwezig) de lopende wedstrijd als extra pseudo-wedstrijd "current".
+function statsScopeGames() {
+  var list = games.slice();
+  if (state.segments.length > 0) {
+    list = [{
+      id: "current", opponent: state.opponent || t("statsCurrentGame"), competition: state.competition || "", date: new Date().toISOString(),
+      players: state.players, segments: state.segments,
+      scoreFor: state.scoreFor, scoreAgainst: state.scoreAgainst, isCurrent: true
+    }].concat(list);
+  }
+  return list;
+}
+function statsSelectedGames() {
+  var scope = statsScopeGames();
+  if (statsGameIds == null) return scope;
+  return scope.filter(function (g) { return statsGameIds.has(g.id); });
+}
+function statsFilteredEntries() {
+  var reqOn = [], reqOff = [];
+  Object.keys(statsPlayerFilter).forEach(function (id) {
+    if (statsPlayerFilter[id] === "on") reqOn.push(Number(id)); else reqOff.push(Number(id));
+  });
+  var out = [];
+  statsSelectedGames().forEach(function (g) {
+    g.segments.forEach(function (s) {
+      var okOn = reqOn.every(function (id) { return s.lineup.indexOf(id) >= 0; });
+      var okOff = reqOff.every(function (id) { return s.lineup.indexOf(id) < 0; });
+      if (okOn && okOff) out.push({ seg: s, game: g });
+    });
+  });
+  return out;
+}
+function combosOfSize(arr, size) {
+  var result = [];
+  function helper(start, combo) {
+    if (combo.length === size) { result.push(combo.slice()); return; }
+    for (var i = start; i < arr.length; i++) { combo.push(arr[i]); helper(i + 1, combo); combo.pop(); }
+  }
+  helper(0, []);
+  return result;
+}
+function comboKey(ids) { return ids.slice().sort(function (a, b) { return a - b; }).join(","); }
+// Voor elke combinatie die daadwerkelijk samen op de vloer heeft gestaan, wordt het
+// ON/OFF-verschil berekend over alle gefilterde segmenten van wedstrijden waarin alle
+// leden van de combinatie op de teamlijst stonden (anders is "OFF" niet zinvol).
+function computeCombos(size) {
+  var entries = statsFilteredEntries();
+  var map = {};
+  entries.forEach(function (entry) {
+    combosOfSize(entry.seg.lineup, size).forEach(function (ids) {
+      var key = comboKey(ids);
+      if (!map[key]) map[key] = { ids: ids, onSec: 0, onPF: 0, onPA: 0, offSec: 0, offPF: 0, offPA: 0 };
+    });
+  });
+  Object.keys(map).forEach(function (key) {
+    var combo = map[key];
+    entries.forEach(function (entry) {
+      var g = entry.game, s = entry.seg;
+      var rosterIds = g.players.map(function (p) { return p.id; });
+      if (!combo.ids.every(function (id) { return rosterIds.indexOf(id) >= 0; })) return;
+      var onCourt = combo.ids.every(function (id) { return s.lineup.indexOf(id) >= 0; });
+      if (onCourt) { combo.onSec += s.durSec; combo.onPF += s.pf; combo.onPA += s.pa; }
+      else { combo.offSec += s.durSec; combo.offPF += s.pf; combo.offPA += s.pa; }
+    });
+  });
+  return Object.keys(map).map(function (k) { return map[k]; });
+}
+function fmtPM(n) { var r = Math.round(n * 10) / 10; return (r >= 0 ? "+" : "") + r.toFixed(1); }
+function gameDateLabel(g) {
+  try { return new Date(g.date).toLocaleDateString(localeCode()); } catch (e) { return ""; }
+}
+function comboRowHtml(combo) {
+  var onPM = combo.onPF - combo.onPA, offPM = combo.offPF - combo.offPA;
+  var onShow = statsPer10 && combo.onSec > 0 ? onPM * 600 / combo.onSec : onPM;
+  var offShow = statsPer10 && combo.offSec > 0 ? offPM * 600 / combo.offSec : offPM;
+  var names = combo.ids.map(function (id) { var p = playerById(id); return p ? ("#" + p.nr + " " + p.naam) : "#? ?"; });
+  return '<div class="card" style="padding:0.6rem 0.75rem;margin-bottom:0.5rem">' +
+    '<div class="xs" style="line-height:1.5">' + names.map(esc).join("<br>") + '</div>' +
+    '<div class="row between xs tab mut" style="margin-top:0.4rem;gap:0.375rem">' +
+      '<span>' + esc(t("statsColTime")) + ' <b class="mut" style="color:var(--txt)">' + fmt(combo.onSec) + '</b></span>' +
+      '<span>' + esc(t("statsColPts")) + ' <b style="color:var(--emerald)">' + combo.onPF + '</b></span>' +
+      '<span>' + esc(t("statsColOpp")) + ' <b style="color:var(--rose)">' + combo.onPA + '</b></span>' +
+      '<span>' + esc(t("statsColOn")) + ' <b style="color:' + (onShow >= 0 ? "var(--emerald)" : "var(--rose)") + '">' + fmtPM(onShow) + '</b></span>' +
+      '<span>' + esc(t("statsColOff")) + ' <b style="color:' + (offShow >= 0 ? "var(--emerald)" : "var(--rose)") + '">' + fmtPM(offShow) + '</b></span>' +
+    '</div>' +
+  '</div>';
+}
+function renderStatsTab() {
+  var combos = computeCombos(statsComboSize);
+  function sortVal(c) {
+    var pm = c.onPF - c.onPA;
+    return statsPer10 && c.onSec > 0 ? pm * 600 / c.onSec : pm;
+  }
+  combos.sort(function (a, b) {
+    var av = sortVal(a), bv = sortVal(b);
+    return statsSortDesc ? bv - av : av - bv;
+  });
+  var scope = statsScopeGames();
+  var nFilters = Object.keys(statsPlayerFilter).length;
+  var nGamesSel = statsGameIds == null ? scope.length : statsGameIds.size;
+  app.innerHTML = topBarHtml() +
+    '<div class="row mb3" style="gap:0.375rem">' +
+      [1, 2, 3, 4, 5].map(function (n) {
+        return '<button class="q ' + (statsComboSize === n ? "on" : "") + '" style="flex:1" onclick="setStatsComboSize(' + n + ')">' + n + '</button>';
+      }).join("") +
+    '</div>' +
+    '<div class="row mb3" style="gap:0.375rem;flex-wrap:wrap">' +
+      '<button class="btn-outline xs" style="padding:0.35rem 0.6rem" onclick="toggleStatsSort()">+/- ' + (statsSortDesc ? "↓" : "↑") + '</button>' +
+      '<button class="btn-outline xs" style="padding:0.35rem 0.6rem' + (statsPer10 ? ";background:var(--amber);color:var(--bg);border-color:transparent" : "") + '" onclick="toggleStatsPer10()">' + esc(t("statsPer10")) + '</button>' +
+      '<button class="btn-outline xs" style="padding:0.35rem 0.6rem" onclick="openStatsGameFilter()">' + esc(t("statsGamesBtn")) + ' (' + nGamesSel + ')</button>' +
+      '<button class="btn-outline xs" style="padding:0.35rem 0.6rem" onclick="openStatsFilter()">' + esc(t("statsFilterBtn")) + (nFilters ? " (" + nFilters + ")" : "") + '</button>' +
+    '</div>' +
+    (scope.length === 0 ? '<p class="xs mut" style="text-align:center;margin-top:2rem">' + esc(t("statsNoData")) + '</p>'
+      : combos.length === 0 ? '<p class="xs mut" style="text-align:center;margin-top:2rem">' + esc(t("statsNoCombos")) + '</p>'
+      : combos.map(comboRowHtml).join(""));
+}
+function renderStatsGameModal() {
+  var scope = statsScopeGames();
+  var selected = statsGameIds == null ? new Set(scope.map(function (g) { return g.id; })) : statsGameIds;
+  var overlay = document.createElement("div");
+  overlay.className = "overlay bottom";
+  overlay.onclick = closeStatsGameFilter;
+  overlay.innerHTML =
+    '<div class="modal" onclick="event.stopPropagation()">' +
+      '<div class="row between mb2">' +
+        '<button class="btn-outline xs" onclick="clearStatsGameFilter()">' + esc(t("clearBtn")) + '</button>' +
+        '<h2 style="margin:0">' + esc(t("statsGamesTitle")) + '</h2>' +
+        '<button class="btn-outline xs" onclick="closeStatsGameFilter()">' + esc(t("doneBtn")) + '</button>' +
+      '</div>' +
+      scope.map(function (g) {
+        var on = selected.has(g.id);
+        return '<label class="row between" style="padding:0.5rem 0;border-bottom:1px solid var(--line)">' +
+          '<span class="sm">' + esc(g.isCurrent ? t("statsCurrentGame") : (g.opponent || t("teamOpponent"))) + ' <span class="mut2 xs">' + esc(gameDateLabel(g)) + (g.competition ? " · " + esc(g.competition) : "") + '</span></span>' +
+          '<input type="checkbox" ' + (on ? "checked" : "") + ' style="width:1.1rem;height:1.1rem;flex:none;accent-color:var(--amber)" onchange="toggleStatsGame(\'' + g.id + '\')" />' +
+        '</label>';
+      }).join("") +
+    '</div>';
+  app.appendChild(overlay);
+}
+function renderStatsFilterModal() {
+  var overlay = document.createElement("div");
+  overlay.className = "overlay bottom";
+  overlay.onclick = closeStatsFilter;
+  overlay.innerHTML =
+    '<div class="modal" onclick="event.stopPropagation()">' +
+      '<div class="row between mb2">' +
+        '<button class="btn-outline xs" onclick="clearStatsFilter()">' + esc(t("clearBtn")) + '</button>' +
+        '<h2 style="margin:0">' + esc(t("statsFilterTitle")) + '</h2>' +
+        '<button class="btn-outline xs" onclick="closeStatsFilter()">' + esc(t("doneBtn")) + '</button>' +
+      '</div>' +
+      '<p class="xs mut mb2">' + esc(t("statsFilterHint")) + '</p>' +
+      state.players.filter(function (p) { return p.naam.trim() !== ""; }).map(function (p) {
+        var v = statsPlayerFilter[p.id];
+        return '<div class="row between" style="padding:0.4rem 0;border-bottom:1px solid var(--line)">' +
+          '<span class="sm">#' + esc(p.nr) + ' ' + esc(p.naam) + '</span>' +
+          '<button class="toggle ' + (v === "on" ? "on-st" : v === "off" ? "on-v" : "") + '" onclick="cycleStatsPlayerFilter(' + p.id + ')">' +
+            (v === "on" ? "✓" : v === "off" ? "✗" : "—") +
+          '</button>' +
+        '</div>';
+      }).join("") +
+    '</div>';
+  app.appendChild(overlay);
+}
+
+// ---------- history tab ----------
+function renderHistoryTab() {
+  if (historyOpenId != null) { renderHistoryDetail(); return; }
+  app.innerHTML = topBarHtml() +
+    (games.length === 0 ? '<p class="xs mut" style="text-align:center;margin-top:2rem">' + esc(t("historyEmpty")) + '</p>' :
+      games.map(function (g) {
+        var pm = g.scoreFor - g.scoreAgainst;
+        var c = pm > 0 ? "var(--emerald)" : pm < 0 ? "var(--rose)" : "var(--mut)";
+        return '<button class="card row between" style="width:100%;text-align:left;color:var(--txt);padding:0.75rem" onclick="openHistoryGame(\'' + g.id + '\')">' +
+          '<span style="min-width:0"><span class="sm" style="font-weight:600">' + esc(g.opponent || t("teamOpponent")) + '</span><br>' +
+          '<span class="xs mut2">' + esc(gameDateLabel(g)) + (g.competition ? " · " + esc(g.competition) : "") + '</span></span>' +
+          '<span class="tab" style="font-weight:700;flex:none;color:' + c + '">' + g.scoreFor + ' - ' + g.scoreAgainst + '</span>' +
+        '</button>';
+      }).join("")
+    );
+}
+function renderHistoryDetail() {
+  var g = games.filter(function (x) { return x.id === historyOpenId; })[0];
+  if (!g) { historyOpenId = null; renderHistoryTab(); return; }
+  var byId = {}; g.players.forEach(function (p) { byId[p.id] = p; });
+  app.innerHTML = '' +
+    '<div class="row between mb3">' +
+      '<button class="btn-outline" style="padding:0.3rem 0.6rem" onclick="closeHistoryGame()">← ' + esc(t("backBtn")) + '</button>' +
+      '<button class="btn-rose" style="padding:0.3rem 0.6rem" onclick="deleteGame(\'' + g.id + '\')">' + esc(t("deleteBtn")) + '</button>' +
+    '</div>' +
+    '<h1 class="mb2">' + esc(g.opponent || t("teamOpponent")) + '</h1>' +
+    '<p class="xs mut mb3">' + esc(gameDateLabel(g)) + (g.competition ? " · " + esc(g.competition) : "") + ' · ' + g.scoreFor + ' - ' + g.scoreAgainst + '</p>' +
+    '<div style="display:flex;flex-direction:column;gap:0.25rem;margin-bottom:1rem">' +
+      g.segments.map(function (s) {
+        var pm = s.pf - s.pa;
+        var c = pm > 0 ? "var(--emerald)" : pm < 0 ? "var(--rose)" : "var(--mut)";
+        var nrs = s.lineup.map(function (id) { var p = byId[id]; return p ? p.nr : "?"; }).join("-");
+        return '<div class="seg"><span class="mut" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0">' +
+          '<span class="mut2">Q' + s.quarter + '</span> ' + esc(nrs) + '</span>' +
+          '<span class="row tab" style="flex:none">' +
+            '<span class="mut">' + fmt(s.durSec) + '</span>' +
+            '<span style="font-weight:700;color:' + c + '">' + (pm > 0 ? "+" : "") + pm + '</span>' +
+          '</span></div>';
+      }).join("") +
+    '</div>' +
+    '<button class="btn-emerald" style="width:100%;padding:0.75rem;margin-bottom:1rem" onclick="exportHistoryGame(\'' + g.id + '\')">' + esc(t("exportShareBtn")) + '</button>';
+}
+
+function topBarHtml() {
+  return '<div class="row between mb3"><div class="brand-row" style="min-width:0">' +
+    (settings.logoUri ? '<img class="brand-logo" src="' + settings.logoUri + '" alt="' + esc(settings.teamName || t("appNameFallback")) + '" />' : '') +
+    '<h1 style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + (settings.teamName ? esc(settings.teamName) + ' ' : '') + esc(t("appNameFallback")) + '</h1></div>' +
+    '<div class="row" style="gap:0.375rem;flex:none">' + langSwitchHtml() + settingsGearHtml() + '</div>' +
+  '</div>';
+}
+function tabBarHtml() {
+  var labels = { roster: t("tabRoster"), track: t("tabTrack"), stats: t("tabStats"), history: t("tabHistory") };
+  return '<div class="tabbar">' + TABS.map(function (tb) {
+    return '<button class="tabbtn ' + (currentTab === tb ? "on" : "") + '" onclick="switchTab(\'' + tb + '\')">' +
+      '<span class="ic">' + tabIcon(tb) + '</span><span>' + esc(labels[tb]) + '</span></button>';
+  }).join("") + '</div>';
+}
+function renderTrackTab() {
+  if (state.phase !== "tracking") { renderPreGame(); return; }
+  renderTracking();
+}
 function render() {
   if (resumeOpen) { renderResume(); return; }
-  if (state.phase === "setup") renderSetup();
-  else renderTracking();
+  if (currentTab === "track") renderTrackTab();
+  else if (currentTab === "stats") renderStatsTab();
+  else if (currentTab === "history") renderHistoryTab();
+  else renderTeamTab();
+  app.insertAdjacentHTML("beforeend", tabBarHtml());
+  if (settingsOpen) renderSettingsModal();
+  if (exportOpen) renderExport();
+  if (swapConfirmDraft) renderSwapConfirm();
+  if (editSegIdx != null) renderEditSegment();
+  if (statsFilterModalOpen) renderStatsFilterModal();
+  if (statsGameModalOpen) renderStatsGameModal();
 }
 
 function renderResume() {
@@ -1208,10 +1721,12 @@ function renderResume() {
     '<button class="btn-outline" style="width:100%;padding:0.85rem" onclick="doNew()">' + esc(t("newMatchBtn")) + '</button>' +
     '</div>';
 }
-function doResume() { resumeOpen = false; render(); }
+function doResume() { resumeOpen = false; currentTab = "track"; render(); }
 function doNew() {
   if (!window.confirm(t("confirmNewMatch"))) return;
-  state = freshState(); resumeOpen = false; pendingSwapLineup = null; swapConfirmDraft = null; save(); render();
+  state = freshState(); resumeOpen = false; pendingSwapLineup = null; swapConfirmDraft = null; save();
+  currentTab = "track";
+  render();
 }
 
 // expose handlers
@@ -1233,6 +1748,20 @@ window.toggleLang = toggleLang;
 window.openSettings = openSettings; window.closeSettings = closeSettings;
 window.resetSettingsToDefault = resetSettingsToDefault;
 window.updateSetting = updateSetting; window.handleLogoFile = handleLogoFile;
+window.exportBackup = exportBackup; window.handleImportBackupFile = handleImportBackupFile;
+window.setOpponent = setOpponent; window.setCompetition = setCompetition;
+window.finishGame = finishGame; window.deleteGame = deleteGame;
+window.toggleParticipate = toggleParticipate;
+window.commitTeamOrder = commitTeamOrder;
+window.switchTab = switchTab;
+window.openHistoryGame = openHistoryGame; window.closeHistoryGame = closeHistoryGame;
+window.exportHistoryGame = exportHistoryGame;
+window.setStatsComboSize = setStatsComboSize; window.toggleStatsPer10 = toggleStatsPer10;
+window.toggleStatsSort = toggleStatsSort;
+window.openStatsFilter = openStatsFilter; window.closeStatsFilter = closeStatsFilter;
+window.clearStatsFilter = clearStatsFilter; window.cycleStatsPlayerFilter = cycleStatsPlayerFilter;
+window.openStatsGameFilter = openStatsGameFilter; window.closeStatsGameFilter = closeStatsGameFilter;
+window.toggleStatsGame = toggleStatsGame; window.clearStatsGameFilter = clearStatsGameFilter;
 
 // ---------- init ----------
 (function init() {
@@ -1241,6 +1770,9 @@ window.updateSetting = updateSetting; window.handleLogoFile = handleLogoFile;
   var saved = loadSaved();
   if (saved && saved.players && (saved.phase === "tracking" || (saved.segments && saved.segments.length > 0))) {
     state = Object.assign(freshState(), saved);
+    // Een opgeslagen wedstrijd van vóór de auto-sorteerfunctie heeft nog de oude,
+    // ongesorteerde spelersvolgorde — sorteer die alsnog bij het hervatten.
+    sortPlayers();
     resumeSavedAt = saved.savedAt || null;
     resumeOpen = true;
   }
