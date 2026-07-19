@@ -229,7 +229,7 @@ var STRINGS = {
     bonusBothLabel: "Bonus bij beide categorieën",
     settingsResetBtn: "↺ Standaardinstellingen herstellen",
     confirmResetSettings: "Instellingen terugzetten naar standaard? Teamnaam, logo, kleuren en classificatie-instellingen gaan verloren.",
-    tabRoster: "Team", tabTrack: "Wedstrijd", tabStats: "Stats", tabHistory: "Historie",
+    tabRoster: "Team", tabTrack: "Wedstrijd", tabStats: "Stats", tabTrends: "Trends", tabHistory: "Historie",
     opponentPlaceholder: "Naam tegenstander (optioneel)",
     finishGameBtn: "🏁 Wedstrijd afronden",
     exportOnlyBtn: "📤 Alleen CSV exporteren",
@@ -260,7 +260,13 @@ var STRINGS = {
     confirmImportBackup: "Back-up importeren? Alle huidige data (spelers, instellingen, geschiedenis, lopende wedstrijd) wordt overschreven.",
     importBackupInvalid: "Dit bestand lijkt geen geldige Lineup Tracker-back-up te zijn.",
     competitionLabel: "Competitie/toernooi",
-    competitionPlaceholder: "Naam competitie of toernooi (optioneel)"
+    competitionPlaceholder: "Naam competitie of toernooi (optioneel)",
+    trendsMinLabel: "MIN", trendsPmLabel: "+/-",
+    trendsPmChartLabel: "+/- per wedstrijd",
+    trendsMinChartLabel: "Minuten per wedstrijd",
+    trendsNoData: "Nog geen wedstrijddata. Speel en rond een wedstrijd af om hier trends te zien.",
+    trendsSortLabel: "Sorteer", trendsSortNr: "Nr",
+    trendsShowGames: "Toon {n} wedstrijden", trendsHideGames: "Verberg wedstrijden"
   },
   en: {
     appNameFallback: "Lineup Tracker",
@@ -352,7 +358,7 @@ var STRINGS = {
     bonusBothLabel: "Bonus for both categories",
     settingsResetBtn: "↺ Reset to defaults",
     confirmResetSettings: "Reset settings to default? Team name, logo, colors and classification settings will be lost.",
-    tabRoster: "Roster", tabTrack: "Track", tabStats: "Stats", tabHistory: "History",
+    tabRoster: "Roster", tabTrack: "Track", tabStats: "Stats", tabTrends: "Trends", tabHistory: "History",
     opponentPlaceholder: "Opponent name (optional)",
     finishGameBtn: "🏁 Finish match",
     exportOnlyBtn: "📤 Export CSV only",
@@ -383,7 +389,13 @@ var STRINGS = {
     confirmImportBackup: "Import this backup? All current data (players, settings, history, active match) will be overwritten.",
     importBackupInvalid: "This file doesn't look like a valid Lineup Tracker backup.",
     competitionLabel: "Competition/tournament",
-    competitionPlaceholder: "Competition or tournament name (optional)"
+    competitionPlaceholder: "Competition or tournament name (optional)",
+    trendsMinLabel: "MIN", trendsPmLabel: "+/-",
+    trendsPmChartLabel: "+/- per game",
+    trendsMinChartLabel: "Minutes per game",
+    trendsNoData: "No match data yet. Play and finish a match to see trends here.",
+    trendsSortLabel: "Sort", trendsSortNr: "No.",
+    trendsShowGames: "Show {n} games", trendsHideGames: "Hide games"
   }
 };
 var lang = (function () {
@@ -868,14 +880,14 @@ function openExport() { exportOpen = true; render(); }
 function closeExport() { exportOpen = false; render(); }
 
 // ---------- tabs ----------
-var TABS = ["roster", "track", "stats", "history"];
+var TABS = ["roster", "track", "stats", "trends", "history"];
 var currentTab = "track";
 function switchTab(tabName) {
   currentTab = tabName;
   render();
 }
 function tabIcon(tabName) {
-  return { roster: "👥", track: "🏀", stats: "📊", history: "📜" }[tabName];
+  return { roster: "👥", track: "🏀", stats: "📊", trends: "📈", history: "📜" }[tabName];
 }
 
 // ---------- history tab state ----------
@@ -892,6 +904,14 @@ var statsPlayerFilter = {}; // playerId -> "on" | "off" (afwezig = geen filter)
 var statsFilterModalOpen = false, statsGameModalOpen = false;
 function setStatsComboSize(n) { statsComboSize = n; render(); }
 function toggleStatsPer10() { statsPer10 = !statsPer10; render(); }
+
+// ---------- trends tab state ----------
+var trendsPer10 = false;
+var trendsSortBy = "nr"; // "nr" | "min" | "pm"
+var trendsExpanded = {}; // playerId -> bool, toont de wedstrijdenlijst van die speler
+function toggleTrendsPer10() { trendsPer10 = !trendsPer10; render(); }
+function cycleTrendsSort() { trendsSortBy = trendsSortBy === "nr" ? "min" : trendsSortBy === "min" ? "pm" : "nr"; render(); }
+function toggleTrendsExpanded(id) { trendsExpanded[id] = !trendsExpanded[id]; render(); }
 function toggleStatsSort() { statsSortDesc = !statsSortDesc; render(); }
 function openStatsFilter() { statsFilterModalOpen = true; render(); }
 function closeStatsFilter() { statsFilterModalOpen = false; render(); }
@@ -1675,6 +1695,134 @@ function renderHistoryDetail() {
     '<button class="btn-emerald" style="width:100%;padding:0.75rem;margin-bottom:1rem" onclick="exportHistoryGame(\'' + g.id + '\')">' + esc(t("exportShareBtn")) + '</button>';
 }
 
+// ---------- trends tab ----------
+// Chronologisch oud -> nieuw, met de lopende wedstrijd (indien aanwezig) als laatste
+// punt — hergebruikt statsScopeGames() (die "current" vooraan zet) en herordent.
+// Deelt het wedstrijdfilter (statsGameIds) met de Stats-tab — één "welke wedstrijden
+// tellen mee"-instelling voor de hele app, i.p.v. twee aparte filters die uit de pas
+// kunnen lopen. Hier alleen herordend naar chronologisch oud -> nieuw.
+function trendsScopeGames() {
+  var scope = statsSelectedGames();
+  var archived = scope.filter(function (g) { return !g.isCurrent; }).reverse();
+  var current = scope.filter(function (g) { return g.isCurrent; });
+  return archived.concat(current);
+}
+// Alleen spelers uit de huidige teamlijst die in minstens één wedstrijd uit de scope
+// speeltijd hebben, op volgorde van rugnummer (state.players staat al gesorteerd).
+function trendsPlayers(scope) {
+  var ids = {};
+  scope.forEach(function (g) {
+    g.segments.forEach(function (s) { s.lineup.forEach(function (id) { ids[id] = true; }); });
+  });
+  return state.players.filter(function (p) { return ids[p.id]; });
+}
+function trendsPlayerAverages(playerId, scope) {
+  var pts = computePlayerTrend(playerId, scope);
+  var totalSec = pts.reduce(function (a, pt) { return a + pt.sec; }, 0);
+  return {
+    avgMin: pts.length ? totalSec / 60 / pts.length : 0,
+    avgPM: pts.length ? pts.reduce(function (a, pt) { return a + trendPmValue(pt); }, 0) / pts.length : 0
+  };
+}
+function sortTrendsPlayers(players, scope) {
+  if (trendsSortBy === "nr") return players;
+  var withStats = players.map(function (p) {
+    var avg = trendsPlayerAverages(p.id, scope);
+    return { p: p, avgMin: avg.avgMin, avgPM: avg.avgPM };
+  });
+  withStats.sort(function (a, b) { return trendsSortBy === "min" ? b.avgMin - a.avgMin : b.avgPM - a.avgPM; });
+  return withStats.map(function (x) { return x.p; });
+}
+function computePlayerTrend(playerId, scope) {
+  var points = [];
+  scope.forEach(function (g) {
+    var sec = 0, pm = 0, played = false;
+    g.segments.forEach(function (s) {
+      if (s.lineup.indexOf(playerId) >= 0) { played = true; sec += s.durSec; pm += (s.pf - s.pa); }
+    });
+    if (played) points.push({ game: g, sec: sec, pm: pm });
+  });
+  return points;
+}
+function trendPmValue(pt) { return trendsPer10 && pt.sec > 0 ? pt.pm * 600 / pt.sec : pt.pm; }
+function pmLineChartSvg(pts) {
+  var w = 300, h = 70, pad = 6;
+  var vals = pts.map(trendPmValue);
+  var maxAbs = Math.max(1, Math.max.apply(null, vals.map(Math.abs)));
+  var midY = h / 2, scaleY = (h / 2 - pad) / maxAbs;
+  var stepX = pts.length > 1 ? (w - pad * 2) / (pts.length - 1) : 0;
+  var coords = pts.map(function (pt, i) {
+    return { x: pad + i * stepX, y: midY - trendPmValue(pt) * scaleY, pm: trendPmValue(pt) };
+  });
+  var polyline = coords.map(function (c) { return c.x.toFixed(1) + "," + c.y.toFixed(1); }).join(" ");
+  var dots = coords.map(function (c) {
+    return '<circle cx="' + c.x.toFixed(1) + '" cy="' + c.y.toFixed(1) + '" r="3" fill="' + (c.pm >= 0 ? "var(--emerald)" : "var(--rose)") + '" />';
+  }).join("");
+  return '<svg viewBox="0 0 ' + w + ' ' + h + '" style="width:100%;height:4.5rem;display:block" preserveAspectRatio="none">' +
+    '<line x1="0" y1="' + midY + '" x2="' + w + '" y2="' + midY + '" stroke="var(--line)" stroke-width="1" />' +
+    (pts.length > 1 ? '<polyline points="' + polyline + '" fill="none" stroke="var(--amber)" stroke-width="2" />' : '') +
+    dots +
+  '</svg>';
+}
+function minutesBarChartHtml(pts) {
+  var mins = pts.map(function (pt) { return pt.sec / 60; });
+  var maxMin = Math.max(1, Math.max.apply(null, mins));
+  var bars = pts.map(function (pt) {
+    var pct = Math.max(4, (pt.sec / 60 / maxMin) * 100);
+    return '<div style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:flex-end;height:3rem">' +
+      '<div style="width:60%;background:var(--teal);border-radius:0.15rem 0.15rem 0 0;height:' + pct.toFixed(0) + '%"></div>' +
+    '</div>';
+  }).join("");
+  return '<div class="row" style="align-items:flex-end;gap:0.15rem;height:3rem">' + bars + '</div>';
+}
+function playerTrendHtml(p, scope) {
+  var pts = computePlayerTrend(p.id, scope);
+  if (pts.length === 0) return "";
+  var totalSec = pts.reduce(function (a, pt) { return a + pt.sec; }, 0);
+  var avgMin = totalSec / 60 / pts.length;
+  var avgPM = pts.reduce(function (a, pt) { return a + trendPmValue(pt); }, 0) / pts.length;
+  var gameListHtml = pts.slice().reverse().map(function (pt) {
+    var oppLabel = pt.game.isCurrent ? t("statsCurrentGame") : (pt.game.opponent || t("teamOpponent"));
+    var pmColor = pt.pm > 0 ? "var(--emerald)" : pt.pm < 0 ? "var(--rose)" : "var(--mut)";
+    return '<div class="row between xs mut" style="padding:0.2rem 0">' +
+      '<span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0">' + esc(oppLabel) + '</span>' +
+      '<span class="row tab" style="flex:none;gap:0.5rem">' +
+        '<span>' + fmt(pt.sec) + '</span>' +
+        '<span style="color:' + pmColor + ';font-weight:700;min-width:2rem;text-align:right">' + (pt.pm >= 0 ? "+" : "") + pt.pm + '</span>' +
+      '</span>' +
+    '</div>';
+  }).join("");
+  return '<div class="card" style="padding:0.75rem;margin-bottom:0.75rem">' +
+    '<div class="row between mb2">' +
+      '<span class="sm" style="font-weight:600">#' + esc(p.nr) + ' ' + esc(p.naam) + '</span>' +
+      '<span class="xs tab mut">' + esc(t("trendsMinLabel")) + ' <b style="color:var(--txt)">' + avgMin.toFixed(1) + '</b>&nbsp; ' +
+        esc(t("trendsPmLabel")) + ' <b style="color:' + (avgPM >= 0 ? "var(--emerald)" : "var(--rose)") + '">' + (avgPM >= 0 ? "+" : "") + avgPM.toFixed(1) + '</b></span>' +
+    '</div>' +
+    '<div class="xs mut2" style="margin-bottom:0.2rem">' + esc(t("trendsPmChartLabel")) + '</div>' +
+    pmLineChartSvg(pts) +
+    '<div class="xs mut2" style="margin:0.5rem 0 0.2rem">' + esc(t("trendsMinChartLabel")) + '</div>' +
+    minutesBarChartHtml(pts) +
+    '<button class="btn-outline xs" style="width:100%;padding:0.35rem;margin-top:0.6rem" onclick="toggleTrendsExpanded(' + p.id + ')">' +
+      (trendsExpanded[p.id] ? esc(t("trendsHideGames")) : esc(t("trendsShowGames", { n: pts.length }))) +
+    '</button>' +
+    (trendsExpanded[p.id] ? '<div style="margin-top:0.35rem;border-top:1px solid var(--line);padding-top:0.35rem">' + gameListHtml + '</div>' : '') +
+  '</div>';
+}
+function renderTrendsTab() {
+  var scope = trendsScopeGames();
+  var players = sortTrendsPlayers(trendsPlayers(scope), scope);
+  var nGamesSel = statsGameIds == null ? statsScopeGames().length : statsGameIds.size;
+  var sortLabel = trendsSortBy === "min" ? t("trendsMinLabel") : trendsSortBy === "pm" ? t("trendsPmLabel") : t("trendsSortNr");
+  app.innerHTML = topBarHtml() +
+    '<div class="row mb3" style="gap:0.375rem;flex-wrap:wrap">' +
+      '<button class="btn-outline xs" style="padding:0.35rem 0.6rem' + (trendsPer10 ? ";background:var(--amber);color:var(--bg);border-color:transparent" : "") + '" onclick="toggleTrendsPer10()">' + esc(t("statsPer10")) + '</button>' +
+      '<button class="btn-outline xs" style="padding:0.35rem 0.6rem" onclick="openStatsGameFilter()">' + esc(t("statsGamesBtn")) + ' (' + nGamesSel + ')</button>' +
+      '<button class="btn-outline xs" style="padding:0.35rem 0.6rem" onclick="cycleTrendsSort()">' + esc(t("trendsSortLabel")) + ': ' + esc(sortLabel) + '</button>' +
+    '</div>' +
+    (players.length === 0 ? '<p class="xs mut" style="text-align:center;margin-top:2rem">' + esc(t("trendsNoData")) + '</p>'
+      : players.map(function (p) { return playerTrendHtml(p, scope); }).join(""));
+}
+
 function topBarHtml() {
   return '<div class="row between mb3"><div class="brand-row" style="min-width:0">' +
     (settings.logoUri ? '<img class="brand-logo" src="' + settings.logoUri + '" alt="' + esc(settings.teamName || t("appNameFallback")) + '" />' : '') +
@@ -1683,7 +1831,7 @@ function topBarHtml() {
   '</div>';
 }
 function tabBarHtml() {
-  var labels = { roster: t("tabRoster"), track: t("tabTrack"), stats: t("tabStats"), history: t("tabHistory") };
+  var labels = { roster: t("tabRoster"), track: t("tabTrack"), stats: t("tabStats"), trends: t("tabTrends"), history: t("tabHistory") };
   return '<div class="tabbar">' + TABS.map(function (tb) {
     return '<button class="tabbtn ' + (currentTab === tb ? "on" : "") + '" onclick="switchTab(\'' + tb + '\')">' +
       '<span class="ic">' + tabIcon(tb) + '</span><span>' + esc(labels[tb]) + '</span></button>';
@@ -1697,6 +1845,7 @@ function render() {
   if (resumeOpen) { renderResume(); return; }
   if (currentTab === "track") renderTrackTab();
   else if (currentTab === "stats") renderStatsTab();
+  else if (currentTab === "trends") renderTrendsTab();
   else if (currentTab === "history") renderHistoryTab();
   else renderTeamTab();
   app.insertAdjacentHTML("beforeend", tabBarHtml());
@@ -1762,6 +1911,8 @@ window.openStatsFilter = openStatsFilter; window.closeStatsFilter = closeStatsFi
 window.clearStatsFilter = clearStatsFilter; window.cycleStatsPlayerFilter = cycleStatsPlayerFilter;
 window.openStatsGameFilter = openStatsGameFilter; window.closeStatsGameFilter = closeStatsGameFilter;
 window.toggleStatsGame = toggleStatsGame; window.clearStatsGameFilter = clearStatsGameFilter;
+window.toggleTrendsPer10 = toggleTrendsPer10;
+window.cycleTrendsSort = cycleTrendsSort; window.toggleTrendsExpanded = toggleTrendsExpanded;
 
 // ---------- init ----------
 (function init() {

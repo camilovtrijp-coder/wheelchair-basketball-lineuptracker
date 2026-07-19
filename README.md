@@ -12,11 +12,12 @@ Een mobiele, offline bruikbare lineuptracker voor teamsporten met wisselspelers 
 
 ## Tabbladen
 
-Onderin de app zitten vier tabbladen:
+Onderin de app zitten vijf tabbladen:
 
 - **Team** — alleen de spelerslijst: rugnummer, naam en (indien gewenst) classificatie/categorieën. Sorteert automatisch op rugnummer. Hier kun je geen wedstrijd starten; dat kan alleen op Wedstrijd.
 - **Wedstrijd** — vóór de wedstrijd: kies per speler uit de teamlijst of die "meedoet" met deze wedstrijd (een speler die niet meedoet blijft gewoon in de teamlijst staan, maar is niet selecteerbaar als starter/bank), wie start, vul de tegenstander en eventueel de competitie/toernooi in, en start de wedstrijd. Tijdens de wedstrijd: score, wissels, segmenten vastleggen. "Wedstrijd afronden" slaat de wedstrijd op in de geschiedenis en start een nieuwe, lege wedstrijd (iedereen doet dan weer standaard mee); "Alleen CSV exporteren" exporteert zonder af te ronden.
 - **Stats** — lineup-combinatiestatistieken (1 t/m 5 spelers) met +/- terwijl de combinatie op/af de vloer stond, optioneel genormaliseerd per 10 minuten, met filters op wedstrijd (met tegenstander/competitie erbij) en op spelers (verplicht op/af de vloer).
+- **Trends** — per speler die minstens één keer meespeelde: gemiddelde speeltijd en +/- per wedstrijd, een lijngrafiek van het +/- per wedstrijd en een staafgrafiek van de speeltijd per wedstrijd (chronologisch, inclusief de lopende wedstrijd als voorlopig laatste punt), plus een lijst per wedstrijd. Ook hier is +/- optioneel per 10 minuten te bekijken. Wedstrijden waarin een speler niet meedeed tellen niet mee voor die speler.
 - **Historie** — overzicht van afgeronde wedstrijden (met datum en competitie/toernooi indien ingevuld); tik voor het segmentoverzicht en CSV-export van die wedstrijd, of verwijder een wedstrijd.
 
 ## Starten
