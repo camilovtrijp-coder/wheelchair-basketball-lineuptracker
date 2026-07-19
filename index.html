@@ -4,6 +4,13 @@
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
 <meta name="theme-color" content="#2563eb" />
+<!-- manifest.json is build-time gegenereerd met vaste (default) kleuren/iconen;
+     die kunnen niet per club variëren, want settings.primaryColor/logoUri
+     bestaan pas na runtime-configuratie in de browser van de gebruiker. -->
+<link rel="manifest" href="manifest.json" />
+<link rel="apple-touch-icon" href="icons/icon-192.png" />
+<meta name="apple-mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-status-bar-style" content="default" />
 <title>Lineup Tracker</title>
 <style>
   :root {
@@ -1239,6 +1246,12 @@ window.updateSetting = updateSetting; window.handleLogoFile = handleLogoFile;
   }
   render();
 })();
+
+if ("serviceWorker" in navigator) {
+  window.addEventListener("load", function () {
+    navigator.serviceWorker.register("sw.js").catch(function () {});
+  });
+}
 </script>
 </body>
 </html>

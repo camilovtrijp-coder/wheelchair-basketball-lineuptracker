@@ -1,5 +1,19 @@
 [build]
-  # Alleen index.html wordt gepubliceerd. docs/ en README bevatten geen
-  # gevoelige data meer, maar hoeven niet als losse bestanden mee de site in.
-  command = "mkdir -p _site && cp index.html _site/index.html"
+  # index.html plus de PWA-bestanden (manifest, service worker, iconen) worden
+  # gepubliceerd. docs/ en README bevatten geen gevoelige data meer, maar
+  # hoeven niet als losse bestanden mee de site in.
+  #
+  # sw.js wordt niet 1-op-1 gekopieerd: __CACHE_VERSION__ wordt vervangen door
+  # een hash van de app-shell-bestanden, zodat de cachenaam in de service
+  # worker automatisch verandert zodra index.html/manifest.json/icons/sw.js
+  # wijzigen. Dit voorkomt dat gebruikers na een update op een oude,
+  # gecachete versie van de app blijven hangen — zonder dat iemand handmatig
+  # een versienummer hoeft op te hogen.
+  command = """
+    mkdir -p _site/icons
+    cp index.html manifest.json _site/
+    cp icons/*.png _site/icons/
+    HASH=$(cat index.html manifest.json icons/*.png sw.js | sha256sum | cut -c1-10)
+    sed "s/__CACHE_VERSION__/$HASH/" sw.js > _site/sw.js
+  """
   publish = "_site"
