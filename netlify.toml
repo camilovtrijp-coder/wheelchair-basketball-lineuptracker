@@ -10,10 +10,11 @@
   # gecachete versie van de app blijven hangen — zonder dat iemand handmatig
   # een versienummer hoeft op te hogen.
   command = """
-    mkdir -p _site/icons
+    mkdir -p _site/icons _site/fonts
     cp index.html manifest.json _site/
     cp icons/*.png _site/icons/
-    HASH=$(cat index.html manifest.json icons/*.png sw.js | sha256sum | cut -c1-10)
+    cp fonts/*.woff2 _site/fonts/
+    HASH=$(cat index.html manifest.json icons/*.png fonts/*.woff2 sw.js | sha256sum | cut -c1-10)
     sed "s/__CACHE_VERSION__/$HASH/" sw.js > _site/sw.js
   """
   publish = "_site"

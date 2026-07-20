@@ -3,8 +3,8 @@
 // Cachet alleen eigen bestanden, geen CDN's.
 //
 // __CACHE_VERSION__ wordt door de Netlify build (zie netlify.toml) vervangen
-// door een hash van index.html/manifest.json/icons/sw.js, zodat de cachenaam
-// automatisch verandert zodra een van die bestanden wijzigt — geen
+// door een hash van index.html/manifest.json/icons/fonts/sw.js, zodat de
+// cachenaam automatisch verandert zodra een van die bestanden wijzigt — geen
 // handmatige versie-ophoging meer nodig. Bij lokaal testen zonder build-stap
 // blijft de placeholder letterlijk staan; dat werkt functioneel prima, het
 // is dan alleen geen "verse" naam.
@@ -15,6 +15,7 @@ var APP_SHELL = [
   "icons/icon-192.png",
   "icons/icon-512.png",
   "icons/icon-maskable-512.png",
+  "fonts/Inter-Variable-latin.woff2",
 ];
 
 self.addEventListener("install", function (event) {

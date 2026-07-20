@@ -14,48 +14,70 @@
 <title>Lineup Tracker</title>
 <style>
   :root {
-    /* Neutrale standaardkleuren; --amber/--sky worden per klant overschreven
-       via settings.primaryColor/accentColor (zie applySettingsToDom()). */
+    /* Neutrale standaardkleuren; --primary/--accent worden per klant overschreven
+       via settings.primaryColor/accentColor (zie applySettingsToDom()). De overige
+       primary- en accent-variabelen hieronder zijn er CSS-afgeleiden van (color-mix),
+       zodat elke gekozen kleur automatisch een passend mini-palet + leesbare knoptekst krijgt. */
     --bg: #0b0c0b; --card: #171916; --card2: #262a24; --line: #33372f;
     --txt: #ffffff; --mut: #a9b0a4; --mut2: #737b6e;
-    --amber: #2563eb;   /* primair/team/selectie */
-    --sky: #f97316;     /* tegenstander-score */
+    --primary: #2563eb; --primary-ink: #ffffff; /* primair/team/selectie */
+    --primary-strong: color-mix(in srgb, var(--primary) 80%, black);
+    --primary-soft: color-mix(in srgb, var(--primary) 18%, var(--bg));
+    --primary-border: color-mix(in srgb, var(--primary) 45%, var(--bg));
+    --accent: #f97316; --accent-ink: #ffffff; /* tegenstander-score */
+    --accent-strong: color-mix(in srgb, var(--accent) 80%, black);
+    --accent-soft: color-mix(in srgb, var(--accent) 18%, var(--bg));
+    --accent-border: color-mix(in srgb, var(--accent) 45%, var(--bg));
     --emerald: #16c458; /* positieve status (binnen classificatiegrens, +/-), niet configureerbaar */
     --rose: #f43f5e;    /* universeel waarschuwingsrood, niet configureerbaar */
     --fuchsia: #c026d3; --teal: #0d9488; /* functionele categorie-badges, niet configureerbaar */
   }
+  /* Zelf gehost (fonts/Inter-Variable-latin.woff2) i.p.v. een Google Fonts-link, zodat
+     het lettertype ook offline (PWA/service worker) beschikbaar blijft. Variabele font,
+     dus één bestand dekt het hele gewicht-bereik 100-900. system-ui blijft de fallback
+     zolang het font nog niet geladen is of niet beschikbaar is. */
+  @font-face {
+    font-family: "Inter";
+    font-style: normal;
+    font-weight: 100 900;
+    font-display: swap;
+    src: url("fonts/Inter-Variable-latin.woff2") format("woff2-variations"), url("fonts/Inter-Variable-latin.woff2") format("woff2");
+  }
   * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
   html, body { margin: 0; padding: 0; background: var(--bg); color: var(--txt);
-    font-family: Roboto, system-ui, -apple-system, "Segoe UI", sans-serif; }
-  h1, h2, .brand-caps { font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
-    font-weight: 900; text-transform: uppercase; letter-spacing: -0.02em; }
+    font-family: Inter, system-ui, -apple-system, "Segoe UI", sans-serif; }
+  h1, h2, .brand-caps { font-family: Inter, system-ui, -apple-system, "Segoe UI", sans-serif;
+    font-weight: 900; text-transform: uppercase; letter-spacing: 0.01em; }
   #app { max-width: 30rem; margin: 0 auto; padding: 1rem 1rem 5.25rem; overflow-x: hidden; }
   .tabbar { position: fixed; left: 0; right: 0; bottom: 0; z-index: 40; background: var(--card);
     border-top: 1px solid var(--line); display: flex; max-width: 30rem; margin: 0 auto; }
   .tabbar .tabbtn { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center;
     gap: 0.15rem; padding: 0.5rem 0 calc(0.4rem + env(safe-area-inset-bottom)); background: transparent;
     border: none; border-radius: 0; color: var(--mut); font-size: 0.62rem; font-weight: 600; }
-  .tabbar .tabbtn.on { color: var(--amber); }
+  .tabbar .tabbtn.on { color: var(--primary); }
   .tabbar .tabbtn .ic { font-size: 1.15rem; line-height: 1; }
   h1 { font-size: 1.05rem; margin: 0; }
   h2 { font-size: 0.9rem; margin: 0 0 0.75rem; }
   .mut { color: var(--mut); } .mut2 { color: var(--mut2); }
-  .xs { font-size: 0.72rem; } .sm { font-size: 0.82rem; }
+  .xs { font-size: 0.75rem; } .sm { font-size: 0.82rem; }
   .row { display: flex; align-items: center; gap: 0.5rem; }
   .between { justify-content: space-between; }
   .tab { font-variant-numeric: tabular-nums; }
-  .card { background: var(--card); border-radius: 1rem; padding: 0.75rem; margin-bottom: 1rem; }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 1rem; padding: 0.75rem;
+    margin-bottom: 1rem; box-shadow: 0 1px 0 rgba(255,255,255,0.03) inset; }
   .mb2 { margin-bottom: 0.5rem; } .mb3 { margin-bottom: 0.75rem; } .mb4 { margin-bottom: 1rem; }
   input, select, button { font-family: inherit; }
   input, select {
     background: var(--bg); border: 1px solid var(--line); border-radius: 0.5rem;
-    color: var(--txt); padding: 0.5rem; font-size: 0.95rem;
+    color: var(--txt); padding: 0.5rem; font-size: 0.95rem; text-overflow: ellipsis;
   }
-  input:focus, select:focus { outline: 2px solid var(--amber); outline-offset: -1px; }
+  input:focus, select:focus { outline: 2px solid var(--primary); outline-offset: -1px; }
   .num { text-align: center; font-variant-numeric: tabular-nums; }
-  button { cursor: pointer; border: none; border-radius: 0.75rem; font-weight: 700; color: var(--bg); }
-  .btn-amber { background: var(--amber); } .btn-amber:active { background: color-mix(in srgb, var(--amber) 80%, black); }
-  .btn-sky { background: var(--sky); } .btn-sky:active { background: color-mix(in srgb, var(--sky) 80%, black); }
+  button { cursor: pointer; border: none; border-radius: 0.75rem; font-weight: 700; color: var(--bg);
+    transition: background-color 0.15s, color 0.15s, border-color 0.15s; }
+  .scorebtn:active { transform: scale(0.97); }
+  .btn-amber { background: var(--primary); color: var(--primary-ink); } .btn-amber:active { background: var(--primary-strong); }
+  .btn-sky { background: var(--accent); color: var(--accent-ink); } .btn-sky:active { background: var(--accent-strong); }
   .btn-emerald { background: var(--emerald); } .btn-emerald:active { background: #10a34a; }
   .btn-rose { background: var(--rose); color: #fff; } .btn-rose:active { background: #e11d48; }
   .btn-ghost { background: var(--card2); color: var(--txt); }
@@ -69,37 +91,54 @@
     border-radius: 1rem; padding: 0.5rem 0.25rem; min-height: 68px;
     background: var(--card2); border: 1px solid #475569; color: var(--txt);
   }
-  .chip.sel { background: var(--amber); border-color: color-mix(in srgb, var(--amber) 70%, white); color: var(--bg); }
+  .chip.sel { background: var(--primary-soft); border-color: var(--primary-border); }
+  .chip.sel .nr { color: var(--primary); }
   .chip .nr { font-size: 1rem; font-weight: 700; line-height: 1; font-variant-numeric: tabular-nums; }
   .chip .nm { font-size: 0.69rem; margin-top: 0.15rem; line-height: 1; max-width: 100%;
     overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .chip .kl { font-size: 0.62rem; margin-top: 0.15rem; line-height: 1; color: var(--mut);
     font-variant-numeric: tabular-nums; }
-  .chip.sel .kl { color: #04421d; }
-  .toggle { padding: 0.35rem 0.55rem; border-radius: 0.5rem; font-size: 0.72rem; font-weight: 600;
+  .chip.sel .kl { color: var(--primary); }
+  .toggle { padding: 0.35rem 0.55rem; border-radius: 0.75rem; font-size: 0.75rem; font-weight: 600;
     border: 1px solid #475569; background: var(--card2); color: var(--mut); }
   .toggle.on-v { background: var(--fuchsia); border-color: #e879f9; color: #fff; }
   .toggle.on-u { background: var(--teal); border-color: #2dd4bf; color: #fff; }
   .toggle.on-st { background: var(--emerald); border-color: #22c55e; color: var(--bg); }
+  .toggle.on-p { background: var(--primary-soft); border-color: var(--primary-border); color: var(--primary); }
+  .switch { position: relative; display: inline-block; width: 2.5rem; height: 1.4rem; flex: none; }
+  .switch input { position: absolute; inset: 0; opacity: 0; margin: 0; cursor: pointer; z-index: 1; }
+  .switch .track { position: absolute; inset: 0; background: var(--card2); border: 1px solid var(--line);
+    border-radius: 999px; transition: background-color 0.15s, border-color 0.15s; }
+  .switch .thumb { position: absolute; top: 0.2rem; left: 0.2rem; width: 1rem; height: 1rem; border-radius: 50%;
+    background: var(--mut); transition: transform 0.15s, background-color 0.15s; }
+  .switch input:checked ~ .track { background: var(--primary-soft); border-color: var(--primary-border); }
+  .switch input:checked ~ .thumb { transform: translateX(1.1rem); background: var(--primary); }
+  .switch input:focus-visible ~ .track { outline: 2px solid var(--primary); outline-offset: 2px; }
+  .swatch { width: 2rem; height: 2rem; border-radius: 0.6rem; border: 2px solid transparent; padding: 0;
+    cursor: pointer; flex: none; transition: transform 0.1s, border-color 0.15s; }
+  .swatch:active { transform: scale(0.92); }
+  .swatch.sel { border-color: var(--txt); }
   .warn { background: rgba(244,63,94,0.15); border: 1px solid rgba(244,63,94,0.4);
-    color: #fda4af; border-radius: 0.75rem; padding: 0.5rem 0.75rem; font-size: 0.72rem; }
+    color: #fda4af; border-radius: 0.75rem; padding: 0.5rem 0.75rem; font-size: 0.75rem; }
   .ok { color: var(--emerald); } .bad { color: var(--rose); }
-  .q { flex: 1; border-radius: 0.5rem; padding: 0.5rem 0; font-size: 0.85rem; font-weight: 600;
-    background: var(--card2); color: var(--txt); }
-  .q.on { background: var(--amber); color: var(--bg); }
+  .q { flex: 1; border-radius: 0.75rem; padding: 0.5rem 0; font-size: 0.85rem; font-weight: 600;
+    background: var(--card2); color: var(--txt); border: 1px solid transparent; }
+  .q.on { background: var(--primary-soft); border-color: var(--primary-border); color: var(--primary); }
   .scoresel {
-    width: 5rem; flex-shrink: 0; border-radius: 0.75rem; padding: 0.65rem 0.5rem;
-    text-align: center; font-size: 1.5rem; font-weight: 700; font-variant-numeric: tabular-nums;
+    width: 6rem; flex-shrink: 0; border-radius: 0.75rem; padding: 0.5rem;
+    text-align: center; font-size: 2.5rem; font-weight: 700; font-variant-numeric: tabular-nums;
     -webkit-appearance: none; appearance: none;
   }
-  .scoresel.amber { background: color-mix(in srgb, var(--amber) 15%, transparent); border: 1px solid color-mix(in srgb, var(--amber) 40%, transparent); color: color-mix(in srgb, var(--amber) 55%, white); }
-  .scoresel.sky { background: color-mix(in srgb, var(--sky) 15%, transparent); border: 1px solid color-mix(in srgb, var(--sky) 40%, transparent); color: color-mix(in srgb, var(--sky) 55%, white); }
-  .scorebtn { padding: 0.65rem 0; font-size: 1rem; }
+  .scoresel.amber { background: color-mix(in srgb, var(--primary) 15%, transparent); border: 1px solid color-mix(in srgb, var(--primary) 40%, transparent); color: color-mix(in srgb, var(--primary) 55%, white); }
+  .scoresel.sky { background: color-mix(in srgb, var(--accent) 15%, transparent); border: 1px solid color-mix(in srgb, var(--accent) 40%, transparent); color: color-mix(in srgb, var(--accent) 55%, white); }
+  .scorebtn { padding: 0.65rem 0; font-size: 1.1rem; min-height: 3.5rem; }
   .timesel { flex: 1; min-width: 0; border-radius: 0.5rem; padding: 0.55rem 0.25rem;
     text-align: center; font-size: 1.05rem; font-weight: 700; font-variant-numeric: tabular-nums;
     -webkit-appearance: none; appearance: none; }
   .seg { background: var(--card); border-radius: 0.75rem; padding: 0.5rem 0.75rem;
-    font-size: 0.72rem; display: flex; align-items: center; justify-content: space-between; gap: 0.5rem; }
+    font-size: 0.75rem; display: flex; align-items: center; justify-content: space-between; gap: 0.5rem; }
+  .statsgrid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 0.25rem; text-align: center; }
+  .statsgrid .v { font-weight: 700; }
   .overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.7); z-index: 50;
     display: flex; align-items: center; justify-content: center; padding: 1rem; }
   .overlay.bottom { align-items: flex-end; }
@@ -109,6 +148,10 @@
   .pill { display: inline-flex; align-items: center; gap: 0.35rem; }
   .brand-row { display: flex; align-items: center; gap: 0.5rem; }
   .brand-logo { height: 1.9rem; width: auto; flex: none; }
+  @media (prefers-reduced-motion: reduce) {
+    * { transition: none !important; animation: none !important; }
+    .scorebtn:active { transform: none; }
+  }
 </style>
 </head>
 <body>
@@ -178,14 +221,14 @@ var STRINGS = {
     segDurationValid: "Speeltijd dit segment: {fmt}",
     segDurationPlain: "Speeltijd: {fmt}",
     endAfterBegin: "Eind moet ná begin liggen.",
-    saveSegmentBtn: "💾 Segment opslaan (+/- {segPM})",
+    saveSegmentBtn: "Segment opslaan (+/- {segPM})",
     needFivePlayers: "Er moeten precies 5 spelers op de vloer staan.",
     segmentsTitle: "Segmenten ({n})",
     tapToEdit: "Tik om te bewerken",
     lineupStandingPrefix: "Deze opstelling staat al ",
     exportTitle: "Export voor Airtable",
     exportDesc: "Eén CSV-bestand met opstellingen (+/-) en speeltijd per speler. Punten per speler vul je achteraf bij vanuit de boxscore.",
-    exportShareBtn: "📤 Deel / download CSV",
+    exportShareBtn: "Deel / download CSV",
     swapConfirmTitle: "Wissel(s) — kloktijd?",
     swapConfirmDesc: "Het segment tot nu toe wordt afgesloten met de opstelling van vóór deze wissel(s), op het tijdstip hieronder. Daarna gaat het nieuwe segment verder met de huidige opstelling.",
     timeLabel: "Tijd",
@@ -198,8 +241,8 @@ var STRINGS = {
     lineupChosen: "{n}/5 gekozen",
     ptsFor: "Punten voor",
     ptsAgainst: "Punten tegen",
-    saveBtn: "💾 Opslaan",
-    deleteBtn: "🗑 Verwijderen",
+    saveBtn: "Opslaan",
+    deleteBtn: "Verwijderen",
     resumeTitle: "Opgeslagen wedstrijd gevonden",
     resumeDesc: "Er staat nog een wedstrijd opgeslagen{when}, met {n} segment(en). Wil je verder of opnieuw beginnen?",
     resumeBtn: "Hervatten",
@@ -208,12 +251,16 @@ var STRINGS = {
     confirmNewMatch: "Nieuwe wedstrijd starten? De opgeslagen wedstrijd wordt gewist.",
     confirmDeleteSegment: "Dit segment verwijderen? De score wordt automatisch herberekend.",
     settingsTitle: "Instellingen",
+    settingsSectionClub: "Club",
+    settingsSectionMatch: "Wedstrijd",
+    settingsSectionClass: "Classificatie",
     teamNameLabel: "Teamnaam",
     logoLabel: "Logo",
     logoChooseBtn: "Logo kiezen",
     logoRemoveBtn: "Logo verwijderen",
     primaryColorLabel: "Primaire kleur",
     accentColorLabel: "Accentkleur (tegenstander)",
+    customColorBtn: "Aangepast",
     quarterCountLabel: "Aantal periodes",
     periodLabelLabel: "Naam periode",
     useClassLimitLabel: "Classificatiesysteem gebruiken",
@@ -230,9 +277,9 @@ var STRINGS = {
     settingsResetBtn: "↺ Standaardinstellingen herstellen",
     confirmResetSettings: "Instellingen terugzetten naar standaard? Teamnaam, logo, kleuren en classificatie-instellingen gaan verloren.",
     tabRoster: "Team", tabTrack: "Wedstrijd", tabStats: "Stats", tabTrends: "Trends", tabHistory: "Historie",
-    opponentPlaceholder: "Naam tegenstander (optioneel)",
-    finishGameBtn: "🏁 Wedstrijd afronden",
-    exportOnlyBtn: "📤 Alleen CSV exporteren",
+    opponentPlaceholder: "Optioneel",
+    finishGameBtn: "Wedstrijd afronden",
+    exportOnlyBtn: "Alleen CSV exporteren",
     confirmFinishGame: "Wedstrijd afronden en opslaan in de wedstrijdgeschiedenis? Er start daarna een nieuwe, lege wedstrijd.",
     confirmDeleteGame: "Deze wedstrijd definitief verwijderen uit de geschiedenis?",
     preGameIntro: "Kies wie er meedoet en wie start. Spelersgegevens (naam, rugnummer, classificatie) pas je aan op Team.",
@@ -260,7 +307,7 @@ var STRINGS = {
     confirmImportBackup: "Back-up importeren? Alle huidige data (spelers, instellingen, geschiedenis, lopende wedstrijd) wordt overschreven.",
     importBackupInvalid: "Dit bestand lijkt geen geldige Lineup Tracker-back-up te zijn.",
     competitionLabel: "Competitie/toernooi",
-    competitionPlaceholder: "Naam competitie of toernooi (optioneel)",
+    competitionPlaceholder: "Optioneel",
     trendsMinLabel: "MIN", trendsPmLabel: "+/-",
     trendsPmChartLabel: "+/- per wedstrijd",
     trendsMinChartLabel: "Minuten per wedstrijd",
@@ -307,14 +354,14 @@ var STRINGS = {
     segDurationValid: "Playing time this segment: {fmt}",
     segDurationPlain: "Playing time: {fmt}",
     endAfterBegin: "End must be after start.",
-    saveSegmentBtn: "💾 Save segment (+/- {segPM})",
+    saveSegmentBtn: "Save segment (+/- {segPM})",
     needFivePlayers: "There must be exactly 5 players on court.",
     segmentsTitle: "Segments ({n})",
     tapToEdit: "Tap to edit",
     lineupStandingPrefix: "This lineup is already ",
     exportTitle: "Export for Airtable",
     exportDesc: "One CSV file with lineups (+/-) and playing time per player. Fill in per-player points afterwards from the box score.",
-    exportShareBtn: "📤 Share / download CSV",
+    exportShareBtn: "Share / download CSV",
     swapConfirmTitle: "Substitution(s) — clock time?",
     swapConfirmDesc: "The segment so far will be closed with the lineup from before this/these substitution(s), at the time below. The new segment then continues with the current lineup.",
     timeLabel: "Time",
@@ -327,8 +374,8 @@ var STRINGS = {
     lineupChosen: "{n}/5 chosen",
     ptsFor: "Points for",
     ptsAgainst: "Points against",
-    saveBtn: "💾 Save",
-    deleteBtn: "🗑 Delete",
+    saveBtn: "Save",
+    deleteBtn: "Delete",
     resumeTitle: "Saved match found",
     resumeDesc: "There is a saved match{when}, with {n} segment(s). Do you want to resume or start over?",
     resumeBtn: "Resume",
@@ -337,12 +384,16 @@ var STRINGS = {
     confirmNewMatch: "Start a new match? The saved match will be deleted.",
     confirmDeleteSegment: "Delete this segment? The score will be recalculated automatically.",
     settingsTitle: "Settings",
+    settingsSectionClub: "Club",
+    settingsSectionMatch: "Match",
+    settingsSectionClass: "Classification",
     teamNameLabel: "Team name",
     logoLabel: "Logo",
     logoChooseBtn: "Choose logo",
     logoRemoveBtn: "Remove logo",
     primaryColorLabel: "Primary color",
     accentColorLabel: "Accent color (opponent)",
+    customColorBtn: "Custom",
     quarterCountLabel: "Number of periods",
     periodLabelLabel: "Period name",
     useClassLimitLabel: "Use classification system",
@@ -359,9 +410,9 @@ var STRINGS = {
     settingsResetBtn: "↺ Reset to defaults",
     confirmResetSettings: "Reset settings to default? Team name, logo, colors and classification settings will be lost.",
     tabRoster: "Roster", tabTrack: "Track", tabStats: "Stats", tabTrends: "Trends", tabHistory: "History",
-    opponentPlaceholder: "Opponent name (optional)",
-    finishGameBtn: "🏁 Finish match",
-    exportOnlyBtn: "📤 Export CSV only",
+    opponentPlaceholder: "Optional",
+    finishGameBtn: "Finish match",
+    exportOnlyBtn: "Export CSV only",
     confirmFinishGame: "Finish this match and save it to game history? A new, empty match will start afterwards.",
     confirmDeleteGame: "Permanently delete this match from history?",
     preGameIntro: "Choose who's playing and who starts. Edit player details (name, shirt number, classification) on the Roster tab.",
@@ -389,7 +440,7 @@ var STRINGS = {
     confirmImportBackup: "Import this backup? All current data (players, settings, history, active match) will be overwritten.",
     importBackupInvalid: "This file doesn't look like a valid Lineup Tracker backup.",
     competitionLabel: "Competition/tournament",
-    competitionPlaceholder: "Competition or tournament name (optional)",
+    competitionPlaceholder: "Optional",
     trendsMinLabel: "MIN", trendsPmLabel: "+/-",
     trendsPmChartLabel: "+/- per game",
     trendsMinChartLabel: "Minutes per game",
@@ -418,7 +469,7 @@ function setLang(l) {
 }
 function toggleLang() { setLang(lang === "nl" ? "en" : "nl"); }
 function langSwitchHtml() {
-  return '<button class="btn-outline" style="padding:0.25rem 0.5rem;font-size:0.72rem;flex:none" onclick="toggleLang()">' + (lang === "nl" ? "EN" : "NL") + "</button>";
+  return '<button class="btn-outline" style="padding:0.25rem 0.5rem;font-size:0.75rem;flex:none" onclick="toggleLang()">' + (lang === "nl" ? "EN" : "NL") + "</button>";
 }
 
 // ---------- settings (per-klant configuratie) ----------
@@ -446,9 +497,31 @@ var settings = loadSettings();
 function saveSettings() {
   try { localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings)); } catch (e) { /* opslag kan vol/geblokkeerd zijn */ }
 }
+// Relatieve luminantie (WCAG) van een #rrggbb-kleur, gebruikt om knoptekst
+// automatisch zwart of wit te kiezen — nodig omdat primaire/accentkleur per
+// club instelbaar is en dus net zo goed heel donker als heel licht kan zijn.
+function hexToRgb(hex) {
+  var m = /^#?([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})$/i.exec(String(hex || "").trim());
+  return m ? { r: parseInt(m[1], 16), g: parseInt(m[2], 16), b: parseInt(m[3], 16) } : null;
+}
+function relativeLuminance(hex) {
+  var rgb = hexToRgb(hex);
+  if (!rgb) return 1;
+  var chans = [rgb.r, rgb.g, rgb.b].map(function (c) {
+    var s = c / 255;
+    return s <= 0.03928 ? s / 12.92 : Math.pow((s + 0.055) / 1.055, 2.4);
+  });
+  return 0.2126 * chans[0] + 0.7152 * chans[1] + 0.0722 * chans[2];
+}
+function inkFor(hex) {
+  return relativeLuminance(hex) > 0.5 ? "#0b0c0b" : "#ffffff";
+}
 function applySettingsToDom() {
-  document.documentElement.style.setProperty("--amber", settings.primaryColor);
-  document.documentElement.style.setProperty("--sky", settings.accentColor);
+  var root = document.documentElement.style;
+  root.setProperty("--primary", settings.primaryColor);
+  root.setProperty("--primary-ink", inkFor(settings.primaryColor));
+  root.setProperty("--accent", settings.accentColor);
+  root.setProperty("--accent-ink", inkFor(settings.accentColor));
   var themeMeta = document.querySelector('meta[name="theme-color"]');
   if (themeMeta) themeMeta.setAttribute("content", settings.primaryColor);
   document.title = settings.teamName ? settings.teamName + " – " + t("appNameFallback") : t("appNameFallback");
@@ -644,7 +717,7 @@ function startGame() {
   }
   var m = state.clockDown ? MAX_MIN : 0;
   state.beginMin = m; state.beginSec = 0; state.endMin = m; state.endSec = 0;
-  state.selected = null; state.curQuarter = 1;
+  state.selected = null; state.curQuarter = 1; endTouched = false;
   state.phase = "tracking"; currentTab = "track"; commit();
 }
 
@@ -704,6 +777,7 @@ function selectQuarter(q) {
   if (q !== state.curQuarter) {
     var m = state.clockDown ? MAX_MIN : 0;
     state.beginMin = m; state.beginSec = 0; state.endMin = m; state.endSec = 0;
+    endTouched = false;
   }
   state.curQuarter = q; commit();
 }
@@ -713,7 +787,11 @@ function setScore(team, v) {
   commit();
 }
 function addScore(team, n) { setScore(team, (team === "for" ? state.scoreFor : state.scoreAgainst) + n); }
-function setTime(field, v) { state[field] = Number(v); commit(); }
+function setTime(field, v) {
+  state[field] = Number(v);
+  if (field === "endMin" || field === "endSec") endTouched = true;
+  commit();
+}
 
 function segDur() {
   var b = state.beginMin * 60 + state.beginSec, e = state.endMin * 60 + state.endSec;
@@ -738,7 +816,7 @@ function saveSegment() {
     classSum: courtSum, allowed: allowed, over: courtSum > allowed + 0.001
   });
   state.segStartFor = state.scoreFor; state.segStartAgainst = state.scoreAgainst;
-  state.beginMin = state.endMin; state.beginSec = state.endSec;
+  state.beginMin = state.endMin; state.beginSec = state.endSec; endTouched = false;
   pendingSwapLineup = null; // dit segment dekt nu alle wissels tot nu toe
   commit();
 }
@@ -875,9 +953,99 @@ function resumeWhenText() {
 }
 var pendingSwapLineup = null; // opstelling vóór het huidige, nog niet bevestigde blokje wissels
 var swapConfirmDraft = null; // { endMin, endSec } — open zolang de kloktijd-modal getoond wordt
+// Toont de "eind moet ná begin liggen"-fout pas nadat de gebruiker het eind-veld
+// heeft aangeraakt, zodat de melding niet meteen verschijnt zodra begin/eind nog
+// aan elkaar gelijk staan (bij het openen van een nieuw segment).
+var endTouched = false;
 var editSegIdx = null, editSegDraft = null; // segment dat in de bewerk-modal open staat
 function openExport() { exportOpen = true; render(); }
 function closeExport() { exportOpen = false; render(); }
+
+// ---------- iconen ----------
+// Inline SVG-paden in Lucide-stijl (stroke-based, 24x24 viewBox), zodat de app geen
+// externe icon-library nodig heeft en emoji (die per platform/font anders oogt) overal
+// vervangen is door een consistente lijn-stijl die de gekozen --primary kleur volgt.
+var ICON_PATHS = {
+  users: '<path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/>',
+  "circle-play": '<circle cx="12" cy="12" r="10"/><polygon points="10 8 16 12 10 16 10 8"/>',
+  "bar-chart-3": '<path d="M3 3v18h18"/><path d="M18 17V9"/><path d="M13 17V5"/><path d="M8 17v-3"/>',
+  "trending-up": '<polyline points="22 7 13.5 15.5 8.5 10.5 2 17"/><polyline points="16 7 22 7 22 13"/>',
+  history: '<path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/><path d="M12 7v5l4 2"/>',
+  "trash-2": '<path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/>',
+  save: '<path d="M15.2 3a2 2 0 0 1 1.4.6l3.8 3.8a2 2 0 0 1 .6 1.4V19a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2z"/><path d="M17 21v-7a1 1 0 0 0-1-1H8a1 1 0 0 0-1 1v7"/><path d="M7 3v4a1 1 0 0 0 1 1h7a1 1 0 0 0 1-1V3.4"/>',
+  flag: '<path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z"/><line x1="4" y1="22" x2="4" y2="15"/>',
+  upload: '<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/>',
+  "arrow-left-right": '<path d="M8 3 4 7l4 4"/><path d="M4 7h16"/><path d="M16 21l4-4-4-4"/><path d="M20 17H4"/>',
+  check: '<polyline points="20 6 9 17 4 12"/>',
+  "chevron-right": '<polyline points="9 18 15 12 9 6"/>',
+  plus: '<line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>'
+};
+function svgIcon(name, opts) {
+  opts = opts || {};
+  var attrs = 'class="icon"' + (opts.style ? ' style="' + opts.style + '"' : "");
+  return '<svg ' + attrs + ' viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" ' +
+    'stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' + (ICON_PATHS[name] || "") + '</svg>';
+}
+// Combineert een icoon met een tekstlabel, gecentreerd binnen een knop.
+function iconLabel(name, text) {
+  return '<span style="display:inline-flex;align-items:center;justify-content:center;gap:0.4rem">' +
+    svgIcon(name) + '<span>' + text + '</span></span>';
+}
+// Custom toggle-switch (i.p.v. een native checkbox) die --primary volgt, consistent
+// met de rest van de app. onchangeJs is inline JS-code, bv. "setClock(this.checked)".
+function toggleSwitchHtml(checked, onchangeJs) {
+  return '<label class="switch"><input type="checkbox" ' + (checked ? "checked" : "") + ' onchange="' + onchangeJs + '" />' +
+    '<span class="track"></span><span class="thumb"></span></label>';
+}
+// Subtiele sectiekop om een groep instellingenvelden te scheiden (bv. "Club",
+// "Wedstrijd", "Classificatie") — lichter dan een <h2>, met extra ruimte erboven.
+function sectionHead(text, first) {
+  return '<div class="xs mut" style="text-transform:uppercase;letter-spacing:0.08em;font-weight:700;margin:' +
+    (first ? "0" : "1.5rem") + ' 0 0.75rem">' + esc(text) + '</div>';
+}
+// Legt 2-3 label+input-velden naast elkaar in een echte grid (labels op rij 1,
+// inputs op rij 2), zodat een label dat naar een 2e regel wrapt niet meer het
+// bijbehorende invoerveld t.o.v. de buren laat "springen" — met flexbox-kolommen
+// (elk zijn eigen label+input gestapeld) loopt de hoogte per kolom namelijk los.
+function fieldRow(fields) {
+  return '<div class="mb3" style="display:grid;grid-template-columns:repeat(' + fields.length + ',1fr);column-gap:1rem;row-gap:0.5rem">' +
+    fields.map(function (f) { return '<div class="xs mut">' + f.label + '</div>'; }).join("") +
+    fields.map(function (f) { return f.input; }).join("") +
+  '</div>';
+}
+// Curated preset-kleuren die goed ogen op het donkere thema (i.p.v. de rauwe
+// RGB-kleuren van de native kleurkiezer). "Aangepast" opent alsnog de native
+// picker voor volledige vrijheid.
+var COLOR_PRESETS = ["#22c55e", "#10b981", "#0ea5e9", "#3b82f6", "#8b5cf6", "#ec4899", "#f59e0b", "#f97316", "#ef4444", "#14b8a6"];
+function colorPickerHtml(key) {
+  var current = String(settings[key] || "").toLowerCase();
+  var inputId = key + "Native";
+  var isPreset = COLOR_PRESETS.some(function (c) { return c.toLowerCase() === current; });
+  var swatches = COLOR_PRESETS.map(function (c) {
+    var sel = c.toLowerCase() === current;
+    return '<button type="button" class="swatch' + (sel ? " sel" : "") + '" style="background:' + c + '" ' +
+      'onclick="updateSetting(\'' + key + '\', \'' + c + '\')" aria-label="' + c + '"></button>';
+  }).join("");
+  var customBtn = '<button type="button" class="btn-outline" style="padding:0.3rem 0.6rem;font-size:0.68rem;' +
+    'display:inline-flex;align-items:center;gap:0.3rem;flex:none' + (isPreset ? "" : ";border-color:var(--txt);color:var(--txt)") + '" ' +
+    'onclick="document.getElementById(\'' + inputId + '\').click()">' +
+    svgIcon("plus", { style: "width:0.85em;height:0.85em" }) + '<span>' + esc(t("customColorBtn")) + '</span></button>';
+  var nativeInput = '<input type="color" id="' + inputId + '" style="position:absolute;width:1px;height:1px;opacity:0;pointer-events:none" ' +
+    'value="' + esc(settings[key]) + '" onchange="updateSetting(\'' + key + '\', this.value)" />';
+  var isPrimary = key === "primaryColor";
+  var previewCls = isPrimary ? "btn-amber" : "btn-sky";
+  var softVar = isPrimary ? "--primary-soft" : "--accent-soft";
+  var borderVar = isPrimary ? "--primary-border" : "--accent-border";
+  var colorVar = isPrimary ? "--primary" : "--accent";
+  return '<div style="position:relative">' +
+    '<div class="row" style="flex-wrap:wrap;gap:0.4rem">' + swatches + customBtn + '</div>' +
+    nativeInput +
+    '<div class="row" style="gap:0.5rem;margin-top:0.6rem;align-items:center">' +
+      '<button type="button" class="' + previewCls + '" style="padding:0.4rem 0.85rem;font-size:0.78rem;pointer-events:none" tabindex="-1">+1</button>' +
+      '<span style="padding:0.35rem 0.6rem;border-radius:0.75rem;background:var(' + softVar + ');border:1px solid var(' + borderVar + ');color:var(' + colorVar + ');font-size:0.75rem;font-weight:700">7</span>' +
+    '</div>' +
+  '</div>';
+}
 
 // ---------- tabs ----------
 var TABS = ["roster", "track", "stats", "trends", "history"];
@@ -887,7 +1055,7 @@ function switchTab(tabName) {
   render();
 }
 function tabIcon(tabName) {
-  return { roster: "👥", track: "🏀", stats: "📊", trends: "📈", history: "📜" }[tabName];
+  return svgIcon({ roster: "users", track: "circle-play", stats: "bar-chart-3", trends: "trending-up", history: "history" }[tabName], { style: "width:1.15rem;height:1.15rem" });
 }
 
 // ---------- history tab state ----------
@@ -942,7 +1110,7 @@ function resetSettingsToDefault() {
   render();
 }
 function settingsGearHtml() {
-  return '<button class="btn-outline" style="padding:0.25rem 0.5rem;font-size:0.72rem;flex:none" onclick="openSettings()">⚙</button>';
+  return '<button class="btn-outline" style="padding:0.25rem 0.5rem;font-size:0.75rem;flex:none" onclick="openSettings()">⚙</button>';
 }
 function handleLogoFile(file) {
   if (!file) return;
@@ -1019,7 +1187,7 @@ function renderTeamTab() {
         '<div class="row">' +
           '<input class="nrinput num" style="width:2.75rem;flex:none' + (dup ? ";border-color:var(--rose);color:#fda4af" : "") + '" inputmode="numeric" value="' + esc(p.nr) + '" oninput="setNr(' + p.id + ',this.value)" onblur="commitTeamOrder()" />' +
           '<input style="flex:1;min-width:0" placeholder="' + esc(t("namePlaceholder")) + '" value="' + esc(p.naam) + '" oninput="setNaam(' + p.id + ',this.value)" />' +
-          '<button class="btn-outline" style="width:2.25rem;height:2.25rem;flex:none;padding:0;color:var(--mut2)" onclick="removePlayer(' + p.id + ')">🗑</button>' +
+          '<button class="btn-outline" style="width:2.25rem;height:2.25rem;flex:none;padding:0;color:var(--mut2)" onclick="removePlayer(' + p.id + ')">' + svgIcon("trash-2") + '</button>' +
         '</div>' +
         (settings.useClassLimit ? '' +
           '<div class="row" style="margin-top:0.5rem;padding-left:0.25rem">' +
@@ -1074,11 +1242,11 @@ function renderPreGame() {
   var rows = vp.map(function (p) {
     var participating = p.participate !== false;
     return '' +
-      '<div class="card row between" style="padding:0.6rem 0.75rem;margin-bottom:0.4rem">' +
+      '<div class="card row between" style="padding:0.45rem 0.75rem;margin-bottom:0.4rem">' +
         '<span class="sm" style="min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;opacity:' + (participating ? "1" : "0.5") + '">#' + esc(p.nr) + ' ' + esc(p.naam) + '</span>' +
         '<div class="row" style="flex:none;gap:0.375rem">' +
-          '<button class="toggle ' + (participating ? "on-u" : "") + '" onclick="toggleParticipate(' + p.id + ')">' + esc(t("participateToggle")) + '</button>' +
-          (participating ? '<button class="toggle ' + (p.start ? "on-st" : "") + '" onclick="toggleField(' + p.id + ',\'start\')">' + esc(t("toggleStart")) + '</button>' : '') +
+          '<button class="toggle ' + (participating ? "on-p" : "") + '" onclick="toggleParticipate(' + p.id + ')">' + (participating ? iconLabel("check", esc(t("participateToggle"))) : esc(t("participateToggle"))) + '</button>' +
+          (participating ? '<button class="toggle ' + (p.start ? "on-p" : "") + '" onclick="toggleField(' + p.id + ',\'start\')">' + (p.start ? iconLabel("check", esc(t("toggleStart"))) : esc(t("toggleStart"))) + '</button>' : '') +
         '</div>' +
       '</div>';
   }).join("");
@@ -1101,10 +1269,10 @@ function renderPreGame() {
         '<span class="sm">' + t("classLimitLabel") + ' <span class="mut2">' + t("classLimitHint") + '</span></span>' +
         '<input class="num" style="width:4rem;flex:none" inputmode="decimal" value="' + esc(state.limitStr) + '" oninput="setLimit(this.value)" />' +
       '</div>' : '') +
-    '<label class="card row between" style="padding:0.75rem">' +
+    '<div class="card row between" style="padding:0.75rem">' +
       '<span class="sm">' + t("clockDownLabel") + ' <span class="mut2">' + t("clockDownHint") + '</span></span>' +
-      '<input type="checkbox" style="width:1.25rem;height:1.25rem;flex:none;accent-color:var(--amber)" ' + (state.clockDown ? "checked" : "") + ' onchange="setClock(this.checked)" />' +
-    '</label>' +
+      toggleSwitchHtml(state.clockDown, "setClock(this.checked)") +
+    '</div>' +
     '<button id="startbtn" class="btn-amber ' + (canStart() ? "" : "disabled") + '" style="width:100%;padding:0.75rem" onclick="startGame()">' + startLabel + '</button>';
 }
 
@@ -1135,7 +1303,7 @@ function scoreRow(team) {
   var btnCls = isFor ? "btn-amber" : "btn-sky";
   return '<div style="margin-bottom:0.75rem">' +
     '<div class="row between mb2">' +
-      '<span class="sm" style="font-weight:600;color:' + (isFor ? "var(--amber)" : "var(--sky)") + '">' + esc(name) +
+      '<span class="sm" style="font-weight:600;color:' + (isFor ? "var(--primary)" : "var(--accent)") + '">' + esc(name) +
       ' <span class="xs mut2" style="font-weight:400">' + esc(t("segmentDelta", { delta: (delta >= 0 ? "+" : "") + delta })) + '</span></span>' +
     '</div>' +
     '<div class="row">' +
@@ -1144,7 +1312,7 @@ function scoreRow(team) {
         '<button class="' + btnCls + ' scorebtn" onclick="addScore(\'' + team + '\',1)">+1</button>' +
         '<button class="' + btnCls + ' scorebtn" onclick="addScore(\'' + team + '\',2)">+2</button>' +
         '<button class="' + btnCls + ' scorebtn" onclick="addScore(\'' + team + '\',3)">+3</button>' +
-        '<button class="btn-ghost" style="grid-column:span 3;padding:0.4rem;font-size:0.8rem" onclick="addScore(\'' + team + '\',-1)">' + esc(t("correctMinus1")) + '</button>' +
+        '<button class="btn-outline" style="grid-column:span 3;padding:0.4rem;font-size:0.8rem" onclick="addScore(\'' + team + '\',-1)">' + esc(t("correctMinus1")) + '</button>' +
       '</div>' +
     '</div>' +
   '</div>';
@@ -1196,7 +1364,7 @@ function renderTracking() {
         '</div>' +
       '</div>' +
       '<div class="row" style="flex:none;gap:0.375rem">' + langSwitchHtml() +
-      '<button class="btn-outline" style="padding:0.25rem 0.5rem;font-size:0.72rem;flex:none" onclick="resetAll()">' + t("resetBtn") + '</button></div>' +
+      '<button class="btn-outline" style="padding:0.25rem 0.5rem;font-size:0.75rem;flex:none" onclick="resetAll()">' + t("resetBtn") + '</button></div>' +
     '</div>' +
 
     '<div class="card">' + scoreRow("for") + scoreRow("against") + '</div>' +
@@ -1212,9 +1380,9 @@ function renderTracking() {
 
     (settings.useClassLimit && courtOver ? '<div class="warn mb2 pill">' + t("tooManyClassPoints", { sum: courtSum.toFixed(1), allow: courtAllowed.toFixed(1) }) + "</div>" : "") +
 
-    '<div class="row xs mut mb2" style="min-height:18px">↔ ' +
+    '<div class="row xs mut mb2" style="min-height:18px">' + svgIcon("arrow-left-right", { style: "width:0.9em;height:0.9em;flex:none" }) +
       (state.selected != null
-        ? '<span style="min-width:0"><span style="color:var(--amber);font-weight:600">' + esc(label(state.selected.id)) + '</span>' + esc(t("swapChosenSuffix")) + '</span>'
+        ? '<span style="min-width:0"><span style="color:var(--primary);font-weight:600">' + esc(label(state.selected.id)) + '</span>' + esc(t("swapChosenSuffix")) + '</span>'
         : '<span style="min-width:0">' + esc(t("swapHint")) + '</span>') +
     '</div>' +
 
@@ -1251,16 +1419,17 @@ function renderTracking() {
         '</div>' +
       '</div>' +
       '<p class="xs" style="text-align:center;margin:0.5rem 0">' +
-        (durValid ? '<span class="ok">' + esc(t("segDurationValid", { fmt: fmt(dur) })) + '</span>' : '<span class="bad">' + esc(t("endAfterBegin")) + '</span>') +
+        (durValid ? '<span class="ok">' + esc(t("segDurationValid", { fmt: fmt(dur) })) + '</span>'
+          : endTouched ? '<span class="bad">' + esc(t("endAfterBegin")) + '</span>' : "&nbsp;") +
       '</p>' +
-      '<button class="btn-emerald ' + (durValid && lineupValid ? "" : "disabled") + '" style="width:100%;padding:0.75rem" onclick="saveSegment()">' + esc(t("saveSegmentBtn", { segPM: (segPM >= 0 ? "+" : "") + segPM })) + '</button>' +
+      '<button class="btn-emerald ' + (durValid && lineupValid ? "" : "disabled") + '" style="width:100%;padding:0.75rem" onclick="saveSegment()">' + iconLabel("save", esc(t("saveSegmentBtn", { segPM: (segPM >= 0 ? "+" : "") + segPM }))) + '</button>' +
       (lineupValid ? "" : '<p class="xs bad" style="text-align:center;margin-top:0.5rem">' + esc(t("needFivePlayers")) + '</p>') +
     '</div>' +
 
     segHtml +
 
-    '<button class="btn-emerald ' + (state.segments.length === 0 ? "disabled" : "") + '" style="width:100%;padding:0.75rem;margin-bottom:0.5rem" onclick="finishGame()">' + t("finishGameBtn") + '</button>' +
-    '<button class="btn-outline ' + (state.segments.length === 0 ? "disabled" : "") + '" style="width:100%;padding:0.6rem;margin-bottom:1rem" onclick="openExport()">' + t("exportOnlyBtn") + '</button>';
+    '<button class="btn-emerald ' + (state.segments.length === 0 ? "disabled" : "") + '" style="width:100%;padding:0.75rem;margin-bottom:0.5rem" onclick="finishGame()">' + iconLabel("flag", t("finishGameBtn")) + '</button>' +
+    '<button class="btn-outline ' + (state.segments.length === 0 ? "disabled" : "") + '" style="width:100%;padding:0.6rem;margin-bottom:1rem" onclick="openExport()">' + iconLabel("upload", t("exportOnlyBtn")) + '</button>';
 }
 
 function renderSettingsModal() {
@@ -1271,6 +1440,8 @@ function renderSettingsModal() {
     '<div class="modal" onclick="event.stopPropagation()">' +
       '<div class="row between mb2"><h2 style="margin:0">' + esc(t("settingsTitle")) + '</h2>' +
         '<button class="btn-outline" style="border:none;padding:0;color:var(--mut)" onclick="closeSettings()">✕</button></div>' +
+
+      sectionHead(t("settingsSectionClub"), true) +
 
       '<div class="mb3"><div class="xs mut mb2">' + esc(t("teamNameLabel")) + '</div>' +
         '<input style="width:100%" value="' + esc(settings.teamName) + '" onchange="updateSetting(\'teamName\', this.value)" /></div>' +
@@ -1283,50 +1454,50 @@ function renderSettingsModal() {
           (settings.logoUri ? '<button class="btn-outline" style="padding:0.4rem 0.6rem;font-size:0.8rem" onclick="updateSetting(\'logoUri\', \'\')">' + esc(t("logoRemoveBtn")) + '</button>' : '') +
         '</div></div>' +
 
-      '<div class="row mb3" style="gap:1rem">' +
-        '<div style="flex:1"><div class="xs mut mb2">' + esc(t("primaryColorLabel")) + '</div>' +
-          '<input type="color" style="width:100%;height:2.25rem;padding:0.15rem" value="' + settings.primaryColor + '" onchange="updateSetting(\'primaryColor\', this.value)" /></div>' +
-        '<div style="flex:1"><div class="xs mut mb2">' + esc(t("accentColorLabel")) + '</div>' +
-          '<input type="color" style="width:100%;height:2.25rem;padding:0.15rem" value="' + settings.accentColor + '" onchange="updateSetting(\'accentColor\', this.value)" /></div>' +
-      '</div>' +
+      '<div class="mb3"><div class="xs mut mb2">' + esc(t("primaryColorLabel")) + '</div>' + colorPickerHtml("primaryColor") + '</div>' +
+      '<div class="mb3"><div class="xs mut mb2">' + esc(t("accentColorLabel")) + '</div>' + colorPickerHtml("accentColor") + '</div>' +
 
-      '<div class="row mb3" style="gap:1rem">' +
-        '<div style="flex:1"><div class="xs mut mb2">' + esc(t("quarterCountLabel")) + '</div>' +
-          '<input class="num" type="number" min="1" max="12" style="width:100%" value="' + settings.quarterCount + '" onchange="updateSetting(\'quarterCount\', Math.max(1, parseInt(this.value,10)||1))" /></div>' +
-        '<div style="flex:1"><div class="xs mut mb2">' + esc(t("periodLabelLabel")) + '</div>' +
-          '<input style="width:100%" placeholder="' + esc(t("quarterLabel")) + '" value="' + esc(settings.periodLabel) + '" onchange="updateSetting(\'periodLabel\', this.value)" /></div>' +
-      '</div>' +
+      sectionHead(t("settingsSectionMatch")) +
 
-      '<label class="row between mb3">' +
+      fieldRow([
+        { label: esc(t("quarterCountLabel")),
+          input: '<input class="num" type="number" min="1" max="12" style="width:100%" value="' + settings.quarterCount + '" onchange="updateSetting(\'quarterCount\', Math.max(1, parseInt(this.value,10)||1))" />' },
+        { label: esc(t("periodLabelLabel")),
+          input: '<input style="width:100%" placeholder="' + esc(t("quarterLabel")) + '" value="' + esc(settings.periodLabel) + '" onchange="updateSetting(\'periodLabel\', this.value)" />' }
+      ]) +
+
+      sectionHead(t("settingsSectionClass")) +
+
+      '<div class="row between mb3">' +
         '<span class="sm">' + esc(t("useClassLimitLabel")) + '</span>' +
-        '<input type="checkbox" style="width:1.25rem;height:1.25rem;flex:none;accent-color:var(--amber)" ' + (settings.useClassLimit ? "checked" : "") + ' onchange="updateSetting(\'useClassLimit\', this.checked)" />' +
-      '</label>' +
+        toggleSwitchHtml(settings.useClassLimit, "updateSetting('useClassLimit', this.checked)") +
+      '</div>' +
 
       (settings.useClassLimit ? '' +
         '<p class="xs mut mb3">' + esc(t("classLimitExplain")) + '</p>' +
-        '<div class="row mb3" style="gap:1rem">' +
-          '<div style="flex:1"><div class="xs mut mb2">' + esc(t("tag1LabelLabel")) + ' <span class="mut2">(' + esc(t("tag1LabelHint")) + ')</span></div>' +
-            '<input style="width:100%" placeholder="' + esc(t("toggleTag1Default")) + '" value="' + esc(settings.tag1Label) + '" onchange="updateSetting(\'tag1Label\', this.value)" /></div>' +
-          '<div style="flex:1"><div class="xs mut mb2">' + esc(t("tag2LabelLabel")) + ' <span class="mut2">(' + esc(t("tag2LabelHint")) + ')</span></div>' +
-            '<input style="width:100%" placeholder="' + esc(t("toggleTag2Default")) + '" value="' + esc(settings.tag2Label) + '" onchange="updateSetting(\'tag2Label\', this.value)" /></div>' +
-        '</div>' +
-        '<div class="row mb3" style="gap:1rem">' +
-          '<div style="flex:1"><div class="xs mut mb2">' + esc(t("classBaseLimitSettingLabel")) + '</div>' +
-            '<input class="num" type="number" step="0.1" style="width:100%" value="' + settings.classBaseLimit + '" onchange="updateSetting(\'classBaseLimit\', parseFloat(this.value)||0)" /></div>' +
-          '<div style="flex:1"><div class="xs mut mb2">' + esc(t("maxBonusLabel")) + '</div>' +
-            '<input class="num" type="number" step="0.1" style="width:100%" value="' + settings.maxBonus + '" onchange="updateSetting(\'maxBonus\', parseFloat(this.value)||0)" /></div>' +
-        '</div>' +
-        '<div class="row mb3" style="gap:0.75rem">' +
-          '<div style="flex:1"><div class="xs mut mb2">' + esc(t("bonusTag1OnlyLabel")) + '</div>' +
-            '<input class="num" type="number" step="0.1" style="width:100%" value="' + settings.bonusTag1Only + '" onchange="updateSetting(\'bonusTag1Only\', parseFloat(this.value)||0)" /></div>' +
-          '<div style="flex:1"><div class="xs mut mb2">' + esc(t("bonusTag2OnlyLabel")) + '</div>' +
-            '<input class="num" type="number" step="0.1" style="width:100%" value="' + settings.bonusTag2Only + '" onchange="updateSetting(\'bonusTag2Only\', parseFloat(this.value)||0)" /></div>' +
-          '<div style="flex:1"><div class="xs mut mb2">' + esc(t("bonusBothLabel")) + '</div>' +
-            '<input class="num" type="number" step="0.1" style="width:100%" value="' + settings.bonusBoth + '" onchange="updateSetting(\'bonusBoth\', parseFloat(this.value)||0)" /></div>' +
-        '</div>'
+        fieldRow([
+          { label: esc(t("tag1LabelLabel")) + ' <span class="mut2">(' + esc(t("tag1LabelHint")) + ')</span>',
+            input: '<input style="width:100%" placeholder="' + esc(t("toggleTag1Default")) + '" value="' + esc(settings.tag1Label) + '" onchange="updateSetting(\'tag1Label\', this.value)" />' },
+          { label: esc(t("tag2LabelLabel")) + ' <span class="mut2">(' + esc(t("tag2LabelHint")) + ')</span>',
+            input: '<input style="width:100%" placeholder="' + esc(t("toggleTag2Default")) + '" value="' + esc(settings.tag2Label) + '" onchange="updateSetting(\'tag2Label\', this.value)" />' }
+        ]) +
+        fieldRow([
+          { label: esc(t("classBaseLimitSettingLabel")),
+            input: '<input class="num" type="number" step="0.1" style="width:100%" value="' + settings.classBaseLimit + '" onchange="updateSetting(\'classBaseLimit\', parseFloat(this.value)||0)" />' },
+          { label: esc(t("maxBonusLabel")),
+            input: '<input class="num" type="number" step="0.1" style="width:100%" value="' + settings.maxBonus + '" onchange="updateSetting(\'maxBonus\', parseFloat(this.value)||0)" />' }
+        ]) +
+        fieldRow([
+          { label: esc(t("bonusTag1OnlyLabel")),
+            input: '<input class="num" type="number" step="0.1" style="width:100%" value="' + settings.bonusTag1Only + '" onchange="updateSetting(\'bonusTag1Only\', parseFloat(this.value)||0)" />' },
+          { label: esc(t("bonusTag2OnlyLabel")),
+            input: '<input class="num" type="number" step="0.1" style="width:100%" value="' + settings.bonusTag2Only + '" onchange="updateSetting(\'bonusTag2Only\', parseFloat(this.value)||0)" />' },
+          { label: esc(t("bonusBothLabel")),
+            input: '<input class="num" type="number" step="0.1" style="width:100%" value="' + settings.bonusBoth + '" onchange="updateSetting(\'bonusBoth\', parseFloat(this.value)||0)" />' }
+        ])
         : '') +
 
-      '<button class="btn-emerald" style="width:100%;padding:0.75rem;margin-top:0.25rem;margin-bottom:0.5rem" onclick="closeSettings()">' + esc(t("saveBtn")) + '</button>' +
+      '<button class="btn-emerald" style="width:100%;padding:0.75rem;margin-top:0.25rem;margin-bottom:0.5rem" onclick="closeSettings()">' + iconLabel("save", esc(t("saveBtn"))) + '</button>' +
       '<button class="btn-outline" style="width:100%;padding:0.5rem;font-size:0.8rem;margin-bottom:1rem" onclick="resetSettingsToDefault()">' + esc(t("settingsResetBtn")) + '</button>' +
 
       '<div style="border-top:1px solid var(--line);padding-top:0.75rem">' +
@@ -1349,7 +1520,7 @@ function renderExport() {
       '<div class="row between mb2"><h2 style="margin:0">' + esc(t("exportTitle")) + '</h2>' +
         '<button class="btn-outline" style="border:none;padding:0;color:var(--mut)" onclick="closeExport()">✕</button></div>' +
       '<p class="xs mut mb3">' + esc(t("exportDesc")) + '</p>' +
-      '<button class="btn-emerald" style="width:100%;padding:0.85rem" onclick="shareOrDownloadCsv(combinedCsv(), csvFilename())">' + esc(t("exportShareBtn")) + '</button>' +
+      '<button class="btn-emerald" style="width:100%;padding:0.85rem" onclick="shareOrDownloadCsv(combinedCsv(), csvFilename())">' + iconLabel("upload", esc(t("exportShareBtn"))) + '</button>' +
     '</div>';
   app.appendChild(overlay);
 }
@@ -1480,8 +1651,8 @@ function renderEditSegment() {
         '<div style="flex:1"><div class="xs mut mb2">' + esc(t("ptsAgainst")) + '</div>' +
           '<input class="num" type="number" style="width:100%" value="' + editSegDraft.pa + '" oninput="setEditPts(\'pa\',this.value)" /></div>' +
       '</div>' +
-      '<button class="btn-emerald ' + (durValid && lineupValid ? "" : "disabled") + '" style="width:100%;padding:0.75rem;margin-bottom:0.5rem" onclick="saveEditSegment()">' + esc(t("saveBtn")) + '</button>' +
-      '<button class="btn-rose" style="width:100%;padding:0.6rem" onclick="deleteEditSegment()">' + esc(t("deleteBtn")) + '</button>' +
+      '<button class="btn-emerald ' + (durValid && lineupValid ? "" : "disabled") + '" style="width:100%;padding:0.75rem;margin-bottom:0.5rem" onclick="saveEditSegment()">' + iconLabel("save", esc(t("saveBtn"))) + '</button>' +
+      '<button class="btn-rose" style="width:100%;padding:0.6rem" onclick="deleteEditSegment()">' + iconLabel("trash-2", esc(t("deleteBtn"))) + '</button>' +
     '</div>';
   app.appendChild(overlay);
 }
@@ -1564,14 +1735,19 @@ function comboRowHtml(combo) {
   var onShow = statsPer10 && combo.onSec > 0 ? onPM * 600 / combo.onSec : onPM;
   var offShow = statsPer10 && combo.offSec > 0 ? offPM * 600 / combo.offSec : offPM;
   var names = combo.ids.map(function (id) { var p = playerById(id); return p ? ("#" + p.nr + " " + p.naam) : "#? ?"; });
+  var cols = [
+    { label: t("statsColTime"), value: fmt(combo.onSec), color: "var(--txt)" },
+    { label: t("statsColPts"), value: combo.onPF, color: "var(--emerald)" },
+    { label: t("statsColOpp"), value: combo.onPA, color: "var(--rose)" },
+    { label: t("statsColOn"), value: fmtPM(onShow), color: onShow >= 0 ? "var(--emerald)" : "var(--rose)" },
+    { label: t("statsColOff"), value: fmtPM(offShow), color: offShow >= 0 ? "var(--emerald)" : "var(--rose)" }
+  ];
   return '<div class="card" style="padding:0.6rem 0.75rem;margin-bottom:0.5rem">' +
     '<div class="xs" style="line-height:1.5">' + names.map(esc).join("<br>") + '</div>' +
-    '<div class="row between xs tab mut" style="margin-top:0.4rem;gap:0.375rem">' +
-      '<span>' + esc(t("statsColTime")) + ' <b class="mut" style="color:var(--txt)">' + fmt(combo.onSec) + '</b></span>' +
-      '<span>' + esc(t("statsColPts")) + ' <b style="color:var(--emerald)">' + combo.onPF + '</b></span>' +
-      '<span>' + esc(t("statsColOpp")) + ' <b style="color:var(--rose)">' + combo.onPA + '</b></span>' +
-      '<span>' + esc(t("statsColOn")) + ' <b style="color:' + (onShow >= 0 ? "var(--emerald)" : "var(--rose)") + '">' + fmtPM(onShow) + '</b></span>' +
-      '<span>' + esc(t("statsColOff")) + ' <b style="color:' + (offShow >= 0 ? "var(--emerald)" : "var(--rose)") + '">' + fmtPM(offShow) + '</b></span>' +
+    '<div class="statsgrid xs tab" style="margin-top:0.4rem">' +
+      cols.map(function (c) {
+        return '<div><div class="mut2">' + esc(c.label) + '</div><div class="v" style="color:' + c.color + '">' + esc(String(c.value)) + '</div></div>';
+      }).join("") +
     '</div>' +
   '</div>';
 }
@@ -1596,7 +1772,7 @@ function renderStatsTab() {
     '</div>' +
     '<div class="row mb3" style="gap:0.375rem;flex-wrap:wrap">' +
       '<button class="btn-outline xs" style="padding:0.35rem 0.6rem" onclick="toggleStatsSort()">+/- ' + (statsSortDesc ? "↓" : "↑") + '</button>' +
-      '<button class="btn-outline xs" style="padding:0.35rem 0.6rem' + (statsPer10 ? ";background:var(--amber);color:var(--bg);border-color:transparent" : "") + '" onclick="toggleStatsPer10()">' + esc(t("statsPer10")) + '</button>' +
+      '<button class="btn-outline xs" style="padding:0.35rem 0.6rem' + (statsPer10 ? ";background:var(--primary-soft);color:var(--primary);border-color:var(--primary-border)" : "") + '" onclick="toggleStatsPer10()">' + esc(t("statsPer10")) + '</button>' +
       '<button class="btn-outline xs" style="padding:0.35rem 0.6rem" onclick="openStatsGameFilter()">' + esc(t("statsGamesBtn")) + ' (' + nGamesSel + ')</button>' +
       '<button class="btn-outline xs" style="padding:0.35rem 0.6rem" onclick="openStatsFilter()">' + esc(t("statsFilterBtn")) + (nFilters ? " (" + nFilters + ")" : "") + '</button>' +
     '</div>' +
@@ -1621,7 +1797,7 @@ function renderStatsGameModal() {
         var on = selected.has(g.id);
         return '<label class="row between" style="padding:0.5rem 0;border-bottom:1px solid var(--line)">' +
           '<span class="sm">' + esc(g.isCurrent ? t("statsCurrentGame") : (g.opponent || t("teamOpponent"))) + ' <span class="mut2 xs">' + esc(gameDateLabel(g)) + (g.competition ? " · " + esc(g.competition) : "") + '</span></span>' +
-          '<input type="checkbox" ' + (on ? "checked" : "") + ' style="width:1.1rem;height:1.1rem;flex:none;accent-color:var(--amber)" onchange="toggleStatsGame(\'' + g.id + '\')" />' +
+          '<input type="checkbox" ' + (on ? "checked" : "") + ' style="width:1.1rem;height:1.1rem;flex:none;accent-color:var(--primary)" onchange="toggleStatsGame(\'' + g.id + '\')" />' +
         '</label>';
       }).join("") +
     '</div>';
@@ -1663,7 +1839,11 @@ function renderHistoryTab() {
         return '<button class="card row between" style="width:100%;text-align:left;color:var(--txt);padding:0.75rem" onclick="openHistoryGame(\'' + g.id + '\')">' +
           '<span style="min-width:0"><span class="sm" style="font-weight:600">' + esc(g.opponent || t("teamOpponent")) + '</span><br>' +
           '<span class="xs mut2">' + esc(gameDateLabel(g)) + (g.competition ? " · " + esc(g.competition) : "") + '</span></span>' +
-          '<span class="tab" style="font-weight:700;flex:none;color:' + c + '">' + g.scoreFor + ' - ' + g.scoreAgainst + '</span>' +
+          '<span class="row" style="flex:none;gap:0.5rem">' +
+            '<span style="width:0.5rem;height:0.5rem;border-radius:50%;background:' + c + ';flex:none"></span>' +
+            '<span class="tab" style="font-weight:700">' + g.scoreFor + ' - ' + g.scoreAgainst + '</span>' +
+            svgIcon("chevron-right", { style: "width:1rem;height:1rem;color:var(--mut2)" }) +
+          '</span>' +
         '</button>';
       }).join("")
     );
@@ -1675,7 +1855,7 @@ function renderHistoryDetail() {
   app.innerHTML = '' +
     '<div class="row between mb3">' +
       '<button class="btn-outline" style="padding:0.3rem 0.6rem" onclick="closeHistoryGame()">← ' + esc(t("backBtn")) + '</button>' +
-      '<button class="btn-rose" style="padding:0.3rem 0.6rem" onclick="deleteGame(\'' + g.id + '\')">' + esc(t("deleteBtn")) + '</button>' +
+      '<button class="btn-rose" style="padding:0.3rem 0.6rem" onclick="deleteGame(\'' + g.id + '\')">' + iconLabel("trash-2", esc(t("deleteBtn"))) + '</button>' +
     '</div>' +
     '<h1 class="mb2">' + esc(g.opponent || t("teamOpponent")) + '</h1>' +
     '<p class="xs mut mb3">' + esc(gameDateLabel(g)) + (g.competition ? " · " + esc(g.competition) : "") + ' · ' + g.scoreFor + ' - ' + g.scoreAgainst + '</p>' +
@@ -1692,7 +1872,7 @@ function renderHistoryDetail() {
           '</span></div>';
       }).join("") +
     '</div>' +
-    '<button class="btn-emerald" style="width:100%;padding:0.75rem;margin-bottom:1rem" onclick="exportHistoryGame(\'' + g.id + '\')">' + esc(t("exportShareBtn")) + '</button>';
+    '<button class="btn-emerald" style="width:100%;padding:0.75rem;margin-bottom:1rem" onclick="exportHistoryGame(\'' + g.id + '\')">' + iconLabel("upload", esc(t("exportShareBtn"))) + '</button>';
 }
 
 // ---------- trends tab ----------
@@ -1760,24 +1940,28 @@ function pmLineChartSvg(pts) {
   }).join("");
   return '<svg viewBox="0 0 ' + w + ' ' + h + '" style="width:100%;height:4.5rem;display:block" preserveAspectRatio="none">' +
     '<line x1="0" y1="' + midY + '" x2="' + w + '" y2="' + midY + '" stroke="var(--line)" stroke-width="1" />' +
-    (pts.length > 1 ? '<polyline points="' + polyline + '" fill="none" stroke="var(--amber)" stroke-width="2" />' : '') +
+    (pts.length > 1 ? '<polyline points="' + polyline + '" fill="none" stroke="var(--primary)" stroke-width="2" />' : '') +
     dots +
   '</svg>';
 }
-function minutesBarChartHtml(pts) {
-  var mins = pts.map(function (pt) { return pt.sec / 60; });
-  var maxMin = Math.max(1, Math.max.apply(null, mins));
+function minutesBarChartHtml(pts, sharedMaxMin) {
+  // sharedMaxMin (over alle spelers/wedstrijden op dit tabblad) i.p.v. een lokaal
+  // maximum per speler, zodat de balkhoogte tussen spelerskaarten vergelijkbaar
+  // blijft — anders bereikt de langste speeltijd van élke speler altijd 100%.
+  var maxMin = sharedMaxMin || Math.max(1, Math.max.apply(null, pts.map(function (pt) { return pt.sec / 60; })));
   var bars = pts.map(function (pt) {
-    var pct = Math.max(4, (pt.sec / 60 / maxMin) * 100);
-    return '<div style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:flex-end;height:3rem">' +
-      '<div style="width:60%;background:var(--teal);border-radius:0.15rem 0.15rem 0 0;height:' + pct.toFixed(0) + '%"></div>' +
+    var min = pt.sec / 60;
+    var pct = Math.max(4, (min / maxMin) * 100);
+    return '<div style="flex:1;min-width:0;display:flex;flex-direction:column;align-items:center;gap:0.15rem">' +
+      '<span class="mut2" style="font-size:0.55rem;line-height:1">' + min.toFixed(0) + '</span>' +
+      '<div style="width:60%;display:flex;align-items:flex-end;height:3rem">' +
+        '<div style="width:100%;background:var(--teal);border-radius:0.15rem 0.15rem 0 0;height:' + pct.toFixed(0) + '%"></div>' +
+      '</div>' +
     '</div>';
   }).join("");
-  return '<div class="row" style="align-items:flex-end;gap:0.15rem;height:3rem">' + bars + '</div>';
+  return '<div class="row" style="align-items:flex-end;gap:0.15rem;border-bottom:1px solid var(--line)">' + bars + '</div>';
 }
-function playerTrendHtml(p, scope) {
-  var pts = computePlayerTrend(p.id, scope);
-  if (pts.length === 0) return "";
+function playerTrendHtml(p, pts, sharedMaxMin) {
   var totalSec = pts.reduce(function (a, pt) { return a + pt.sec; }, 0);
   var avgMin = totalSec / 60 / pts.length;
   var avgPM = pts.reduce(function (a, pt) { return a + trendPmValue(pt); }, 0) / pts.length;
@@ -1801,7 +1985,7 @@ function playerTrendHtml(p, scope) {
     '<div class="xs mut2" style="margin-bottom:0.2rem">' + esc(t("trendsPmChartLabel")) + '</div>' +
     pmLineChartSvg(pts) +
     '<div class="xs mut2" style="margin:0.5rem 0 0.2rem">' + esc(t("trendsMinChartLabel")) + '</div>' +
-    minutesBarChartHtml(pts) +
+    minutesBarChartHtml(pts, sharedMaxMin) +
     '<button class="btn-outline xs" style="width:100%;padding:0.35rem;margin-top:0.6rem" onclick="toggleTrendsExpanded(' + p.id + ')">' +
       (trendsExpanded[p.id] ? esc(t("trendsHideGames")) : esc(t("trendsShowGames", { n: pts.length }))) +
     '</button>' +
@@ -1811,16 +1995,21 @@ function playerTrendHtml(p, scope) {
 function renderTrendsTab() {
   var scope = trendsScopeGames();
   var players = sortTrendsPlayers(trendsPlayers(scope), scope);
+  var playerPts = players.map(function (p) { return { p: p, pts: computePlayerTrend(p.id, scope) }; })
+    .filter(function (x) { return x.pts.length > 0; });
+  var allMins = [];
+  playerPts.forEach(function (x) { x.pts.forEach(function (pt) { allMins.push(pt.sec / 60); }); });
+  var sharedMaxMin = Math.max(1, allMins.length ? Math.max.apply(null, allMins) : 1);
   var nGamesSel = statsGameIds == null ? statsScopeGames().length : statsGameIds.size;
   var sortLabel = trendsSortBy === "min" ? t("trendsMinLabel") : trendsSortBy === "pm" ? t("trendsPmLabel") : t("trendsSortNr");
   app.innerHTML = topBarHtml() +
     '<div class="row mb3" style="gap:0.375rem;flex-wrap:wrap">' +
-      '<button class="btn-outline xs" style="padding:0.35rem 0.6rem' + (trendsPer10 ? ";background:var(--amber);color:var(--bg);border-color:transparent" : "") + '" onclick="toggleTrendsPer10()">' + esc(t("statsPer10")) + '</button>' +
+      '<button class="btn-outline xs" style="padding:0.35rem 0.6rem' + (trendsPer10 ? ";background:var(--primary-soft);color:var(--primary);border-color:var(--primary-border)" : "") + '" onclick="toggleTrendsPer10()">' + esc(t("statsPer10")) + '</button>' +
       '<button class="btn-outline xs" style="padding:0.35rem 0.6rem" onclick="openStatsGameFilter()">' + esc(t("statsGamesBtn")) + ' (' + nGamesSel + ')</button>' +
       '<button class="btn-outline xs" style="padding:0.35rem 0.6rem" onclick="cycleTrendsSort()">' + esc(t("trendsSortLabel")) + ': ' + esc(sortLabel) + '</button>' +
     '</div>' +
-    (players.length === 0 ? '<p class="xs mut" style="text-align:center;margin-top:2rem">' + esc(t("trendsNoData")) + '</p>'
-      : players.map(function (p) { return playerTrendHtml(p, scope); }).join(""));
+    (playerPts.length === 0 ? '<p class="xs mut" style="text-align:center;margin-top:2rem">' + esc(t("trendsNoData")) + '</p>'
+      : playerPts.map(function (x) { return playerTrendHtml(x.p, x.pts, sharedMaxMin); }).join(""));
 }
 
 function topBarHtml() {
