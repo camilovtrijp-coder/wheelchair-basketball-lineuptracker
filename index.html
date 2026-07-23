@@ -462,6 +462,7 @@ var STRINGS = {
     exportOnlyBtn: "Alleen CSV exporteren",
     confirmFinishGame: "Wedstrijd afronden en opslaan in de wedstrijdgeschiedenis? Er start daarna een nieuwe, lege wedstrijd.",
     confirmDeleteGame: "Deze wedstrijd definitief verwijderen uit de geschiedenis?",
+    confirmDeletePlayer: "Deze speler definitief verwijderen? Als deze speler al in de huidige (lopende) wedstrijd heeft gespeeld, worden diens gegevens in de opgeslagen line-ups van die wedstrijd onherkenbaar. Dit kan niet ongedaan worden gemaakt.",
     preGameIntro: "Kies wie er meedoet en wie start. Spelersgegevens (naam, rugnummer, classificatie) pas je aan op Team.",
     participateToggle: "Meedoen",
     startNeedFiveParticipating: "Minimaal 5 deelnemende spelers nodig",
@@ -476,7 +477,7 @@ var STRINGS = {
     statsCurrentGame: "Huidige wedstrijd",
     statsNoData: "Nog geen wedstrijddata. Speel en rond een wedstrijd af om hier stats te zien.",
     statsNoCombos: "Geen combinaties gevonden met dit filter.",
-    statsColTime: "Tijd", statsColPts: "Pnt", statsColOpp: "Teg", statsColOn: "Aan", statsColOff: "Uit",
+    statsColTime: "Tijd", statsColPts: "Pnt", statsColOpp: "Teg", statsColOn: "Met hen", statsColOff: "Zonder hen",
     historyEmpty: "Nog geen afgeronde wedstrijden.",
     clearBtn: "Wissen",
     doneBtn: "Klaar",
@@ -595,6 +596,7 @@ var STRINGS = {
     exportOnlyBtn: "Export CSV only",
     confirmFinishGame: "Finish this match and save it to game history? A new, empty match will start afterwards.",
     confirmDeleteGame: "Permanently delete this match from history?",
+    confirmDeletePlayer: "Permanently delete this player? If they already played in the current (in-progress) match, their data in that match's saved lineups will become unrecognizable. This cannot be undone.",
     preGameIntro: "Choose who's playing and who starts. Edit player details (name, shirt number, classification) on the Roster tab.",
     participateToggle: "Play",
     startNeedFiveParticipating: "At least 5 participating players needed",
@@ -609,7 +611,7 @@ var STRINGS = {
     statsCurrentGame: "Current match",
     statsNoData: "No match data yet. Play and finish a match to see stats here.",
     statsNoCombos: "No combinations found with this filter.",
-    statsColTime: "Time", statsColPts: "Pts", statsColOpp: "Opp", statsColOn: "On", statsColOff: "Off",
+    statsColTime: "Time", statsColPts: "Pts", statsColOpp: "Opp", statsColOn: "With them", statsColOff: "Without them",
     historyEmpty: "No finished matches yet.",
     clearBtn: "Clear",
     doneBtn: "Done",
@@ -854,6 +856,7 @@ function startCount() {
   return state.players.filter(function (p) { return p.start && p.naam.trim() !== "" && p.participate !== false; }).length;
 }
 function removePlayer(id) {
+  if (!window.confirm(t("confirmDeletePlayer"))) return;
   state.players = state.players.filter(function (p) { return p.id !== id; });
   commit();
 }
@@ -1365,7 +1368,7 @@ function renderTeamTab() {
     return '' +
       '<div class="card" style="padding:0.5rem;margin-bottom:0.5rem">' +
         '<div class="row">' +
-          '<input class="nrinput num" style="width:2.75rem;flex:none' + (dup ? ";border-color:var(--rose);color:#fda4af" : "") + '" inputmode="numeric" value="' + esc(p.nr) + '" oninput="setNr(' + p.id + ',this.value)" onblur="commitTeamOrder()" />' +
+          '<input class="nrinput num" style="width:3.5rem;flex:none;padding-left:0.4rem;padding-right:0.4rem' + (dup ? ";border-color:var(--rose);color:#fda4af" : "") + '" inputmode="numeric" value="' + esc(p.nr) + '" oninput="setNr(' + p.id + ',this.value)" onblur="commitTeamOrder()" />' +
           '<input style="flex:1;min-width:0" placeholder="' + esc(t("namePlaceholder")) + '" value="' + esc(p.naam) + '" oninput="setNaam(' + p.id + ',this.value)" />' +
           '<button class="btn-outline" style="width:2.25rem;height:2.25rem;flex:none;padding:0;color:var(--mut2)" onclick="removePlayer(' + p.id + ')">' + svgIcon("trash-2") + '</button>' +
         '</div>' +
