@@ -1,0 +1,12 @@
+{
+  "name": "roba-stats-tracker",
+  "version": "1.0.0",
+  "description": "Lineup Tracker PWA for basketball and sports teams",
+  "main": "index.html",
+  "scripts": {
+    "test": "playwright test"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.40.0"
+  }
+}

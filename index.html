@@ -203,11 +203,44 @@
     transition: all 0.15s cubic-bezier(0.4, 0, 0.2, 1);
   }
   .chip:active { transform: scale(0.95); }
+  @keyframes pulse-glow {
+    0%, 100% { box-shadow: 0 0 12px 2px color-mix(in srgb, var(--primary) 45%, transparent); border-color: var(--primary); }
+    50% { box-shadow: 0 0 22px 6px color-mix(in srgb, var(--primary) 85%, transparent); border-color: #ffffff; }
+  }
+  @keyframes pulse-overlimit {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.45; }
+  }
   .chip.sel {
     background: var(--primary-soft);
     border-color: var(--primary);
+    animation: pulse-glow 1.5s infinite ease-in-out;
+  }
+  .class-bar-bg {
+    height: 6px; width: 100%; background: var(--card2);
+    border-radius: 999px; overflow: hidden; margin-top: 0.35rem; border: 1px solid var(--line-bright);
+  }
+  .class-bar-fill {
+    height: 100%; border-radius: 999px;
+    transition: width 0.3s cubic-bezier(0.4, 0, 0.2, 1), background-color 0.3s;
+  }
+  .class-bar-fill.ok { background: linear-gradient(90deg, var(--teal), var(--emerald)); }
+  .class-bar-fill.over { background: var(--rose); animation: pulse-overlimit 1s infinite ease-in-out; }
+  .swap-banner {
+    background: var(--card2); border: 1px solid var(--line-bright);
+    border-radius: 0.85rem; padding: 0.55rem 0.75rem; transition: all 0.2s ease;
+  }
+  .swap-banner.active {
+    background: var(--primary-soft); border-color: var(--primary-border);
     box-shadow: var(--shadow-glow);
   }
+  .badge-pm {
+    display: inline-block; padding: 0.15rem 0.4rem; border-radius: 0.45rem;
+    font-weight: 800; font-size: 0.8rem; font-variant-numeric: tabular-nums;
+  }
+  .badge-pm.pos { background: rgba(16, 185, 129, 0.16); color: #34d399; border: 1px solid rgba(16, 185, 129, 0.35); }
+  .badge-pm.neg { background: rgba(244, 63, 94, 0.16); color: #fca5a5; border: 1px solid rgba(244, 63, 94, 0.35); }
+  .badge-pm.neu { background: rgba(148, 163, 184, 0.12); color: var(--mut); border: 1px solid var(--line-bright); }
   .chip.sel .nr { color: var(--primary); }
   .chip .nr { font-size: 1.05rem; font-weight: 800; line-height: 1; font-variant-numeric: tabular-nums; }
   .chip .nm { font-size: 0.7rem; margin-top: 0.2rem; line-height: 1.1; max-width: 100%;
@@ -1501,6 +1534,8 @@ function renderTracking() {
       }).join("") + '</div></div>';
   }
 
+  var courtPct = Math.min(100, Math.max(0, Math.round((courtSum / Math.max(0.1, courtAllowed)) * 100)));
+
   app.innerHTML = '' +
     '<div class="row between mb3">' +
       '<div class="row" style="min-width:0">' +
@@ -1522,15 +1557,17 @@ function renderTracking() {
         (settings.useClassLimit ? '<span class="xs tab" style="font-weight:700;color:' + (courtOver ? "var(--rose)" : "var(--emerald)") + '">' +
           courtSum.toFixed(1) + " / " + courtAllowed.toFixed(1) + (courtBonus > 0 ? " (+" + courtBonus.toFixed(1) + ")" : "") + '</span>' : '') +
       '</div>' +
+      (settings.useClassLimit ? '<div class="class-bar-bg mb2"><div class="class-bar-fill ' + (courtOver ? "over" : "ok") + '" style="width:' + courtPct + '%"></div></div>' : '') +
       '<div class="grid5">' + state.onCourt.map(chipHtml).join("") + '</div>' +
     '</div>' +
 
     (settings.useClassLimit && courtOver ? '<div class="warn mb2 pill">' + t("tooManyClassPoints", { sum: courtSum.toFixed(1), allow: courtAllowed.toFixed(1) }) + "</div>" : "") +
 
-    '<div class="row xs mut mb2" style="min-height:18px">' + svgIcon("arrow-left-right", { style: "width:0.9em;height:0.9em;flex:none" }) +
+    '<div class="swap-banner row xs mb2 ' + (state.selected != null ? "active" : "") + '" style="min-height:36px">' +
+      svgIcon("arrow-left-right", { style: "width:1em;height:1em;flex:none;color:" + (state.selected != null ? "var(--primary)" : "var(--mut)") }) +
       (state.selected != null
-        ? '<span style="min-width:0"><span style="color:var(--primary);font-weight:600">' + esc(label(state.selected.id)) + '</span>' + esc(t("swapChosenSuffix")) + '</span>'
-        : '<span style="min-width:0">' + esc(t("swapHint")) + '</span>') +
+        ? '<span style="min-width:0;margin-left:0.35rem"><span style="color:var(--primary);font-weight:700">' + esc(label(state.selected.id)) + '</span>' + esc(t("swapChosenSuffix")) + '</span>'
+        : '<span style="min-width:0;margin-left:0.35rem" class="mut">' + esc(t("swapHint")) + '</span>') +
     '</div>' +
 
     (pendingSwapLineup != null ? '' +
@@ -1883,17 +1920,21 @@ function comboRowHtml(combo) {
   var offShow = statsPer10 && combo.offSec > 0 ? offPM * 600 / combo.offSec : offPM;
   var names = combo.ids.map(function (id) { var p = playerById(id); return p ? ("#" + p.nr + " " + p.naam) : "#? ?"; });
   var cols = [
-    { label: t("statsColTime"), value: fmt(combo.onSec), color: "var(--txt)" },
-    { label: t("statsColPts"), value: combo.onPF, color: "var(--emerald)" },
-    { label: t("statsColOpp"), value: combo.onPA, color: "var(--rose)" },
-    { label: t("statsColOn"), value: fmtPM(onShow), color: onShow >= 0 ? "var(--emerald)" : "var(--rose)" },
-    { label: t("statsColOff"), value: fmtPM(offShow), color: offShow >= 0 ? "var(--emerald)" : "var(--rose)" }
+    { label: t("statsColTime"), value: esc(fmt(combo.onSec)), isBadge: false, color: "var(--txt)" },
+    { label: t("statsColPts"), value: esc(String(combo.onPF)), isBadge: false, color: "var(--emerald)" },
+    { label: t("statsColOpp"), value: esc(String(combo.onPA)), isBadge: false, color: "var(--rose)" },
+    { label: t("statsColOn"), value: fmtPM(onShow), isBadge: true, num: onShow },
+    { label: t("statsColOff"), value: fmtPM(offShow), isBadge: true, num: offShow }
   ];
   return '<div class="card" style="padding:0.6rem 0.75rem;margin-bottom:0.5rem">' +
     '<div class="xs" style="line-height:1.5">' + names.map(esc).join("<br>") + '</div>' +
-    '<div class="statsgrid xs tab" style="margin-top:0.4rem">' +
+    '<div class="statsgrid xs tab" style="margin-top:0.4rem;align-items:center">' +
       cols.map(function (c) {
-        return '<div><div class="mut2">' + esc(c.label) + '</div><div class="v" style="color:' + c.color + '">' + esc(String(c.value)) + '</div></div>';
+        if (c.isBadge) {
+          var cls = c.num > 0 ? "pos" : c.num < 0 ? "neg" : "neu";
+          return '<div><div class="mut2" style="margin-bottom:0.15rem">' + esc(c.label) + '</div><span class="badge-pm ' + cls + '">' + esc(c.value) + '</span></div>';
+        }
+        return '<div><div class="mut2">' + esc(c.label) + '</div><div class="v" style="color:' + c.color + '">' + c.value + '</div></div>';
       }).join("") +
     '</div>' +
   '</div>';
