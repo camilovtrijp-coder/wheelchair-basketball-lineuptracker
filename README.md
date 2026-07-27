@@ -62,3 +62,19 @@ Bij elke push naar `main` wordt `index.html` automatisch gepubliceerd via Netlif
 ## Privacy
 
 De tracker zelf bevat geen spelersdata of teaminstellingen in de broncode — die vult elke gebruiker zelf in en blijven lokaal op dat toestel. Als je zelf een eigen Airtable-koppeling (of vergelijkbare integratie) opzet op basis van de voorbeeld-documentatie, houd je eigen interne aantekeningen daarover (met echte base-ID's en spelersdata) apart en privé.
+
+## Testing
+
+De applicatie wordt functioneel gedekt door Playwright end-to-end tests op basis van een lokale HTTP webserver.
+
+### Testcommando's
+
+```bash
+# Draai alle e2e-tests in headless mode
+npm run test:e2e
+
+# Draai e2e-tests in de interactieve Playwright UI
+npm run test:e2e:ui
+```
+
+De testsuite controleert automatisch 10 scenario-groepen (teamopzet, score & segmenten, wissels, segmentcorrectie, historie, stats, trends, back-up/herstel, en instellingen/taal). Alle tests maken uitsluitend gebruik van fictieve testdata.
