@@ -1173,8 +1173,9 @@ function iconLabel(name, text) {
 }
 // Custom toggle-switch (i.p.v. een native checkbox) die --primary volgt, consistent
 // met de rest van de app. onchangeJs is inline JS-code, bv. "setClock(this.checked)".
-function toggleSwitchHtml(checked, onchangeJs) {
-  return '<label class="switch"><input type="checkbox" ' + (checked ? "checked" : "") + ' onchange="' + onchangeJs + '" />' +
+function toggleSwitchHtml(checked, onchangeJs, testId) {
+  var attr = testId ? ' data-testid="' + testId + '"' : "";
+  return '<label class="switch"><input type="checkbox"' + attr + ' ' + (checked ? "checked" : "") + ' onchange="' + onchangeJs + '" />' +
     '<span class="track"></span><span class="thumb"></span></label>';
 }
 // Subtiele sectiekop om een groep instellingenvelden te scheiden (bv. "Club",
@@ -1558,7 +1559,7 @@ function renderTracking() {
           courtSum.toFixed(1) + " / " + courtAllowed.toFixed(1) + (courtBonus > 0 ? " (+" + courtBonus.toFixed(1) + ")" : "") + '</span>' : '') +
       '</div>' +
       (settings.useClassLimit ? '<div class="class-bar-bg mb2"><div class="class-bar-fill ' + (courtOver ? "over" : "ok") + '" style="width:' + courtPct + '%"></div></div>' : '') +
-      '<div class="grid5">' + state.onCourt.map(chipHtml).join("") + '</div>' +
+      '<div class="grid5" data-testid="court-list">' + state.onCourt.map(chipHtml).join("") + '</div>' +
     '</div>' +
 
     (settings.useClassLimit && courtOver ? '<div class="warn mb2 pill">' + t("tooManyClassPoints", { sum: courtSum.toFixed(1), allow: courtAllowed.toFixed(1) }) + "</div>" : "") +
@@ -1577,7 +1578,7 @@ function renderTracking() {
       '</div>' : '') +
 
     '<div class="mb4"><span class="sm" style="font-weight:600">' + esc(t("benchLabel")) + '</span>' +
-      '<div class="grid5" style="margin-top:0.5rem">' + bank.map(function (p) { return chipHtml(p.id); }).join("") + '</div>' +
+      '<div class="grid5" data-testid="bench-list" style="margin-top:0.5rem">' + bank.map(function (p) { return chipHtml(p.id); }).join("") + '</div>' +
     '</div>' +
 
     '<div class="card">' +
@@ -1654,7 +1655,7 @@ function renderSettingsModal() {
 
       '<div class="row between mb3">' +
         '<span class="sm">' + esc(t("useClassLimitLabel")) + '</span>' +
-        toggleSwitchHtml(settings.useClassLimit, "updateSetting('useClassLimit', this.checked)") +
+        toggleSwitchHtml(settings.useClassLimit, "updateSetting('useClassLimit', this.checked)", "class-limit-toggle") +
       '</div>' +
 
       (settings.useClassLimit ? '' +

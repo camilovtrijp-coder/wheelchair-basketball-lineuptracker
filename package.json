@@ -4,7 +4,10 @@
   "description": "Lineup Tracker PWA for basketball and sports teams",
   "main": "index.html",
   "scripts": {
-    "test": "playwright test"
+    "test": "playwright test",
+    "test:e2e": "playwright test",
+    "test:e2e:ui": "playwright test --ui",
+    "serve": "node server.js"
   },
   "devDependencies": {
     "@playwright/test": "^1.40.0"
