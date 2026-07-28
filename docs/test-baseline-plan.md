@@ -168,7 +168,7 @@ De huidige werkende versie blijft beschikbaar via commit `e2684047985d13740b9139
 
 Als een latere merge problemen veroorzaakt, zijn er drie veilige herstelroutes:
 
-1. de mergecommit via een nieuwe revert-PR terugdraaiing;
+1. de mergecommit via een nieuwe revert-PR terugdraaien;
 2. Netlify tijdelijk opnieuw laten publiceren vanaf de laatste goede commit;
 3. een herstelbranch maken vanaf `e2684047985d13740b913938887ea692a6c44dc7` en die via een PR terugbrengen naar `main`.
 

@@ -78,4 +78,3 @@ npm run test:e2e:ui
 ```
 
 De testsuite controleert automatisch 10 scenario-groepen (teamopzet, score & segmenten, wissels, segmentcorrectie, historie, stats, trends, back-up/herstel, en instellingen/taal). Alle tests maken uitsluitend gebruik van fictieve testdata.
-

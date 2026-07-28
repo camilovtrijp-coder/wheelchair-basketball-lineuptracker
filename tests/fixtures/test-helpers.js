@@ -58,7 +58,7 @@ async function seedLocalStorage(page, { roster, games, settings, activeMatch, la
 function createMockFinishedGames() {
   const roster = createMockRoster();
   const lineup1 = [1, 2, 3, 4, 5];
-  const lineup2 = [2, 3, 5, 6, 7];
+  const lineup2 = [2, 3, 5, 6, 7]; // Alex (id 1) zit uitsluitend in lineup1
 
   return [
     {

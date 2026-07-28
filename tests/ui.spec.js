@@ -32,16 +32,30 @@ test.describe('ROBA Lineup Tracker - End-to-End Test Baseline (Desktop Chromium)
     }
 
     const nameInputs = page.locator('input[placeholder*="Naam"], input[placeholder*="Name"]');
-    const nrInputs = page.locator('input.num');
+    const nrInputs = page.locator('input.nrinput');
 
+    // Vul eerst alle namen in: dit triggert geen her-sortering van de rijen.
     for (let i = 0; i < mockRoster.length; i++) {
       await nameInputs.nth(i).fill(mockRoster[i].naam);
-      await nrInputs.nth(i).fill(mockRoster[i].nr);
-      await nrInputs.nth(i).blur();
+    }
+
+    // Vul daarna de rugnummers. Elke wijziging van een rugnummer sorteert de
+    // spelerslijst live opnieuw op nummer (zie setNr -> sortPlayers()), dus vaste
+    // index-posities zouden tussentijds verschuiven. `.card` filteren op de naam
+    // werkt niet (hasText matcht geen input-waarden), dus we lezen de echte
+    // DOM-waarden uit om de rij bij de juiste naam te vinden.
+    for (let i = 0; i < mockRoster.length; i++) {
+      const rowIndex = await nameInputs.evaluateAll(
+        (els, naam) => els.findIndex((el) => el.value === naam),
+        mockRoster[i].naam
+      );
+      await nrInputs.nth(rowIndex).fill(mockRoster[i].nr);
+      await nrInputs.nth(rowIndex).blur();
     }
 
     // Assert rugnummers zijn ingevuld en op volgorde (4, 7, 10, 12, 15, 22)
-    const filledNrs = await nrInputs.allInputValues();
+    // Locator heeft geen allInputValues(); evaluateAll() leest de echte DOM-waarden.
+    const filledNrs = await nrInputs.evaluateAll((els) => els.map((el) => el.value));
     expect(filledNrs.slice(0, 6)).toEqual(['4', '7', '10', '12', '15', '22']);
 
     // 3. Ga naar Wedstrijd-tabblad, vul tegenstander/competitie in en selecteer 5 starters
@@ -93,7 +107,7 @@ test.describe('ROBA Lineup Tracker - End-to-End Test Baseline (Desktop Chromium)
     await page.locator('button.scorebtn.btn-amber', { hasText: '+3' }).click();
     await page.locator('button.scorebtn.btn-sky', { hasText: '+2' }).click();
 
-    // Stel een geldige eindtijd in (8:00 bij aftellen 10:00 -> 0:00) vóór "Segment opslaan"
+    // Stel een geldige eindtijd in (8:00 bij aftellen 10:00 -> 0:00) voor "Segment opslaan"
     // timesel indexes: 0=beginMin, 1=beginSec, 2=endMin, 3=endSec
     const endMinSelect = page.locator('select.timesel').nth(2);
     await endMinSelect.selectOption('8');
@@ -259,7 +273,13 @@ test.describe('ROBA Lineup Tracker - End-to-End Test Baseline (Desktop Chromium)
     const segCard = page.locator('.seg').first();
     await expect(segCard).toContainText('+5');
     await expect(segCard).toContainText('3:00');
-    await expect(segCard).toContainText('22');
+
+    // Assert expliciet dat speler 22 werkelijk in de opgeslagen lineup van het segment
+    // staat (en 15 niet meer) i.p.v. alleen een losse substring-match op de kaart.
+    const segLineupText = await segCard.locator('.mut').first().textContent();
+    const segNrs = segLineupText.trim().split(/\s+/).pop().split('-');
+    expect(segNrs).toContain('22');
+    expect(segNrs).not.toContain('15');
 
     // Assert herberekening running score in de scoresel
     await expect(page.locator('.scoresel.amber')).toHaveValue('5');
@@ -446,12 +466,15 @@ test.describe('ROBA Lineup Tracker - End-to-End Test Baseline (Desktop Chromium)
     // Open instellingen en importeer back-up
     await page.locator('button', { hasText: '⚙' }).click();
     const fileInput = page.locator('input[type="file"][accept="application/json"]');
-    await fileInput.setInputFiles(downloadPath);
 
-    // App herlaadt zelf in handleImportBackupFile als succesvol (bij alert)
-    page.once('dialog', dialog => dialog.accept()); // accepteer succes melding
-    await page.waitForTimeout(300); // kleine pauze voor reload of herlaad handmatig
-    await page.reload();
+    // De dialog-listener moet vóór setInputFiles() geregistreerd zijn: de
+    // FileReader in handleImportBackupFile() toont het confirm()-dialoog async,
+    // en zonder handler op tijd zou Playwright het dialoog standaard afwijzen
+    // (waarna de import wordt geannuleerd). De app herlaadt zichzelf
+    // (location.reload()) zodra het dialoog bevestigd is.
+    page.once('dialog', (dialog) => dialog.accept());
+    await fileInput.setInputFiles(downloadPath);
+    await page.waitForLoadState('load');
 
     // Assert data hersteld
     await expect(page.locator('h1').first()).toContainText('ROBA Test Stars');
