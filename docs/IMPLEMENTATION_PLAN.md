@@ -201,8 +201,8 @@ zonder productiecode te wijzigen:
   bestaande `BACKUP_KEYS` verwijderen en mag geen bevestigingsdialoog tonen.
 
 De laatste testcase staat bekend als P0-1 uit de review. Omdat dit een
-productcode-bug is, wordt die testcase als `test.fail()` gemarkeerd totdat de
-importvalidatie is opgelost vóór Fase 2.
+productcode-bug is, werd die testcase in PR 1.6 als `test.fail()` gemarkeerd.
+PR 1.7 lost P0-1 op door `payload.data` structureel te valideren.
 
 ### Modeladvies
 
@@ -678,6 +678,7 @@ Gebruik GitHub Issues of een kleine tabel in dit bestand. Issues zijn beter zodr
 | PR 1.4 — mobiel en taal | Voltooid |  | mobile-lang.spec.js met iPhone viewport, NL/EN flows |
 | PR 1.5 — GitHub Actions CI | Voltooid | #6 | .github/workflows/ci.yml, Playwright tests in CI |
 | PR 1.6 — fase-1-dekking | Voltooid | #7 | coverage-gaps.spec.js; P0-1 als test.fail |
+| PR 1.7 — importveiligheid | Voltooid | #8 | `isPlainObject` validatie in index.html; P0-1 opgelost |
 | Fase 2 — data-integriteit | Niet gestart |  |  |
 | Fase 3 — modulaire v2-architectuur | Niet gestart |  |  |
 | Fase 4 — databasebesluit | Niet gestart |  |  |

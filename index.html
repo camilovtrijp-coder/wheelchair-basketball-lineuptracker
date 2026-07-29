@@ -1307,6 +1307,9 @@ function handleLogoFile(file) {
 // de enige manier om data mee te nemen naar een nieuw toestel of te herstellen na
 // een gewiste browseropslag.
 var BACKUP_KEYS = [STORAGE_KEY, ROSTER_KEY, GAMES_KEY, SETTINGS_KEY, LANG_KEY];
+function isPlainObject(value) {
+  return value !== null && typeof value === "object" && !Array.isArray(value);
+}
 function exportBackup() {
   var data = {};
   BACKUP_KEYS.forEach(function (k) {
@@ -1330,7 +1333,7 @@ function handleImportBackupFile(file) {
   reader.onload = function () {
     var payload;
     try { payload = JSON.parse(reader.result); } catch (e) { window.alert(t("importBackupInvalid")); return; }
-    if (!payload || payload.type !== "lineup-tracker-backup" || !payload.data) { window.alert(t("importBackupInvalid")); return; }
+    if (!payload || payload.type !== "lineup-tracker-backup" || !isPlainObject(payload.data)) { window.alert(t("importBackupInvalid")); return; }
     if (!window.confirm(t("confirmImportBackup"))) return;
     BACKUP_KEYS.forEach(function (k) {
       if (Object.prototype.hasOwnProperty.call(payload.data, k)) {
