@@ -8,6 +8,8 @@ const SETTINGS_KEY = "lineup-tracker-settings";
 const LANG_KEY = "lineup-tracker-lang";
 const GAMES_KEY = "lineup-tracker-games";
 const STORAGE_KEY = "lineup-tracker-v1";
+const SCHEMA_VERSION_KEY = "lineup-tracker-schema-version";
+const SCHEMA_VERSION = 1;
 const BACKUP_KEYS = [STORAGE_KEY, ROSTER_KEY, GAMES_KEY, SETTINGS_KEY, LANG_KEY];
 
 /**
@@ -137,7 +139,8 @@ async function seedApp(page, { withMatchState = false } = {}) {
       settingsKey: SETTINGS_KEY,
       langKey: LANG_KEY,
       gamesKey: GAMES_KEY,
-      storageKey: STORAGE_KEY
+      storageKey: STORAGE_KEY,
+      schemaVersionKey: SCHEMA_VERSION_KEY
     },
     roster: TEST_PLAYERS,
     settings: TEST_SETTINGS,
@@ -153,6 +156,7 @@ async function seedApp(page, { withMatchState = false } = {}) {
     localStorage.removeItem(keys.langKey);
     localStorage.removeItem(keys.gamesKey);
     localStorage.removeItem(keys.storageKey);
+    localStorage.removeItem(keys.schemaVersionKey);
 
     // Seed deterministische data
     localStorage.setItem(keys.rosterKey, JSON.stringify(roster));
@@ -239,7 +243,8 @@ async function seedAppWithRoster(page, roster, { withMatchState = false } = {}) 
       settingsKey: SETTINGS_KEY,
       langKey: LANG_KEY,
       gamesKey: GAMES_KEY,
-      storageKey: STORAGE_KEY
+      storageKey: STORAGE_KEY,
+      schemaVersionKey: SCHEMA_VERSION_KEY
     },
     roster,
     settings: TEST_SETTINGS,
@@ -254,6 +259,7 @@ async function seedAppWithRoster(page, roster, { withMatchState = false } = {}) 
     localStorage.removeItem(keys.langKey);
     localStorage.removeItem(keys.gamesKey);
     localStorage.removeItem(keys.storageKey);
+    localStorage.removeItem(keys.schemaVersionKey);
 
     localStorage.setItem(keys.rosterKey, JSON.stringify(roster));
     localStorage.setItem(keys.settingsKey, JSON.stringify(settings));
@@ -326,7 +332,7 @@ function runningMatchState() {
 /**
  * Bouwt een volledige backup payload.
  */
-function buildBackup({ state, roster, settings, lang, games }) {
+function buildBackup({ state, roster, settings, lang, games, version }) {
   const data = {};
   if (state != null) data[STORAGE_KEY] = state;
   if (roster != null) data[ROSTER_KEY] = roster;
@@ -335,7 +341,7 @@ function buildBackup({ state, roster, settings, lang, games }) {
   if (games != null) data[GAMES_KEY] = games;
   return {
     type: "lineup-tracker-backup",
-    version: 1,
+    version: version != null ? version : SCHEMA_VERSION,
     exportedAt: new Date().toISOString(),
     data
   };
@@ -349,7 +355,7 @@ async function seedRunningMatch(page) {
   const roster = SMALL_GAME_PLAYERS;
   const settings = SMALL_GAME_SETTINGS;
   await page.goto(appUrl());
-  const payload = { keys: { rosterKey: ROSTER_KEY, settingsKey: SETTINGS_KEY, langKey: LANG_KEY, gamesKey: GAMES_KEY, storageKey: STORAGE_KEY }, state, roster, settings, lang: "nl", games: [] };
+  const payload = { keys: { rosterKey: ROSTER_KEY, settingsKey: SETTINGS_KEY, langKey: LANG_KEY, gamesKey: GAMES_KEY, storageKey: STORAGE_KEY, schemaVersionKey: SCHEMA_VERSION_KEY }, state, roster, settings, lang: "nl", games: [] };
   await page.evaluate((data) => {
     const { keys, state, roster, settings, lang, games } = data;
     localStorage.removeItem(keys.rosterKey);
@@ -357,6 +363,7 @@ async function seedRunningMatch(page) {
     localStorage.removeItem(keys.langKey);
     localStorage.removeItem(keys.gamesKey);
     localStorage.removeItem(keys.storageKey);
+    localStorage.removeItem(keys.schemaVersionKey);
 
     localStorage.setItem(keys.storageKey, JSON.stringify(state));
     localStorage.setItem(keys.rosterKey, JSON.stringify(roster));
@@ -388,7 +395,7 @@ async function seedFullTeam(page) {
     quarterCount: settings.quarterCount, periodLabel: settings.periodLabel, useClassLimit: settings.useClassLimit
   };
   await page.goto(appUrl());
-  const payload = { keys: { rosterKey: ROSTER_KEY, settingsKey: SETTINGS_KEY, langKey: LANG_KEY, gamesKey: GAMES_KEY, storageKey: STORAGE_KEY }, roster, settings, lang: "nl", games: [game] };
+  const payload = { keys: { rosterKey: ROSTER_KEY, settingsKey: SETTINGS_KEY, langKey: LANG_KEY, gamesKey: GAMES_KEY, storageKey: STORAGE_KEY, schemaVersionKey: SCHEMA_VERSION_KEY }, roster, settings, lang: "nl", games: [game] };
   await page.evaluate((data) => {
     const { keys, roster, settings, lang, games } = data;
     localStorage.removeItem(keys.rosterKey);
@@ -396,6 +403,7 @@ async function seedFullTeam(page) {
     localStorage.removeItem(keys.langKey);
     localStorage.removeItem(keys.gamesKey);
     localStorage.removeItem(keys.storageKey);
+    localStorage.removeItem(keys.schemaVersionKey);
 
     localStorage.setItem(keys.rosterKey, JSON.stringify(roster));
     localStorage.setItem(keys.settingsKey, JSON.stringify(settings));
@@ -417,7 +425,8 @@ async function seedEmpty(page) {
     localStorage.removeItem(keys.langKey);
     localStorage.removeItem(keys.gamesKey);
     localStorage.removeItem(keys.storageKey);
-  }, { rosterKey: ROSTER_KEY, settingsKey: SETTINGS_KEY, langKey: LANG_KEY, gamesKey: GAMES_KEY, storageKey: STORAGE_KEY });
+    localStorage.removeItem(keys.schemaVersionKey);
+  }, { rosterKey: ROSTER_KEY, settingsKey: SETTINGS_KEY, langKey: LANG_KEY, gamesKey: GAMES_KEY, storageKey: STORAGE_KEY, schemaVersionKey: SCHEMA_VERSION_KEY });
   await page.goto(appUrl());
   await page.waitForLoadState("networkidle");
 }
@@ -460,5 +469,7 @@ module.exports = {
   LANG_KEY,
   GAMES_KEY,
   STORAGE_KEY,
+  SCHEMA_VERSION_KEY,
+  SCHEMA_VERSION,
   BACKUP_KEYS
 };

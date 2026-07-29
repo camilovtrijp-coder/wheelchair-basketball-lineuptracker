@@ -341,6 +341,11 @@
 
 // ---------- constants ----------
 var STORAGE_KEY = "lineup-tracker-v1";
+// Schemaversie van de geïmporteerde data. Wordt na een geldige import opgeslagen
+// zodat de app en toekomstige migraties weten welke structuur verwacht wordt.
+// Ontbrekende key wordt beschouwd als versie 1.
+var SCHEMA_VERSION = 1;
+var SCHEMA_VERSION_KEY = "lineup-tracker-schema-version";
 // Teamlijst (spelers) blijft los van de wedstrijdstatus bewaard, zodat "Nieuwe
 // wedstrijd" niet de hele spelerslijst wist — alleen het rugnummer/naam/classificatie/
 // categorieën blijven staan; wie start is per wedstrijd opnieuw te kiezen.
@@ -1317,7 +1322,7 @@ function exportBackup() {
     if (raw == null) return;
     try { data[k] = JSON.parse(raw); } catch (e) { data[k] = raw; }
   });
-  var payload = { type: "lineup-tracker-backup", version: 1, exportedAt: new Date().toISOString(), data: data };
+  var payload = { type: "lineup-tracker-backup", version: SCHEMA_VERSION, exportedAt: new Date().toISOString(), data: data };
   var blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" });
   var d = new Date(), pad = function (n) { return String(n).padStart(2, "0"); };
   var filename = slugify(settings.teamName || "lineup-tracker") + "-backup-" + d.getFullYear() + pad(d.getMonth() + 1) + pad(d.getDate()) + ".json";
@@ -1334,6 +1339,10 @@ function handleImportBackupFile(file) {
     var payload;
     try { payload = JSON.parse(reader.result); } catch (e) { window.alert(t("importBackupInvalid")); return; }
     if (!payload || payload.type !== "lineup-tracker-backup" || !isPlainObject(payload.data)) { window.alert(t("importBackupInvalid")); return; }
+    // Back-up zonder `version` wordt gecontroleerd als versie 1 gelezen.
+    // Toekomstige versies worden veilig geweigerd zonder localStorage te muteren.
+    var backupVersion = (payload.version == null) ? 1 : Number(payload.version);
+    if (!isFinite(backupVersion) || backupVersion > SCHEMA_VERSION) { window.alert(t("importBackupInvalid")); return; }
     if (!window.confirm(t("confirmImportBackup"))) return;
     BACKUP_KEYS.forEach(function (k) {
       if (Object.prototype.hasOwnProperty.call(payload.data, k)) {
@@ -1343,6 +1352,9 @@ function handleImportBackupFile(file) {
         localStorage.removeItem(k);
       }
     });
+    // Sla de geïmporteerde schemaversie op zodat de app en toekomstige migraties
+    // weten welke structuur in localStorage staat.
+    try { localStorage.setItem(SCHEMA_VERSION_KEY, String(SCHEMA_VERSION)); } catch (e) { /* opslag kan vol zijn */ }
     // Herlaad de app zodat alle in-memory state (roster, settings, games, taal,
     // actieve wedstrijd) opnieuw vanuit de geïmporteerde localStorage wordt opgebouwd.
     location.reload();
