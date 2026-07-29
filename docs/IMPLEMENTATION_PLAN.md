@@ -1,13 +1,13 @@
 # Implementatieplan — Wheelchair Basketball Lineup Tracker
 
-Status: voorstel  
+Status: voorstel voor afzonderlijke v2-/herbouwrepository  
 Repository: `camilovtrijp-coder/wheelchair-basketball-lineuptracker`  
 Gecontroleerde basis: `main` op commit `e2684047985d13740b913938887ea692a6c44dc7`  
 Datum: 29 juli 2026
 
 ## 1. Doel
 
-De Lineup Tracker stapsgewijs beter testbaar, betrouwbaarder en makkelijker uitbreidbaar maken, zonder bestaand wedstrijdgedrag, lokale gegevens, offline werking of CSV-compatibiliteit te breken.
+In deze afzonderlijke repository een robuuste v2 van de Lineup Tracker bouwen, zonder de werkende productie-app rechtstreeks aan te passen. De bestaande app blijft gedurende de herbouw de gedrags- en productreferentie. De nieuwe app moet bestaand wedstrijdgedrag, lokale gegevens, offline werking en CSV-compatibiliteit aantoonbaar behouden voordat een eventuele overstap plaatsvindt.
 
 De volgorde is bewust:
 
@@ -21,7 +21,9 @@ De volgorde is bewust:
 
 ## 2. Huidige uitgangssituatie
 
-De app is een browserlokale, installeerbare PWA. De belangrijkste eigenschappen zijn:
+Deze repository is bewust aangemaakt als veilige v2-/herbouwomgeving. De werkende en gepubliceerde app wordt vanuit een andere repository beheerd. Deze repository mag daarom niet automatisch worden gezien als productiebron of publicatiebron.
+
+De meegekomen app is een browserlokale, installeerbare PWA en dient hier als functionele referentie. De belangrijkste eigenschappen zijn:
 
 - wedstrijd-, team- en instellingsdata in `localStorage`;
 - geen backend of synchronisatie;
@@ -29,7 +31,7 @@ De app is een browserlokale, installeerbare PWA. De belangrijkste eigenschappen 
 - Nederlands en Engels;
 - CSV-export en JSON-back-up/import;
 - team-, wedstrijd-, stats-, trends- en historie-tabbladen;
-- publicatie via Netlify;
+- eventuele bestaande Netlify-configuratie is voor deze roadmap niet leidend en valt buiten scope;
 - het grootste deel van CSS, HTML en JavaScript staat in `index.html`;
 - Playwright maakt screenshots, maar dekt de kernlogica nog niet betrouwbaar met assertions.
 
@@ -50,6 +52,9 @@ Iedere implementatietaak moet aan deze regels voldoen:
 - Gebruik geen externe runtime-dependency als dezelfde functie eenvoudig lokaal kan blijven.
 - Vermijd één grote PR. Lever iedere fase op in kleine, afzonderlijk controleerbare PR’s.
 - Werk nooit rechtstreeks op `main`.
+- Wijzig de productie-repository niet vanuit deze roadmap; gebruik deze alleen-lezen als gedragsreferentie nadat de exacte repository is bevestigd.
+- Publiceer of deploy deze repository niet zonder een afzonderlijk expliciet besluit over cutover en hosting.
+- Voeg geen nieuwe Netlify-specifieke code of controles toe; deployment wordt elders beheerd.
 - Plaats nooit een databasebeheersleutel, `service_role`-sleutel of ander geheim in browsercode.
 - Beveilig iedere aan de browser blootgestelde databasetabel met geteste rijtoegangsregels.
 - Cloudmigratie is opt-in en mag een bestaande lokale wedstrijd of back-up nooit stilzwijgend verwijderen.
@@ -65,16 +70,16 @@ Een taak is pas gereed wanneer:
 - de app na herladen dezelfde geldige status toont;
 - Nederlandse en Engelse interfacepaden zijn gecontroleerd;
 - mobiele weergave is gecontroleerd;
-- bij wijzigingen aan caching of assets ook een productieachtige Netlify-build is gecontroleerd;
+- bij wijzigingen aan caching of assets een platformneutrale productiebuild en offline app-shell zijn gecontroleerd;
 - de PR beschrijft wat veranderde, welke risico’s bestaan en hoe is getest.
 - bij databasewerk ook toegangsregels, migraties, constraints en negatieve autorisatietests zijn gecontroleerd;
 - bij synchronisatiewerk ook offline wijzigingen, opnieuw verbinden, dubbele verzending en conflicten zijn getest.
 
-## 5. Fase 0 — Alleen-lezen inventarisatie
+## 5. Fase 0 — Alleen-lezen inventarisatie en referentiecontract
 
 ### Doel
 
-Eerst het werkelijke datamodel, de berekeningen en risicovolle statusovergangen beschrijven. Nog niets herstructureren.
+Eerst het werkelijke datamodel, de berekeningen en risicovolle statusovergangen beschrijven. Leg daarnaast vast welke repository en release de werkende productie-app vormen. Nog niets herstructureren en niets in de productie-repository wijzigen.
 
 ### Taken
 
@@ -84,11 +89,15 @@ Eerst het werkelijke datamodel, de berekeningen en risicovolle statusovergangen 
 - Documenteer CSV- en JSON-contracten.
 - Benoem plekken waar spelers-ID’s, lineups en historische wedstrijden naar elkaar verwijzen.
 - Benoem impliciete aannames, bijvoorbeeld precies vijf spelers op het veld.
+- Leg de URL, branch en gecontroleerde commit-SHA van de productie-repository vast zodra de eigenaar die heeft bevestigd.
+- Maak onderscheid tussen bestaand gedrag, gewenste v2-verandering en nog onbevestigde aanname.
+- Stel een functionele compatibiliteitsmatrix op waarmee de nieuwe app later naast de werkende app kan worden vergeleken.
 
 ### Oplevering
 
 - `docs/architecture/current-state.md`
 - `docs/data-contracts.md`
+- `docs/product-compatibility-matrix.md`
 - Geen productiewijzigingen.
 
 ### Acceptatiecriteria
@@ -96,6 +105,8 @@ Eerst het werkelijke datamodel, de berekeningen en risicovolle statusovergangen 
 - Elk persistent veld heeft type, betekenis en standaardwaarde.
 - Elke berekening heeft minimaal één handmatig narekenbaar voorbeeld.
 - Risico’s bij verwijderen, importeren, wisselen en hervatten zijn expliciet beschreven.
+- De productie-referentie is exact geïdentificeerd of staat expliciet als blocker vermeld.
+- Voor ieder bestaand hoofdscherm staat welke functionaliteit v2 moet behouden, wijzigen of bewust laten vervallen.
 
 ### Modeladvies
 
@@ -203,66 +214,85 @@ Voorkomen dat toekomstige wijzigingen lokale wedstrijdgeschiedenis of back-ups o
 
 `opencode-go/glm-5.2` voor ontwerp en risicobeoordeling; `opencode-go/kimi-k2.7-code` voor de afgebakende implementatie.
 
-## 8. Fase 3 — Gecontroleerde modularisering
+## 8. Fase 3 — Nieuwe modulaire v2-architectuur
 
 ### Doel
 
-De monolithische `index.html` opdelen zonder functionele wijzigingen.
+In deze afzonderlijke repository een nieuwe modulaire appstructuur opbouwen. De bestaande `index.html` dient tijdelijk als werkende referentie en wordt niet stukje voor stukje de definitieve architectuur in getrokken.
 
 ### Belangrijk besluit vooraf
 
-Open de app voortaan via een lokale webserver tijdens ontwikkeling en tests. ES-modules werken niet in iedere browser betrouwbaar via `file://`. De gepubliceerde Netlify-site en PWA moeten gewone statische bestanden blijven.
+Leg eerst in `docs/architecture/adr-000-frontend-architecture.md` vast welke frontendstack wordt gebruikt. Vergelijk minimaal:
+
+- React + TypeScript + Vite;
+- Preact + TypeScript + Vite;
+- vanilla TypeScript met ES-modules.
+
+Voor deze stateful app is React of Preact met TypeScript en Vite de voorkeursrichting, mits domeinberekeningen en opslag onafhankelijk van het UI-framework blijven. Hosting blijft platformneutraal en valt pas bij een latere cutoverbeslissing in scope.
 
 ### Voorgestelde doelstructuur
 
 ```text
 index.html
 src/
-  app.js
-  state.js
-  storage.js
-  migrations.js
-  calculations.js
-  export.js
-  i18n.js
-  icons.js
+  app/
+    App.tsx
+    routes.ts
+  domain/
+    entities/
+    calculations/
+    validation/
+  application/
+    commands/
+    queries/
+    services/
+  infrastructure/
+    local/
+    sync/
+    repositories/
   ui/
-    team.js
-    match.js
-    stats.js
-    trends.js
-    history.js
-    settings.js
-styles/
-  app.css
+    components/
+    screens/
+    hooks/
+  i18n/
+  styles/
 tests/
+  unit/
+  integration/
+  e2e/
   fixtures/
-  helpers/
-  *.spec.js
+public/
+  manifest.json
+  icons/
 ```
 
-Dit is een richting, geen verplicht eindontwerp. OpenCode moet eerst afhankelijkheden en globale functies inventariseren.
+Dit is een richting, geen verplicht eindontwerp. Gebruik geen lege lagen of abstracties zonder concrete verantwoordelijkheid.
 
-### Veilige volgorde
+### Migratiestrategie binnen deze repository
 
-1. Verplaats statische CSS zonder selectors te wijzigen.
-2. Extraheer pure berekeningen en schrijf unit-tests.
-3. Extraheer vertalingen en iconen.
-4. Extraheer opslag, validatie en migraties.
-5. Extraheer schermrendering één tabblad per PR.
-6. Verwijder globals pas nadat alle aanroepen zijn gemigreerd.
+1. Houd de huidige app bruikbaar als lokale referentie totdat de compatibiliteitsmatrix is afgedekt.
+2. Scaffold de nieuwe v2-app en testomgeving zonder oude code te verwijderen.
+3. Bouw eerst pure domeinmodellen, berekeningen en validatie.
+4. Definieer repository-interfaces voor lokale en latere cloudopslag.
+5. Migreer verticale gebruikersflows: instellingen/team, wedstrijdopzet, live wedstrijd, historie, stats en trends.
+6. Vergelijk iedere flow met vaste fixtures en de compatibiliteitsmatrix.
+7. Verwijder of archiveer de oude monoliet pas in een afzonderlijke PR na expliciete goedkeuring.
 
-### Acceptatiecriteria per extractie-PR
+### Acceptatiecriteria
 
-- Geen zichtbare of functionele wijziging.
+- De nieuwe app start via één gedocumenteerd ontwikkelcommando.
+- TypeScript strict mode is ingeschakeld.
+- Domeinberekeningen importeren geen DOM-, framework- of databasecode.
+- UI gebruikt opslag via expliciete interfaces in plaats van directe verspreide browseraanroepen.
 - De volledige regressiesuite blijft groen.
 - CSV-output van dezelfde fixture is exact gelijk.
 - JSON-back-up van dezelfde fixture is semantisch gelijk.
-- Productiebuild bevat alle benodigde scripts, styles, fonts, iconen, manifest en service worker.
+- De platformneutrale productiebuild bevat alle benodigde scripts, styles, fonts, iconen, manifest en service worker.
+- De oude referentie-app blijft beschikbaar totdat de vervanging expliciet is geaccepteerd.
 
 ### Modeladvies
 
-Laat `opencode-go/glm-5.2` eerst het extractieplan beoordelen. Gebruik daarna `opencode-go/kimi-k2.7-code` per kleine extractiestap. Gebruik niet één autonome opdracht voor de volledige refactor.
+Laat `opencode-go/glm-5.2` het frontend-ADR en de grens tussen domain/application/infrastructure beoordelen. Gebruik daarna `opencode-go/kimi-k2.7-code` per verticale flow. Gebruik niet één autonome opdracht voor de volledige herbouw.
 
 ## 9. Fase 4 — Architectuurbesluit voor database en accounts
 
@@ -479,7 +509,7 @@ Gebruik `opencode-go/glm-5.2` voor sync-protocol en conflictmodel; `opencode-go/
 ### PR 7.1 — PWA-updategedrag
 
 - Test eerste installatie, offline herladen en een nieuwe app-shellversie.
-- Controleer dat nieuwe assets in de Netlify-build worden opgenomen.
+- Controleer dat nieuwe assets in de platformneutrale productiebuild en offline app-shell worden opgenomen.
 - Voorkom een mix van oude HTML en nieuwe scripts.
 - Maak updatefouten zichtbaar in ontwikkeling; slik ze niet volledig stil in.
 
@@ -552,7 +582,7 @@ Voor je code wijzigt:
 
 Randvoorwaarden:
 - behoud bestaande localStorage-data en CSV-contracten;
-- geen backend, tracking of externe gegevensoverdracht;
+- geen backend, tracking of externe gegevensoverdracht buiten de expliciet goedgekeurde roadmapfase;
 - Nederlands en Engels bij zichtbare teksten;
 - voeg gerichte tests toe;
 - wijzig geen niet-gerelateerde code;
@@ -616,7 +646,7 @@ Gebruik GitHub Issues of een kleine tabel in dit bestand. Issues zijn beter zodr
 | PR 1.3 — hervatten en back-up | Niet gestart |  |  |
 | PR 1.4 — mobiel en taal | Niet gestart |  |  |
 | Fase 2 — data-integriteit | Niet gestart |  |  |
-| Fase 3 — modularisering | Niet gestart |  |  |
+| Fase 3 — modulaire v2-architectuur | Niet gestart |  |  |
 | Fase 4 — databasebesluit | Niet gestart |  |  |
 | Fase 5 — database, auth en rollen | Niet gestart |  |  |
 | Fase 6 — offline synchronisatie en migratie | Niet gestart |  |  |
@@ -630,8 +660,8 @@ Dit plan geeft nog geen toestemming voor:
 - database-implementatie voordat fase 4 expliciet is goedgekeurd;
 - databasebeheersleutels, service-role-sleutels of Airtable-tokens in frontendcode;
 - wijziging van historische statistiekdefinities;
-- vervanging van Netlify;
-- een frameworkmigratie;
+- deployment, hostingwijziging of productie-cutover zonder afzonderlijke expliciete goedkeuring;
+- een frontendstack die afwijkt van het goedgekeurde architectuurbesluit;
 - automatische publicatie buiten de bestaande pipeline;
 - verwerking van echte spelersdata in tests, fixtures, prompts of screenshots.
 
