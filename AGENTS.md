@@ -1,5 +1,7 @@
 # Projectregels — Lineup Tracker
 
+Deze repository is de afzonderlijke v2-/herbouwomgeving. De werkende productie-app wordt elders beheerd en mag vanuit deze roadmap alleen-lezen als gedragsreferentie worden gebruikt.
+
 ## Leesvolgorde
 
 Lees voor plan- of implementatiewerk eerst:
@@ -21,6 +23,7 @@ Voer per sessie slechts één afgebakende taak of PR uit het implementatieplan u
 - Beveilig elke browsertoegankelijke databasetabel met geteste team- en rolgebonden toegangsregels.
 - De app moet offline bruikbaar en als PWA installeerbaar blijven.
 - Ook met cloudopslag moet een volledige wedstrijd zonder netwerk kunnen worden gespeeld en afgerond.
+- Voeg geen Netlify-specifieke wijzigingen toe en deploy deze repository niet zonder afzonderlijke expliciete opdracht.
 - Nieuwe zichtbare tekst moet Nederlands en Engels ondersteunen.
 - Verander geen statistiekberekeningen zonder vaste, handmatig narekenbare tests.
 - Gebruik fictieve data in tests en screenshots.
@@ -39,4 +42,4 @@ Voor iedere codewijziging:
 6. voer relevante tests en controles uit;
 7. rapporteer gewijzigde bestanden, resultaten en open risico’s.
 
-Stop en vraag om een besluit wanneer de taak buiten de goedgekeurde roadmapfase valt of een frameworkmigratie, gewijzigd datacontract of andere grote architectuurkeuze vereist.
+Stop en vraag om een besluit wanneer de taak buiten de goedgekeurde roadmapfase of het goedgekeurde frontend-ADR valt, of een gewijzigd datacontract of andere grote architectuurkeuze vereist.
