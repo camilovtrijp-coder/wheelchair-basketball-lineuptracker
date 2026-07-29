@@ -1,6 +1,6 @@
 # Projectregels — Lineup Tracker
 
-Deze repository is de afzonderlijke v2-/herbouwomgeving. De werkende productie-app wordt elders beheerd en mag vanuit deze roadmap alleen-lezen als gedragsreferentie worden gebruikt.
+Deze repository is de afzonderlijke v2-/herbouwomgeving. De werkende productie-app wordt elders beheerd. De productie-repository valt volledig buiten scope en mag niet worden opgezocht, geopend, gecloned, gefetcht, vergeleken of gewijzigd.
 
 ## Leesvolgorde
 
@@ -9,6 +9,8 @@ Lees voor plan- of implementatiewerk eerst:
 1. `README.md`;
 2. `docs/IMPLEMENTATION_PLAN.md`;
 3. de relevante productcode en tests.
+
+Gebruik uitsluitend de referentiekopie in deze repository en materiaal dat de eigenaar hier expliciet aanlevert. Vraag om een screenshot, export of beschrijving wanneer informatie ontbreekt.
 
 Voer per sessie slechts één afgebakende taak of PR uit het implementatieplan uit.
 
@@ -29,6 +31,7 @@ Voer per sessie slechts één afgebakende taak of PR uit het implementatieplan u
 - Gebruik fictieve data in tests en screenshots.
 - Werk niet rechtstreeks op `main`.
 - Wijzig geen niet-gerelateerde code.
+- Maak in de productie-repository geen branch, issue, comment, commit of PR.
 
 ## Werkwijze
 
