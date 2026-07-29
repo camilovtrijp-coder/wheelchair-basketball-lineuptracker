@@ -123,11 +123,11 @@ test.describe('Hervatten, back-up en import', () => {
     const before = await readLocalStorage(page);
     expect(before[ROSTER_KEY]).toBeTruthy();
 
-    // Maak een ongeldig backup bestand
+    // Maak een ongeldig backup bestand (geen geldige JSON)
     const invalidFile = path.join(os.tmpdir(), `lineup-tracker-invalid-${Date.now()}.json`);
-    fs.writeFileSync(invalidFile, '{"type":"lineup-tracker-backup","version":1,"data":"broken"}');
+    fs.writeFileSync(invalidFile, 'dit is geen json {[');
 
-    // Dialog handler: accepteer import vraag, maar we verwachten een alert voor ongeldige JSON
+    // Dialog handler: dismiss alerts, accepteert confirm (hoewel confirm hier niet moet verschijnen)
     page.on('dialog', async dialog => {
       if (dialog.type() === 'confirm') {
         await dialog.accept();
