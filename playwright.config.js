@@ -6,6 +6,10 @@ module.exports = defineConfig({
     headless: true,
     screenshot: 'on',
   },
+  reporter: [
+    ['list'],
+    ['html', { open: 'never' }]
+  ],
   projects: [
     {
       name: 'chromium',
