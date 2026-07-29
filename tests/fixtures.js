@@ -8,6 +8,7 @@ const SETTINGS_KEY = "lineup-tracker-settings";
 const LANG_KEY = "lineup-tracker-lang";
 const GAMES_KEY = "lineup-tracker-games";
 const STORAGE_KEY = "lineup-tracker-v1";
+const BACKUP_KEYS = [STORAGE_KEY, ROSTER_KEY, GAMES_KEY, SETTINGS_KEY, LANG_KEY];
 
 /**
  * Vaste spelerslijst (zonder wedstrijdspecifieke velden start/participate).
@@ -280,6 +281,158 @@ function teamName() {
   return TEST_SETTINGS.teamName;
 }
 
+/**
+ * Bouwt een state voor een lopende wedstrijd met één segment.
+ */
+function runningMatchState() {
+  const players = playersWithMatchStateFromRoster(SMALL_GAME_PLAYERS);
+  const nextId = players.reduce((m, p) => Math.max(m, p.id), 0) + 1;
+  const onCourt = players.slice(0, 5).map(p => p.id);
+  return {
+    phase: "tracking",
+    players,
+    clockDown: true,
+    limitStr: String(SMALL_GAME_SETTINGS.classBaseLimit),
+    nextId,
+    onCourt,
+    selected: null,
+    segments: [{
+      quarter: 1,
+      beginSec: 600,
+      endSec: 480,
+      durSec: 120,
+      lineup: onCourt.slice(),
+      pf: 4,
+      pa: 2,
+      classSum: 0,
+      allowed: 0,
+      over: false
+    }],
+    curQuarter: 1,
+    opponent: "Team B",
+    competition: "Testcompetitie",
+    beginMin: 8,
+    beginSec: 0,
+    endMin: 8,
+    endSec: 0,
+    scoreFor: 4,
+    scoreAgainst: 2,
+    segStartFor: 4,
+    segStartAgainst: 2,
+    savedAt: Date.now()
+  };
+}
+
+/**
+ * Bouwt een volledige backup payload.
+ */
+function buildBackup({ state, roster, settings, lang, games }) {
+  const data = {};
+  if (state != null) data[STORAGE_KEY] = state;
+  if (roster != null) data[ROSTER_KEY] = roster;
+  if (settings != null) data[SETTINGS_KEY] = settings;
+  if (lang != null) data[LANG_KEY] = lang;
+  if (games != null) data[GAMES_KEY] = games;
+  return {
+    type: "lineup-tracker-backup",
+    version: 1,
+    exportedAt: new Date().toISOString(),
+    data
+  };
+}
+
+/**
+ * Seed de app met een lopende wedstrijd.
+ */
+async function seedRunningMatch(page) {
+  const state = runningMatchState();
+  const roster = SMALL_GAME_PLAYERS;
+  const settings = SMALL_GAME_SETTINGS;
+  await page.goto(appUrl());
+  const payload = { keys: { rosterKey: ROSTER_KEY, settingsKey: SETTINGS_KEY, langKey: LANG_KEY, gamesKey: GAMES_KEY, storageKey: STORAGE_KEY }, state, roster, settings, lang: "nl", games: [] };
+  await page.evaluate((data) => {
+    const { keys, state, roster, settings, lang, games } = data;
+    localStorage.removeItem(keys.rosterKey);
+    localStorage.removeItem(keys.settingsKey);
+    localStorage.removeItem(keys.langKey);
+    localStorage.removeItem(keys.gamesKey);
+    localStorage.removeItem(keys.storageKey);
+
+    localStorage.setItem(keys.storageKey, JSON.stringify(state));
+    localStorage.setItem(keys.rosterKey, JSON.stringify(roster));
+    localStorage.setItem(keys.settingsKey, JSON.stringify(settings));
+    localStorage.setItem(keys.langKey, lang);
+    localStorage.setItem(keys.gamesKey, JSON.stringify(games));
+  }, payload);
+  await page.goto(appUrl());
+  await page.waitForLoadState("networkidle");
+}
+
+/**
+ * Seed de app met een compleet team, instellingen en afgeronde wedstrijden.
+ */
+async function seedFullTeam(page) {
+  const roster = SMALL_GAME_PLAYERS;
+  const settings = SMALL_GAME_SETTINGS;
+  const game = {
+    id: "g1722268800000",
+    opponent: "Archiefteam",
+    competition: "Oude competitie",
+    date: "2024-07-29T10:00:00.000Z",
+    players: roster,
+    segments: [{
+      quarter: 1, beginSec: 600, endSec: 540, durSec: 60, lineup: roster.map(p => p.id),
+      pf: 2, pa: 1, classSum: 0, allowed: 0, over: false
+    }],
+    scoreFor: 2, scoreAgainst: 1,
+    quarterCount: settings.quarterCount, periodLabel: settings.periodLabel, useClassLimit: settings.useClassLimit
+  };
+  await page.goto(appUrl());
+  const payload = { keys: { rosterKey: ROSTER_KEY, settingsKey: SETTINGS_KEY, langKey: LANG_KEY, gamesKey: GAMES_KEY, storageKey: STORAGE_KEY }, roster, settings, lang: "nl", games: [game] };
+  await page.evaluate((data) => {
+    const { keys, roster, settings, lang, games } = data;
+    localStorage.removeItem(keys.rosterKey);
+    localStorage.removeItem(keys.settingsKey);
+    localStorage.removeItem(keys.langKey);
+    localStorage.removeItem(keys.gamesKey);
+    localStorage.removeItem(keys.storageKey);
+
+    localStorage.setItem(keys.rosterKey, JSON.stringify(roster));
+    localStorage.setItem(keys.settingsKey, JSON.stringify(settings));
+    localStorage.setItem(keys.langKey, lang);
+    localStorage.setItem(keys.gamesKey, JSON.stringify(games));
+  }, payload);
+  await page.goto(appUrl());
+  await page.waitForLoadState("networkidle");
+}
+
+/**
+ * Seed de app met lege localStorage.
+ */
+async function seedEmpty(page) {
+  await page.goto(appUrl());
+  await page.evaluate((keys) => {
+    localStorage.removeItem(keys.rosterKey);
+    localStorage.removeItem(keys.settingsKey);
+    localStorage.removeItem(keys.langKey);
+    localStorage.removeItem(keys.gamesKey);
+    localStorage.removeItem(keys.storageKey);
+  }, { rosterKey: ROSTER_KEY, settingsKey: SETTINGS_KEY, langKey: LANG_KEY, gamesKey: GAMES_KEY, storageKey: STORAGE_KEY });
+  await page.goto(appUrl());
+  await page.waitForLoadState("networkidle");
+}
+
+/**
+ * Geeft alle waarden uit localStorage terug als object.
+ */
+async function readLocalStorage(page) {
+  return await page.evaluate((keys) => {
+    const out = {};
+    keys.forEach((k) => { const v = localStorage.getItem(k); if (v != null) out[k] = v; });
+    return out;
+  }, BACKUP_KEYS);
+}
+
 module.exports = {
   TEST_PLAYERS,
   TEST_SETTINGS,
@@ -290,9 +443,15 @@ module.exports = {
   playersWithMatchStateFromRoster,
   freshMatchState,
   freshMatchStateForRoster,
+  runningMatchState,
+  buildBackup,
   appUrl,
   seedApp,
   seedAppWithRoster,
+  seedRunningMatch,
+  seedFullTeam,
+  seedEmpty,
+  readLocalStorage,
   expectedStarters,
   playerCount,
   teamName,
@@ -300,5 +459,6 @@ module.exports = {
   SETTINGS_KEY,
   LANG_KEY,
   GAMES_KEY,
-  STORAGE_KEY
+  STORAGE_KEY,
+  BACKUP_KEYS
 };
