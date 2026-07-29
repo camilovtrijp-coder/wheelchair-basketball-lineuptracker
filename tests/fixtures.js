@@ -26,6 +26,37 @@ const TEST_PLAYERS = [
 ];
 
 /**
+ * Kleine spelerslijst voor de volledige wedstrijdflow (classificatie uit).
+ */
+const SMALL_GAME_PLAYERS = [
+  { id: 1, nr: "4", naam: "Anna", kl: "3.0", vrouw: false, jeugd: false },
+  { id: 2, nr: "7", naam: "Bram", kl: "3.0", vrouw: false, jeugd: false },
+  { id: 3, nr: "9", naam: "Cara", kl: "3.0", vrouw: false, jeugd: false },
+  { id: 4, nr: "11", naam: "Dirk", kl: "3.0", vrouw: false, jeugd: false },
+  { id: 5, nr: "14", naam: "Eva", kl: "3.0", vrouw: false, jeugd: false }
+];
+
+/**
+ * Settings voor de kleine wedstrijdflow: classificatie uit, 2 kwarten.
+ */
+const SMALL_GAME_SETTINGS = {
+  teamName: "Flowteam",
+  logoUri: "",
+  primaryColor: "#2563eb",
+  accentColor: "#f97316",
+  quarterCount: 2,
+  periodLabel: "Kwart",
+  useClassLimit: false,
+  tag1Label: "",
+  tag2Label: "",
+  classBaseLimit: 14.5,
+  maxBonus: 2.5,
+  bonusTag1Only: 1.5,
+  bonusTag2Only: 1.0,
+  bonusBoth: 2.0
+};
+
+/**
  * Default test settings met classificatiesysteem aan.
  */
 const TEST_SETTINGS = {
@@ -253,6 +284,8 @@ module.exports = {
   TEST_PLAYERS,
   TEST_SETTINGS,
   OVER_LIMIT_PLAYERS,
+  SMALL_GAME_PLAYERS,
+  SMALL_GAME_SETTINGS,
   playersWithMatchState,
   playersWithMatchStateFromRoster,
   freshMatchState,
