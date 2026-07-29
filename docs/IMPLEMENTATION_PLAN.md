@@ -183,6 +183,27 @@ Test minimaal:
 - Bewaar bij testfouten het Playwright-rapport als artifact.
 - Wijzig geen productiecode en voeg geen deployment toe.
 
+### PR 1.6 — Dekking van fase-1-acceptatiegaten
+
+Vult de gaten die in de onafhankelijke review na PR 1.5 zijn geconstateerd,
+zonder productiecode te wijzigen:
+
+- meerdere gelijktijdige wissels bevestigen;
+- wissel op nul seconden zonder leeg segment;
+- deelnemers en vijf starters expliciet kiezen;
+- geïmporteerde historie zichtbaar in de interface;
+- Engelse foutmelding bij ongeldige back-up;
+- touch-viewport voor kritieke wedstrijdacties;
+- lineupcode bevat exact vijf oplopend gesorteerde rugnummers;
+- totale speler-minuten = vijf maal gespeelde wedstrijdminuten;
+- plus/min = punten voor min punten tegen (expliciet);
+- syntactisch geldige JSON met ongeldig schema (`data` als string) mag geen
+  bestaande `BACKUP_KEYS` verwijderen en mag geen bevestigingsdialoog tonen.
+
+De laatste testcase staat bekend als P0-1 uit de review. Omdat dit een
+productcode-bug is, wordt die testcase als `test.fail()` gemarkeerd totdat de
+importvalidatie is opgelost vóór Fase 2.
+
 ### Modeladvies
 
 `opencode-go/kimi-k2.7-code` voor implementatie. Laat de berekeningsassertions zo mogelijk reviewen met `opencode-go/glm-5.2`.
@@ -656,6 +677,7 @@ Gebruik GitHub Issues of een kleine tabel in dit bestand. Issues zijn beter zodr
 | PR 1.3 — hervatten en back-up | Voltooid |  | backup-resume.spec.js met resume, export, import, invalid |
 | PR 1.4 — mobiel en taal | Voltooid |  | mobile-lang.spec.js met iPhone viewport, NL/EN flows |
 | PR 1.5 — GitHub Actions CI | Voltooid | #6 | .github/workflows/ci.yml, Playwright tests in CI |
+| PR 1.6 — fase-1-dekking | Voltooid | #7 | coverage-gaps.spec.js; P0-1 als test.fail |
 | Fase 2 — data-integriteit | Niet gestart |  |  |
 | Fase 3 — modulaire v2-architectuur | Niet gestart |  |  |
 | Fase 4 — databasebesluit | Niet gestart |  |  |
