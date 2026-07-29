@@ -21,6 +21,42 @@ const {
 const MOBILE_VIEWPORT = { width: 390, height: 844 };
 
 /**
+ * Test dat een ongeldige back-up payload wordt afgewezen zonder localStorage te muteren.
+ * Wacht expliciet op de asynchrone FileReader en de alert.
+ */
+async function assertUnchangedAfterInvalidImport(page, fileContent) {
+  await seedApp(page);
+
+  const before = await readLocalStorage(page);
+  expect(before[ROSTER_KEY]).toBeTruthy();
+
+  const invalidFile = path.join(os.tmpdir(), `lineup-invalid-${Date.now()}-${Math.random().toString(36).slice(2)}.json`);
+  fs.writeFileSync(invalidFile, fileContent);
+
+  const dialogs = [];
+  page.on('dialog', async dialog => {
+    dialogs.push({ type: dialog.type(), message: dialog.message() });
+    await dialog.dismiss();
+  });
+
+  await page.locator('button:has-text("⚙")').click();
+  await page.setInputFiles('#backupFileInput', invalidFile);
+
+  // Wacht op exact één alert (FileReader is async); er mag geen confirm verschijnen
+  await expect.poll(() => dialogs.filter(d => d.type === 'alert').length, { timeout: 5000 }).toBe(1);
+  expect(dialogs.filter(d => d.type === 'confirm')).toHaveLength(0);
+
+  // Alle BACKUP_KEYS moeten byte-gelijk blijven
+  const after = await readLocalStorage(page);
+  expect(Object.keys(after).sort()).toEqual(Object.keys(before).sort());
+  for (const key of Object.keys(before)) {
+    expect(after[key]).toEqual(before[key]);
+  }
+
+  fs.unlinkSync(invalidFile);
+}
+
+/**
  * Stelt cumulatieve score en eindtijd in en slaat een segment op.
  * Begin staat standaard op 10:00, eind teveel opgegeven.
  */
@@ -291,45 +327,78 @@ test.describe('PR 1.6 - fase-1-dekking', () => {
     expect(Number(seg2[pmIdx])).toBe(2);
   });
 
-  // P0-1: schema-invalid import verwijdert BACKUP_KEYS. Bekende productcode-bug.
-  // Deze test is verwacht falend (test.fail) totdat importvalidatie is opgelost vóór Fase 2.
-  test.fail('syntactisch geldige JSON met ongeldig schema mag geen data verwijderen', async ({ page }) => {
-    await seedApp(page);
-    const before = await readLocalStorage(page);
-    expect(before[ROSTER_KEY]).toBeTruthy();
+  test('P0-1: data als string wordt afgewezen zonder dataverlies', async ({ page }) => {
+    await assertUnchangedAfterInvalidImport(page, '{"type":"lineup-tracker-backup","version":1,"data":"broken"}');
+  });
 
-    // data als string (geen object): passeert huidige validatie in index.html:1333
-    const invalidSchema = '{"type":"lineup-tracker-backup","version":1,"data":"broken"}';
-    const invalidFile = path.join(os.tmpdir(), `lineup-invalid-schema-${Date.now()}.json`);
-    fs.writeFileSync(invalidFile, invalidSchema);
+  test('P0-1: data als array wordt afgewezen zonder dataverlies', async ({ page }) => {
+    await assertUnchangedAfterInvalidImport(page, '{"type":"lineup-tracker-backup","version":1,"data":[]}');
+  });
+
+  test('P0-1: data als getal wordt afgewezen zonder dataverlies', async ({ page }) => {
+    await assertUnchangedAfterInvalidImport(page, '{"type":"lineup-tracker-backup","version":1,"data":42}');
+  });
+
+  test('P0-1: data als null wordt afgewezen zonder dataverlies', async ({ page }) => {
+    await assertUnchangedAfterInvalidImport(page, '{"type":"lineup-tracker-backup","version":1,"data":null}');
+  });
+
+  test('P0-1: syntactisch ongeldige JSON wordt afgewezen zonder dataverlies', async ({ page }) => {
+    await assertUnchangedAfterInvalidImport(page, 'dit is geen json {[');
+  });
+
+  test('P0-1: geldige back-up importeert nog steeds correct', async ({ page }) => {
+    await seedEmpty(page);
+
+    const roster = SMALL_GAME_PLAYERS;
+    const settings = SMALL_GAME_SETTINGS;
+    const game = {
+      id: 'g-valid-import-1',
+      opponent: 'Valid Team',
+      competition: 'Valid Competition',
+      date: '2025-02-15T12:00:00.000Z',
+      players: roster,
+      segments: [{
+        quarter: 1, beginSec: 600, endSec: 540, durSec: 60,
+        lineup: roster.map(p => p.id),
+        pf: 10, pa: 3, classSum: 0, allowed: 0, over: false
+      }],
+      scoreFor: 10, scoreAgainst: 3,
+      quarterCount: settings.quarterCount, periodLabel: settings.periodLabel, useClassLimit: settings.useClassLimit
+    };
+    const backup = buildBackup({ roster, settings, lang: 'nl', games: [game] });
+    const backupFile = path.join(os.tmpdir(), `lineup-tracker-valid-import-${Date.now()}-${Math.random().toString(36).slice(2)}.json`);
+    fs.writeFileSync(backupFile, JSON.stringify(backup));
 
     const dialogs = [];
     page.on('dialog', async dialog => {
       dialogs.push({ type: dialog.type(), message: dialog.message() });
-      if (dialog.type() === 'alert') await dialog.dismiss();
-      else await dialog.accept(); // Bevestig NIET — we verwachten dat alert eerst verschijnt
+      await dialog.accept();
     });
 
     await page.locator('button:has-text("⚙")').click();
-    await page.setInputFiles('#backupFileInput', invalidFile);
+    await Promise.all([
+      page.waitForNavigation(),
+      page.setInputFiles('#backupFileInput', backupFile)
+    ]);
+    await page.waitForLoadState('networkidle');
 
-    // Wacht op minstens één dialog (FileReader async)
-    await expect.poll(() => dialogs.length, { timeout: 5000 }).toBeGreaterThan(0);
+    // Confirm-dialoog is getoond
+    expect(dialogs.filter(d => d.type === 'confirm')).toHaveLength(1);
+    expect(dialogs.find(d => d.type === 'confirm').message).toContain('Back-up importeren');
 
-    // De alert moet verschijnen, NIET de confirm
-    expect(dialogs.some(d => d.type === 'alert' && d.message.includes('geen geldige'))).toBe(true);
-
-    // Geen confirm-dialoog voor import
-    expect(dialogs.filter(d => d.type === 'confirm')).toHaveLength(0);
-
-    // localStorage moet byte-gelijk blijven
+    // Team, instellingen en geschiedenis hersteld
     const after = await readLocalStorage(page);
-    expect(after[ROSTER_KEY]).toEqual(before[ROSTER_KEY]);
-    expect(after[GAMES_KEY]).toEqual(before[GAMES_KEY]);
-    expect(after[SETTINGS_KEY]).toEqual(before[SETTINGS_KEY]);
-    expect(after[LANG_KEY]).toEqual(before[LANG_KEY]);
-    expect(after[STORAGE_KEY]).toEqual(before[STORAGE_KEY]);
+    expect(JSON.parse(after[ROSTER_KEY])).toEqual(roster);
+    expect(JSON.parse(after[SETTINGS_KEY])).toEqual(settings);
+    expect(after[LANG_KEY]).toBe('nl');
 
-    fs.unlinkSync(invalidFile);
+    // Pagina herlaadt en toont geschiedenis
+    await page.locator('.tabbtn', { hasText: 'Historie' }).click();
+    await expect(page.locator('text=Valid Team')).toBeVisible();
+    await expect(page.locator('text=Valid Competition')).toBeVisible();
+    await expect(page.locator('text=10 - 3')).toBeVisible();
+
+    fs.unlinkSync(backupFile);
   });
 });
