@@ -26,6 +26,17 @@ function writeTempBackup(backup) {
 }
 
 test.describe('PR 2.3 - migratieframework', () => {
+  // Sommige tests overschrijven window.MIGRATIONS of window.SCHEMA_VERSION.
+  // Na elke test worden deze teruggezet naar de bekende fabriekswaarden.
+  test.afterEach(async ({ page }) => {
+    await page.evaluate(() => {
+      window.SCHEMA_VERSION = 1;
+      window.MIGRATIONS = {
+        1: function (data) { return data; }
+      };
+    });
+  });
+
   test('migrateBackup is beschikbaar op window en is een functie', async ({ page }) => {
     await seedEmpty(page);
     const hasFunction = await page.evaluate(() => typeof window.migrateBackup === 'function');
