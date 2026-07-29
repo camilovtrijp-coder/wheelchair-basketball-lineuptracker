@@ -287,7 +287,7 @@ Taalvoorkeur: `"nl"` of `"en"`.
 
 1. **Schema versie**: localStorage key `lineup-tracker-schema-version` (sinds PR 2.1) bevat het huidige schema (1). Ontbrekende key wordt als versie 1 gelezen.
 2. **Back-up versie**: JSON back-up heeft `version: 1` (sinds PR 2.1 gebruikt door import om toekomstige versies veilig te weigeren).
-3. **Validatie**: Import weigert structureel ongeldige `payload.data` (sinds PR 1.7) en toekomstige `version` (sinds PR 2.1).
+3. **Validatie**: Import weigert structureel ongeldige `payload.data` (sinds PR 1.7), toekomstige `version` (sinds PR 2.1), en inhoudelijke fouten in collecties/velden/referenties (sinds PR 2.2). Foutmeldingen in NL en EN.
 4. **Migratie**: Volgt in PR 2.3.
 
 ### V2 Vereisten
@@ -457,15 +457,22 @@ interface Backup {
 
 ### Back-up Import
 
-1. **Type check**: `payload.type === "lineup-tracker-backup"`
-2. **Version check**: `payload.version <= currentVersion`
-3. **Data aanwezig**: `payload.data` is object
-4. **Roster validatie**: Array van Players met verplichte velden
-5. **Games validatie**: Array van Games met verplichte velden
-6. **Settings validatie**: Object met bekende velden
-7. **Lang validatie**: `"nl"` of `"en"`
+De importvolgorde in `handleImportBackupFile` is:
+1. **Type check**: `payload.type === "lineup-tracker-backup"` (sinds PR 1.7)
+2. **Structurele data-check**: `payload.data` is een plain object (geen array/string/number/null) (sinds PR 1.7)
+3. **Version check**: ontbrekende `version` wordt als 1 gelezen; `version > currentVersion` wordt geweigerd (sinds PR 2.1)
+4. **Inhoudelijke validatie** (sinds PR 2.2):
+   - `data: {}` (geen herkenbare velden) → afgewezen
+   - **Roster**: moet een array zijn; elk element is een object met verplichte velden `id` (number), `nr` (string), `naam` (string), `kl` (string), `vrouw` (boolean), `jeugd` (boolean); geen dubbele `id`s
+   - **Games**: moet een array zijn; elk element is een object met verplichte velden `id`, `opponent`, `competition`, `date`, `players`, `segments`, `scoreFor`, `scoreAgainst`, `quarterCount`, `periodLabel`, `useClassLimit`; `game.players[i].id` is verplicht; `segment.lineup` mag alleen IDs bevatten die voorkomen in `game.players` (referentie-check)
+   - **Settings**: moet een object zijn; bekende sleutels aanwezig; `useClassLimit` is boolean; `quarterCount`, `classBaseLimit`, `maxBonus`, `bonus*` zijn numbers (geen bereik-checks)
+   - **Lang**: `"nl"` of `"en"`
+5. **Bevestigingsdialoog**
+6. **Schrijf naar localStorage + `SCHEMA_VERSION_KEY` + reload**
 
-### Segment Validatie
+Bij validatiefouten: eerste foutmelding wordt getoond plus samenvatting van het aantal overige fouten, in de actieve interfacetaal. Geen `localStorage`-mutatie, geen reload.
+
+### Segment Validatie (toekomstig, PR 2.3+)
 
 1. **DurSec > 0**: Segment moet positieve duur hebben
 2. **Lineup length = 5**: Precies 5 spelers
@@ -473,9 +480,9 @@ interface Backup {
 4. **PF/PA >= 0**: Niet-negatieve punten
 5. **Begin/Eind consistent**: Afhankelijk van clockDown
 
-### Player Validatie
+### Player Validatie (toekomstig, PR 2.3+)
 
-1. **ID uniek**: Geen dubbele IDs
+1. **ID uniek**: Geen dubbele IDs (gedeeltelijk afgedwongen in PR 2.2)
 2. **Nr niet leeg**: Rugnummer verplicht
 3. **Naam niet leeg**: Naam verplicht (voor geldige spelers)
 4. **Kl numeriek**: Classificatie is decimal string
