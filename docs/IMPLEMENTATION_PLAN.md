@@ -174,6 +174,15 @@ Test minimaal:
 - Test minimaal navigatie, hoofdlabels en nieuwe foutmeldingen in het Engels.
 - Controleer dat tweecijferige rugnummers zichtbaar blijven.
 
+### PR 1.5 — GitHub Actions CI
+
+- Voeg een workflow toe die bij pull requests en pushes naar `main` draait.
+- Voer `npm ci` uit.
+- Installeer Chromium voor Playwright.
+- Voer `npm test` uit.
+- Bewaar bij testfouten het Playwright-rapport als artifact.
+- Wijzig geen productiecode en voeg geen deployment toe.
+
 ### Modeladvies
 
 `opencode-go/kimi-k2.7-code` voor implementatie. Laat de berekeningsassertions zo mogelijk reviewen met `opencode-go/glm-5.2`.
