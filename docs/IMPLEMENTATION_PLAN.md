@@ -641,8 +641,8 @@ Gebruik GitHub Issues of een kleine tabel in dit bestand. Issues zijn beter zodr
 
 | Onderdeel | Status | Issue/PR | Opmerking |
 |---|---|---|---|
-| Fase 0 — inventarisatie | Niet gestart |  |  |
-| PR 1.1 — testbasis | Niet gestart |  |  |
+| Fase 0 — inventarisatie | Voltooid |  | current-state.md, data-contracts.md, product-compatibility-matrix.md |
+| PR 1.1 — testbasis | Voltooid |  | fixtures.js, ui.spec.js deterministisch |
 | PR 1.2 — wedstrijdflow | Niet gestart |  |  |
 | PR 1.3 — hervatten en back-up | Niet gestart |  |  |
 | PR 1.4 — mobiel en taal | Niet gestart |  |  |
