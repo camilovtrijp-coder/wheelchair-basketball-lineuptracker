@@ -494,6 +494,7 @@ var STRINGS = {
     importBackupInvalid: "Dit bestand lijkt geen geldige Lineup Tracker-back-up te zijn.",
     importBackupInvalidData: "De back-up bevat ongeldige data: {details}. De huidige gegevens zijn niet aangepast.",
     importBackupInvalidDataAndMore: " (en {n} andere fouten)",
+    importBackupMigrationFailed: "De back-up kon niet naar de huidige versie worden gemigreerd. De huidige gegevens zijn niet aangepast.",
     validationNoRecognizableData: "de back-up bevat geen herkenbare gegevens",
     validationRosterNotArray: "roster moet een array zijn",
     validationRosterItemNotObject: "roster[{i}] moet een object zijn",
@@ -645,6 +646,7 @@ var STRINGS = {
     importBackupInvalid: "This file doesn't look like a valid Lineup Tracker backup.",
     importBackupInvalidData: "The backup contains invalid data: {details}. Your current data was not modified.",
     importBackupInvalidDataAndMore: " (and {n} more errors)",
+    importBackupMigrationFailed: "The backup could not be migrated to the current version. Your current data was not modified.",
     validationNoRecognizableData: "backup contains no recognizable data",
     validationRosterNotArray: "roster must be an array",
     validationRosterItemNotObject: "roster[{i}] must be an object",
@@ -1349,6 +1351,31 @@ var BACKUP_KEYS = [STORAGE_KEY, ROSTER_KEY, GAMES_KEY, SETTINGS_KEY, LANG_KEY];
 function isPlainObject(value) {
   return value !== null && typeof value === "object" && !Array.isArray(value);
 }
+// Migratieframework: per schemaversie-overgang één functie die de data transformeert.
+// De sleutel is het bronschema (fromVersion), de waarde is een functie (data) → data.
+// Wanneer SCHEMA_VERSION verhoogd wordt, voeg je hier een nieuwe entry toe.
+// Bij ontbrekende migratie of runtime-fout retourneert migrateBackup null
+// zodat de import veilig wordt afgewezen zonder localStorage te muteren.
+var MIGRATIONS = {
+  1: function (data) { return data; }
+};
+function migrateBackup(data, fromVersion, toVersion) {
+  if (!isPlainObject(data)) return null;
+  if (fromVersion === toVersion) return data;
+  var current = data;
+  for (var v = fromVersion; v < toVersion; v++) {
+    var step = MIGRATIONS[v];
+    if (typeof step !== "function") return null;
+    try {
+      var next = step(current);
+      if (!isPlainObject(next)) return null;
+      current = next;
+    } catch (e) {
+      return null;
+    }
+  }
+  return current;
+}
 var PLAYER_REQUIRED_FIELDS = ["id", "nr", "naam", "kl", "vrouw", "jeugd"];
 var GAME_REQUIRED_FIELDS = ["id", "opponent", "competition", "date", "players", "segments", "scoreFor", "scoreAgainst", "quarterCount", "periodLabel", "useClassLimit"];
 var SETTINGS_KEYS = ["teamName", "logoUri", "primaryColor", "accentColor", "quarterCount", "periodLabel", "useClassLimit", "tag1Label", "tag2Label", "classBaseLimit", "maxBonus", "bonusTag1Only", "bonusTag2Only", "bonusBoth"];
@@ -1505,6 +1532,14 @@ function handleImportBackupFile(file) {
     // Toekomstige versies worden veilig geweigerd zonder localStorage te muteren.
     var backupVersion = (payload.version == null) ? 1 : Number(payload.version);
     if (!isFinite(backupVersion) || backupVersion > SCHEMA_VERSION) { window.alert(t("importBackupInvalid")); return; }
+    // Migratie: oudere back-ups worden stapsgewijs naar SCHEMA_VERSION gebracht
+    // voordat inhoudelijke validatie draait. Bij ontbrekende of falende migratie
+    // wordt de import afgewezen zonder localStorage te muteren.
+    if (backupVersion < SCHEMA_VERSION) {
+      var migrated = migrateBackup(payload.data, backupVersion, SCHEMA_VERSION);
+      if (migrated == null) { window.alert(t("importBackupMigrationFailed")); return; }
+      payload.data = migrated;
+    }
     // Inhoudelijke validatie: type-checks, verplichte velden, referenties.
     // Bij fouten wordt niets gemuteerd; toon eerste fout en samenvatting.
     var validationErrors = validateBackupData(payload.data);
