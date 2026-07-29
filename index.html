@@ -1357,6 +1357,10 @@ function isPlainObject(value) {
 // Bij ontbrekende migratie of runtime-fout retourneert migrateBackup null
 // zodat de import veilig wordt afgewezen zonder localStorage te muteren.
 var MIGRATIONS = {
+  // Sleutel 1 = migratie van schema v1 naar v2. Nu is dit een no-op omdat
+  // SCHEMA_VERSION nog 1 is. Bij een toekomstige SCHEMA_VERSION = 2 moet deze
+  // entry worden vervangen door de echte transformatie. Migraties moeten een
+  // nieuw plain object retourneren; het input-object mag niet worden gemuteerd.
   1: function (data) { return data; }
 };
 function migrateBackup(data, fromVersion, toVersion) {

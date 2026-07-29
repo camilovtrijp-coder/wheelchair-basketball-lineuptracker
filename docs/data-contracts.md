@@ -476,8 +476,9 @@ Bij validatiefouten: eerste foutmelding wordt getoond plus samenvatting van het 
 #### Migratiecontract (PR 2.3)
 
 - `MIGRATIONS` is een object met sleutels = `fromVersion` en waarden = `(data) => data`.
-- De sleutel 1 is een no-op totdat `SCHEMA_VERSION` wordt verhoogd.
+- De sleutel 1 is de migratie van v1 naar v2. Zolang `SCHEMA_VERSION === 1` is dit een no-op; bij een toekomstige `SCHEMA_VERSION = 2` moet deze entry de echte transformatie bevatten.
 - `migrateBackup(data, fromVersion, toVersion)` loopt stapsgewijs van `fromVersion` tot `toVersion` en past per overgang de geregistreerde functie toe.
+- Elke migratie moet een **nieuw plain object** retourneren en mag het input-object niet muteren.
 - Retourneert `null` bij: niet-plain-object invoer, ontbrekende migratie, runtime-fout in een migratie, of een non-object resultaat.
 - De importflow gebruikt `null` als signaal om de import af te wijzen met `importBackupMigrationFailed`.
 
