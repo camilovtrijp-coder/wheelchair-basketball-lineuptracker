@@ -655,6 +655,7 @@ Gebruik GitHub Issues of een kleine tabel in dit bestand. Issues zijn beter zodr
 | PR 1.2 — wedstrijdflow | Voltooid |  | full-game.spec.js met scenario en totalen |
 | PR 1.3 — hervatten en back-up | Voltooid |  | backup-resume.spec.js met resume, export, import, invalid |
 | PR 1.4 — mobiel en taal | Voltooid |  | mobile-lang.spec.js met iPhone viewport, NL/EN flows |
+| PR 1.5 — GitHub Actions CI | Voltooid | #6 | .github/workflows/ci.yml, Playwright tests in CI |
 | Fase 2 — data-integriteit | Niet gestart |  |  |
 | Fase 3 — modulaire v2-architectuur | Niet gestart |  |  |
 | Fase 4 — databasebesluit | Niet gestart |  |  |
