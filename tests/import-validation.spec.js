@@ -385,6 +385,111 @@ test.describe('PR 2.2 - importvalidatie', () => {
     fs.unlinkSync(backupFile);
   });
 
+  test('game met scoreFor als string wordt afgewezen', async ({ page }) => {
+    await seedApp(page);
+    const before = await readLocalStorage(page);
+
+    const game = {
+      id: 'g-bad-type', opponent: 'X', competition: 'Y',
+      date: '2025-01-01T00:00:00.000Z',
+      players: SMALL_GAME_PLAYERS, segments: [],
+      scoreFor: 'twee', scoreAgainst: 1,
+      quarterCount: 4, periodLabel: 'Kwart', useClassLimit: false
+    };
+    const backup = { type: 'lineup-tracker-backup', version: 1, data: { 'lineup-tracker-games': [game] } };
+    const backupFile = writeTempBackup(backup);
+
+    const dialogs = [];
+    page.on('dialog', async dialog => {
+      dialogs.push({ type: dialog.type(), message: dialog.message() });
+      await dialog.dismiss();
+    });
+
+    await page.locator('button:has-text("⚙")').click();
+    await page.setInputFiles('#backupFileInput', backupFile);
+
+    await expect.poll(() => dialogs.filter(d => d.type === 'alert').length, { timeout: 5000 }).toBe(1);
+    expect(dialogs.filter(d => d.type === 'confirm')).toHaveLength(0);
+    expect(dialogs[0].message).toContain('games[0].scoreFor moet een getal zijn');
+
+    const after = await readLocalStorage(page);
+    for (const key of Object.keys(before)) {
+      expect(after[key]).toEqual(before[key]);
+    }
+
+    fs.unlinkSync(backupFile);
+  });
+
+  test('game met useClassLimit als string wordt afgewezen', async ({ page }) => {
+    await seedApp(page);
+    const before = await readLocalStorage(page);
+
+    const game = {
+      id: 'g-bad-type', opponent: 'X', competition: 'Y',
+      date: '2025-01-01T00:00:00.000Z',
+      players: SMALL_GAME_PLAYERS, segments: [],
+      scoreFor: 2, scoreAgainst: 1,
+      quarterCount: 4, periodLabel: 'Kwart', useClassLimit: 'nee'
+    };
+    const backup = { type: 'lineup-tracker-backup', version: 1, data: { 'lineup-tracker-games': [game] } };
+    const backupFile = writeTempBackup(backup);
+
+    const dialogs = [];
+    page.on('dialog', async dialog => {
+      dialogs.push({ type: dialog.type(), message: dialog.message() });
+      await dialog.dismiss();
+    });
+
+    await page.locator('button:has-text("⚙")').click();
+    await page.setInputFiles('#backupFileInput', backupFile);
+
+    await expect.poll(() => dialogs.filter(d => d.type === 'alert').length, { timeout: 5000 }).toBe(1);
+    expect(dialogs.filter(d => d.type === 'confirm')).toHaveLength(0);
+    expect(dialogs[0].message).toContain('games[0].useClassLimit moet een boolean zijn');
+
+    const after = await readLocalStorage(page);
+    for (const key of Object.keys(before)) {
+      expect(after[key]).toEqual(before[key]);
+    }
+
+    fs.unlinkSync(backupFile);
+  });
+
+  test('game met players als string (geen array) wordt afgewezen', async ({ page }) => {
+    await seedApp(page);
+    const before = await readLocalStorage(page);
+
+    const game = {
+      id: 'g-bad-type', opponent: 'X', competition: 'Y',
+      date: '2025-01-01T00:00:00.000Z',
+      players: 'niet-een-array', segments: [],
+      scoreFor: 2, scoreAgainst: 1,
+      quarterCount: 4, periodLabel: 'Kwart', useClassLimit: false
+    };
+    const backup = { type: 'lineup-tracker-backup', version: 1, data: { 'lineup-tracker-games': [game] } };
+    const backupFile = writeTempBackup(backup);
+
+    const dialogs = [];
+    page.on('dialog', async dialog => {
+      dialogs.push({ type: dialog.type(), message: dialog.message() });
+      await dialog.dismiss();
+    });
+
+    await page.locator('button:has-text("⚙")').click();
+    await page.setInputFiles('#backupFileInput', backupFile);
+
+    await expect.poll(() => dialogs.filter(d => d.type === 'alert').length, { timeout: 5000 }).toBe(1);
+    expect(dialogs.filter(d => d.type === 'confirm')).toHaveLength(0);
+    expect(dialogs[0].message).toContain('games[0].players moet een array zijn');
+
+    const after = await readLocalStorage(page);
+    for (const key of Object.keys(before)) {
+      expect(after[key]).toEqual(before[key]);
+    }
+
+    fs.unlinkSync(backupFile);
+  });
+
   test('meerdere fouten toont eerste + samenvatting', async ({ page }) => {
     await seedApp(page);
     const before = await readLocalStorage(page);

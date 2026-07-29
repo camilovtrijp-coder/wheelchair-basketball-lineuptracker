@@ -503,6 +503,10 @@ var STRINGS = {
     validationGamesNotArray: "games moet een array zijn",
     validationGameItemNotObject: "games[{i}] moet een object zijn",
     validationGameFieldMissing: "games[{i}] mist veld '{field}'",
+    validationGameTypeString: "games[{i}].{field} moet een string zijn",
+    validationGameTypeNumber: "games[{i}].{field} moet een getal zijn",
+    validationGameTypeBoolean: "games[{i}].{field} moet een boolean zijn",
+    validationGameTypeArray: "games[{i}].{field} moet een array zijn",
     validationGamePlayersItemInvalid: "games[{i}].players[{j}] mist verplicht veld 'id'",
     validationSegmentUnknownPlayer: "games[{i}].segments[{j}].lineup[{k}] verwijst naar onbekend speler-id {id}",
     validationSettingsNotObject: "settings moet een object zijn",
@@ -655,6 +659,10 @@ var STRINGS = {
     validationGamesNotArray: "games must be an array",
     validationGameItemNotObject: "games[{i}] must be an object",
     validationGameFieldMissing: "games[{i}] is missing field '{field}'",
+    validationGameTypeString: "games[{i}].{field} must be a string",
+    validationGameTypeNumber: "games[{i}].{field} must be a number",
+    validationGameTypeBoolean: "games[{i}].{field} must be a boolean",
+    validationGameTypeArray: "games[{i}].{field} must be an array",
     validationGamePlayersItemInvalid: "games[{i}].players[{j}] is missing required field 'id'",
     validationSegmentUnknownPlayer: "games[{i}].segments[{j}].lineup[{k}] references unknown player id {id}",
     validationSettingsNotObject: "settings must be an object",
@@ -1382,6 +1390,10 @@ function migrateBackup(data, fromVersion, toVersion) {
 }
 var PLAYER_REQUIRED_FIELDS = ["id", "nr", "naam", "kl", "vrouw", "jeugd"];
 var GAME_REQUIRED_FIELDS = ["id", "opponent", "competition", "date", "players", "segments", "scoreFor", "scoreAgainst", "quarterCount", "periodLabel", "useClassLimit"];
+var GAME_STRING_FIELDS = ["id", "opponent", "competition", "date", "periodLabel"];
+var GAME_NUMBER_FIELDS = ["scoreFor", "scoreAgainst", "quarterCount"];
+var GAME_BOOLEAN_FIELDS = ["useClassLimit"];
+var GAME_ARRAY_FIELDS = ["players", "segments"];
 var SETTINGS_KEYS = ["teamName", "logoUri", "primaryColor", "accentColor", "quarterCount", "periodLabel", "useClassLimit", "tag1Label", "tag2Label", "classBaseLimit", "maxBonus", "bonusTag1Only", "bonusTag2Only", "bonusBoth"];
 var SETTINGS_BOOLEAN_KEYS = ["useClassLimit"];
 var SETTINGS_NUMBER_KEYS = ["quarterCount", "classBaseLimit", "maxBonus", "bonusTag1Only", "bonusTag2Only", "bonusBoth"];
@@ -1412,6 +1424,30 @@ function validateGame(game, gameIndex, knownRosterIds) {
     var f = GAME_REQUIRED_FIELDS[i];
     if (!Object.prototype.hasOwnProperty.call(game, f)) {
       pushError(errors, "validationGameFieldMissing", { i: gameIndex, field: f });
+    }
+  }
+  for (var s = 0; s < GAME_STRING_FIELDS.length; s++) {
+    var sf = GAME_STRING_FIELDS[s];
+    if (Object.prototype.hasOwnProperty.call(game, sf) && typeof game[sf] !== "string") {
+      pushError(errors, "validationGameTypeString", { i: gameIndex, field: sf });
+    }
+  }
+  for (var n = 0; n < GAME_NUMBER_FIELDS.length; n++) {
+    var nf = GAME_NUMBER_FIELDS[n];
+    if (Object.prototype.hasOwnProperty.call(game, nf) && typeof game[nf] !== "number") {
+      pushError(errors, "validationGameTypeNumber", { i: gameIndex, field: nf });
+    }
+  }
+  for (var b = 0; b < GAME_BOOLEAN_FIELDS.length; b++) {
+    var bf = GAME_BOOLEAN_FIELDS[b];
+    if (Object.prototype.hasOwnProperty.call(game, bf) && typeof game[bf] !== "boolean") {
+      pushError(errors, "validationGameTypeBoolean", { i: gameIndex, field: bf });
+    }
+  }
+  for (var a = 0; a < GAME_ARRAY_FIELDS.length; a++) {
+    var af = GAME_ARRAY_FIELDS[a];
+    if (Object.prototype.hasOwnProperty.call(game, af) && !Array.isArray(game[af])) {
+      pushError(errors, "validationGameTypeArray", { i: gameIndex, field: af });
     }
   }
   if (Array.isArray(game.players)) {
@@ -1452,7 +1488,7 @@ function validateGames(value) {
       }
     }
     var gameErrors = validateGame(g, i, rosterIds);
-    for (var k = 0; k < gameErrors.length; k++) pushError(errors, gameErrors[k]);
+    errors.push.apply(errors, gameErrors);
   }
   return errors;
 }
@@ -1492,19 +1528,19 @@ function validateBackupData(data) {
   }
   if (Object.prototype.hasOwnProperty.call(data, ROSTER_KEY)) {
     var rosterErrors = validateRoster(data[ROSTER_KEY]);
-    for (var i = 0; i < rosterErrors.length; i++) pushError(errors, rosterErrors[i]);
+    errors.push.apply(errors, rosterErrors);
   }
   if (Object.prototype.hasOwnProperty.call(data, GAMES_KEY)) {
     var gamesErrors = validateGames(data[GAMES_KEY]);
-    for (var j = 0; j < gamesErrors.length; j++) pushError(errors, gamesErrors[j]);
+    errors.push.apply(errors, gamesErrors);
   }
   if (Object.prototype.hasOwnProperty.call(data, SETTINGS_KEY)) {
     var settingsErrors = validateSettings(data[SETTINGS_KEY]);
-    for (var m = 0; m < settingsErrors.length; m++) pushError(errors, settingsErrors[m]);
+    errors.push.apply(errors, settingsErrors);
   }
   if (Object.prototype.hasOwnProperty.call(data, LANG_KEY)) {
     var langErrors = validateLang(data[LANG_KEY]);
-    for (var n = 0; n < langErrors.length; n++) pushError(errors, langErrors[n]);
+    errors.push.apply(errors, langErrors);
   }
   return errors;
 }

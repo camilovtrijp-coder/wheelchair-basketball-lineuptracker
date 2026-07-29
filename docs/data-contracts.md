@@ -465,7 +465,7 @@ De importvolgorde in `handleImportBackupFile` is:
 5. **Inhoudelijke validatie** (sinds PR 2.2):
    - `data: {}` (geen herkenbare velden) → afgewezen
    - **Roster**: moet een array zijn; elk element is een object met verplichte velden `id` (number), `nr` (string), `naam` (string), `kl` (string), `vrouw` (boolean), `jeugd` (boolean); geen dubbele `id`s
-   - **Games**: moet een array zijn; elk element is een object met verplichte velden `id`, `opponent`, `competition`, `date`, `players`, `segments`, `scoreFor`, `scoreAgainst`, `quarterCount`, `periodLabel`, `useClassLimit`; `game.players[i].id` is verplicht; `segment.lineup` mag alleen IDs bevatten die voorkomen in `game.players` (referentie-check)
+   - **Games**: moet een array zijn; elk element is een object met verplichte velden `id`, `opponent`, `competition`, `date`, `players`, `segments`, `scoreFor`, `scoreAgainst`, `quarterCount`, `periodLabel`, `useClassLimit`; indien aanwezig moeten `id`/`opponent`/`competition`/`date`/`periodLabel` strings zijn, `scoreFor`/`scoreAgainst`/`quarterCount` numbers, `useClassLimit` een boolean en `players`/`segments` arrays (sinds PR 2.2 followup); `game.players[i].id` is verplicht; `segment.lineup` mag alleen IDs bevatten die voorkomen in `game.players` (referentie-check)
    - **Settings**: moet een object zijn; bekende sleutels aanwezig; `useClassLimit` is boolean; `quarterCount`, `classBaseLimit`, `maxBonus`, `bonus*` zijn numbers (geen bereik-checks)
    - **Lang**: `"nl"` of `"en"`
 6. **Bevestigingsdialoog**
