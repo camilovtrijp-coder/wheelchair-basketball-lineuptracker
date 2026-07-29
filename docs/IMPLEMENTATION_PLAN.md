@@ -681,6 +681,7 @@ Gebruik GitHub Issues of een kleine tabel in dit bestand. Issues zijn beter zodr
 | PR 1.7 — importveiligheid | Voltooid | #8 | `isPlainObject` validatie in index.html; P0-1 opgelost |
 | PR 2.1 — schemaversie | Voltooid | #9 | `SCHEMA_VERSION` + `lineup-tracker-schema-version`; toekomstige versies geweigerd |
 | PR 2.2 — importvalidatie | Voltooid | #10 | `validateBackupData()` met type-checks, referentie-checks, lege-data-detectie; vertaalbare foutmeldingen |
+| PR 2.3 — migratieframework | Voltooid |  | `migrateBackup()` met `MIGRATIONS` map; automatisch in importflow; veilige weigering bij falende migratie |
 | Fase 2 — data-integriteit | Niet gestart |  |  |
 | Fase 3 — modulaire v2-architectuur | Niet gestart |  |  |
 | Fase 4 — databasebesluit | Niet gestart |  |  |

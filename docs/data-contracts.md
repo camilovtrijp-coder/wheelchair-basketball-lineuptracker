@@ -288,7 +288,7 @@ Taalvoorkeur: `"nl"` of `"en"`.
 1. **Schema versie**: localStorage key `lineup-tracker-schema-version` (sinds PR 2.1) bevat het huidige schema (1). Ontbrekende key wordt als versie 1 gelezen.
 2. **Back-up versie**: JSON back-up heeft `version: 1` (sinds PR 2.1 gebruikt door import om toekomstige versies veilig te weigeren).
 3. **Validatie**: Import weigert structureel ongeldige `payload.data` (sinds PR 1.7), toekomstige `version` (sinds PR 2.1), en inhoudelijke fouten in collecties/velden/referenties (sinds PR 2.2). Foutmeldingen in NL en EN.
-4. **Migratie**: Volgt in PR 2.3.
+4. **Migratie**: `migrateBackup(data, fromVersion, toVersion)` (sinds PR 2.3) loopt automatisch tijdens import voor back-ups met `version < SCHEMA_VERSION`. Per overgang is één functie in `MIGRATIONS` geregistreerd; bij ontbrekende of falende migratie wordt de import afgewezen zonder `localStorage` te muteren. Foutmelding in NL en EN.
 
 ### V2 Vereisten
 
@@ -461,16 +461,25 @@ De importvolgorde in `handleImportBackupFile` is:
 1. **Type check**: `payload.type === "lineup-tracker-backup"` (sinds PR 1.7)
 2. **Structurele data-check**: `payload.data` is een plain object (geen array/string/number/null) (sinds PR 1.7)
 3. **Version check**: ontbrekende `version` wordt als 1 gelezen; `version > currentVersion` wordt geweigerd (sinds PR 2.1)
-4. **Inhoudelijke validatie** (sinds PR 2.2):
+4. **Migratie** (sinds PR 2.3): indien `version < SCHEMA_VERSION` wordt `migrateBackup(payload.data, version, SCHEMA_VERSION)` aangeroepen. Bij ontbrekende of falende migratie wordt de import afgewezen met `importBackupMigrationFailed`. Geen `localStorage`-mutatie.
+5. **Inhoudelijke validatie** (sinds PR 2.2):
    - `data: {}` (geen herkenbare velden) → afgewezen
    - **Roster**: moet een array zijn; elk element is een object met verplichte velden `id` (number), `nr` (string), `naam` (string), `kl` (string), `vrouw` (boolean), `jeugd` (boolean); geen dubbele `id`s
    - **Games**: moet een array zijn; elk element is een object met verplichte velden `id`, `opponent`, `competition`, `date`, `players`, `segments`, `scoreFor`, `scoreAgainst`, `quarterCount`, `periodLabel`, `useClassLimit`; `game.players[i].id` is verplicht; `segment.lineup` mag alleen IDs bevatten die voorkomen in `game.players` (referentie-check)
    - **Settings**: moet een object zijn; bekende sleutels aanwezig; `useClassLimit` is boolean; `quarterCount`, `classBaseLimit`, `maxBonus`, `bonus*` zijn numbers (geen bereik-checks)
    - **Lang**: `"nl"` of `"en"`
-5. **Bevestigingsdialoog**
-6. **Schrijf naar localStorage + `SCHEMA_VERSION_KEY` + reload**
+6. **Bevestigingsdialoog**
+7. **Schrijf naar localStorage + `SCHEMA_VERSION_KEY` + reload**
 
 Bij validatiefouten: eerste foutmelding wordt getoond plus samenvatting van het aantal overige fouten, in de actieve interfacetaal. Geen `localStorage`-mutatie, geen reload.
+
+#### Migratiecontract (PR 2.3)
+
+- `MIGRATIONS` is een object met sleutels = `fromVersion` en waarden = `(data) => data`.
+- De sleutel 1 is een no-op totdat `SCHEMA_VERSION` wordt verhoogd.
+- `migrateBackup(data, fromVersion, toVersion)` loopt stapsgewijs van `fromVersion` tot `toVersion` en past per overgang de geregistreerde functie toe.
+- Retourneert `null` bij: niet-plain-object invoer, ontbrekende migratie, runtime-fout in een migratie, of een non-object resultaat.
+- De importflow gebruikt `null` als signaal om de import af te wijzen met `importBackupMigrationFailed`.
 
 ### Segment Validatie (toekomstig, PR 2.3+)
 
