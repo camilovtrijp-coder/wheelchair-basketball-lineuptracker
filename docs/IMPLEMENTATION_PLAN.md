@@ -679,6 +679,7 @@ Gebruik GitHub Issues of een kleine tabel in dit bestand. Issues zijn beter zodr
 | PR 1.5 — GitHub Actions CI | Voltooid | #6 | .github/workflows/ci.yml, Playwright tests in CI |
 | PR 1.6 — fase-1-dekking | Voltooid | #7 | coverage-gaps.spec.js; P0-1 als test.fail |
 | PR 1.7 — importveiligheid | Voltooid | #8 | `isPlainObject` validatie in index.html; P0-1 opgelost |
+| PR 2.1 — schemaversie | Voltooid | #9 | `SCHEMA_VERSION` + `lineup-tracker-schema-version`; toekomstige versies geweigerd |
 | Fase 2 — data-integriteit | Niet gestart |  |  |
 | Fase 3 — modulaire v2-architectuur | Niet gestart |  |  |
 | Fase 4 — databasebesluit | Niet gestart |  |  |

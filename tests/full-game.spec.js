@@ -6,6 +6,7 @@ const {
   GAMES_KEY,
   SETTINGS_KEY,
   LANG_KEY,
+  SCHEMA_VERSION_KEY,
   SMALL_GAME_PLAYERS,
   SMALL_GAME_SETTINGS
 } = require('./fixtures');
@@ -16,7 +17,7 @@ const {
 async function seedSmallGame(page) {
   await page.goto(appUrl());
   const payload = {
-    keys: { rosterKey: ROSTER_KEY, settingsKey: SETTINGS_KEY, langKey: LANG_KEY, gamesKey: GAMES_KEY, storageKey: STORAGE_KEY },
+    keys: { rosterKey: ROSTER_KEY, settingsKey: SETTINGS_KEY, langKey: LANG_KEY, gamesKey: GAMES_KEY, storageKey: STORAGE_KEY, schemaVersionKey: SCHEMA_VERSION_KEY },
     roster: SMALL_GAME_PLAYERS,
     settings: SMALL_GAME_SETTINGS,
     lang: "nl",
@@ -29,6 +30,7 @@ async function seedSmallGame(page) {
     localStorage.removeItem(keys.langKey);
     localStorage.removeItem(keys.gamesKey);
     localStorage.removeItem(keys.storageKey);
+    localStorage.removeItem(keys.schemaVersionKey);
 
     localStorage.setItem(keys.rosterKey, JSON.stringify(roster));
     localStorage.setItem(keys.settingsKey, JSON.stringify(settings));

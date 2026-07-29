@@ -285,18 +285,18 @@ Taalvoorkeur: `"nl"` of `"en"`.
 
 ### Huidige Situatie
 
-1. **Geen schema versie**: localStorage bevat geen versie-informatie
-2. **Geen validatie**: Import accepteert elke JSON zonder controle
-3. **Geen migratie**: Structuurwijzigingen breken bestaande data
-4. **Back-up versie**: JSON back-up heeft `version: 1` maar wordt niet gebruikt
+1. **Schema versie**: localStorage key `lineup-tracker-schema-version` (sinds PR 2.1) bevat het huidige schema (1). Ontbrekende key wordt als versie 1 gelezen.
+2. **Back-up versie**: JSON back-up heeft `version: 1` (sinds PR 2.1 gebruikt door import om toekomstige versies veilig te weigeren).
+3. **Validatie**: Import weigert structureel ongeldige `payload.data` (sinds PR 1.7) en toekomstige `version` (sinds PR 2.1).
+4. **Migratie**: Volgt in PR 2.3.
 
 ### V2 Vereisten
 
-1. **Schema versie toevoegen**: Aan localStorage of back-up
-2. **Validatie implementeren**: Type checking voor import
-3. **Migratie functie**: `migrate(data, fromVersion, toVersion)`
-4. **Backward compatibility**: Oude back-ups moeten werken
-5. **Forward compatibility**: Nieuwe app moet oude data lezen
+1. **Schema versie**: aanwezig in zowel localStorage (`lineup-tracker-schema-version`) als in elke back-up payload.
+2. **Validatie**: structureel (PR 1.7) + versie (PR 2.1); diepgaande veld-/referentie-validatie volgt in PR 2.2.
+3. **Migratie functie**: `migrate(data, fromVersion, toVersion)` (PR 2.3).
+4. **Backward compatibility**: back-ups zonder `version` worden als versie 1 gelezen.
+5. **Forward compatibility**: back-ups met `version > 1` worden veilig geweigerd met de bestaande `importBackupInvalid` melding.
 
 ### Migratie Strategie
 
