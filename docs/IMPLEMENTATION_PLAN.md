@@ -7,7 +7,7 @@ Datum: 29 juli 2026
 
 ## 1. Doel
 
-In deze afzonderlijke repository een robuuste v2 van de Lineup Tracker bouwen, zonder de werkende productie-app rechtstreeks aan te passen. De bestaande app blijft gedurende de herbouw de gedrags- en productreferentie. De nieuwe app moet bestaand wedstrijdgedrag, lokale gegevens, offline werking en CSV-compatibiliteit aantoonbaar behouden voordat een eventuele overstap plaatsvindt.
+In deze afzonderlijke repository een robuuste v2 van de Lineup Tracker bouwen, zonder de werkende productie-app of de productie-repository te benaderen of aan te passen. De in deze v2-repository aanwezige kopie van de app, plus uitsluitend door de eigenaar aangeleverde screenshots, exports en beschrijvingen, vormen de gedrags- en productreferentie. De nieuwe app moet bestaand wedstrijdgedrag, lokale gegevens, offline werking en CSV-compatibiliteit aantoonbaar behouden voordat een eventuele overstap plaatsvindt.
 
 De volgorde is bewust:
 
@@ -21,7 +21,7 @@ De volgorde is bewust:
 
 ## 2. Huidige uitgangssituatie
 
-Deze repository is bewust aangemaakt als veilige v2-/herbouwomgeving. De werkende en gepubliceerde app wordt vanuit een andere repository beheerd. Deze repository mag daarom niet automatisch worden gezien als productiebron of publicatiebron.
+Deze repository is bewust aangemaakt als veilige v2-/herbouwomgeving. De werkende en gepubliceerde app wordt elders beheerd. De locatie van die productiebron hoeft niet in deze repository of in agentinstructies te worden vastgelegd.
 
 De meegekomen app is een browserlokale, installeerbare PWA en dient hier als functionele referentie. De belangrijkste eigenschappen zijn:
 
@@ -52,7 +52,8 @@ Iedere implementatietaak moet aan deze regels voldoen:
 - Gebruik geen externe runtime-dependency als dezelfde functie eenvoudig lokaal kan blijven.
 - Vermijd één grote PR. Lever iedere fase op in kleine, afzonderlijk controleerbare PR’s.
 - Werk nooit rechtstreeks op `main`.
-- Wijzig de productie-repository niet vanuit deze roadmap; gebruik deze alleen-lezen als gedragsreferentie nadat de exacte repository is bevestigd.
+- De productie-repository valt volledig buiten scope: niet opzoeken, openen, clonen, fetchen, vergelijken of wijzigen; maak daar ook geen branch, issue, comment, commit of PR.
+- Vraag de eigenaar om een gerichte screenshot, export of beschrijving wanneer de lokale referentiekopie onvoldoende informatie bevat.
 - Publiceer of deploy deze repository niet zonder een afzonderlijk expliciet besluit over cutover en hosting.
 - Voeg geen nieuwe Netlify-specifieke code of controles toe; deployment wordt elders beheerd.
 - Plaats nooit een databasebeheersleutel, `service_role`-sleutel of ander geheim in browsercode.
@@ -75,11 +76,11 @@ Een taak is pas gereed wanneer:
 - bij databasewerk ook toegangsregels, migraties, constraints en negatieve autorisatietests zijn gecontroleerd;
 - bij synchronisatiewerk ook offline wijzigingen, opnieuw verbinden, dubbele verzending en conflicten zijn getest.
 
-## 5. Fase 0 — Alleen-lezen inventarisatie en referentiecontract
+## 5. Fase 0 — Inventarisatie van de lokale referentiekopie
 
 ### Doel
 
-Eerst het werkelijke datamodel, de berekeningen en risicovolle statusovergangen beschrijven. Leg daarnaast vast welke repository en release de werkende productie-app vormen. Nog niets herstructureren en niets in de productie-repository wijzigen.
+Eerst het werkelijke datamodel, de berekeningen en risicovolle statusovergangen van de in deze repository aanwezige referentiekopie beschrijven. Nog niets herstructureren. Zoek of benader de productie-repository niet.
 
 ### Taken
 
@@ -89,9 +90,9 @@ Eerst het werkelijke datamodel, de berekeningen en risicovolle statusovergangen 
 - Documenteer CSV- en JSON-contracten.
 - Benoem plekken waar spelers-ID’s, lineups en historische wedstrijden naar elkaar verwijzen.
 - Benoem impliciete aannames, bijvoorbeeld precies vijf spelers op het veld.
-- Leg de URL, branch en gecontroleerde commit-SHA van de productie-repository vast zodra de eigenaar die heeft bevestigd.
 - Maak onderscheid tussen bestaand gedrag, gewenste v2-verandering en nog onbevestigde aanname.
 - Stel een functionele compatibiliteitsmatrix op waarmee de nieuwe app later naast de werkende app kan worden vergeleken.
+- Noteer ontbrekende productie-informatie als vraag voor de eigenaar; probeer deze niet zelfstandig uit externe repositories te halen.
 
 ### Oplevering
 
@@ -105,7 +106,7 @@ Eerst het werkelijke datamodel, de berekeningen en risicovolle statusovergangen 
 - Elk persistent veld heeft type, betekenis en standaardwaarde.
 - Elke berekening heeft minimaal één handmatig narekenbaar voorbeeld.
 - Risico’s bij verwijderen, importeren, wisselen en hervatten zijn expliciet beschreven.
-- De productie-referentie is exact geïdentificeerd of staat expliciet als blocker vermeld.
+- De productie-repository is niet geïdentificeerd, benaderd of genoemd.
 - Voor ieder bestaand hoofdscherm staat welke functionaliteit v2 moet behouden, wijzigen of bewust laten vervallen.
 
 ### Modeladvies
