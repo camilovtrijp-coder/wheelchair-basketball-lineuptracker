@@ -4,7 +4,9 @@
   "description": "Lineup Tracker PWA for basketball and sports teams",
   "main": "index.html",
   "scripts": {
-    "test": "playwright test"
+    "test": "playwright test",
+    "test:unit": "npm --prefix v2 run test:unit",
+    "test:all": "npm test && npm run test:unit"
   },
   "devDependencies": {
     "@playwright/test": "^1.40.0"
