@@ -683,7 +683,8 @@ Gebruik GitHub Issues of een kleine tabel in dit bestand. Issues zijn beter zodr
 | PR 2.2 — importvalidatie | Voltooid | #10 | `validateBackupData()` met type-checks, referentie-checks, lege-data-detectie; vertaalbare foutmeldingen. Review-opvolging: type-checks toegevoegd voor `game`-velden (string/getal/boolean/array); dubbele `t()`-aanroep op reeds-vertaalde submeldingen verwijderd in `validateBackupData`/`validateGames` |
 | PR 2.3 — migratieframework | Voltooid |  | `migrateBackup()` met `MIGRATIONS` map; automatisch in importflow; veilige weigering bij falende migratie |
 | Fase 2 — data-integriteit | Niet gestart |  |  |
-| Fase 3 — modulaire v2-architectuur | Niet gestart |  |  |
+| ADR-000 — frontendarchitectuur | Voltooid |  | `docs/architecture/adr-000-frontend-architecture.md`: Preact + TypeScript + Vite, laaggrenzen, i18n/PWA/teststrategie, gecorrigeerde migratievolgorde |
+| Fase 3 — modulaire v2-architectuur | Niet gestart (ADR vastgelegd, scaffold nog niet gestart) |  |  |
 | Fase 4 — databasebesluit | Niet gestart |  |  |
 | Fase 5 — database, auth en rollen | Niet gestart |  |  |
 | Fase 6 — offline synchronisatie en migratie | Niet gestart |  |  |
