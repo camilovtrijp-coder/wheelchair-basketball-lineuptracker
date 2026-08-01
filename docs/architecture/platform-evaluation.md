@@ -1,6 +1,7 @@
 # Platformevaluatie voor de v2-roadmap
 
-Status: richtinggevend advies, nog geen geaccepteerd architectuurbesluit  
+Status: richtinggevend voorkeursbesluit, nog te bekrachtigen in ADR-001 t/m ADR-003
+
 Datum: 1 augustus 2026
 
 ## Vraag
@@ -8,198 +9,292 @@ Datum: 1 augustus 2026
 Welke combinatie past het beste bij een offline-first lineuptracker die:
 
 - op meerdere apparaten gebruikt kan worden;
-- later meerdere clubs, teams en seizoenen ondersteunt;
+- één coach toegang geeft tot meerdere organisaties en teams;
 - tijdens een wedstrijd zonder netwerk betrouwbaar blijft;
+- later meerdere clubs, bonden, teams en seizoenen ondersteunt;
 - via GitHub controleerbaar kan worden gebouwd en gepubliceerd;
 - door een kleine beheerorganisatie onderhouden kan worden?
 
-## Advies in één zin
+## Voorkeursroute
 
-Behoud **Preact + TypeScript + Vite** voor de app, gebruik **Netlify** als
-voorkeurskandidaat voor Git-gekoppelde frontendhosting en gebruik **Supabase**
-als voorkeurskandidaat voor Postgres, authenticatie en autorisatie. Bouw boven
-Supabase wel een eigen, geteste offline-first opslag- en synchronisatielaag;
-Supabase vervangt die laag niet.
+Behoud **Preact + TypeScript + Vite** voor de PWA, **Netlify** voor de
+Git-gekoppelde frontendhosting en kies **Firebase Authentication + Cloud
+Firestore** als voorkeursbackend. Firestore krijgt de voorkeur boven Supabase
+omdat betrouwbare lokale caching en het later synchroniseren van browserwrites
+een kernfunctie van de web-SDK zijn. Dat sluit beter aan op courtside gebruik
+dan een volledig zelf te bouwen offline synchronisatielaag.
 
-Dit advies wordt pas een besluit nadat
-`adr-001-cloud-data-platform.md`, `adr-002-offline-sync-strategy.md` en
-`adr-003-tenancy-and-authorization.md` zijn opgesteld en door de eigenaar zijn
-goedgekeurd.
+Dit document geeft de bouwrichting en standaardkeuzes. De keuze wordt formeel
+geaccepteerd nadat ADR-001, ADR-002 en ADR-003 en de fictieve platformpilot uit
+fase 4 de gates halen. **Supabase is de begrensde terugvaloptie** wanneer de
+pilot aantoont dat het Firestore-documentmodel, Security Rules, export of
+statistiekvragen onvoldoende beheersbaar zijn.
 
-## Beoogde doelarchitectuur
+## Doelarchitectuur
 
 ```text
-Courtside PWA
-  Preact UI
-      |
-  application use-cases
-      |
-  repository ports
-      |
-  +-------------------------+
-  | IndexedDB + outbox      |  <- altijd eerst lokaal schrijven
-  +-------------------------+
-              |
-         sync worker
-              |
-  Supabase publishable API
-      Auth + Postgres + RLS
-
 GitHub -> CI -> Netlify Deploy Preview / productiebuild
+                         |
+                    Courtside PWA
+              Preact UI + application use-cases
+                         |
+                   repository ports
+                         |
+          Firebase web-SDK met persistent local cache
+                         |
+          +--------------+---------------+
+          |                              |
+  Firebase Authentication       Cloud Firestore
+  identiteit en sessie          data, listeners en sync
+                                        |
+                          Security Rules per organisatie,
+                              team, membership en rol
 ```
 
-De browser bevat uitsluitend een Supabase publishable key. Een secret key of
-`service_role`-sleutel hoort nooit in de PWA, Git, build-output of logs. De
-publishable key is geen autorisatie: elke blootgestelde tabel krijgt geteste
-Row Level Security op basis van club-/teamlidmaatschap en rol.
+Netlify en Firebase zijn onafhankelijke onderdelen. Netlify levert de statische
+PWA; Firebase levert identiteit en data. Firebase Hosting is daarom niet nodig
+voor de eerste versie en Netlify Functions zijn niet nodig zolang alle
+toegestane browsertoegang veilig met Firebase Authentication en Security Rules
+kan worden uitgevoerd.
 
-## Waarom Supabase de voorlopige voorkeur heeft
+## Waarom Firebase nu de voorkeur heeft
 
-De kerngegevens zijn relationeel: een club heeft teams, teams hebben seizoenen,
-leden en spelers, wedstrijden hebben snapshots en segmenten, en segmenten
-verwijzen naar precies vijf wedstrijdspelers. Postgres past daar natuurlijk bij
-en maakt statistiekqueries, constraints, exports en een latere exit overzichtelijk.
-
-Supabase combineert een volledige Postgres-database met Auth, Row Level
-Security, migrations/CLI en optioneel Realtime. Dat vermindert de hoeveelheid
-eigen backendbeheer. De officiële documentatie bevestigt dat browsertoegang met
-een publishable key bedoeld is, maar alleen veilig is wanneer RLS correct is
-ingeschakeld en getest:
-
-- [API keys](https://supabase.com/docs/guides/getting-started/api-keys)
-- [Row Level Security](https://supabase.com/docs/guides/database/postgres/row-level-security)
-- [Local development and migrations](https://supabase.com/docs/guides/local-development)
-
-### Belangrijke beperking
-
-Supabase biedt niet automatisch het offline gedrag dat deze courtside-app nodig
-heeft. De PWA moet zelf IndexedDB, een outbox, idempotency, revisiecontrole,
-conflicten en herstelgedrag implementeren. Realtime kan later apparaten snel
-bijwerken, maar wordt niet de bron van waarheid voor lokale wedstrijdacties.
-
-### Actuele platformwijzigingen om rekening mee te houden
-
-- Nieuwe code gebruikt `sb_publishable_...` en niet de legacy `anon`-sleutel;
-  de legacy sleutels worden volgens Supabase eind 2026 uitgefaseerd.
-- Nieuwe tabellen worden niet vanzelf aan de Data API blootgesteld. Dat is een
-  veiligere standaard, maar migrations moeten expliciet vastleggen welke schema's
-  en tabellen bereikbaar zijn.
-- De Supabase-changelog wordt bij iedere platform-PR opnieuw gecontroleerd op
-  breaking changes.
+Cloud Firestore kan op het web een persistente lokale cache gebruiken. De app
+kan gecachte data offline lezen en lokale writes worden na herstel van de
+verbinding gesynchroniseerd. Webpersistentie staat niet standaard aan, wordt
+expliciet geconfigureerd en wordt volgens de officiële documentatie ondersteund
+in Chrome, Safari en Firefox. Omdat de cache niet automatisch tussen sessies
+wordt gewist, vraagt de app vóór activering of dit een vertrouwd apparaat is.
 
 Bronnen:
 
-- [Migreren naar publishable en secret keys](https://supabase.com/docs/guides/getting-started/migrating-to-new-api-keys)
-- [Supabase breaking changes](https://supabase.com/changelog?types=breaking-change)
+- [Firestore offline data](https://firebase.google.com/docs/firestore/manage-data/enable-offline)
+- [Firebase Authentication voor web](https://firebase.google.com/docs/auth/web/start)
+- [Authenticatiesessies bewaren](https://firebase.google.com/docs/auth/web/auth-state-persistence)
 
-## Waarom Firebase niet de eerste keuze is
+De ingebouwde sync neemt niet alle domeinproblemen weg. Meerdere writes naar
+hetzelfde document zijn standaard last-write-wins. Daarom wordt een actieve
+wedstrijd niet als één steeds overschreven megadocument opgeslagen. Bevestigde
+wedstrijdhandelingen worden append-only documenten met een
+clientgegenereerde unieke ID. Score, speeltijd en segmentstatus blijven daaruit
+reproduceerbaar. De eerste versie houdt daarnaast één actieve scorer aan;
+meekijkers zijn read-only en overname is expliciet.
 
-Cloud Firestore heeft een belangrijk voordeel: de clients kunnen offline data
-cachen, lokale writes synchroniseren en bij conflicterende wijzigingen op
-hetzelfde document geldt standaard last-write-wins. Voor een generieke mobiele
-app is dat aantrekkelijk. Zie
-[Access data offline](https://firebase.google.com/docs/firestore/manage-data/enable-offline).
+## Authenticatie en autorisatie zijn aparte lagen
 
-Voor deze app weegt daartegenover dat het domein relationeel is, historische
-snapshots en constraints belangrijk zijn en toekomstige statistiekvragen zich
-goed lenen voor SQL. De conclusie dat Supabase hier beter past is daarom een
-architectuurinschatting, niet de stelling dat Firestore technisch ongeschikt is.
-Firebase blijft het terugvalalternatief wanneer een proof-of-concept aantoont dat
-de eigen Supabase-synchronisatielaag te complex of onbetrouwbaar wordt.
+Firebase Authentication stelt vast **wie** de gebruiker is. Firestore Security
+Rules bepalen vervolgens **welke organisatie, welk team en welke handeling**
+die gebruiker mag benaderen. Inloggen is dus nooit op zichzelf toestemming.
 
-## Waarom geen eigen API als startpunt
+Startkeuze:
 
-Een eigen API boven een zelfbeheerde database geeft maximale controle, maar
-voegt ook serverbeheer, authenticatie, autorisatie, upgrades, monitoring,
-back-ups en incidentherstel toe. Die extra onderhoudslast levert in de eerste
-productfasen weinig voordeel op. De repository-ports en Postgres-migrations
-houden een latere overstap wel mogelijk.
+- e-mail en wachtwoord;
+- optioneel Google-login;
+- geen telefoon/SMS in de eerste versie;
+- geen magic link als standaard op Spark: de huidige Auth-limiet voor verzonden
+  sign-in-link-e-mails is vijf per dag; heroverweeg dit alleen na een bewust
+  Blaze-/Identity Platform-besluit;
+- uitloggen en lokale cache wissen is expliciet beschikbaar op gedeelde
+  apparaten.
 
-## Waarom Netlify voorlopig behouden
+Een eerste login en het openen van nog nooit gecachte context vereisen netwerk.
+Een vooraf geopende en gecachte teamcontext moet daarna offline werken. De app
+krijgt daarom een controle vóór de wedstrijd die bevestigt dat account,
+teamcontext, roster, instellingen en app-shell lokaal gereed zijn.
 
-Netlify past bij de bestaande werkwijze: een gekoppelde GitHub-repository kan na
-een push automatisch bouwen en deployen, en pull requests kunnen een eigen
-Deploy Preview krijgen. Voor Vite adviseert Netlify standaard `npm run build`
-met `dist` als publish-directory:
+## Multi-organisatie is vanaf het begin kernarchitectuur
+
+Eén Firebase-gebruiker heeft één globale identiteit en kan tegelijk lid zijn
+van meerdere organisaties en teams, met een andere rol per context. Een
+organisatie kan bijvoorbeeld `Rotterdam Basketball` of `Nederlandse
+Basketball Bond` voorstellen. Hiervoor wordt geen afzonderlijke Firebase-tenant
+of Firebase-project per club gebruikt: iedere omgeving gebruikt één Firebase-
+project en de applicatie modelleert organisaties, teams en memberships zelf.
+
+Beoogde Firestore-structuur:
+
+```text
+users/{uid}
+organizations/{organizationId}
+organizations/{organizationId}/organizationMembers/{uid}
+organizations/{organizationId}/teams/{teamId}
+organizations/{organizationId}/teams/{teamId}/teamMembers/{uid}
+organizations/{organizationId}/teams/{teamId}/seasons/{seasonId}
+organizations/{organizationId}/teams/{teamId}/settings/current
+organizations/{organizationId}/teams/{teamId}/players/{playerId}
+organizations/{organizationId}/teams/{teamId}/games/{gameId}
+organizations/{organizationId}/teams/{teamId}/games/{gameId}/actions/{actionId}
+```
+
+Ieder membershipdocument bevat minimaal `userId`, `role`, `status`,
+`invitedAt` en `acceptedAt`. Teamdata wordt altijd via een organisatie- en
+teampad benaderd. Security Rules controleren lidmaatschap op een
+deterministisch pad. Queries moeten dezelfde organisatie-/teamscope bevatten,
+want Firestore Rules zijn geen filters.
+
+Eerste rollen:
+
+| Rol                     | Bevoegdheden                                                    |
+| ----------------------- | ---------------------------------------------------------------- |
+| `organizationOwner`     | organisatie, eigenaarschap, leden, export en verwijdering        |
+| `organizationAdmin`     | teams en memberships beheren, geen eigenaarschap overdragen      |
+| `coach`                 | roster, wedstrijden en teaminstellingen beheren                  |
+| `scorer`                | wedstrijdacties schrijven, roster niet beheren                   |
+| `viewer`                | alleen lezen                                                      |
+
+De contextwisselaar toont uitsluitend toegestane organisatie/teamcombinaties.
+Het intrekken van toegang bij de ene organisatie heeft geen invloed op toegang
+tot een andere. Tijdens een actieve wedstrijd is de context vergrendeld; wisselen
+kan pas na afronden of na een expliciete, sterke bevestiging zonder stille
+datamutatie.
+
+## Offline- en synchronisatiecontract
+
+Iedere flow toont één van deze toestanden:
+
+- `Lokaal beschikbaar` — data komt uit de cache en kan verouderd zijn;
+- `Wacht op synchronisatie` — lokale writes zijn nog niet serverbevestigd;
+- `Gesynchroniseerd` — de server heeft de writes geaccepteerd;
+- `Actie nodig` — sync is geweigerd of vraagt een gebruikersbesluit.
+
+Een lokaal geaccepteerde write kan na reconnect alsnog door Security Rules
+worden geweigerd, bijvoorbeeld wanneer toegang intussen is ingetrokken. De app
+mag zo'n wijziging niet stil verliezen: zij blijft herstelbaar en exporteerbaar
+onder `Actie nodig`. Een nog nooit geopende teamcontext toont offline duidelijk
+dat internet nodig is; de app presenteert geen lege cache als een leeg team.
+
+## Beveiligingsmodel en verplichte tests
+
+- De browser-Firebaseconfig bevat publieke projectidentificatie en is geen
+  geheim; service-accountkeys, Admin SDK-credentials en private keys staan nooit
+  in PWA, Git, build-output of logs.
+- Alleen owners/admins kunnen uitnodigingen of memberships wijzigen; een client
+  kan zichzelf niet promoveren.
+- Rules worden in de Firebase Emulator Suite getest met positieve en negatieve
+  gevallen. Emulatorgebruik is verplicht voordat een cloud-PR wordt gemerged.
+- Organisatie A kan organisatie B niet lezen of schrijven, ook niet via een
+  anders samengestelde query.
+- Queries worden ontworpen naast Rules; brede queries die hopen dat Rules de
+  resultaten filteren zijn niet toegestaan.
+- Gebruik uitsluitend fictieve data in emulator, CI en previews.
+
+Bronnen:
+
+- [Security Rules conditions](https://firebase.google.com/docs/firestore/security/rules-conditions)
+- [Securely query data](https://firebase.google.com/docs/firestore/security/rules-query)
+- [Test Security Rules](https://firebase.google.com/docs/rules/unit-tests)
+
+## Productstandaarden zodat bouwen kan starten
+
+Deze standaarden gelden totdat de eigenaar bewust anders besluit:
+
+1. Een nieuwe gebruiker mag na aanmelden één eerste organisatie en team maken;
+   extra leden komen via uitnodiging van een owner/admin.
+2. E-mail/wachtwoord is verplicht beschikbaar; Google-login is optioneel.
+3. Eén actieve scorer bedient een lopende wedstrijd; andere apparaten kijken
+   read-only mee en overname is expliciet.
+4. Een afgeronde wedstrijd is standaard onveranderlijk. Heropenen is een latere,
+   geaudite beheeractie.
+5. Sla alleen noodzakelijke spelerdata op: naam, rugnummer, classificatie en de
+   bestaande categorievlaggen. Geen geboortedatum of medische gegevens.
+6. Development, staging en productie gebruiken afzonderlijke Firebase-projecten.
+   Een Deploy Preview wijst nooit naar het productieproject.
+7. Cloudmigratie blijft opt-in; de lokale bron en een downloadbare back-up blijven
+   beschikbaar totdat cloudbevestiging en herstel zijn bewezen.
+
+## Kosten- en beheerkader
+
+De pilot begint op het Firebase Spark-plan zolang de actuele quota passen. De
+officiële Firestore-prijspagina vermeldt voor één gratis database momenteel 1
+GiB opslag, 50.000 reads per dag, 20.000 writes per dag, 20.000 deletes per dag
+en 10 GiB uitgaand verkeer per maand. Quota en voorwaarden worden in ADR-001
+opnieuw vastgelegd, omdat ze kunnen wijzigen. Back-ups, point-in-time recovery,
+Cloud Functions of hoger verbruik kunnen een Blaze-account vereisen. Een
+budgetwaarschuwing is geen harde uitgavenlimiet; een upgrade gebeurt daarom
+alleen na expliciete goedkeuring.
+
+Bronnen:
+
+- [Firebase-prijsplannen](https://firebase.google.com/docs/projects/billing/firebase-pricing-plans)
+- [Firestore-prijzen en gratis quota](https://firebase.google.com/docs/firestore/pricing)
+- [Firebase Authentication-limieten](https://firebase.google.com/docs/auth/limits)
+
+## Waarom Netlify behouden
+
+Netlify past bij de bestaande werkwijze: pushes kunnen Git-gekoppelde builds
+starten en pull requests kunnen een Deploy Preview krijgen. Voor de Vite-PWA
+worden base directory, buildcommand en publish-directory expliciet vastgelegd.
+Firebase SDK's werken gewoon vanuit een door Netlify gehoste browserapp.
 
 - [Vite on Netlify](https://docs.netlify.com/build/frameworks/framework-setup-guides/vite/)
 - [Git workflows](https://docs.netlify.com/build/git-workflows/overview/)
 - [Deploy Previews](https://docs.netlify.com/deploy/deploy-types/deploy-previews/)
 
-Netlify host alleen de statische PWA. Supabase blijft een afzonderlijk backend-
-en dataplatform. Daardoor kan één van beide later worden vervangen zonder de
-hele app opnieuw te ontwerpen.
+Firebase-webconfig wordt per Netlify-deploycontext beheerd. Hoewel deze config
+geen geheim is, voorkomt contextsplitsing dat previews per ongeluk echte
+productiedata gebruiken. Een hostingwijziging of deployment blijft een
+afzonderlijke expliciete opdracht. Firebase Hosting blijft een technisch
+alternatief, niet de eerste keuze.
 
-Omgevingsvariabelen worden per deploycontext in Netlify beheerd en niet met
-waarden in Git gezet. Alleen de Supabase URL en publishable key mogen door Vite
-in browsercode worden opgenomen; servergeheimen niet. Zie
-[Environment variables overview](https://docs.netlify.com/build/environment-variables/overview/).
+De bestaande Netlify-account kan een legacyplan hebben wanneer het account vóór
+4 september 2025 is aangemaakt; dat wordt in PR 5.5 in de accountinstellingen
+geverifieerd. Voor nieuwe credit-based accounts is Free momenteel $0 met 300
+credits per maand en een harde limiet zonder automatische bijbetaling. Deploy
+Previews zijn ongemeten; een geslaagde productiedeploy kost momenteel 15
+credits. De roadmap staat geen betaalde upgrade of auto-recharge toe zonder
+expliciete goedkeuring.
 
-Er is voor de statische PWA geen Netlify Function of Netlify-specifieke
-Vite-plugin nodig zolang alle toegestane datatoegang via Supabase Auth en RLS
-loopt. Voeg zo'n serverlaag pas toe voor een concrete behoefte, bijvoorbeeld
-een beheertaak die bewust een secret key nodig heeft.
+- [Netlify credit-based prijsplannen](https://docs.netlify.com/manage/accounts-and-billing/billing/billing-for-credit-based-plans/credit-based-pricing-plans/)
+- [Legacy- en credit-based accounts](https://docs.netlify.com/manage/accounts-and-billing/billing/billing-for-credit-based-plans/how-credits-work/)
 
-## Multi-tenant uitgangspunt
+## Waarom Supabase de terugvaloptie blijft
 
-Ontwerp het schema vanaf het begin als:
+Supabase past relationeel beter bij constraints, SQL-statistieken en volledige
+exports. Het nadeel voor deze app is dat de browserclient geen gelijkwaardige,
+ingebouwde offline schrijfsynchronisatie levert; IndexedDB, outbox,
+idempotency, revisies en conflictherstel moeten dan zelf worden gebouwd. Kies
+Supabase alleen als de Firebase-pilot één van deze harde gates niet haalt:
 
-```text
-organization/club
-  -> teams
-      -> seasons
-          -> players and games
+- Security Rules en queries kunnen de multi-organisatie-isolatie niet eenvoudig
+  en testbaar afdwingen;
+- append-only wedstrijdacties leveren geen betrouwbaar offline herstel;
+- benodigde statistiek-, export- of verwijderflows worden aantoonbaar
+  onbeheerbaar of te duur;
+- een volledige organisatie-export en platformexit zijn niet reproduceerbaar.
 
-users
-  -> organization_memberships
-  -> team_memberships where finer access is needed
-```
+Bij terugval worden actuele Supabase-breaking changes opnieuw gecontroleerd en
+worden publishable keys plus geteste Row Level Security gebruikt; een secret of
+`service_role`-sleutel komt nooit in de browser.
 
-De eerste UI hoeft nog maar één club en één team per gebruiker te tonen. Het
-schema voorkomt wel dat later elk record en elke RLS-policy opnieuw moet worden
-ontworpen wanneer een tweede club aansluit.
+- [Supabase Row Level Security](https://supabase.com/docs/guides/database/postgres/row-level-security)
+- [Supabase breaking changes](https://supabase.com/changelog?types=breaking-change)
 
-Eerste rollen:
+## Gates voor definitieve acceptatie
 
-- `owner`: leden en eigenaarschap beheren, exporteren en verwijderen;
-- `coach`: team en wedstrijden beheren en scoren;
-- `viewer`: alleen lezen.
+De platformpilot gebruikt alleen fictieve data en bewijst minimaal:
 
-## Eerste multi-device grens
-
-De eerste cloudversie ondersteunt één actieve scorer per lopende wedstrijd.
-Andere apparaten kunnen lezen; een tweede scorer moet de bediening expliciet
-overnemen. Dit voorkomt stille dubbele punten en segmenten. Echte gelijktijdige
-multi-writer samenwerking is een latere productkeuze, niet een basisvereiste.
-
-## Beslispoorten vóór implementatie
-
-De eigenaar hoeft niet alle technische details te kiezen, maar wel deze
-productwensen:
-
-1. Mag een gebruiker zelf een club/team maken, of alleen via een uitnodiging?
-2. Is e-mail magic link/OTP voldoende voor de eerste versie?
-3. Is één actieve scorer plus read-only meekijken de juiste eerste
-   multi-device-ervaring?
-4. Welke persoonsgegevens zijn echt nodig, hoe lang blijven ze bewaard en moet
-   classificatie per speler in de cloud staan?
-5. Mag een eigenaar een afgeronde wedstrijd heropenen, of blijft die standaard
-   onveranderlijk?
-
-Technische controles binnen ADR-001:
-
-- EU-regio, actuele kosten en limieten;
-- back-up- en herstelmogelijkheden;
-- DPA/AVG-verantwoordelijkheden;
-- export- en verwijderflow;
-- exit-test: volledige clubdata exporteren naar een leesbaar formaat;
-- proof-of-concept voor offline outbox, idempotente sync en RLS-isolatie.
+- één gebruiker met verschillende rollen bij twee organisaties en meerdere
+  teams;
+- de contextwisselaar toont uitsluitend geautoriseerde contexten;
+- intrekken van toegang tot Rotterdam verwijdert geen toegang tot de NBB;
+- een `viewer` schrijft niet, een `scorer` schrijft alleen wedstrijdacties, een
+  `coach` beheert het team en een owner/admin beheert memberships;
+- niemand kan zichzelf promoveren en organisatie A kan organisatie B niet lezen;
+- een vooraf gecacht team blijft offline bruikbaar; een ongecachet team vraagt
+  duidelijk om internet;
+- settings/roster wijzigen offline, overleven reload en verschijnen na reconnect
+  exact één keer op apparaat B;
+- een na intrekking geweigerde queued write wordt `Actie nodig` en blijft lokaal
+  exporteerbaar;
+- een actieve wedstrijd houdt dezelfde organisatie/teamcontext;
+- kosten, regio, DPA, export, verwijdering, back-up en herstel zijn beoordeeld.
 
 ## Besluitadvies
 
-Ga verder met **Supabase + Netlify als voorkeursroute**, maar keur nu nog geen
-productiedatabase of deployment goed. Laat PR 3.2a-c eerst de frontend-
-walking-skeleton bewijzen. Maak daarna de drie ADR's en een klein technisch
-prototype met uitsluitend fictieve data. Alleen wanneer offline herstel,
-teamisolatie en twee-apparatensynchronisatie aantoonbaar werken, wordt deze
-platformkeuze definitief en mag de rest van de app erop worden gebouwd.
+Ga verder met **Netlify + Firebase Authentication + Cloud Firestore** als
+voorkeursroute. Bouw eerst PR 3.2a-c zonder backend. Leg daarna ADR-001 t/m
+ADR-003 vast en voer de beperkte Firebase-pilot uit. Begin pas aan de overige
+wedstrijdschermen wanneer offline herstel, multi-organisatie-isolatie,
+rolbeveiliging en twee-apparatensynchronisatie aantoonbaar werken. Als een harde
+gate faalt, stop dan vóór verdere productbouw en voer dezelfde pilot met
+Supabase uit.

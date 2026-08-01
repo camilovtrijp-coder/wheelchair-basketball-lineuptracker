@@ -14,7 +14,7 @@ Een mobiele, offline bruikbare lineuptracker voor teamsporten met wisselspelers 
 
 De root van deze repository bevat de volledige browserlokale **v1-referentie-app**. Deze blijft beschikbaar om gedrag, opslag, CSV, back-ups en offline werking tijdens de herbouw te vergelijken.
 
-`v2/` bevat sinds PR #16 alleen de minimale scaffold voor de afzonderlijke modulaire herbouw met Preact, TypeScript en Vite. Die scaffold is nog geen functionele vervanging van v1 en is nog niet de installeerbare PWA. Zie `docs/architecture/adr-000-frontend-architecture.md` en `docs/IMPLEMENTATION_PLAN.md` voor de vastgelegde grenzen en actuele voortgang. De platformevaluatie in `docs/architecture/platform-evaluation.md` adviseert Supabase + Netlify als voorkeursroute, maar geeft nog geen toestemming voor een database, deployment of productie-cutover.
+`v2/` bevat sinds PR #16 alleen de minimale scaffold voor de afzonderlijke modulaire herbouw met Preact, TypeScript en Vite. Die scaffold is nog geen functionele vervanging van v1 en is nog niet de installeerbare PWA. Zie `docs/architecture/adr-000-frontend-architecture.md` en `docs/IMPLEMENTATION_PLAN.md` voor de vastgelegde grenzen en actuele voortgang. De platformevaluatie in `docs/architecture/platform-evaluation.md` adviseert Netlify + Firebase Authentication + Cloud Firestore als voorkeursroute, met Supabase als begrensde terugvaloptie. Dit geeft nog geen toestemming voor een database, deployment of productie-cutover.
 
 ## Tabbladen
 
@@ -67,7 +67,7 @@ De aanwezige `netlify.toml` hoort bij de meegekomen v1-referentie. Hosting, auto
 
 - [Implementatieplan en volledige roadmap](docs/IMPLEMENTATION_PLAN.md)
 - [Frontendarchitectuur (ADR-000)](docs/architecture/adr-000-frontend-architecture.md)
-- [Platformevaluatie: Supabase, Netlify en alternatieven](docs/architecture/platform-evaluation.md)
+- [Platformevaluatie: Firebase, Netlify en alternatieven](docs/architecture/platform-evaluation.md)
 
 ## Privacy
 

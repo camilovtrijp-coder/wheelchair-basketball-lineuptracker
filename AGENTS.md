@@ -21,8 +21,20 @@ Voer per sessie slechts één afgebakende taak of PR uit het implementatieplan u
 - Voeg in fase 0 tot en met 3 geen backend, analytics, tracking of externe gegevensoverdracht toe.
 - Voeg daarna alleen database- of synchronisatiecode toe binnen de expliciet goedgekeurde fase uit het implementatieplan.
 - Plaats nooit tokens, API-sleutels, spelersdata of klantgegevens in broncode, tests, prompts of logs.
-- Plaats nooit een databasebeheersleutel of `service_role`-sleutel in browsercode.
-- Beveilig elke browsertoegankelijke databasetabel met geteste team- en rolgebonden toegangsregels.
+- Plaats nooit een Firebase service-accountkey, Admin SDK-credential,
+  databasebeheersleutel of `service_role`-sleutel in browsercode, Git,
+  build-output of logs. Firebase-webconfig is publieke projectidentificatie en
+  geen autorisatiegeheim.
+- Firebase Authentication bewijst alleen identiteit. Beveilig iedere
+  browsertoegankelijke Firestore-route met geteste Security Rules op basis van
+  organisatie, team, membership en rol.
+- Test Firestore Security Rules positief en negatief in de Firebase Emulator
+  Suite. Een gebruiker mag zichzelf nooit lid of beheerder maken.
+- Firestore Rules zijn geen filters: iedere query moet expliciet dezelfde
+  organisatie- en teamscope gebruiken als de toegangsregel.
+- Houd Supabase als terugvaloptie achter dezelfde repository-ports. Bij gebruik
+  daarvan krijgt iedere blootgestelde tabel geteste RLS en komt een secret of
+  `service_role`-sleutel nooit in de browser.
 - De app moet offline bruikbaar en als PWA installeerbaar blijven.
 - Ook met cloudopslag moet een volledige wedstrijd zonder netwerk kunnen worden gespeeld en afgerond.
 - Voeg geen Netlify-specifieke wijzigingen toe en deploy deze repository niet zonder afzonderlijke expliciete opdracht.

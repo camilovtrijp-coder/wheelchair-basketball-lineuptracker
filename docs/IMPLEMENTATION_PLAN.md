@@ -19,7 +19,8 @@ De volgorde is bewust:
 5. cloud en multi-device eerst met settings/team bewijzen;
 6. daarna de wedstrijd-, historie-, stats- en trendsflows herbouwen;
 7. wedstrijdsync, migratie, toegankelijkheid en cutover afzonderlijk valideren;
-8. pas daarna groei naar meerdere clubs en aanvullende productfuncties bouwen.
+8. multi-organisatie vanaf het platformfundament ondersteunen en pas na stabiele
+   productie self-service groei en aanvullende productfuncties bouwen.
 
 ## 2. Huidige uitgangssituatie
 
@@ -46,7 +47,10 @@ Iedere implementatietaak moet aan deze regels voldoen:
 - Verander geen berekeningen zonder vooraf vastgelegde voorbeelden en tests.
 - Voeg in fase 0 tot en met 3 geen backend, analytics, tracking of externe gegevensoverdracht toe.
 - Voeg pas een backend toe nadat het architectuurbesluit uit fase 4 expliciet is goedgekeurd.
-- Spelersgegevens, classificaties en wedstrijddata blijven lokaal op het toestel.
+- Spelersgegevens, classificaties en wedstrijddata blijven tot en met fase 3
+  uitsluitend lokaal op het toestel; daarna blijven ze altijd lokaal
+  beschikbaar voor offline gebruik en synchroniseren ze alleen binnen de
+  goedgekeurde cloudfase.
 - Ook na database-introductie moet een wedstrijd zonder netwerk gestart, bijgehouden en afgerond kunnen worden.
 - Behoud offline gebruik en installeerbaarheid als PWA.
 - Behoud Nederlands en Engels; nieuwe zichtbare tekst moet in beide talen bestaan.
@@ -57,9 +61,15 @@ Iedere implementatietaak moet aan deze regels voldoen:
 - De productie-repository valt volledig buiten scope: niet opzoeken, openen, clonen, fetchen, vergelijken of wijzigen; maak daar ook geen branch, issue, comment, commit of PR.
 - Vraag de eigenaar om een gerichte screenshot, export of beschrijving wanneer de lokale referentiekopie onvoldoende informatie bevat.
 - Publiceer of deploy deze repository niet zonder een afzonderlijk expliciet besluit over cutover en hosting.
-- Voeg geen nieuwe Netlify-specifieke code of controles toe; deployment wordt elders beheerd.
-- Plaats nooit een databasebeheersleutel, `service_role`-sleutel of ander geheim in browsercode.
-- Beveilig iedere aan de browser blootgestelde databasetabel met geteste rijtoegangsregels.
+- Voeg vóór PR 5.5 geen nieuwe Netlify-specifieke code of controles toe;
+  deployment wordt afzonderlijk goedgekeurd.
+- Plaats nooit een Firebase service-accountkey, Admin SDK-credential,
+  databasebeheersleutel, `service_role`-sleutel of ander geheim in browsercode,
+  Git, build-output of logs.
+- Beveilig iedere Firestore-route met geteste organisatie-, team- en
+  rolgebonden Security Rules; test een eventuele Supabase-terugval met RLS.
+- Gebruik één globale gebruikersidentiteit met app-level organisaties, teams en
+  memberships; maak geen Firebase-project per club.
 - Cloudmigratie is opt-in en mag een bestaande lokale wedstrijd of back-up nooit stilzwijgend verwijderen.
 
 ## 4. Definitie van gereed
@@ -281,7 +291,7 @@ Scope:
 Buiten scope:
 
 - instellingen, spelers of wedstrijden opslaan;
-- Supabase, Netlify-configuratie of externe gegevensoverdracht;
+- Firebase/Supabase, Netlify-configuratie of externe gegevensoverdracht;
 - bundle-analysetooling zonder concrete regressie.
 
 Acceptatiecriteria:
@@ -357,124 +367,198 @@ testdekking. Ga niet direct verder met alle overige HTML-schermen. Eerst volgt
 fase 4, zodat cloud- en synchronisatiekeuzes vroeg genoeg invloed hebben op IDs,
 repositories en het wedstrijdmodel.
 
-## 9. Fase 4 — Besluiten over cloud, sync en tenancy
+## 9. Fase 4 — Firebase-, offline- en autorisatiebesluiten
 
 ### Doel
 
-De platformkeuze afronden vóórdat de complexe wedstrijdflows worden gebouwd.
-`docs/architecture/platform-evaluation.md` adviseert voorlopig Supabase als
-backend en Netlify als frontendhost, maar is nog geen toestemming om een
-productiedatabase of deployment aan te maken.
+De voorkeursroute **Netlify + Firebase Authentication + Cloud Firestore**
+formaliseren en met fictieve data toetsen vóórdat complexe wedstrijdflows worden
+gebouwd. Supabase wordt alleen onderzocht als een vooraf gedefinieerde harde
+Firebase-gate faalt. Er wordt nog geen productieproject of deployment gemaakt.
 
-### ADR 4.1 — cloudplatform
+### PR 4.1 — ADR-001 clouddata en hosting
 
 Maak `docs/architecture/adr-001-cloud-data-platform.md`:
 
-- vergelijk Supabase, Firebase en een eigen API;
-- valideer actuele kosten, EU-regio, DPA, back-ups, herstel en limieten;
-- beschrijf export en exit zonder afhankelijk te zijn van een dashboard;
-- kies voorlopig Supabase alleen wanneer het prototype de gates haalt.
+- leg Firebase Auth + Firestore vast als voorkeursbackend en Netlify als
+  afzonderlijke frontendhost;
+- vergelijk de beslissende verschillen met Supabase en een eigen API;
+- valideer actuele regio, DPA/AVG, quota, prijsplan, back-ups, herstel en exit;
+- leg vast dat development, staging en productie aparte Firebase-projecten
+  gebruiken en previews nooit productie benaderen;
+- definieer de meetbare gates voor eventuele terugval naar Supabase.
 
-### ADR 4.2 — offline synchronisatie
+### PR 4.2 — ADR-002 offline synchronisatie
 
 Maak `docs/architecture/adr-002-offline-sync-strategy.md`:
 
-- IndexedDB als lokale bron voor v2-clouddata;
-- outbox met clientgegenereerde UUID, idempotency key en basisrevisie;
-- eerst lokaal bevestigen, later synchroniseren;
-- objectgerichte conflictregels en tombstones;
-- één actieve scorer, andere apparaten read-only, expliciete overname;
-- geen afhankelijkheid van Realtime voor de veiligheid van een lokale actie.
+- Firestore `persistentLocalCache` op vertrouwde Chrome-, Safari- en
+  Firefox-apparaten, met duidelijke fallback bij onbeschikbaarheid;
+- `fromCache`/pending-write metadata vertalen naar `Lokaal beschikbaar`,
+  `Wacht op synchronisatie`, `Gesynchroniseerd` en `Actie nodig`;
+- clientgegenereerde UUID's en append-only wedstrijdacties in plaats van één
+  overschreven wedstrijdmegadocument;
+- objectgerichte conflicten, tombstones en herstel bij latere rule-weigering;
+- één actieve scorer, read-only meekijkers en expliciete overname;
+- pre-game offline-readinesscheck voor app-shell, sessie, context, roster en
+  instellingen.
 
-### ADR 4.3 — clubs, teams en autorisatie
+### PR 4.3 — ADR-003 organisaties, teams en autorisatie
 
 Maak `docs/architecture/adr-003-tenancy-and-authorization.md`:
 
-- `organization/club -> teams -> seasons -> players/games`;
-- memberships en rollen `owner`, `coach`, `viewer`;
-- wie clubs/teams kan maken en uitnodigen;
-- laatste eigenaar, accountverwijdering, teamverwijdering en bewaartermijnen;
-- RLS-predicaten en negatieve autorisatietestmatrix;
-- classificatiegegevens en overige persoonsgegevens minimaliseren.
+- één globale Firebase-gebruiker met memberships bij meerdere organisaties en
+  teams; geen Firebase-project of formele Firebase-tenant per club;
+- hiërarchie `organizations/{organizationId}/teams/{teamId}` met seizoenen,
+  spelers, wedstrijden en acties onder de teamcontext;
+- rollen `organizationOwner`, `organizationAdmin`, `coach`, `scorer`, `viewer`;
+- zelf eerste organisatie/team maken; verdere toegang via uitnodiging van
+  owner/admin;
+- leg de uitnodigingsacceptatie vast zonder client-side self-grant; bewijs de
+  gekozen invitation-document/Rules-flow in de Emulator of motiveer een nauw
+  begrensde serverfunctie en vraag vóór Blaze-gebruik expliciete goedkeuring;
+- Security Rules op deterministische membershippaden en querycontracten die
+  dezelfde organisatie-/teamscope afdwingen;
+- laatste eigenaar, intrekken van toegang, account-/teamverwijdering,
+  bewaartermijnen en minimale persoonsgegevens.
 
-### Productbesluiten voor de eigenaar
+### PR 4.4 — begrensde Firebase-spike
 
-De eigenaar beslist vóór fase 5:
+- gebruik Firebase Emulator Suite en uitsluitend fictieve data;
+- implementeer één settings- en één rosterdocument via de bestaande
+  repository-ports;
+- bewijs offline wijzigen, reload, reconnect en teruglezen op een tweede client;
+- bewijs twee organisaties voor één gebruiker met verschillende rollen;
+- test verboden cross-organisatiequery, self-promotion en schrijven per rol;
+- simuleer intrekking terwijl een write queued is en behoud de geweigerde actie
+  herstelbaar;
+- documenteer reads/writes, documentvormen, noodzakelijke indexes en resterende
+  kosten-/exportrisico's; verwijder of isoleer spikecode na het besluit.
 
-1. zelf club/team aanmaken of alleen op uitnodiging;
-2. e-mail magic link/OTP als eerste loginmethode;
-3. één actieve scorer plus read-only meekijken;
-4. bewaartermijn en noodzakelijke spelersvelden;
-5. wel of niet expliciet heropenen van een afgeronde wedstrijd.
+### Harde beslisgates
+
+Firebase wordt definitief geaccepteerd wanneer:
+
+- gecachte settings/teamdata offline leesbaar en schrijfbaar blijven;
+- synchronisatie na reconnect geen stille duplicaten of verliezen veroorzaakt;
+- Security Rules de volledige rol- en organisatie-isolatiematrix afdwingen;
+- queries, export, verwijdering en verwachte statistiekvolumes beheersbaar zijn;
+- een ongecachete context offline niet als leeg team wordt getoond;
+- de eigenaar kosten, regio, gegevensverwerking en herstel accepteert.
+
+Faalt één gate, stop dan verdere platformbouw en voer dezelfde spike uit met
+Supabase + IndexedDB/outbox. De vergelijking gebruikt dezelfde flows en
+acceptatiecriteria, niet alleen platformfeatures op papier.
 
 ### Acceptatiecriteria
 
-- alle drie ADR's zijn expliciet geaccepteerd;
-- een fictief prototype bewijst RLS-isolatie, offline outbox, retry zonder
-  duplicatie en conflictzichtbaarheid;
-- er zijn nog geen echte spelers- of clubgegevens gebruikt;
-- Supabase-changelog en officiële documentatie zijn opnieuw gecontroleerd;
-- een productiedatabase en productiehosting blijven buiten scope.
+- ADR-001 t/m ADR-003 zijn expliciet geaccepteerd;
+- de spike en Emulator-tests zijn reproduceerbaar en gebruiken fictieve data;
+- de gekozen oplossing en verworpen alternatieven zijn meetbaar onderbouwd;
+- productie-Firebase, Netlify-deployment en echte spelersdata blijven buiten
+  scope.
 
-## 10. Fase 5 — Platformfundament en eenvoudige multi-device pilot
+## 10. Fase 5 — Firebase-platformfundament en multi-organisatiepilot
 
 ### Doel
 
-Cloud, beveiliging en synchronisatie aantonen met de al gebouwde settings/team-
-flow. Hierdoor worden fundamentele problemen gevonden vóór de live wedstrijdflow.
+Cloud, authenticatie, autorisatie, offline caching en contextwisselen aantonen
+met de al gebouwde settings/team-flow. Multi-organisatie is hier kernscope en
+niet uitgesteld tot een latere groeifase.
 
-### PR 5.1 — reproduceerbaar Supabase-project
+### PR 5.1 — reproduceerbare Firebase-basis
 
-- Supabase CLI-configuratie en migrations in Git;
-- fictieve seeddata en gegenereerde TypeScript-databasetypes;
-- organization, team, season, memberships, settings en players;
-- constraints, RLS en negatieve tests per rol/team;
-- alleen publishable key in browserconfig, nooit secret/`service_role`.
+- Firebase CLI-configuratie, Firestore Rules, indexes en emulatorconfig in Git;
+- projectconfig voor development/staging/production zonder echte IDs of
+  credentials in tests;
+- Firestore-converters/decoders en typed documentcontracten;
+- fictieve seeddata voor twee organisaties, drie teams en alle rollen;
+- positieve en negatieve Rules-tests in CI;
+- geen Admin SDK/service-accountkey in browsercode of clienttests.
 
-### PR 5.2 — authenticatie en teamcontext
+Acceptatiecriteria:
 
-- gekozen loginflow en uitloggen op gedeelde apparaten;
-- club-/teamselector met één team als eenvoudige standaard;
-- invitation-/membershipflow volgens ADR-003;
-- duidelijke offline-, niet-ingelogd- en geen-toegangstoestanden.
+- emulator en tests starten vanaf een schone checkout;
+- een gebruiker kan zichzelf niet promoveren of een membership schrijven;
+- organisatie A kan organisatie B via geen toegestane query lezen of wijzigen.
 
-### PR 5.3 — IndexedDB en outbox voor settings/team
+### PR 5.2 — authenticatie, onboarding en contextwisselaar
 
-- lokale repositories achter dezelfde application-ports;
-- éénmalige, geteste kopie van geldige v1-localStorage naar IndexedDB;
-- outbox, retry, idempotency, revisies en tombstones;
-- statussen `Lokaal opgeslagen`, `Synchroniseren`, `Gesynchroniseerd` en
-  `Actie nodig`;
-- localStorage-bron pas opruimen na controle, cloudbevestiging en herstelbare
-  back-up; standaard voorlopig niet verwijderen.
+- e-mail/wachtwoord; optioneel Google-login; aanmelden, sessieherstel en uitloggen;
+- eerste organisatie/team aanmaken na nieuwe registratie;
+- uitnodiging accepteren en memberships voor meerdere organisaties/teams tonen;
+- contextwisselaar met rol per team en uitsluitend geautoriseerde contexten;
+- duidelijke states voor offline, niet-ingelogd, toegang ingetrokken, lege en
+  ongecachete context;
+- keuze `vertrouwd apparaat` voor persistente cache en expliciete lokale
+  gegevenswissing bij uitloggen op een gedeeld apparaat.
 
-### PR 5.4 — twee-apparatenpilot
+Acceptatiecriteria:
 
-- instellingen en roster op apparaat A wijzigen en op B teruglezen;
-- offline wijzigingen later exact één keer synchroniseren;
-- conflict niet stil overschrijven;
-- gebruiker/team A kan data van gebruiker/team B niet lezen of muteren;
-- Realtime mag verversing versnellen, maar polling/handmatig verversen en
-  herstel blijven correct.
+- één account wisselt tussen Rotterdam Basketball en de Nederlandse
+  Basketball Bond zonder opnieuw in te loggen;
+- verschillende rollen per team worden correct toegepast;
+- intrekken bij organisatie A verandert toegang tot organisatie B niet;
+- eerste login of ongecachete context vraagt duidelijk om netwerk.
+
+### PR 5.3 — Firestore-cache en settings/team-sync
+
+- Firebase-adapters achter bestaande `SettingsRepository` en
+  `RosterRepository`; UI importeert geen Firebase SDK;
+- persistent local cache alleen na vertrouwd-apparaatkeuze en fallback naar
+  memory/lokale modus bij niet-ondersteunde browsers;
+- geteste, opt-in kopie van geldige v1-localStorage naar de gekozen teamcontext;
+- syncstatussen op basis van cache- en pending-write metadata;
+- geweigerde queued writes worden `Actie nodig`, lokaal herstelbaar en
+  exporteerbaar;
+- v1-localStorage standaard niet verwijderen; pas na serverbevestiging,
+  verificatie en downloadbare back-up kan later worden opgeruimd.
+
+Acceptatiecriteria:
+
+- settings/roster werken offline na een eenmalige online voorbereiding;
+- reload/crash verliest geen lokaal bevestigde wijziging;
+- dezelfde wijziging verschijnt na reconnect exact één keer op apparaat B;
+- een ongecachete context wordt niet als lege roster geïnterpreteerd.
+
+### PR 5.4 — multi-organisatie- en twee-apparatenpilot
+
+- voer de volledige autorisatiematrix uit voor owner, admin, coach, scorer en
+  viewer;
+- wijzig settings/roster op apparaat A offline en lees ze na reconnect op B;
+- wissel op beide apparaten tussen minstens twee organisaties en drie teams;
+- trek één membership in terwijl een write queued is;
+- test gelijktijdige niet-conflicterende writes en een bewust conflict;
+- leg werkelijk Firestore-verbruik voor de pilotscenario's vast.
+
+Acceptatiecriteria:
+
+- cross-organisatietoegang en self-promotion mislukken aantoonbaar;
+- rolgrenzen zijn zowel in UI als Security Rules afgedwongen;
+- conflict of rule-weigering veroorzaakt geen stil dataverlies;
+- de gebruiker ziet bron, actualiteit en syncstatus van data.
 
 ### PR 5.5 — Netlify staging en GitHub-flow
 
 Alleen na afzonderlijke expliciete hostingopdracht:
 
-- leg build base, `npm run build` en `v2/dist` vast;
+- leg base directory, `npm run build` en `v2/dist` vast;
 - maak GitHub-gekoppelde Deploy Previews voor pull requests;
-- gebruik aparte Supabase-projecten of veilige previewconfig voor test en
+- controleer of het bestaande Netlify-account een legacy- of credit-based plan
+  gebruikt en leg quota/kosten vast; geen betaalde upgrade of auto-recharge;
+- wijs Deploy Previews uitsluitend naar development/staging Firebase, nooit
   productie;
-- beheer variabelen per deploycontext buiten Git;
+- beheer Firebase-webconfig per deploycontext buiten de broncode;
+- controleer PWA-headers, directe assetroutes en offline reload;
 - publiceer nog niet naar het bestaande productieadres.
 
-### Acceptatiecriteria
+### Fase-acceptatie
 
-- schema en policies zijn vanaf een lege lokale database reproduceerbaar;
 - twee browsers/apparaten delen settings/team zonder lokaal dataverlies;
-- negatieve RLS-tests bewijzen teamisolatie;
-- offline wijzigingen overleven reload/crash en retry;
-- hosting en backend blijven los vervangbare adapters.
+- één account gebruikt veilig meerdere organisaties en teams;
+- Emulator-tests bewijzen organisatie-, team- en rolisolatie;
+- hosting en backend blijven los vervangbare adapters;
+- geen productieomgeving is aangemaakt of gepubliceerd zonder aparte opdracht.
 
 ## 11. Fase 6 — Overige v1-flows modulair herbouwen
 
@@ -482,28 +566,31 @@ Alleen na afzonderlijke expliciete hostingopdracht:
 
 Nu de volledige architectuurketen is bewezen, de rest van de monoliet in kleine
 verticale flows vervangen. Elke PR levert UI, domain, application,
-infrastructure en tests voor één gebruikersdoel.
+infrastructure en tests voor één gebruikersdoel. Alle data hoort aantoonbaar bij
+de actieve organisatie/teamcontext.
 
 ### PR 6.1 — wedstrijdopzet
 
 - deelnemers, precies vijf starters, tegenstander, competitie, klokrichting en
   classificatielimiet;
-- stabiele wedstrijd- en game-player-UUID's;
+- stabiele wedstrijd- en game-player-UUID's en historische spelersnapshot;
 - startvalidatie en hervatten van een voorbereide wedstrijd;
+- actieve organisatie/teamcontext verplicht opslaan en na start vergrendelen;
 - v1-key blijft tijdens compatibiliteitsperiode leesbaar.
 
-### PR 6.2 — live wedstrijd lokaal
+### PR 6.2 — live wedstrijd offline-first
 
 - scorebediening, klok/segmenttijd, wissels en classificatiewaarschuwing;
 - pure segment-, score-, speeltijd- en lineupberekeningen;
-- elke bevestigde actie eerst transactioneel in IndexedDB;
+- iedere bevestigde handeling als lokale, append-only actie met unieke ID;
 - vliegtuigmodus en app-crash mogen geen bevestigde actie verliezen;
-- nog geen gelijktijdige multi-writer bediening.
+- score en status zijn reproduceerbaar uit acties; nog geen multi-writer.
 
 ### PR 6.3 — afronden, historie en export
 
-- afgeronde wedstrijd als snapshot bewaren;
-- historie, detail, verwijderen/heropenen volgens het productbesluit;
+- afgeronde wedstrijd plus afleidbare snapshot bewaren;
+- historie, detail en verwijderen volgens het vastgelegde beleid;
+- afgeronde wedstrijd standaard onveranderlijk;
 - byte-exact gelijk Nederlands CSV-contract;
 - semantisch gelijk JSON-back-upcontract of expliciet gemigreerde versie.
 
@@ -511,18 +598,20 @@ infrastructure en tests voor één gebruikersdoel.
 
 - lineupcombinaties, on/off, plus/min, speeltijd en per-10-minuten;
 - handmatig narekenbare fixtures;
-- totalen blijven afleidbaar uit bronsegmenten en niet alleen opgeslagen caches.
+- totalen blijven afleidbaar uit bronacties/segmenten en niet alleen caches;
+- meet Firestore-querykosten, maar bouw nog geen cloudbrede rapportagelaag.
 
 ### PR 6.5 — trends
 
 - chronologische spelertrends, gemiddelde speeltijd en plus/min;
 - lopende wedstrijd als voorlopig datapunt volgens v1-gedrag;
-- mobiele weergave en lege/partiële data.
+- mobiele weergave en lege/partiële/cachedata duidelijk onderscheiden.
 
 ### PR 6.6 — back-up, import en lokale migratie
 
 - bestaande v1-back-up valideren en veilig migreren;
 - preview vóór import en automatische downloadbare back-up;
+- gebruiker kiest expliciet doelorganisatie en doelteam;
 - lege, oude, gedeeltelijke, dubbele en mislukte migratie testen;
 - alleen-lokale modus blijft mogelijk zolang de gebruiker cloud niet kiest.
 
@@ -531,8 +620,8 @@ infrastructure en tests voor één gebruikersdoel.
 - de compatibiliteitsmatrix is per flow afgedekt;
 - CSV is byte-exact en JSON semantisch compatibel;
 - volledige wedstrijd kan lokaal/offline worden gespeeld en afgerond;
-- v1 blijft als referentie beschikbaar;
-- geen UI-component praat rechtstreeks met IndexedDB, localStorage of Supabase.
+- actieve wedstrijd kan niet stil van organisatie/team wisselen;
+- geen UI-component praat rechtstreeks met Firestore, IndexedDB of localStorage.
 
 ## 12. Fase 7 — Wedstrijdsync en migratie naar gedeeld gebruik
 
@@ -541,43 +630,47 @@ infrastructure en tests voor één gebruikersdoel.
 De complexe wedstrijddata pas synchroniseren nadat zowel de live lokale flow als
 de eenvoudige settings/team-sync bewezen zijn.
 
-### PR 7.1 — wedstrijdschema en snapshots
+### PR 7.1 — Firestore-wedstrijdmodel
 
-- games, game_players, stints en stint_players met constraints;
+- `games/{gameId}` voor identiteit/status/snapshot en
+  `games/{gameId}/actions/{actionId}` voor append-only bronacties;
+- actions dragen auteur, client-ID, volgnummer, tijd en organisatie/teamcontext;
 - historische spelergegevens blijven onveranderlijk;
 - score, plus/min en speeltijd blijven reproduceerbaar;
-- afgeronde wedstrijd standaard onveranderlijk of expliciet geaudit heropenbaar.
+- documentgrootte, indexes, reads/writes en exportbaarheid worden getest.
 
 ### PR 7.2 — afgeronde wedstrijden synchroniseren
 
-- upload/download exact één keer ondanks retry;
+- clientgegenereerde IDs maken retries idempotent;
 - voortgang en herstelbare foutstatus;
 - verwijdering met tombstone en bewaarbeleid;
-- historie op een tweede apparaat beschikbaar.
+- historie op een tweede apparaat beschikbaar;
+- afgeronde wedstrijd standaard onveranderlijk.
 
 ### PR 7.3 — actieve wedstrijd single-writer
 
-- lease of expliciet eigenaarschap van de scorer;
-- andere apparaten read-only met zichtbare actualiteit;
-- expliciete overname met revisiecontrole;
+- expliciet scorer-eigenaarschap/lease met auditvelden;
+- andere apparaten read-only met zichtbare cache-/serveractualiteit;
+- expliciete overname met revisiecontrole en sterke bevestiging;
 - verlies van netwerk blokkeert de actieve scorer niet;
-- dubbele of late berichten veranderen score/segmenten niet.
+- dubbele of late actions veranderen score/segmenten niet;
+- organisatie/teamcontext blijft gedurende de wedstrijd vergrendeld.
 
 ### PR 7.4 — bestaande gebruiker naar cloud
 
 - toon vooraf te migreren teams, spelers en wedstrijden;
-- laat account en doelclub/team bevestigen;
+- laat account, doelorganisatie en doelteam bevestigen;
 - deterministische mapping voorkomt duplicaten bij opnieuw proberen;
 - rollback en lokale back-up blijven beschikbaar;
-- cloudmigratie is opt-in.
+- cloudmigratie is opt-in en wist de bron niet automatisch.
 
 ### Acceptatiecriteria
 
 - een wedstrijd kan volledig in vliegtuigmodus worden gespeeld en afgerond;
-- na reconnect staat hij exact één keer in de database;
+- na reconnect staan acties en wedstrijd exact één keer in Firestore;
 - apparaat B kan veilig meekijken en alleen na overname schrijven;
-- conflicten zijn zichtbaar en veroorzaken geen stil dataverlies;
-- RLS-isolatie geldt ook voor alle wedstrijdtabellen en views.
+- conflicten of rule-weigeringen zijn zichtbaar en herstelbaar;
+- Security Rules beschermen alle wedstrijd- en actionpaden per context en rol.
 
 ## 13. Fase 8 — Hardening, acceptatie en cutover
 
@@ -586,54 +679,63 @@ de eenvoudige settings/team-sync bewezen zijn.
 - eerste installatie, offline reload en app-shellupdate;
 - geen mix van oude HTML en nieuwe gehashte assets;
 - zichtbare updatebeschikbaarheid en gecontroleerde refresh;
-- herstelbare technische fouten zonder wedstrijdverlies.
+- pre-game offline-readinesscheck;
+- herstelbare technische/syncfouten zonder wedstrijdverlies.
 
 ### PR 8.2 — toegankelijkheid en courtside QA
 
 - focusvolgorde, modal focus trap/restore en zichtbare focus;
-- score- en wisselbediening met touch en toetsenbord;
+- score-, wissel- en contextbediening met touch en toetsenbord;
 - contrast van clubkleuren en `prefers-reduced-motion`;
-- gangbare telefoonviewports, oudere doeltelefoon en zwakke/offline verbinding.
+- gangbare telefoonviewports, oudere doeltelefoon en zwakke/offline verbinding;
+- gedeeld apparaat: vertrouwd-apparaatkeuze, uitloggen en cache wissen.
 
-### PR 8.3 — beveiliging, privacy en beheer
+### PR 8.3 — beveiliging, privacy, kosten en beheer
 
-- RLS- en database-advisors zonder onopgeloste hoge bevindingen;
-- rate limits/misbruikscenario's en privacyveilige logging;
-- export, account-/clubverwijdering, back-up en herstelproef;
-- afhankelijkheden, changelogs, kosten en dataverwerkers opnieuw valideren.
+- volledige Emulator Rules-suite en review zonder open hoge bevindingen;
+- rate limits/misbruikscenario's, App Check-besluit en privacyveilige logging;
+- organisatie-export, account-/organisatieverwijdering, back-up en herstelproef;
+- Firestore-gebruik meten en budgetwaarschuwingen configureren;
+- Spark/Blaze-keuze, regio, DPA, afhankelijkheden en platformvoorwaarden
+  opnieuw valideren; betaalde functies alleen na expliciete goedkeuring.
 
 ### PR 8.4 — parallelle acceptatie
 
 - dezelfde fictieve wedstrijden in v1 en v2 vergelijken;
 - score, minuten, lineups, CSV, back-up, historie, stats en trends gelijk;
-- coachtest op echte doelapparaten, maar zonder echte data in Git of logs;
+- coachtest op echte doelapparaten en met twee organisatiecontexten, maar zonder
+  echte data in Git of logs;
 - cutover- en rollbackplan met exact te publiceren build/SHA.
 
 ### PR 8.5 — productie-cutover
 
 Alleen na afzonderlijke expliciete goedkeuring:
 
-- Netlify-productieconfig en Supabase-productieproject controleren;
+- Netlify-productieconfig en afzonderlijk Firebase-productieproject controleren;
+- Security Rules, indexes, toegestane authproviders, quota en alerts verifiëren;
 - exacte commit publiceren en toegang/headers/offline gedrag verifiëren;
-- rollbackpad beschikbaar houden;
+- rollbackpad en lokale back-up beschikbaar houden;
 - v1 pas in een latere aparte PR archiveren of verwijderen.
 
-## 14. Fase 9 — Groei naar meerdere clubs
+## 14. Fase 9 — Groei na de multi-organisatiebasis
 
-Deze fase begint pas na stabiele productie voor het eerste team. Het schema is al
-multi-tenant, maar productfunctionaliteit wordt pas toegevoegd wanneer er echte
-gebruikersvragen zijn.
+De basis voor meerdere organisaties, teams en verschillende coachrollen bestaat
+al sinds fase 5. Deze fase begint pas na stabiele productie en voegt schaal- en
+self-servicefuncties toe op basis van echte gebruikersvragen.
 
 Mogelijke afzonderlijke producttracks:
 
-1. self-service clubaanmaak, uitnodigingen en eigendomsoverdracht;
-2. meerdere teams en seizoensarchivering per club;
-3. coachdashboard en clubbrede rapporten;
+1. uitgebreide self-service organisatieaanmaak, uitnodigingen en
+   eigendomsoverdracht;
+2. meerdere teams, seizoensarchivering en bonds-/programmahiërarchie;
+3. coachdashboard en organisatiebrede rapporten;
 4. datakwaliteitscontroles en auditgeschiedenis;
 5. deelbare rapporten met expliciet privacy- en toegangsmodel;
 6. veilige server-side Airtable-/andere integraties;
-7. quotas, kostenbewaking, support- en beheertools;
-8. echte multi-writer wedstrijdbediening, alleen als single-writer aantoonbaar
+7. quota, kostenbewaking, support- en beheertools;
+8. aggregatie-/analyticslaag of datawarehouse wanneer Firestore-queries niet
+   meer doelmatig zijn;
+9. echte multi-writer wedstrijdbediening, alleen als single-writer aantoonbaar
    onvoldoende is.
 
 Iedere track krijgt een eigen productbesluit, AVG-beoordeling, ADR waar nodig,
@@ -680,30 +782,46 @@ Oplevering:
 ### Eerste aanbevolen opdracht
 
 ```text
-Lees README.md, package.json, playwright.config.js, tests/ui.spec.js en index.html.
-Lees daarna docs/IMPLEMENTATION_PLAN.md, met nadruk op fase 0 en fase 1.
+Lees README.md, AGENTS.md, docs/IMPLEMENTATION_PLAN.md,
+docs/architecture/adr-000-frontend-architecture.md, de root-testconfiguratie en
+v2/package.json.
 
-Voer alleen fase 0 uit. Wijzig geen productiecode.
+Voer uitsluitend PR 3.2a uit. Voeg nog geen settings-, roster-, Firebase- of
+Netlify-implementatie toe.
 
-Maak:
-- docs/architecture/current-state.md
-- docs/data-contracts.md
+Realiseer de gesplitste TypeScript-configuratie, typeveilige runtime-i18n,
+v2-Playwright-harness, injectManifest-PWA, centrale CSS-tokens en statische
+toegankelijkheidslinting. Behoud uitsluitend lineup-tracker-lang en raak de
+overige v1-localStorage-keys niet aan.
 
-Documenteer alle localStorage-keys, objectvormen, statusovergangen,
-berekeningen, CSV-kolommen en JSON-back-upstructuur. Voeg voor score,
-speeltijd, plus/min en lineupcode minimaal één handmatig narekenbaar voorbeeld toe.
-Benoem onzekerheden expliciet en presenteer voorstellen niet als bestaand gedrag.
+Voer lint, formatter-check, Vitest, v2-Playwright, productiebuild en de volledige
+v1-Playwright-suite uit. Bewijs installatie/offline reload en NL/EN-wissel met
+gerichte assertions. Rapporteer wijzigingen, testresultaten en open risico's.
 ```
 
 ### Tweede aanbevolen opdracht
 
 ```text
-Voer alleen PR 1.1 uit docs/IMPLEMENTATION_PLAN.md uit.
+Start alleen nadat PR 3.2a is gemerged en opnieuw groen is gevalideerd.
+Voer uitsluitend PR 3.2b uit docs/IMPLEMENTATION_PLAN.md uit.
 
-Maak de Playwright-testbasis deterministisch met vaste, fictieve testdata.
-Vervang conditioneel overslaan van kritieke flows door expliciete assertions.
-Verander geen productiegedrag en voer nog niet de volledige wedstrijdflow in.
-Voer de tests uit en rapporteer exact wat wel en niet is getest.
+Bouw de volledige Instellingen-flow via SettingsRepository en application-
+use-cases, met exact lineup-tracker-settings als opslagkey. Behoud de v1-vorm,
+NL/EN en offline gedrag. Voeg nog geen roster, wedstrijd, Firebase of Netlify toe.
+Voer alle acceptatiecriteria en regressietests uit en rapporteer exact resultaat.
+```
+
+### Derde aanbevolen opdracht
+
+```text
+Start alleen nadat PR 3.2b is gemerged en opnieuw groen is gevalideerd.
+Voer uitsluitend PR 3.2c uit docs/IMPLEMENTATION_PLAN.md uit.
+
+Bouw de Team-flow via RosterRepository en application-use-cases, met exact
+lineup-tracker-roster als opslagkey. Behoud sortering, IDs, classificatievelden,
+NL/EN en offline gedrag. Raak wedstrijd- en historiekeys niet aan en voeg nog
+geen Firebase of Netlify toe. Voer alle acceptatiecriteria en regressietests uit.
+Stop na PR 3.2c bij de architectuurreview; begin fase 4 niet automatisch.
 ```
 
 ## 16. Modelstrategie
@@ -738,19 +856,21 @@ Gebruik GitHub Issues of een kleine tabel in dit bestand. Issues zijn beter zodr
 | PR 3.2b — Instellingen | Gepland |  | Volledige instellingenflow via application-port en bestaande v1-key |
 | PR 3.2c — Team | Gepland |  | Volledige rosterflow via application-port en bestaande v1-key |
 | Fase 3 — frontend-walking-skeleton | In uitvoering | #15, #16 | ADR en scaffold voltooid; 3.2a-c zijn concreet vastgelegd |
-| Fase 4 — cloud/sync/tenancy-ADR's | Niet gestart |  | Supabase + Netlify zijn voorkeursroute, nog geen definitief besluit |
-| Fase 5 — platformpilot settings/team | Niet gestart |  | Supabase, Auth/RLS, IndexedDB/outbox, twee apparaten en optionele Netlify-staging |
+| Fase 4 — cloud/sync/tenancy-ADR's | Niet gestart |  | Firebase Auth + Firestore en Netlify zijn voorkeursroute; Supabase is alleen fallback na een gefaalde gate |
+| Fase 5 — platformpilot settings/team | Niet gestart |  | Firebase Emulator/Rules, Auth, multi-organisatiecontext, offline cache, twee apparaten en optionele Netlify-staging |
 | Fase 6 — overige v1-flows | Niet gestart |  | Wedstrijdopzet, live, historie/export, stats, trends en back-up |
 | Fase 7 — wedstrijdsync en migratie | Niet gestart |  | Afgeronde games, single-writer live sync en opt-in cloudmigratie |
 | Fase 8 — hardening en cutover | Niet gestart |  | PWA, a11y, security, parallelle acceptatie en expliciete productiecutover |
-| Fase 9 — meerdere clubs | Niet gestart |  | Self-service en schaalfuncties pas na stabiele eerste productie |
+| Fase 9 — groei na multi-organisatiebasis | Niet gestart |  | Multi-organisatie zit in fase 5; self-service schaalfuncties volgen na stabiele productie |
 
 ## 18. Bewuste uitsluitingen
 
 Dit plan geeft nog geen toestemming voor:
 
 - database-implementatie voordat fase 4 expliciet is goedgekeurd;
-- databasebeheersleutels, service-role-sleutels of Airtable-tokens in frontendcode;
+- Firebase service-accountkeys, Admin SDK-credentials,
+  databasebeheersleutels, service-role-sleutels of Airtable-tokens in
+  frontendcode;
 - wijziging van historische statistiekdefinities;
 - deployment, hostingwijziging of productie-cutover zonder afzonderlijke expliciete goedkeuring;
 - een frontendstack die afwijkt van het goedgekeurde architectuurbesluit;
