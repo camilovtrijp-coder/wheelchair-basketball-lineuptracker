@@ -14,11 +14,12 @@ De volgorde is bewust:
 
 1. huidig gedrag aantoonbaar vastleggen;
 2. gegevensopslag en import beveiligen;
-3. de monolithische app gecontroleerd opdelen;
-4. een veilige cloudarchitectuur en databasemodel kiezen;
-5. accounts, teamtoegang en offline-first synchronisatie bouwen;
-6. toegankelijkheid en offline gedrag verbeteren;
-7. pas daarna aanvullende productfuncties kiezen en bouwen.
+3. een settings/team-walking-skeleton in de modulaire frontend bouwen;
+4. vroeg een veilige cloud-, tenancy- en synchronisatiearchitectuur kiezen;
+5. cloud en multi-device eerst met settings/team bewijzen;
+6. daarna de wedstrijd-, historie-, stats- en trendsflows herbouwen;
+7. wedstrijdsync, migratie, toegankelijkheid en cutover afzonderlijk valideren;
+8. pas daarna groei naar meerdere clubs en aanvullende productfuncties bouwen.
 
 ## 2. Huidige uitgangssituatie
 
@@ -248,352 +249,397 @@ Voorkomen dat toekomstige wijzigingen lokale wedstrijdgeschiedenis of back-ups o
 
 `opencode-go/glm-5.2` voor ontwerp en risicobeoordeling; `opencode-go/kimi-k2.7-code` voor de afgebakende implementatie.
 
-## 8. Fase 3 — Nieuwe modulaire v2-architectuur
+## 8. Fase 3 — Frontend-walking-skeleton
 
 ### Doel
 
-In deze afzonderlijke repository een nieuwe modulaire appstructuur opbouwen. De bestaande `index.html` dient tijdelijk als werkende referentie en wordt niet stukje voor stukje de definitieve architectuur in getrokken.
+De eerste echte verticale v2-flow bouwen en daarmee de grenzen uit ADR-000
+bewijzen. De v1-`index.html` blijft een gedragsreferentie; de nieuwe UI wordt
+opnieuw ontworpen als componenten en use-cases en niet regel voor regel vertaald.
 
-### Belangrijk besluit vooraf
+### PR 3.1 — minimale scaffold
 
-Leg eerst in `docs/architecture/adr-000-frontend-architecture.md` vast welke frontendstack wordt gebruikt. Vergelijk minimaal:
+Status: voltooid via PR #16.
 
-- React + TypeScript + Vite;
-- Preact + TypeScript + Vite;
-- vanilla TypeScript met ES-modules.
+### PR 3.2a — technisch fundament
 
-Voor deze stateful app is React of Preact met TypeScript en Vite de voorkeursrichting, mits domeinberekeningen en opslag onafhankelijk van het UI-framework blijven. Hosting blijft platformneutraal en valt pas bij een latere cutoverbeslissing in scope.
+Scope:
 
-### Voorgestelde doelstructuur
+- splits browser- en Node/config-TypeScript (`tsconfig.app.json` en
+  `tsconfig.node.json` of aantoonbaar gelijkwaardig);
+- maak runtime-i18n typeveilig, behoud wisselen tussen Nederlands en Engels
+  zonder reload en bewaar alleen `lineup-tracker-lang`;
+- voeg de v2-Playwright-harness toe naast de bestaande v1-suite;
+- voeg `vite-plugin-pwa` in `injectManifest`-modus toe met manifest, iconen en
+  een controleerbare service worker;
+- leg de CSS-basis vast met gewone CSS/CSS Modules en centrale design tokens;
+  voeg nog geen Tailwind, componentbibliotheek of router toe;
+- voeg statische toegankelijkheidslinting toe voor JSX en controleer minstens
+  toegankelijke namen, documenttaal en toetsenbordbereikbaarheid van de
+  shellbediening.
 
-```text
-index.html
-src/
-  app/
-    App.tsx
-    routes.ts
-  domain/
-    entities/
-    calculations/
-    validation/
-  application/
-    commands/
-    queries/
-    services/
-  infrastructure/
-    local/
-    sync/
-    repositories/
-  ui/
-    components/
-    screens/
-    hooks/
-  i18n/
-  styles/
-tests/
-  unit/
-  integration/
-  e2e/
-  fixtures/
-public/
-  manifest.json
-  icons/
-```
+Buiten scope:
 
-Dit is een richting, geen verplicht eindontwerp. Gebruik geen lege lagen of abstracties zonder concrete verantwoordelijkheid.
+- instellingen, spelers of wedstrijden opslaan;
+- Supabase, Netlify-configuratie of externe gegevensoverdracht;
+- bundle-analysetooling zonder concrete regressie.
 
-### Migratiestrategie binnen deze repository
+Acceptatiecriteria:
 
-1. Houd de huidige app bruikbaar als lokale referentie totdat de compatibiliteitsmatrix is afgedekt.
-2. Scaffold de nieuwe v2-app en testomgeving zonder oude code te verwijderen.
-3. Bouw eerst pure domeinmodellen, berekeningen en validatie.
-4. Definieer repository-interfaces voor lokale en latere cloudopslag.
-5. Migreer verticale gebruikersflows: instellingen/team, wedstrijdopzet, live wedstrijd, historie, stats en trends.
-6. Vergelijk iedere flow met vaste fixtures en de compatibiliteitsmatrix.
-7. Verwijder of archiveer de oude monoliet pas in een afzonderlijke PR na expliciete goedkeuring.
+- `lint`, formattering, Vitest, v2-Playwright en productiebuild draaien in CI;
+- de app kan worden geïnstalleerd en na één online bezoek offline herladen;
+- een NL/EN-wissel werkt zonder reload en na reload blijft de keuze behouden;
+- v1-`localStorage` behalve de taalkey blijft onaangeraakt;
+- de v1-Playwright-suite blijft groen.
 
-### Acceptatiecriteria
+### PR 3.2b — verticale flow Instellingen
 
-- De nieuwe app start via één gedocumenteerd ontwikkelcommando.
-- TypeScript strict mode is ingeschakeld.
-- Domeinberekeningen importeren geen DOM-, framework- of databasecode.
-- UI gebruikt opslag via expliciete interfaces in plaats van directe verspreide browseraanroepen.
-- De volledige regressiesuite blijft groen.
-- CSV-output van dezelfde fixture is exact gelijk.
-- JSON-back-up van dezelfde fixture is semantisch gelijk.
-- De platformneutrale productiebuild bevat alle benodigde scripts, styles, fonts, iconen, manifest en service worker.
-- De oude referentie-app blijft beschikbaar totdat de vervanging expliciet is geaccepteerd.
+Scope:
 
-### Modeladvies
+- definieer `Settings`, defaults, decoder/validatie en pure normalisatie;
+- definieer `SettingsRepository` als application-port en use-cases voor lezen
+  en wijzigen;
+- implementeer een localStorage-adapter voor exact
+  `lineup-tracker-settings`;
+- bouw de instellingen-UI met volledige v1-veldpariteit: teamnaam, logo,
+  kleuren, periodes en optionele classificatie-/bonusinstellingen;
+- gebruik autosave met blur of korte debounce en toon herstelbare
+  validatiefouten in NL en EN;
+- voeg unit-, repository- en Playwright-tests toe.
 
-Laat `opencode-go/glm-5.2` het frontend-ADR en de grens tussen domain/application/infrastructure beoordelen. Gebruik daarna `opencode-go/kimi-k2.7-code` per verticale flow. Gebruik niet één autonome opdracht voor de volledige herbouw.
+Buiten scope:
 
-## 9. Fase 4 — Architectuurbesluit voor database en accounts
+- teamspelers, lineupcode, wedstrijdstate en cloudopslag;
+- een nieuwe opslagkey of stil gewijzigde settingsvorm.
 
-### Doel
+Acceptatiecriteria:
 
-Van uitsluitend lokale opslag doorgroeien naar duurzame, gedeelde opslag zonder de belangrijkste eigenschap van de app te verliezen: tijdens een wedstrijd moet hij ook zonder internet betrouwbaar blijven werken.
+- geldige bestaande v1-instellingen verschijnen correct in v2;
+- wijzigen en herladen behoudt exact dezelfde betekenis en sleutel;
+- corrupte opslag wordt veilig afgehandeld zonder andere keys te wijzigen;
+- UI importeert geen concrete localStorage-adapter;
+- touch-, toetsenbord-, NL- en EN-paden zijn getest.
 
-### Aanbevolen richting
+### PR 3.2c — verticale flow Team
 
-Gebruik een **offline-first architectuur**:
+Scope:
 
-1. de app schrijft een actie tijdens de wedstrijd eerst lokaal weg;
-2. een lokale wachtrij houdt nog niet gesynchroniseerde wijzigingen bij;
-3. wanneer verbinding beschikbaar is, worden wijzigingen idempotent naar de database gestuurd;
-4. de interface toont duidelijk of alles lokaal opgeslagen, aan het synchroniseren of gesynchroniseerd is;
-5. de database is de duurzame gedeelde kopie, maar niet vereist voor live scorebediening.
+- definieer `Player`/`Roster`, stabiele speler-ID's en pure validatieregels;
+- definieer `RosterRepository` en use-cases voor toevoegen, wijzigen,
+  sorteren en verwijderen;
+- implementeer een localStorage-adapter voor exact
+  `lineup-tracker-roster`;
+- bouw de Team-UI met rugnummer, naam, classificatie en beide categorievlaggen;
+- behoud numerieke rugnummersortering en het bestaande gedrag bij duplicaten;
+- blokkeer of bevestig verwijdering volgens het gedocumenteerde referentiegedrag,
+  zonder wedstrijdkeys te muteren;
+- voeg unit-, repository- en Playwright-tests toe.
 
-Onderzoek **Supabase** als voorkeurskandidaat omdat het Postgres, authenticatie en rijtoegangsregels combineert. Vergelijk het vóór definitieve keuze minimaal met Firebase en een eenvoudige eigen API. Leg de keuze vast in:
+Buiten scope:
 
-- `docs/architecture/adr-001-cloud-data-platform.md`
-- `docs/architecture/adr-002-offline-sync-strategy.md`
+- deelnemers/starters, lineupcode, live wedstrijd, historie of cloud;
+- mutatie van `lineup-tracker-v1` of `lineup-tracker-games`.
 
-### Besliscriteria
+Acceptatiecriteria:
 
-- betrouwbare offline werking;
-- ondersteuning voor meerdere teams en gebruikers;
-- rollen en teamlidmaatschap;
-- export en verwijdering van persoonsgegevens;
-- EU-regio, verwerkersafspraken en kosten;
-- onderhoudslast;
-- databaseback-ups en herstel;
-- lokale ontwikkeling en reproduceerbare migraties;
-- voorkomen van vendor lock-in;
-- veilige browsertoegang zonder beheersleutels.
+- een bestaande v1-roster wordt zonder migratieverlies getoond;
+- toevoegen, wijzigen, sorteren en verwijderen blijven na reload correct;
+- de volledige settings/team-flow werkt offline op een telefoonviewport;
+- laaggrenzen, i18n, PWA en beide testsoorten zijn in één walking skeleton
+  aantoonbaar bewezen;
+- v1 blijft ongewijzigd en alle bestaande regressietests blijven groen.
 
-### Supabase-veiligheidsvoorwaarden bij keuze voor Supabase
+### Poort na PR 3.2c
 
-- Gebruik alleen een voor de browser bedoelde publishable key.
-- Plaats nooit een secret key of `service_role`-sleutel in de app.
-- Schakel Row Level Security in op iedere tabel in een blootgesteld schema.
-- Controleer naast authenticatie altijd teamlidmaatschap en rol; alleen `authenticated` is geen autorisatie.
-- Gebruik voor updates zowel een bestaand-rijcriterium als controle op de nieuwe rij.
-- Baseer autorisatie niet op door gebruikers aanpasbare metadata.
-- Maak views alleen browsertoegankelijk wanneer ze de onderliggende toegangsregels respecteren.
-- Bewaar schemawijzigingen als migrations in Git.
-- Test dat gebruiker A geen data van team B kan lezen, wijzigen of verwijderen.
+Voer een expliciete architectuurreview uit. Beoordeel importgrenzen,
+opslagcompatibiliteit, PWA-updategedrag, mobiele bediening, toegankelijkheid en
+testdekking. Ga niet direct verder met alle overige HTML-schermen. Eerst volgt
+fase 4, zodat cloud- en synchronisatiekeuzes vroeg genoeg invloed hebben op IDs,
+repositories en het wedstrijdmodel.
 
-### Acceptatiecriteria
-
-- De gekozen architectuur is vastgelegd met alternatieven en trade-offs.
-- Er is nog geen productiedatabase gekoppeld.
-- Het datamodel en dreigingsmodel zijn beoordeeld voordat credentials of dependencies worden toegevoegd.
-- Er is een kosten- en exit-inschatting.
-- Expliciet is besloten of classificatiegegevens noodzakelijk zijn en welke bewaartermijn geldt.
-
-### Modeladvies
-
-Gebruik `opencode-go/glm-5.2` voor het architectuurbesluit en laat het reviewen door `opencode-go/qwen3.7-plus` of een andere modelfamilie.
-
-## 10. Fase 5 — Domeinmodel, authenticatie en autorisatie
+## 9. Fase 4 — Besluiten over cloud, sync en tenancy
 
 ### Doel
 
-Een databasefundament bouwen dat meerdere teams en seizoenen ondersteunt, historische wedstrijden correct bewaart en teamdata strikt van elkaar scheidt.
+De platformkeuze afronden vóórdat de complexe wedstrijdflows worden gebouwd.
+`docs/architecture/platform-evaluation.md` adviseert voorlopig Supabase als
+backend en Netlify als frontendhost, maar is nog geen toestemming om een
+productiedatabase of deployment aan te maken.
 
-### Voorgesteld domeinmodel
+### ADR 4.1 — cloudplatform
 
-Werk het definitieve schema tijdens fase 4 uit. Start conceptueel met:
+Maak `docs/architecture/adr-001-cloud-data-platform.md`:
 
-- `profiles` — minimaal openbaar profiel naast de auth-gebruiker;
-- `teams` — club- of teaminstellingen;
-- `team_memberships` — gebruiker, team en rol;
-- `seasons` — seizoen of competitieperiode;
-- `players` — speleridentiteit binnen een team;
-- `games` — wedstrijdmetadata en status;
-- `game_players` — snapshot van naam, rugnummer en classificatie voor die wedstrijd;
-- `stints` — segment met begin/einde en punten voor/tegen;
-- `stint_players` — de vijf spelers die in een stint op het veld stonden;
-- `sync_operations` of een equivalente idempotencyregistratie — alleen indien nodig voor veilige synchronisatie;
-- `audit_events` — beperkte, privacyveilige registratie van belangrijke mutaties.
+- vergelijk Supabase, Firebase en een eigen API;
+- valideer actuele kosten, EU-regio, DPA, back-ups, herstel en limieten;
+- beschrijf export en exit zonder afhankelijk te zijn van een dashboard;
+- kies voorlopig Supabase alleen wanneer het prototype de gates haalt.
 
-Bewaar historische spelergegevens als wedstrijdsnapshot. Als een naam, rugnummer of classificatie later in het team verandert, mogen eerder gespeelde wedstrijden niet mee veranderen.
+### ADR 4.2 — offline synchronisatie
 
-### Rollen voor de eerste versie
+Maak `docs/architecture/adr-002-offline-sync-strategy.md`:
 
-Houd het klein:
+- IndexedDB als lokale bron voor v2-clouddata;
+- outbox met clientgegenereerde UUID, idempotency key en basisrevisie;
+- eerst lokaal bevestigen, later synchroniseren;
+- objectgerichte conflictregels en tombstones;
+- één actieve scorer, andere apparaten read-only, expliciete overname;
+- geen afhankelijkheid van Realtime voor de veiligheid van een lokale actie.
 
-- **owner** — team beheren, leden uitnodigen en data exporteren/verwijderen;
-- **coach** — team en wedstrijden bewerken en scoren;
-- **viewer** — alleen lezen.
+### ADR 4.3 — clubs, teams en autorisatie
 
-Voeg pas later extra rollen toe als echte gebruikssituaties dat vereisen.
+Maak `docs/architecture/adr-003-tenancy-and-authorization.md`:
 
-### Databaseregels
+- `organization/club -> teams -> seasons -> players/games`;
+- memberships en rollen `owner`, `coach`, `viewer`;
+- wie clubs/teams kan maken en uitnodigen;
+- laatste eigenaar, accountverwijdering, teamverwijdering en bewaartermijnen;
+- RLS-predicaten en negatieve autorisatietestmatrix;
+- classificatiegegevens en overige persoonsgegevens minimaliseren.
 
-- Gebruik clientgegenereerde UUID’s zodat offline aangemaakte records stabiele IDs hebben.
-- Gebruik foreign keys, `NOT NULL`, unieke constraints en bereikcontroles waar passend.
-- Gebruik UTC-timestamps plus afzonderlijke wedstrijdtijdzone indien nodig.
-- Gebruik `created_at`, `updated_at`, een revisienummer en waar nodig `deleted_at`.
-- Maak lineupcodes afgeleid uit de vijf wedstrijdspelers; gebruik ze niet als enige relationele identiteit.
-- Laat totalen als score, plus/min en speeltijd reproduceerbaar uit bronrecords.
-- Voorkom hard verwijderen van gegevens die nog door historische wedstrijden worden gebruikt.
-- Maak een afgeronde wedstrijd standaard onveranderlijk of vereis een expliciete heropenactie met auditrecord.
+### Productbesluiten voor de eigenaar
 
-### Authenticatie
+De eigenaar beslist vóór fase 5:
 
-Begin bij voorkeur met e-mail magic link of OTP om wachtwoordbeheer te beperken. Beslis expliciet:
-
-- wie nieuwe teams mag maken;
-- of uitnodigingen verlopen;
-- hoe een eigenaar een lid verwijdert;
-- wat er gebeurt wanneer de laatste eigenaar vertrekt;
-- sessieduur en uitloggen op gedeelde apparaten;
-- account- en teamverwijdering.
-
-### Oplevering
-
-- database migrations;
-- schema-overzicht;
-- geteste toegangsregels;
-- fictieve seeddata;
-- lokale ontwikkelinstructies;
-- geen echte spelers- of klantdata in Git.
+1. zelf club/team aanmaken of alleen op uitnodiging;
+2. e-mail magic link/OTP als eerste loginmethode;
+3. één actieve scorer plus read-only meekijken;
+4. bewaartermijn en noodzakelijke spelersvelden;
+5. wel of niet expliciet heropenen van een afgeronde wedstrijd.
 
 ### Acceptatiecriteria
 
-- Een gebruiker zonder teamlidmaatschap ziet geen teamdata.
-- Een viewer kan niets wijzigen.
-- Een coach kan alleen toegestane data binnen eigen teams wijzigen.
-- Historische wedstrijden veranderen niet wanneer een teamspeler wordt aangepast.
-- Databaseconstraints blokkeren ongeldige stints en referenties.
-- Schema en policies zijn vanaf een lege database reproduceerbaar.
+- alle drie ADR's zijn expliciet geaccepteerd;
+- een fictief prototype bewijst RLS-isolatie, offline outbox, retry zonder
+  duplicatie en conflictzichtbaarheid;
+- er zijn nog geen echte spelers- of clubgegevens gebruikt;
+- Supabase-changelog en officiële documentatie zijn opnieuw gecontroleerd;
+- een productiedatabase en productiehosting blijven buiten scope.
 
-### Modeladvies
-
-Gebruik `opencode-go/glm-5.2` voor schema en autorisatiemodel; `opencode-go/kimi-k2.7-code` voor migrations en tests. Gebruik voor Supabase-implementatie altijd de actuele officiële documentatie.
-
-## 11. Fase 6 — Offline-first lokale database, synchronisatie en migratie
+## 10. Fase 5 — Platformfundament en eenvoudige multi-device pilot
 
 ### Doel
 
-Bestaande lokale gebruikers veilig naar databaseopslag brengen en live wedstrijdregistratie netwerk-onafhankelijk houden.
+Cloud, beveiliging en synchronisatie aantonen met de al gebouwde settings/team-
+flow. Hierdoor worden fundamentele problemen gevonden vóór de live wedstrijdflow.
 
-### Lokale opslag
+### PR 5.1 — reproduceerbaar Supabase-project
 
-Gebruik op termijn IndexedDB voor gestructureerde lokale data en een synchronisatiewachtrij. Behoud `localStorage` tijdelijk als compatibiliteitsbron tijdens migratie. Verwijder oude data pas nadat:
+- Supabase CLI-configuratie en migrations in Git;
+- fictieve seeddata en gegenereerde TypeScript-databasetypes;
+- organization, team, season, memberships, settings en players;
+- constraints, RLS en negatieve tests per rol/team;
+- alleen publishable key in browserconfig, nooit secret/`service_role`.
 
-1. deze succesvol is gelezen;
-2. lokaal naar het nieuwe schema is gemigreerd;
-3. de gebruiker de nieuwe data kan controleren;
-4. eventueel cloudsynchronisatie aantoonbaar is voltooid;
-5. een herstelbare back-up beschikbaar is.
+### PR 5.2 — authenticatie en teamcontext
 
-### Eerste synchronisatieversie
+- gekozen loginflow en uitloggen op gedeelde apparaten;
+- club-/teamselector met één team als eenvoudige standaard;
+- invitation-/membershipflow volgens ADR-003;
+- duidelijke offline-, niet-ingelogd- en geen-toegangstoestanden.
 
-Beperk de complexiteit:
+### PR 5.3 — IndexedDB en outbox voor settings/team
 
-- Eén apparaat is de actieve scorer van een lopende wedstrijd.
-- Andere apparaten mogen de lopende wedstrijd aanvankelijk alleen lezen.
-- Een lease of expliciete overname voorkomt twee gelijktijdige scorers.
-- Lokale mutaties krijgen een client-ID, idempotency key en basisrevisie.
-- Herhaalde verzending mag geen dubbele segmenten of punten maken.
-- Een serverconflict wordt niet stil overschreven.
-- Afgeronde wedstrijden synchroniseren met expliciete status.
+- lokale repositories achter dezelfde application-ports;
+- éénmalige, geteste kopie van geldige v1-localStorage naar IndexedDB;
+- outbox, retry, idempotency, revisies en tombstones;
+- statussen `Lokaal opgeslagen`, `Synchroniseren`, `Gesynchroniseerd` en
+  `Actie nodig`;
+- localStorage-bron pas opruimen na controle, cloudbevestiging en herstelbare
+  back-up; standaard voorlopig niet verwijderen.
 
-Bouw pas echte multi-writer realtime samenwerking wanneer de single-writer-versie betrouwbaar is.
+### PR 5.4 — twee-apparatenpilot
 
-### Synchronisatiestatus in de interface
+- instellingen en roster op apparaat A wijzigen en op B teruglezen;
+- offline wijzigingen later exact één keer synchroniseren;
+- conflict niet stil overschrijven;
+- gebruiker/team A kan data van gebruiker/team B niet lezen of muteren;
+- Realtime mag verversing versnellen, maar polling/handmatig verversen en
+  herstel blijven correct.
 
-Toon minimaal:
+### PR 5.5 — Netlify staging en GitHub-flow
 
-- **Lokaal opgeslagen** — veilig op dit apparaat, nog niet in de cloud;
-- **Synchroniseren**;
-- **Gesynchroniseerd**;
-- **Actie nodig** — conflict of blijvende fout.
+Alleen na afzonderlijke expliciete hostingopdracht:
 
-Een netwerkfout mag live bediening niet blokkeren.
-
-### Migratie van bestaande gebruikers
-
-- Detecteer bestaande lokale data.
-- Toon vooraf welke teams, wedstrijden en spelers worden geïmporteerd.
-- Maak vóór migratie automatisch een downloadbare JSON-back-up.
-- Laat de gebruiker doelteam en account bevestigen.
-- Gebruik deterministische of bewaarde IDs om duplicaten bij opnieuw proberen te voorkomen.
-- Bied een alleen-lokale modus zolang cloudmigratie nog niet is gekozen.
-- Test lege opslag, oude opslag, gedeeltelijke migratie, dubbele poging en rollback.
-
-### Conflicten
-
-Definieer per object een strategie:
-
-- teaminstellingen: laatste wijziging met zichtbare waarschuwing of handmatige keuze;
-- spelerslijst: revisiecontrole en handmatige keuze;
-- actieve wedstrijd: single-writer;
-- afgeronde wedstrijd: standaard onveranderlijk;
-- verwijderingen: soft delete en tombstone tot alle apparaten zijn bijgewerkt.
+- leg build base, `npm run build` en `v2/dist` vast;
+- maak GitHub-gekoppelde Deploy Previews voor pull requests;
+- gebruik aparte Supabase-projecten of veilige previewconfig voor test en
+  productie;
+- beheer variabelen per deploycontext buiten Git;
+- publiceer nog niet naar het bestaande productieadres.
 
 ### Acceptatiecriteria
 
-- Een volledige wedstrijd kan in vliegtuigmodus worden gespeeld en afgerond.
-- Na opnieuw verbinden verschijnt de wedstrijd exact één keer in de database.
-- Opnieuw laden of app-crash verliest geen bevestigde lokale actie.
-- Dubbele verzending verandert score of speeltijd niet.
-- Een conflict wordt zichtbaar en leidt niet tot stil dataverlies.
-- Bestaande lokale gebruikers kunnen migreren én een back-up behouden.
+- schema en policies zijn vanaf een lege lokale database reproduceerbaar;
+- twee browsers/apparaten delen settings/team zonder lokaal dataverlies;
+- negatieve RLS-tests bewijzen teamisolatie;
+- offline wijzigingen overleven reload/crash en retry;
+- hosting en backend blijven los vervangbare adapters.
 
-### Modeladvies
+## 11. Fase 6 — Overige v1-flows modulair herbouwen
 
-Gebruik `opencode-go/glm-5.2` voor sync-protocol en conflictmodel; `opencode-go/kimi-k2.7-code` voor incrementele implementatie en Playwright-tests.
+### Doel
 
-## 12. Fase 7 — Offline betrouwbaarheid en toegankelijkheid
+Nu de volledige architectuurketen is bewezen, de rest van de monoliet in kleine
+verticale flows vervangen. Elke PR levert UI, domain, application,
+infrastructure en tests voor één gebruikersdoel.
 
-### PR 7.1 — PWA-updategedrag
+### PR 6.1 — wedstrijdopzet
 
-- Test eerste installatie, offline herladen en een nieuwe app-shellversie.
-- Controleer dat nieuwe assets in de platformneutrale productiebuild en offline app-shell worden opgenomen.
-- Voorkom een mix van oude HTML en nieuwe scripts.
-- Maak updatefouten zichtbaar in ontwikkeling; slik ze niet volledig stil in.
+- deelnemers, precies vijf starters, tegenstander, competitie, klokrichting en
+  classificatielimiet;
+- stabiele wedstrijd- en game-player-UUID's;
+- startvalidatie en hervatten van een voorbereide wedstrijd;
+- v1-key blijft tijdens compatibiliteitsperiode leesbaar.
 
-### PR 7.2 — Toegankelijkheid
+### PR 6.2 — live wedstrijd lokaal
 
-- Voeg toegankelijke namen toe aan icon-only knoppen.
-- Controleer focusvolgorde en zichtbare focus.
-- Zorg dat modals focus vasthouden en na sluiten teruggeven.
-- Controleer score- en wisselbediening met toetsenbord.
-- Controleer contrast voor clubkleur-presets en aangepaste kleuren.
-- Respecteer `prefers-reduced-motion` bij alle animaties.
+- scorebediening, klok/segmenttijd, wissels en classificatiewaarschuwing;
+- pure segment-, score-, speeltijd- en lineupberekeningen;
+- elke bevestigde actie eerst transactioneel in IndexedDB;
+- vliegtuigmodus en app-crash mogen geen bevestigde actie verliezen;
+- nog geen gelijktijdige multi-writer bediening.
 
-### PR 7.3 — Fout- en herstelgedrag
+### PR 6.3 — afronden, historie en export
 
-- Toon herstelbare fouten zonder wedstrijddata kwijt te raken.
-- Voeg waar passend undo toe voor lokale destructieve acties.
-- Maak onderscheid tussen een lege wedstrijd, ongeldige data en een technische fout.
+- afgeronde wedstrijd als snapshot bewaren;
+- historie, detail, verwijderen/heropenen volgens het productbesluit;
+- byte-exact gelijk Nederlands CSV-contract;
+- semantisch gelijk JSON-back-upcontract of expliciet gemigreerde versie.
 
-### Modeladvies
+### PR 6.4 — statistieken
 
-`opencode-go/kimi-k2.7-code` voor implementatie en `opencode-go/qwen3.7-plus` voor een toegankelijkheids- en tekstcontrole.
+- lineupcombinaties, on/off, plus/min, speeltijd en per-10-minuten;
+- handmatig narekenbare fixtures;
+- totalen blijven afleidbaar uit bronsegmenten en niet alleen opgeslagen caches.
 
-## 13. Fase 8 — Aanvullende productverbeteringen
+### PR 6.5 — trends
 
-Na fase 0 tot en met 7 volgt eerst een productkeuze. Bouw niet alle opties tegelijk.
+- chronologische spelertrends, gemiddelde speeltijd en plus/min;
+- lopende wedstrijd als voorlopig datapunt volgens v1-gedrag;
+- mobiele weergave en lege/partiële data.
 
-Mogelijke richtingen:
+### PR 6.6 — back-up, import en lokale migratie
 
-1. **Analyse verdiepen** — filters, lineupvergelijking, exporteerbare rapporten.
-2. **Meerdere teams/seizoenen** — vereist een expliciet nieuw datamodel en migratie.
-3. **Veilige toesteloverdracht** — verbeterde lokale back-up zonder cloudaccount.
-4. **Coachdashboard** — wedstrijdselectie, trends en rapportages buiten de live scoringsinterface.
-5. **Veilige Airtable-export** — als aparte server-side export of importworkflow, nooit met geheime tokens in de browserapp.
-6. **Wedstrijdherstel** — undo voor laatste acties, expliciet heropenen en privacyveilige auditgeschiedenis.
-7. **Datakwaliteit** — automatische controles op ontbrekende minuten, ongeldige lineups en afwijkende totalen.
-8. **Deelbare rapporten** — alleen na expliciete keuze welke gegevens buiten het team zichtbaar mogen zijn.
-9. **Installatie en updates** — zichtbare PWA-updatebeschikbaarheid en een gecontroleerde verversactie.
-10. **Beheer en levenscyclus** — seizoensarchivering, teamoverdracht, export en verwijdering.
+- bestaande v1-back-up valideren en veilig migreren;
+- preview vóór import en automatische downloadbare back-up;
+- lege, oude, gedeeltelijke, dubbele en mislukte migratie testen;
+- alleen-lokale modus blijft mogelijk zolang de gebruiker cloud niet kiest.
 
-Voor synchronisatie of directe Airtable-integratie is een afzonderlijk beslisdocument nodig met minimaal:
+### Acceptatiecriteria
 
-- gebruikersdoel;
-- gegevensclassificatie en AVG-impact;
-- authenticatie en autorisatie;
-- eigenaarschap en verwijdering van data;
-- offline conflicten;
-- kosten en beheer;
-- exporteerbaarheid en exit-strategie.
+- de compatibiliteitsmatrix is per flow afgedekt;
+- CSV is byte-exact en JSON semantisch compatibel;
+- volledige wedstrijd kan lokaal/offline worden gespeeld en afgerond;
+- v1 blijft als referentie beschikbaar;
+- geen UI-component praat rechtstreeks met IndexedDB, localStorage of Supabase.
 
-## 14. Werkwijze voor OpenCode
+## 12. Fase 7 — Wedstrijdsync en migratie naar gedeeld gebruik
+
+### Doel
+
+De complexe wedstrijddata pas synchroniseren nadat zowel de live lokale flow als
+de eenvoudige settings/team-sync bewezen zijn.
+
+### PR 7.1 — wedstrijdschema en snapshots
+
+- games, game_players, stints en stint_players met constraints;
+- historische spelergegevens blijven onveranderlijk;
+- score, plus/min en speeltijd blijven reproduceerbaar;
+- afgeronde wedstrijd standaard onveranderlijk of expliciet geaudit heropenbaar.
+
+### PR 7.2 — afgeronde wedstrijden synchroniseren
+
+- upload/download exact één keer ondanks retry;
+- voortgang en herstelbare foutstatus;
+- verwijdering met tombstone en bewaarbeleid;
+- historie op een tweede apparaat beschikbaar.
+
+### PR 7.3 — actieve wedstrijd single-writer
+
+- lease of expliciet eigenaarschap van de scorer;
+- andere apparaten read-only met zichtbare actualiteit;
+- expliciete overname met revisiecontrole;
+- verlies van netwerk blokkeert de actieve scorer niet;
+- dubbele of late berichten veranderen score/segmenten niet.
+
+### PR 7.4 — bestaande gebruiker naar cloud
+
+- toon vooraf te migreren teams, spelers en wedstrijden;
+- laat account en doelclub/team bevestigen;
+- deterministische mapping voorkomt duplicaten bij opnieuw proberen;
+- rollback en lokale back-up blijven beschikbaar;
+- cloudmigratie is opt-in.
+
+### Acceptatiecriteria
+
+- een wedstrijd kan volledig in vliegtuigmodus worden gespeeld en afgerond;
+- na reconnect staat hij exact één keer in de database;
+- apparaat B kan veilig meekijken en alleen na overname schrijven;
+- conflicten zijn zichtbaar en veroorzaken geen stil dataverlies;
+- RLS-isolatie geldt ook voor alle wedstrijdtabellen en views.
+
+## 13. Fase 8 — Hardening, acceptatie en cutover
+
+### PR 8.1 — PWA-updates en herstel
+
+- eerste installatie, offline reload en app-shellupdate;
+- geen mix van oude HTML en nieuwe gehashte assets;
+- zichtbare updatebeschikbaarheid en gecontroleerde refresh;
+- herstelbare technische fouten zonder wedstrijdverlies.
+
+### PR 8.2 — toegankelijkheid en courtside QA
+
+- focusvolgorde, modal focus trap/restore en zichtbare focus;
+- score- en wisselbediening met touch en toetsenbord;
+- contrast van clubkleuren en `prefers-reduced-motion`;
+- gangbare telefoonviewports, oudere doeltelefoon en zwakke/offline verbinding.
+
+### PR 8.3 — beveiliging, privacy en beheer
+
+- RLS- en database-advisors zonder onopgeloste hoge bevindingen;
+- rate limits/misbruikscenario's en privacyveilige logging;
+- export, account-/clubverwijdering, back-up en herstelproef;
+- afhankelijkheden, changelogs, kosten en dataverwerkers opnieuw valideren.
+
+### PR 8.4 — parallelle acceptatie
+
+- dezelfde fictieve wedstrijden in v1 en v2 vergelijken;
+- score, minuten, lineups, CSV, back-up, historie, stats en trends gelijk;
+- coachtest op echte doelapparaten, maar zonder echte data in Git of logs;
+- cutover- en rollbackplan met exact te publiceren build/SHA.
+
+### PR 8.5 — productie-cutover
+
+Alleen na afzonderlijke expliciete goedkeuring:
+
+- Netlify-productieconfig en Supabase-productieproject controleren;
+- exacte commit publiceren en toegang/headers/offline gedrag verifiëren;
+- rollbackpad beschikbaar houden;
+- v1 pas in een latere aparte PR archiveren of verwijderen.
+
+## 14. Fase 9 — Groei naar meerdere clubs
+
+Deze fase begint pas na stabiele productie voor het eerste team. Het schema is al
+multi-tenant, maar productfunctionaliteit wordt pas toegevoegd wanneer er echte
+gebruikersvragen zijn.
+
+Mogelijke afzonderlijke producttracks:
+
+1. self-service clubaanmaak, uitnodigingen en eigendomsoverdracht;
+2. meerdere teams en seizoensarchivering per club;
+3. coachdashboard en clubbrede rapporten;
+4. datakwaliteitscontroles en auditgeschiedenis;
+5. deelbare rapporten met expliciet privacy- en toegangsmodel;
+6. veilige server-side Airtable-/andere integraties;
+7. quotas, kostenbewaking, support- en beheertools;
+8. echte multi-writer wedstrijdbediening, alleen als single-writer aantoonbaar
+   onvoldoende is.
+
+Iedere track krijgt een eigen productbesluit, AVG-beoordeling, ADR waar nodig,
+kleine PR's en exit-/verwijderstrategie.
+
+## 15. Werkwijze voor OpenCode
 
 ### Eén taak per sessie
 
@@ -660,7 +706,7 @@ Verander geen productiegedrag en voer nog niet de volledige wedstrijdflow in.
 Voer de tests uit en rapporteer exact wat wel en niet is getest.
 ```
 
-## 15. Modelstrategie
+## 16. Modelstrategie
 
 - Dagelijkse implementatie: `opencode-go/kimi-k2.7-code`.
 - Goedkoop bulkwerk, testvarianten en mechanische documentatie: `opencode-go/deepseek-v4-flash`.
@@ -668,7 +714,7 @@ Voer de tests uit en rapporteer exact wat wel en niet is getest.
 - Moeilijke architectuur, migraties en onafhankelijke review: `opencode-go/glm-5.2`.
 - Laat risicovolle code bij voorkeur controleren door een andere modelfamilie dan waarmee deze is geschreven.
 
-## 16. Voortgang bijhouden
+## 17. Voortgang bijhouden
 
 Gebruik GitHub Issues of een kleine tabel in dit bestand. Issues zijn beter zodra meerdere wijzigingen parallel of verspreid over langere tijd plaatsvinden.
 
@@ -688,14 +734,18 @@ Gebruik GitHub Issues of een kleine tabel in dit bestand. Issues zijn beter zodr
 | Fase 2 — data-integriteit | Voltooid | #9, #10, #12–#14 | Schemaversie, inhoudelijke validatie en migratieraamwerk zijn aanwezig en getest |
 | ADR-000 — frontendarchitectuur | Voltooid | #15 | `docs/architecture/adr-000-frontend-architecture.md`: Preact + TypeScript + Vite, laaggrenzen, i18n/PWA/teststrategie, gecorrigeerde migratievolgorde |
 | PR 3.1 — v2 scaffold | Voltooid | #16 | `v2/` met Vite/Preact/TS-strict/ESLint9/Prettier/Vitest, triviale NL/EN-pagina met `aria-label` en `<html lang>`-sync, één sanity-test, `engines: node>=24`. v1 ongewijzigd. CI uitgebreid met Prettier-check, Vitest en Vite build naast Playwright. Geen lege mappen onder `src/`. `vite-plugin-pwa` bewust uitgesteld naar de eerste verticale flow (instellingen/team) per walking-skeleton-valideringspoort in ADR-000 |
-| Fase 3 — modulaire v2-architectuur | In uitvoering | #15, #16 | ADR en minimale scaffold zijn voltooid; de eerste verticale flow is nog niet onderdeel van deze statusupdate |
-| Fase 4 — databasebesluit | Niet gestart |  |  |
-| Fase 5 — database, auth en rollen | Niet gestart |  |  |
-| Fase 6 — offline synchronisatie en migratie | Niet gestart |  |  |
-| Fase 7 — offline en toegankelijkheid | Niet gestart |  |  |
-| Fase 8 — productkeuze | Niet gestart |  |  |
+| PR 3.2a — technisch fundament | Gepland |  | TypeScript-grens, typed i18n, v2-Playwright, injectManifest-PWA, CSS-tokens en a11y-lint |
+| PR 3.2b — Instellingen | Gepland |  | Volledige instellingenflow via application-port en bestaande v1-key |
+| PR 3.2c — Team | Gepland |  | Volledige rosterflow via application-port en bestaande v1-key |
+| Fase 3 — frontend-walking-skeleton | In uitvoering | #15, #16 | ADR en scaffold voltooid; 3.2a-c zijn concreet vastgelegd |
+| Fase 4 — cloud/sync/tenancy-ADR's | Niet gestart |  | Supabase + Netlify zijn voorkeursroute, nog geen definitief besluit |
+| Fase 5 — platformpilot settings/team | Niet gestart |  | Supabase, Auth/RLS, IndexedDB/outbox, twee apparaten en optionele Netlify-staging |
+| Fase 6 — overige v1-flows | Niet gestart |  | Wedstrijdopzet, live, historie/export, stats, trends en back-up |
+| Fase 7 — wedstrijdsync en migratie | Niet gestart |  | Afgeronde games, single-writer live sync en opt-in cloudmigratie |
+| Fase 8 — hardening en cutover | Niet gestart |  | PWA, a11y, security, parallelle acceptatie en expliciete productiecutover |
+| Fase 9 — meerdere clubs | Niet gestart |  | Self-service en schaalfuncties pas na stabiele eerste productie |
 
-## 17. Bewuste uitsluitingen
+## 18. Bewuste uitsluitingen
 
 Dit plan geeft nog geen toestemming voor:
 
