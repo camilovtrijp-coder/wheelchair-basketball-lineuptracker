@@ -1,11 +1,11 @@
 # Product Compatibility Matrix — Lineup Tracker
 
-**Datum**: 29 juli 2026  
-**Basis**: `main` op commit `3e8e512`
+**Datum**: 1 augustus 2026
+**Basis**: `main` op commit `a0eab1b`
 
 ## Overzicht
 
-Deze matrix beschrijft welke functionaliteit de v2 moet behouden, wijzigen of bewust laten vervallen ten opzichte van de huidige productie-app. Dit dient als referentie voor de compatibiliteitscontrole tijdens de migratie.
+Deze matrix beschrijft welke functionaliteit de v2 moet behouden, wijzigen of bewust laten vervallen ten opzichte van de lokale v1-referentie in deze repository. De afzonderlijke productie-app en productie-repository vallen buiten scope.
 
 ## Legenda
 
@@ -13,6 +13,8 @@ Deze matrix beschrijft welke functionaliteit de v2 moet behouden, wijzigen of be
 - **Wijzigen**: Functionaliteit wordt verbeterd, maar kerngedrag blijft
 - **Vervallen**: Functionaliteit wordt bewust verwijderd in v2
 - **Nieuw**: Functionaliteit wordt toegevoegd in v2
+- **In uitvoering**: Besluit of fundament bestaat, maar functionele v2-pariteit is nog niet bewezen
+- **Voorstel**: Nog niet architectonisch of productmatig goedgekeurd
 
 ## Tabbladen
 
@@ -179,17 +181,17 @@ Deze matrix beschrijft welke functionaliteit de v2 moet behouden, wijzigen of be
 | Theme color | Behouden | Dynamisch op basis van primaryColor |
 | Apple touch icon | Behouden | iOS ondersteuning |
 
-## Nieuw in v2 (voorgesteld)
+## V2-transitie en nieuwe mogelijkheden
 
 | Functionaliteit | Status | Opmerking |
 |-----------------|--------|-----------|
-| Schema versie | Nieuw | Migratie ondersteuning |
-| Back-up validatie | Nieuw | Type checking bij import |
-| TypeScript types | Nieuw | Type safety |
-| Modulaire architectuur | Nieuw | Domain/UI/Infrastructure scheiding |
-| Cloud sync | Nieuw | Fase 4+ (optioneel) |
-| Multi-device | Nieuw | Fase 6+ (optioneel) |
-| Verbeterde tests | Nieuw | Deterministische Playwright tests |
+| Schema versie | Behouden | Sinds PR #9 aanwezig in de v1-referentie; v2 moet dit contract behouden |
+| Back-up validatie en migratie | Behouden | Sinds PR #8–#14 aanwezig en getest in de v1-referentie |
+| Deterministische regressietests | Behouden | Playwright-suite voor v1 blijft referentie tot v2-pariteit is bewezen |
+| TypeScript types | In uitvoering | Technische basis aanwezig in de v2-scaffold; domeintypes nog niet gemigreerd |
+| Modulaire architectuur | In uitvoering | ADR-000 en scaffold aanwezig; functionele laaggrenzen nog niet bewezen |
+| Cloud sync | Voorstel | Pas na afzonderlijk fase-4-besluit |
+| Multi-device | Voorstel | Pas na goedgekeurd sync- en conflictmodel |
 
 ## Bewust Niet in v2
 
@@ -357,11 +359,11 @@ Voor iedere v2 release moet worden gecontroleerd:
 
 ## Conclusie
 
-De huidige app heeft een stabiele functionaliteit die grotendeels behouden moet blijven in v2. De belangrijkste wijzigingen zijn:
+De v1-referentie heeft stabiele functionaliteit die grotendeels behouden moet blijven in v2. De belangrijkste transitiedoelen zijn:
 1. Modulaire architectuur voor onderhoudbaarheid
 2. TypeScript voor type safety
-3. Verbeterde tests voor regressie preventie
-4. Schema versie voor migratie
+3. Bestaande deterministische regressietests behouden en per flow uitbreiden voor v2
+4. Bestaande schemaversie, importvalidatie en migratiecontracten behouden
 5. Optionele cloud sync (fase 4+)
 
 De kern van de app (wedstrijd registratie, berekeningen, CSV export) moet exact hetzelfde blijven werken om bestaande gebruikers niet te verwarren.

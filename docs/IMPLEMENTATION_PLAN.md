@@ -1,9 +1,10 @@
 # Implementatieplan — Wheelchair Basketball Lineup Tracker
 
-Status: voorstel voor afzonderlijke v2-/herbouwrepository  
-Repository: `camilovtrijp-coder/wheelchair-basketball-lineuptracker`  
-Gecontroleerde basis: `main` op commit `e2684047985d13740b913938887ea692a6c44dc7`  
-Datum: 29 juli 2026
+Status: actief implementatieplan voor afzonderlijke v2-/herbouwrepository
+Repository: `camilovtrijp-coder/wheelchair-basketball-lineuptracker`
+Oorspronkelijke basis: `main` op commit `e2684047985d13740b913938887ea692a6c44dc7`
+Laatst gevalideerd: `main` op commit `a0eab1bfe668568e2ec72ed367b075f52fa6c2e4`
+Bijgewerkt: 1 augustus 2026
 
 ## 1. Doel
 
@@ -33,7 +34,7 @@ De meegekomen app is een browserlokale, installeerbare PWA en dient hier als fun
 - team-, wedstrijd-, stats-, trends- en historie-tabbladen;
 - eventuele bestaande Netlify-configuratie is voor deze roadmap niet leidend en valt buiten scope;
 - het grootste deel van CSS, HTML en JavaScript staat in `index.html`;
-- Playwright maakt screenshots, maar dekt de kernlogica nog niet betrouwbaar met assertions.
+- de deterministische Playwright-suite dekt de kernflows, berekeningen, mobiel/taal, back-up/import en migratiefouten met assertions; screenshots zijn aanvullend.
 
 ## 3. Niet-onderhandelbare randvoorwaarden
 
@@ -209,6 +210,8 @@ PR 1.7 lost P0-1 op door `payload.data` structureel te valideren.
 `opencode-go/kimi-k2.7-code` voor implementatie. Laat de berekeningsassertions zo mogelijk reviewen met `opencode-go/glm-5.2`.
 
 ## 7. Fase 2 — Data-integriteit en migraties
+
+Status: voltooid via PR #9, #10 en #12, met review-opvolging in PR #13 en #14.
 
 ### Doel
 
@@ -677,14 +680,15 @@ Gebruik GitHub Issues of een kleine tabel in dit bestand. Issues zijn beter zodr
 | PR 1.3 — hervatten en back-up | Voltooid |  | backup-resume.spec.js met resume, export, import, invalid |
 | PR 1.4 — mobiel en taal | Voltooid |  | mobile-lang.spec.js met iPhone viewport, NL/EN flows |
 | PR 1.5 — GitHub Actions CI | Voltooid | #6 | .github/workflows/ci.yml, Playwright tests in CI |
-| PR 1.6 — fase-1-dekking | Voltooid | #7 | coverage-gaps.spec.js; P0-1 als test.fail |
+| PR 1.6 — fase-1-dekking | Voltooid | #7 | coverage-gaps.spec.js; P0-1 was tijdelijk als `test.fail()` vastgelegd en is in PR #8 opgelost |
 | PR 1.7 — importveiligheid | Voltooid | #8 | `isPlainObject` validatie in index.html; P0-1 opgelost |
 | PR 2.1 — schemaversie | Voltooid | #9 | `SCHEMA_VERSION` + `lineup-tracker-schema-version`; toekomstige versies geweigerd |
-| PR 2.2 — importvalidatie | Voltooid | #10 | `validateBackupData()` met type-checks, referentie-checks, lege-data-detectie; vertaalbare foutmeldingen. Review-opvolging: type-checks toegevoegd voor `game`-velden (string/getal/boolean/array); dubbele `t()`-aanroep op reeds-vertaalde submeldingen verwijderd in `validateBackupData`/`validateGames` |
-| PR 2.3 — migratieframework | Voltooid |  | `migrateBackup()` met `MIGRATIONS` map; automatisch in importflow; veilige weigering bij falende migratie |
-| Fase 2 — data-integriteit | Niet gestart |  |  |
+| PR 2.2 — importvalidatie | Voltooid | #10, #14 | `validateBackupData()` met type-checks, referentie-checks, lege-data-detectie; vertaalbare foutmeldingen. Review-opvolging: type-checks toegevoegd voor `game`-velden (string/getal/boolean/array); dubbele `t()`-aanroep op reeds-vertaalde submeldingen verwijderd in `validateBackupData`/`validateGames` |
+| PR 2.3 — migratieframework | Voltooid | #12, #13 | `migrateBackup()` met `MIGRATIONS` map; automatisch in importflow; veilige weigering bij falende migratie; testisolatie en contract verduidelijkt in follow-up |
+| Fase 2 — data-integriteit | Voltooid | #9, #10, #12–#14 | Schemaversie, inhoudelijke validatie en migratieraamwerk zijn aanwezig en getest |
 | ADR-000 — frontendarchitectuur | Voltooid | #15 | `docs/architecture/adr-000-frontend-architecture.md`: Preact + TypeScript + Vite, laaggrenzen, i18n/PWA/teststrategie, gecorrigeerde migratievolgorde |
-| PR 3.1 — v2 scaffold | Klaar voor review |  | `v2/` met Vite/Preact/TS-strict/ESLint9/Prettier/Vitest, triviale NL/EN-pagina met `aria-label` en `<html lang>`-sync, één sanity-test, `engines: node>=24`. v1 ongewijzigd. CI uitgebreid met Prettier-check, Vitest en Vite build naast Playwright. Geen lege mappen onder `src/`. `vite-plugin-pwa` bewust uitgesteld naar de eerste verticale flow (instellingen/team) per walking-skeleton-valideringspoort in ADR-000 |
+| PR 3.1 — v2 scaffold | Voltooid | #16 | `v2/` met Vite/Preact/TS-strict/ESLint9/Prettier/Vitest, triviale NL/EN-pagina met `aria-label` en `<html lang>`-sync, één sanity-test, `engines: node>=24`. v1 ongewijzigd. CI uitgebreid met Prettier-check, Vitest en Vite build naast Playwright. Geen lege mappen onder `src/`. `vite-plugin-pwa` bewust uitgesteld naar de eerste verticale flow (instellingen/team) per walking-skeleton-valideringspoort in ADR-000 |
+| Fase 3 — modulaire v2-architectuur | In uitvoering | #15, #16 | ADR en minimale scaffold zijn voltooid; de eerste verticale flow is nog niet onderdeel van deze statusupdate |
 | Fase 4 — databasebesluit | Niet gestart |  |  |
 | Fase 5 — database, auth en rollen | Niet gestart |  |  |
 | Fase 6 — offline synchronisatie en migratie | Niet gestart |  |  |

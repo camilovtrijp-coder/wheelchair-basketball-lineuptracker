@@ -10,6 +10,12 @@ Een mobiele, offline bruikbare lineuptracker voor teamsporten met wisselspelers 
 - optioneel: classificatiesom, bonus en toegestane klassegrens (instelbaar, standaard uit);
 - een vaste lineupcode voor herkenning in bv. Airtable.
 
+## Repositorystatus
+
+De root van deze repository bevat de volledige browserlokale **v1-referentie-app**. Deze blijft beschikbaar om gedrag, opslag, CSV, back-ups en offline werking tijdens de herbouw te vergelijken.
+
+`v2/` bevat sinds PR #16 alleen de minimale scaffold voor de afzonderlijke modulaire herbouw met Preact, TypeScript en Vite. Die scaffold is nog geen functionele vervanging van v1 en is nog niet de installeerbare PWA. Zie `docs/architecture/adr-000-frontend-architecture.md` en `docs/IMPLEMENTATION_PLAN.md` voor de vastgelegde grenzen en actuele voortgang.
+
 ## Tabbladen
 
 Onderin de app zitten vijf tabbladen:
@@ -22,7 +28,7 @@ Onderin de app zitten vijf tabbladen:
 
 ## Starten
 
-Open `index.html` in een moderne browser (lokaal, of via de gepubliceerde Netlify-URL — zie hieronder). Er is geen installatie, server of externe afhankelijkheid nodig.
+Open voor de v1-referentie `index.html` lokaal in een moderne browser. Er is daarvoor geen installatie, server of externe afhankelijkheid nodig.
 
 1. Stel via het instellingenscherm (⚙, rechtsboven) je teamnaam, logo, kleuren, aantal periodes en — indien gewenst — het klassegrens-systeem in.
 2. Voer op het tabblad Team de spelers en rugnummers in (de lijst start leeg; er staat geen teamdata in de broncode).
@@ -51,9 +57,9 @@ Let op: de gegevens verdwijnen wanneer browseropslag wordt gewist. Er worden gee
 
 Maak daarom regelmatig een back-up: instellingenscherm (⚙) → "Exporteer alle data" downloadt één JSON-bestand met spelerslijst, instellingen en wedstrijdgeschiedenis. Via "Importeer back-up" zet je zo'n bestand weer terug (overschrijft alle huidige data op dat toestel na bevestiging) — handig bij een nieuw toestel of na een gewiste browseropslag.
 
-## Publicatie (Netlify)
+## Hosting en publicatie
 
-Bij elke push naar `main` wordt `index.html` automatisch gepubliceerd via Netlify (zie `netlify.toml` — de repo blijft privé, alleen het HTML-bestand wordt gepubliceerd). De gepubliceerde site bevat geen teamdata — spelersnamen, classificaties en teaminstellingen worden door elke gebruiker zelf ingevoerd en blijven lokaal in de browser van dat toestel.
+De aanwezige `netlify.toml` hoort bij de meegekomen v1-referentie. Hosting, automatische publicatie en cutover van v2 vallen buiten de huidige roadmapfase. Deze repository mag niet worden gedeployed zonder een afzonderlijke expliciete opdracht en verificatie van de gekozen hosting- en toegangsinstellingen.
 
 ## Documentatie
 
