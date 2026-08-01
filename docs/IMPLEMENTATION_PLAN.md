@@ -1,9 +1,10 @@
 # Implementatieplan — Wheelchair Basketball Lineup Tracker
 
-Status: voorstel voor afzonderlijke v2-/herbouwrepository  
-Repository: `camilovtrijp-coder/wheelchair-basketball-lineuptracker`  
-Gecontroleerde basis: `main` op commit `e2684047985d13740b913938887ea692a6c44dc7`  
-Datum: 29 juli 2026
+Status: actief implementatieplan voor afzonderlijke v2-/herbouwrepository
+Repository: `camilovtrijp-coder/wheelchair-basketball-lineuptracker`
+Oorspronkelijke basis: `main` op commit `e2684047985d13740b913938887ea692a6c44dc7`
+Laatst gevalideerd: `main` op commit `a0eab1bfe668568e2ec72ed367b075f52fa6c2e4`
+Bijgewerkt: 1 augustus 2026
 
 ## 1. Doel
 
@@ -13,11 +14,13 @@ De volgorde is bewust:
 
 1. huidig gedrag aantoonbaar vastleggen;
 2. gegevensopslag en import beveiligen;
-3. de monolithische app gecontroleerd opdelen;
-4. een veilige cloudarchitectuur en databasemodel kiezen;
-5. accounts, teamtoegang en offline-first synchronisatie bouwen;
-6. toegankelijkheid en offline gedrag verbeteren;
-7. pas daarna aanvullende productfuncties kiezen en bouwen.
+3. een settings/team-walking-skeleton in de modulaire frontend bouwen;
+4. vroeg een veilige cloud-, tenancy- en synchronisatiearchitectuur kiezen;
+5. cloud en multi-device eerst met settings/team bewijzen;
+6. daarna de wedstrijd-, historie-, stats- en trendsflows herbouwen;
+7. wedstrijdsync, migratie, toegankelijkheid en cutover afzonderlijk valideren;
+8. multi-organisatie vanaf het platformfundament ondersteunen en pas na stabiele
+   productie self-service groei en aanvullende productfuncties bouwen.
 
 ## 2. Huidige uitgangssituatie
 
@@ -33,7 +36,7 @@ De meegekomen app is een browserlokale, installeerbare PWA en dient hier als fun
 - team-, wedstrijd-, stats-, trends- en historie-tabbladen;
 - eventuele bestaande Netlify-configuratie is voor deze roadmap niet leidend en valt buiten scope;
 - het grootste deel van CSS, HTML en JavaScript staat in `index.html`;
-- Playwright maakt screenshots, maar dekt de kernlogica nog niet betrouwbaar met assertions.
+- de deterministische Playwright-suite dekt de kernflows, berekeningen, mobiel/taal, back-up/import en migratiefouten met assertions; screenshots zijn aanvullend.
 
 ## 3. Niet-onderhandelbare randvoorwaarden
 
@@ -44,7 +47,10 @@ Iedere implementatietaak moet aan deze regels voldoen:
 - Verander geen berekeningen zonder vooraf vastgelegde voorbeelden en tests.
 - Voeg in fase 0 tot en met 3 geen backend, analytics, tracking of externe gegevensoverdracht toe.
 - Voeg pas een backend toe nadat het architectuurbesluit uit fase 4 expliciet is goedgekeurd.
-- Spelersgegevens, classificaties en wedstrijddata blijven lokaal op het toestel.
+- Spelersgegevens, classificaties en wedstrijddata blijven tot en met fase 3
+  uitsluitend lokaal op het toestel; daarna blijven ze altijd lokaal
+  beschikbaar voor offline gebruik en synchroniseren ze alleen binnen de
+  goedgekeurde cloudfase.
 - Ook na database-introductie moet een wedstrijd zonder netwerk gestart, bijgehouden en afgerond kunnen worden.
 - Behoud offline gebruik en installeerbaarheid als PWA.
 - Behoud Nederlands en Engels; nieuwe zichtbare tekst moet in beide talen bestaan.
@@ -55,9 +61,15 @@ Iedere implementatietaak moet aan deze regels voldoen:
 - De productie-repository valt volledig buiten scope: niet opzoeken, openen, clonen, fetchen, vergelijken of wijzigen; maak daar ook geen branch, issue, comment, commit of PR.
 - Vraag de eigenaar om een gerichte screenshot, export of beschrijving wanneer de lokale referentiekopie onvoldoende informatie bevat.
 - Publiceer of deploy deze repository niet zonder een afzonderlijk expliciet besluit over cutover en hosting.
-- Voeg geen nieuwe Netlify-specifieke code of controles toe; deployment wordt elders beheerd.
-- Plaats nooit een databasebeheersleutel, `service_role`-sleutel of ander geheim in browsercode.
-- Beveilig iedere aan de browser blootgestelde databasetabel met geteste rijtoegangsregels.
+- Voeg vóór PR 5.5 geen nieuwe Netlify-specifieke code of controles toe;
+  deployment wordt afzonderlijk goedgekeurd.
+- Plaats nooit een Firebase service-accountkey, Admin SDK-credential,
+  databasebeheersleutel, `service_role`-sleutel of ander geheim in browsercode,
+  Git, build-output of logs.
+- Beveilig iedere Firestore-route met geteste organisatie-, team- en
+  rolgebonden Security Rules; test een eventuele Supabase-terugval met RLS.
+- Gebruik één globale gebruikersidentiteit met app-level organisaties, teams en
+  memberships; maak geen Firebase-project per club.
 - Cloudmigratie is opt-in en mag een bestaande lokale wedstrijd of back-up nooit stilzwijgend verwijderen.
 
 ## 4. Definitie van gereed
@@ -210,6 +222,8 @@ PR 1.7 lost P0-1 op door `payload.data` structureel te valideren.
 
 ## 7. Fase 2 — Data-integriteit en migraties
 
+Status: voltooid via PR #9, #10 en #12, met review-opvolging in PR #13 en #14.
+
 ### Doel
 
 Voorkomen dat toekomstige wijzigingen lokale wedstrijdgeschiedenis of back-ups onbruikbaar maken.
@@ -245,352 +259,489 @@ Voorkomen dat toekomstige wijzigingen lokale wedstrijdgeschiedenis of back-ups o
 
 `opencode-go/glm-5.2` voor ontwerp en risicobeoordeling; `opencode-go/kimi-k2.7-code` voor de afgebakende implementatie.
 
-## 8. Fase 3 — Nieuwe modulaire v2-architectuur
+## 8. Fase 3 — Frontend-walking-skeleton
 
 ### Doel
 
-In deze afzonderlijke repository een nieuwe modulaire appstructuur opbouwen. De bestaande `index.html` dient tijdelijk als werkende referentie en wordt niet stukje voor stukje de definitieve architectuur in getrokken.
+De eerste echte verticale v2-flow bouwen en daarmee de grenzen uit ADR-000
+bewijzen. De v1-`index.html` blijft een gedragsreferentie; de nieuwe UI wordt
+opnieuw ontworpen als componenten en use-cases en niet regel voor regel vertaald.
 
-### Belangrijk besluit vooraf
+### PR 3.1 — minimale scaffold
 
-Leg eerst in `docs/architecture/adr-000-frontend-architecture.md` vast welke frontendstack wordt gebruikt. Vergelijk minimaal:
+Status: voltooid via PR #16.
 
-- React + TypeScript + Vite;
-- Preact + TypeScript + Vite;
-- vanilla TypeScript met ES-modules.
+### PR 3.2a — technisch fundament
 
-Voor deze stateful app is React of Preact met TypeScript en Vite de voorkeursrichting, mits domeinberekeningen en opslag onafhankelijk van het UI-framework blijven. Hosting blijft platformneutraal en valt pas bij een latere cutoverbeslissing in scope.
+Scope:
 
-### Voorgestelde doelstructuur
+- splits browser- en Node/config-TypeScript (`tsconfig.app.json` en
+  `tsconfig.node.json` of aantoonbaar gelijkwaardig);
+- maak runtime-i18n typeveilig, behoud wisselen tussen Nederlands en Engels
+  zonder reload en bewaar alleen `lineup-tracker-lang`;
+- voeg de v2-Playwright-harness toe naast de bestaande v1-suite;
+- voeg `vite-plugin-pwa` in `injectManifest`-modus toe met manifest, iconen en
+  een controleerbare service worker;
+- leg de CSS-basis vast met gewone CSS/CSS Modules en centrale design tokens;
+  voeg nog geen Tailwind, componentbibliotheek of router toe;
+- voeg statische toegankelijkheidslinting toe voor JSX en controleer minstens
+  toegankelijke namen, documenttaal en toetsenbordbereikbaarheid van de
+  shellbediening.
 
-```text
-index.html
-src/
-  app/
-    App.tsx
-    routes.ts
-  domain/
-    entities/
-    calculations/
-    validation/
-  application/
-    commands/
-    queries/
-    services/
-  infrastructure/
-    local/
-    sync/
-    repositories/
-  ui/
-    components/
-    screens/
-    hooks/
-  i18n/
-  styles/
-tests/
-  unit/
-  integration/
-  e2e/
-  fixtures/
-public/
-  manifest.json
-  icons/
-```
+Buiten scope:
 
-Dit is een richting, geen verplicht eindontwerp. Gebruik geen lege lagen of abstracties zonder concrete verantwoordelijkheid.
+- instellingen, spelers of wedstrijden opslaan;
+- Firebase/Supabase, Netlify-configuratie of externe gegevensoverdracht;
+- bundle-analysetooling zonder concrete regressie.
 
-### Migratiestrategie binnen deze repository
+Acceptatiecriteria:
 
-1. Houd de huidige app bruikbaar als lokale referentie totdat de compatibiliteitsmatrix is afgedekt.
-2. Scaffold de nieuwe v2-app en testomgeving zonder oude code te verwijderen.
-3. Bouw eerst pure domeinmodellen, berekeningen en validatie.
-4. Definieer repository-interfaces voor lokale en latere cloudopslag.
-5. Migreer verticale gebruikersflows: instellingen/team, wedstrijdopzet, live wedstrijd, historie, stats en trends.
-6. Vergelijk iedere flow met vaste fixtures en de compatibiliteitsmatrix.
-7. Verwijder of archiveer de oude monoliet pas in een afzonderlijke PR na expliciete goedkeuring.
+- `lint`, formattering, Vitest, v2-Playwright en productiebuild draaien in CI;
+- de app kan worden geïnstalleerd en na één online bezoek offline herladen;
+- een NL/EN-wissel werkt zonder reload en na reload blijft de keuze behouden;
+- v1-`localStorage` behalve de taalkey blijft onaangeraakt;
+- de v1-Playwright-suite blijft groen.
 
-### Acceptatiecriteria
+### PR 3.2b — verticale flow Instellingen
 
-- De nieuwe app start via één gedocumenteerd ontwikkelcommando.
-- TypeScript strict mode is ingeschakeld.
-- Domeinberekeningen importeren geen DOM-, framework- of databasecode.
-- UI gebruikt opslag via expliciete interfaces in plaats van directe verspreide browseraanroepen.
-- De volledige regressiesuite blijft groen.
-- CSV-output van dezelfde fixture is exact gelijk.
-- JSON-back-up van dezelfde fixture is semantisch gelijk.
-- De platformneutrale productiebuild bevat alle benodigde scripts, styles, fonts, iconen, manifest en service worker.
-- De oude referentie-app blijft beschikbaar totdat de vervanging expliciet is geaccepteerd.
+Scope:
 
-### Modeladvies
+- definieer `Settings`, defaults, decoder/validatie en pure normalisatie;
+- definieer `SettingsRepository` als application-port en use-cases voor lezen
+  en wijzigen;
+- implementeer een localStorage-adapter voor exact
+  `lineup-tracker-settings`;
+- bouw de instellingen-UI met volledige v1-veldpariteit: teamnaam, logo,
+  kleuren, periodes en optionele classificatie-/bonusinstellingen;
+- gebruik autosave met blur of korte debounce en toon herstelbare
+  validatiefouten in NL en EN;
+- voeg unit-, repository- en Playwright-tests toe.
 
-Laat `opencode-go/glm-5.2` het frontend-ADR en de grens tussen domain/application/infrastructure beoordelen. Gebruik daarna `opencode-go/kimi-k2.7-code` per verticale flow. Gebruik niet één autonome opdracht voor de volledige herbouw.
+Buiten scope:
 
-## 9. Fase 4 — Architectuurbesluit voor database en accounts
+- teamspelers, lineupcode, wedstrijdstate en cloudopslag;
+- een nieuwe opslagkey of stil gewijzigde settingsvorm.
 
-### Doel
+Acceptatiecriteria:
 
-Van uitsluitend lokale opslag doorgroeien naar duurzame, gedeelde opslag zonder de belangrijkste eigenschap van de app te verliezen: tijdens een wedstrijd moet hij ook zonder internet betrouwbaar blijven werken.
+- geldige bestaande v1-instellingen verschijnen correct in v2;
+- wijzigen en herladen behoudt exact dezelfde betekenis en sleutel;
+- corrupte opslag wordt veilig afgehandeld zonder andere keys te wijzigen;
+- UI importeert geen concrete localStorage-adapter;
+- touch-, toetsenbord-, NL- en EN-paden zijn getest.
 
-### Aanbevolen richting
+### PR 3.2c — verticale flow Team
 
-Gebruik een **offline-first architectuur**:
+Scope:
 
-1. de app schrijft een actie tijdens de wedstrijd eerst lokaal weg;
-2. een lokale wachtrij houdt nog niet gesynchroniseerde wijzigingen bij;
-3. wanneer verbinding beschikbaar is, worden wijzigingen idempotent naar de database gestuurd;
-4. de interface toont duidelijk of alles lokaal opgeslagen, aan het synchroniseren of gesynchroniseerd is;
-5. de database is de duurzame gedeelde kopie, maar niet vereist voor live scorebediening.
+- definieer `Player`/`Roster`, stabiele speler-ID's en pure validatieregels;
+- definieer `RosterRepository` en use-cases voor toevoegen, wijzigen,
+  sorteren en verwijderen;
+- implementeer een localStorage-adapter voor exact
+  `lineup-tracker-roster`;
+- bouw de Team-UI met rugnummer, naam, classificatie en beide categorievlaggen;
+- behoud numerieke rugnummersortering en het bestaande gedrag bij duplicaten;
+- blokkeer of bevestig verwijdering volgens het gedocumenteerde referentiegedrag,
+  zonder wedstrijdkeys te muteren;
+- voeg unit-, repository- en Playwright-tests toe.
 
-Onderzoek **Supabase** als voorkeurskandidaat omdat het Postgres, authenticatie en rijtoegangsregels combineert. Vergelijk het vóór definitieve keuze minimaal met Firebase en een eenvoudige eigen API. Leg de keuze vast in:
+Buiten scope:
 
-- `docs/architecture/adr-001-cloud-data-platform.md`
-- `docs/architecture/adr-002-offline-sync-strategy.md`
+- deelnemers/starters, lineupcode, live wedstrijd, historie of cloud;
+- mutatie van `lineup-tracker-v1` of `lineup-tracker-games`.
 
-### Besliscriteria
+Acceptatiecriteria:
 
-- betrouwbare offline werking;
-- ondersteuning voor meerdere teams en gebruikers;
-- rollen en teamlidmaatschap;
-- export en verwijdering van persoonsgegevens;
-- EU-regio, verwerkersafspraken en kosten;
-- onderhoudslast;
-- databaseback-ups en herstel;
-- lokale ontwikkeling en reproduceerbare migraties;
-- voorkomen van vendor lock-in;
-- veilige browsertoegang zonder beheersleutels.
+- een bestaande v1-roster wordt zonder migratieverlies getoond;
+- toevoegen, wijzigen, sorteren en verwijderen blijven na reload correct;
+- de volledige settings/team-flow werkt offline op een telefoonviewport;
+- laaggrenzen, i18n, PWA en beide testsoorten zijn in één walking skeleton
+  aantoonbaar bewezen;
+- v1 blijft ongewijzigd en alle bestaande regressietests blijven groen.
 
-### Supabase-veiligheidsvoorwaarden bij keuze voor Supabase
+### Poort na PR 3.2c
 
-- Gebruik alleen een voor de browser bedoelde publishable key.
-- Plaats nooit een secret key of `service_role`-sleutel in de app.
-- Schakel Row Level Security in op iedere tabel in een blootgesteld schema.
-- Controleer naast authenticatie altijd teamlidmaatschap en rol; alleen `authenticated` is geen autorisatie.
-- Gebruik voor updates zowel een bestaand-rijcriterium als controle op de nieuwe rij.
-- Baseer autorisatie niet op door gebruikers aanpasbare metadata.
-- Maak views alleen browsertoegankelijk wanneer ze de onderliggende toegangsregels respecteren.
-- Bewaar schemawijzigingen als migrations in Git.
-- Test dat gebruiker A geen data van team B kan lezen, wijzigen of verwijderen.
+Voer een expliciete architectuurreview uit. Beoordeel importgrenzen,
+opslagcompatibiliteit, PWA-updategedrag, mobiele bediening, toegankelijkheid en
+testdekking. Ga niet direct verder met alle overige HTML-schermen. Eerst volgt
+fase 4, zodat cloud- en synchronisatiekeuzes vroeg genoeg invloed hebben op IDs,
+repositories en het wedstrijdmodel.
 
-### Acceptatiecriteria
-
-- De gekozen architectuur is vastgelegd met alternatieven en trade-offs.
-- Er is nog geen productiedatabase gekoppeld.
-- Het datamodel en dreigingsmodel zijn beoordeeld voordat credentials of dependencies worden toegevoegd.
-- Er is een kosten- en exit-inschatting.
-- Expliciet is besloten of classificatiegegevens noodzakelijk zijn en welke bewaartermijn geldt.
-
-### Modeladvies
-
-Gebruik `opencode-go/glm-5.2` voor het architectuurbesluit en laat het reviewen door `opencode-go/qwen3.7-plus` of een andere modelfamilie.
-
-## 10. Fase 5 — Domeinmodel, authenticatie en autorisatie
+## 9. Fase 4 — Firebase-, offline- en autorisatiebesluiten
 
 ### Doel
 
-Een databasefundament bouwen dat meerdere teams en seizoenen ondersteunt, historische wedstrijden correct bewaart en teamdata strikt van elkaar scheidt.
+De voorkeursroute **Netlify + Firebase Authentication + Cloud Firestore**
+formaliseren en met fictieve data toetsen vóórdat complexe wedstrijdflows worden
+gebouwd. Supabase wordt alleen onderzocht als een vooraf gedefinieerde harde
+Firebase-gate faalt. Er wordt nog geen productieproject of deployment gemaakt.
 
-### Voorgesteld domeinmodel
+### PR 4.1 — ADR-001 clouddata en hosting
 
-Werk het definitieve schema tijdens fase 4 uit. Start conceptueel met:
+Maak `docs/architecture/adr-001-cloud-data-platform.md`:
 
-- `profiles` — minimaal openbaar profiel naast de auth-gebruiker;
-- `teams` — club- of teaminstellingen;
-- `team_memberships` — gebruiker, team en rol;
-- `seasons` — seizoen of competitieperiode;
-- `players` — speleridentiteit binnen een team;
-- `games` — wedstrijdmetadata en status;
-- `game_players` — snapshot van naam, rugnummer en classificatie voor die wedstrijd;
-- `stints` — segment met begin/einde en punten voor/tegen;
-- `stint_players` — de vijf spelers die in een stint op het veld stonden;
-- `sync_operations` of een equivalente idempotencyregistratie — alleen indien nodig voor veilige synchronisatie;
-- `audit_events` — beperkte, privacyveilige registratie van belangrijke mutaties.
+- leg Firebase Auth + Firestore vast als voorkeursbackend en Netlify als
+  afzonderlijke frontendhost;
+- vergelijk de beslissende verschillen met Supabase en een eigen API;
+- valideer actuele regio, DPA/AVG, quota, prijsplan, back-ups, herstel en exit;
+- leg vast dat development, staging en productie aparte Firebase-projecten
+  gebruiken en previews nooit productie benaderen;
+- definieer de meetbare gates voor eventuele terugval naar Supabase.
 
-Bewaar historische spelergegevens als wedstrijdsnapshot. Als een naam, rugnummer of classificatie later in het team verandert, mogen eerder gespeelde wedstrijden niet mee veranderen.
+### PR 4.2 — ADR-002 offline synchronisatie
 
-### Rollen voor de eerste versie
+Maak `docs/architecture/adr-002-offline-sync-strategy.md`:
 
-Houd het klein:
+- Firestore `persistentLocalCache` op vertrouwde Chrome-, Safari- en
+  Firefox-apparaten, met duidelijke fallback bij onbeschikbaarheid;
+- `fromCache`/pending-write metadata vertalen naar `Lokaal beschikbaar`,
+  `Wacht op synchronisatie`, `Gesynchroniseerd` en `Actie nodig`;
+- clientgegenereerde UUID's en append-only wedstrijdacties in plaats van één
+  overschreven wedstrijdmegadocument;
+- objectgerichte conflicten, tombstones en herstel bij latere rule-weigering;
+- één actieve scorer, read-only meekijkers en expliciete overname;
+- pre-game offline-readinesscheck voor app-shell, sessie, context, roster en
+  instellingen.
 
-- **owner** — team beheren, leden uitnodigen en data exporteren/verwijderen;
-- **coach** — team en wedstrijden bewerken en scoren;
-- **viewer** — alleen lezen.
+### PR 4.3 — ADR-003 organisaties, teams en autorisatie
 
-Voeg pas later extra rollen toe als echte gebruikssituaties dat vereisen.
+Maak `docs/architecture/adr-003-tenancy-and-authorization.md`:
 
-### Databaseregels
+- één globale Firebase-gebruiker met memberships bij meerdere organisaties en
+  teams; geen Firebase-project of formele Firebase-tenant per club;
+- hiërarchie `organizations/{organizationId}/teams/{teamId}` met seizoenen,
+  spelers, wedstrijden en acties onder de teamcontext;
+- rollen `organizationOwner`, `organizationAdmin`, `coach`, `scorer`, `viewer`;
+- zelf eerste organisatie/team maken; verdere toegang via uitnodiging van
+  owner/admin;
+- leg de uitnodigingsacceptatie vast zonder client-side self-grant; bewijs de
+  gekozen invitation-document/Rules-flow in de Emulator of motiveer een nauw
+  begrensde serverfunctie en vraag vóór Blaze-gebruik expliciete goedkeuring;
+- Security Rules op deterministische membershippaden en querycontracten die
+  dezelfde organisatie-/teamscope afdwingen;
+- laatste eigenaar, intrekken van toegang, account-/teamverwijdering,
+  bewaartermijnen en minimale persoonsgegevens.
 
-- Gebruik clientgegenereerde UUID’s zodat offline aangemaakte records stabiele IDs hebben.
-- Gebruik foreign keys, `NOT NULL`, unieke constraints en bereikcontroles waar passend.
-- Gebruik UTC-timestamps plus afzonderlijke wedstrijdtijdzone indien nodig.
-- Gebruik `created_at`, `updated_at`, een revisienummer en waar nodig `deleted_at`.
-- Maak lineupcodes afgeleid uit de vijf wedstrijdspelers; gebruik ze niet als enige relationele identiteit.
-- Laat totalen als score, plus/min en speeltijd reproduceerbaar uit bronrecords.
-- Voorkom hard verwijderen van gegevens die nog door historische wedstrijden worden gebruikt.
-- Maak een afgeronde wedstrijd standaard onveranderlijk of vereis een expliciete heropenactie met auditrecord.
+### PR 4.4 — begrensde Firebase-spike
 
-### Authenticatie
+- gebruik Firebase Emulator Suite en uitsluitend fictieve data;
+- implementeer één settings- en één rosterdocument via de bestaande
+  repository-ports;
+- bewijs offline wijzigen, reload, reconnect en teruglezen op een tweede client;
+- bewijs twee organisaties voor één gebruiker met verschillende rollen;
+- test verboden cross-organisatiequery, self-promotion en schrijven per rol;
+- simuleer intrekking terwijl een write queued is en behoud de geweigerde actie
+  herstelbaar;
+- documenteer reads/writes, documentvormen, noodzakelijke indexes en resterende
+  kosten-/exportrisico's; verwijder of isoleer spikecode na het besluit.
 
-Begin bij voorkeur met e-mail magic link of OTP om wachtwoordbeheer te beperken. Beslis expliciet:
+### Harde beslisgates
 
-- wie nieuwe teams mag maken;
-- of uitnodigingen verlopen;
-- hoe een eigenaar een lid verwijdert;
-- wat er gebeurt wanneer de laatste eigenaar vertrekt;
-- sessieduur en uitloggen op gedeelde apparaten;
-- account- en teamverwijdering.
+Firebase wordt definitief geaccepteerd wanneer:
 
-### Oplevering
+- gecachte settings/teamdata offline leesbaar en schrijfbaar blijven;
+- synchronisatie na reconnect geen stille duplicaten of verliezen veroorzaakt;
+- Security Rules de volledige rol- en organisatie-isolatiematrix afdwingen;
+- queries, export, verwijdering en verwachte statistiekvolumes beheersbaar zijn;
+- een ongecachete context offline niet als leeg team wordt getoond;
+- de eigenaar kosten, regio, gegevensverwerking en herstel accepteert.
 
-- database migrations;
-- schema-overzicht;
-- geteste toegangsregels;
-- fictieve seeddata;
-- lokale ontwikkelinstructies;
-- geen echte spelers- of klantdata in Git.
+Faalt één gate, stop dan verdere platformbouw en voer dezelfde spike uit met
+Supabase + IndexedDB/outbox. De vergelijking gebruikt dezelfde flows en
+acceptatiecriteria, niet alleen platformfeatures op papier.
 
 ### Acceptatiecriteria
 
-- Een gebruiker zonder teamlidmaatschap ziet geen teamdata.
-- Een viewer kan niets wijzigen.
-- Een coach kan alleen toegestane data binnen eigen teams wijzigen.
-- Historische wedstrijden veranderen niet wanneer een teamspeler wordt aangepast.
-- Databaseconstraints blokkeren ongeldige stints en referenties.
-- Schema en policies zijn vanaf een lege database reproduceerbaar.
+- ADR-001 t/m ADR-003 zijn expliciet geaccepteerd;
+- de spike en Emulator-tests zijn reproduceerbaar en gebruiken fictieve data;
+- de gekozen oplossing en verworpen alternatieven zijn meetbaar onderbouwd;
+- productie-Firebase, Netlify-deployment en echte spelersdata blijven buiten
+  scope.
 
-### Modeladvies
-
-Gebruik `opencode-go/glm-5.2` voor schema en autorisatiemodel; `opencode-go/kimi-k2.7-code` voor migrations en tests. Gebruik voor Supabase-implementatie altijd de actuele officiële documentatie.
-
-## 11. Fase 6 — Offline-first lokale database, synchronisatie en migratie
+## 10. Fase 5 — Firebase-platformfundament en multi-organisatiepilot
 
 ### Doel
 
-Bestaande lokale gebruikers veilig naar databaseopslag brengen en live wedstrijdregistratie netwerk-onafhankelijk houden.
+Cloud, authenticatie, autorisatie, offline caching en contextwisselen aantonen
+met de al gebouwde settings/team-flow. Multi-organisatie is hier kernscope en
+niet uitgesteld tot een latere groeifase.
 
-### Lokale opslag
+### PR 5.1 — reproduceerbare Firebase-basis
 
-Gebruik op termijn IndexedDB voor gestructureerde lokale data en een synchronisatiewachtrij. Behoud `localStorage` tijdelijk als compatibiliteitsbron tijdens migratie. Verwijder oude data pas nadat:
+- Firebase CLI-configuratie, Firestore Rules, indexes en emulatorconfig in Git;
+- projectconfig voor development/staging/production zonder echte IDs of
+  credentials in tests;
+- Firestore-converters/decoders en typed documentcontracten;
+- fictieve seeddata voor twee organisaties, drie teams en alle rollen;
+- positieve en negatieve Rules-tests in CI;
+- geen Admin SDK/service-accountkey in browsercode of clienttests.
 
-1. deze succesvol is gelezen;
-2. lokaal naar het nieuwe schema is gemigreerd;
-3. de gebruiker de nieuwe data kan controleren;
-4. eventueel cloudsynchronisatie aantoonbaar is voltooid;
-5. een herstelbare back-up beschikbaar is.
+Acceptatiecriteria:
 
-### Eerste synchronisatieversie
+- emulator en tests starten vanaf een schone checkout;
+- een gebruiker kan zichzelf niet promoveren of een membership schrijven;
+- organisatie A kan organisatie B via geen toegestane query lezen of wijzigen.
 
-Beperk de complexiteit:
+### PR 5.2 — authenticatie, onboarding en contextwisselaar
 
-- Eén apparaat is de actieve scorer van een lopende wedstrijd.
-- Andere apparaten mogen de lopende wedstrijd aanvankelijk alleen lezen.
-- Een lease of expliciete overname voorkomt twee gelijktijdige scorers.
-- Lokale mutaties krijgen een client-ID, idempotency key en basisrevisie.
-- Herhaalde verzending mag geen dubbele segmenten of punten maken.
-- Een serverconflict wordt niet stil overschreven.
-- Afgeronde wedstrijden synchroniseren met expliciete status.
+- e-mail/wachtwoord; optioneel Google-login; aanmelden, sessieherstel en uitloggen;
+- eerste organisatie/team aanmaken na nieuwe registratie;
+- uitnodiging accepteren en memberships voor meerdere organisaties/teams tonen;
+- contextwisselaar met rol per team en uitsluitend geautoriseerde contexten;
+- duidelijke states voor offline, niet-ingelogd, toegang ingetrokken, lege en
+  ongecachete context;
+- keuze `vertrouwd apparaat` voor persistente cache en expliciete lokale
+  gegevenswissing bij uitloggen op een gedeeld apparaat.
 
-Bouw pas echte multi-writer realtime samenwerking wanneer de single-writer-versie betrouwbaar is.
+Acceptatiecriteria:
 
-### Synchronisatiestatus in de interface
+- één account wisselt tussen Rotterdam Basketball en de Nederlandse
+  Basketball Bond zonder opnieuw in te loggen;
+- verschillende rollen per team worden correct toegepast;
+- intrekken bij organisatie A verandert toegang tot organisatie B niet;
+- eerste login of ongecachete context vraagt duidelijk om netwerk.
 
-Toon minimaal:
+### PR 5.3 — Firestore-cache en settings/team-sync
 
-- **Lokaal opgeslagen** — veilig op dit apparaat, nog niet in de cloud;
-- **Synchroniseren**;
-- **Gesynchroniseerd**;
-- **Actie nodig** — conflict of blijvende fout.
+- Firebase-adapters achter bestaande `SettingsRepository` en
+  `RosterRepository`; UI importeert geen Firebase SDK;
+- persistent local cache alleen na vertrouwd-apparaatkeuze en fallback naar
+  memory/lokale modus bij niet-ondersteunde browsers;
+- geteste, opt-in kopie van geldige v1-localStorage naar de gekozen teamcontext;
+- syncstatussen op basis van cache- en pending-write metadata;
+- geweigerde queued writes worden `Actie nodig`, lokaal herstelbaar en
+  exporteerbaar;
+- v1-localStorage standaard niet verwijderen; pas na serverbevestiging,
+  verificatie en downloadbare back-up kan later worden opgeruimd.
 
-Een netwerkfout mag live bediening niet blokkeren.
+Acceptatiecriteria:
 
-### Migratie van bestaande gebruikers
+- settings/roster werken offline na een eenmalige online voorbereiding;
+- reload/crash verliest geen lokaal bevestigde wijziging;
+- dezelfde wijziging verschijnt na reconnect exact één keer op apparaat B;
+- een ongecachete context wordt niet als lege roster geïnterpreteerd.
 
-- Detecteer bestaande lokale data.
-- Toon vooraf welke teams, wedstrijden en spelers worden geïmporteerd.
-- Maak vóór migratie automatisch een downloadbare JSON-back-up.
-- Laat de gebruiker doelteam en account bevestigen.
-- Gebruik deterministische of bewaarde IDs om duplicaten bij opnieuw proberen te voorkomen.
-- Bied een alleen-lokale modus zolang cloudmigratie nog niet is gekozen.
-- Test lege opslag, oude opslag, gedeeltelijke migratie, dubbele poging en rollback.
+### PR 5.4 — multi-organisatie- en twee-apparatenpilot
 
-### Conflicten
+- voer de volledige autorisatiematrix uit voor owner, admin, coach, scorer en
+  viewer;
+- wijzig settings/roster op apparaat A offline en lees ze na reconnect op B;
+- wissel op beide apparaten tussen minstens twee organisaties en drie teams;
+- trek één membership in terwijl een write queued is;
+- test gelijktijdige niet-conflicterende writes en een bewust conflict;
+- leg werkelijk Firestore-verbruik voor de pilotscenario's vast.
 
-Definieer per object een strategie:
+Acceptatiecriteria:
 
-- teaminstellingen: laatste wijziging met zichtbare waarschuwing of handmatige keuze;
-- spelerslijst: revisiecontrole en handmatige keuze;
-- actieve wedstrijd: single-writer;
-- afgeronde wedstrijd: standaard onveranderlijk;
-- verwijderingen: soft delete en tombstone tot alle apparaten zijn bijgewerkt.
+- cross-organisatietoegang en self-promotion mislukken aantoonbaar;
+- rolgrenzen zijn zowel in UI als Security Rules afgedwongen;
+- conflict of rule-weigering veroorzaakt geen stil dataverlies;
+- de gebruiker ziet bron, actualiteit en syncstatus van data.
+
+### PR 5.5 — Netlify staging en GitHub-flow
+
+Alleen na afzonderlijke expliciete hostingopdracht:
+
+- leg base directory, `npm run build` en `v2/dist` vast;
+- maak GitHub-gekoppelde Deploy Previews voor pull requests;
+- controleer of het bestaande Netlify-account een legacy- of credit-based plan
+  gebruikt en leg quota/kosten vast; geen betaalde upgrade of auto-recharge;
+- wijs Deploy Previews uitsluitend naar development/staging Firebase, nooit
+  productie;
+- beheer Firebase-webconfig per deploycontext buiten de broncode;
+- controleer PWA-headers, directe assetroutes en offline reload;
+- publiceer nog niet naar het bestaande productieadres.
+
+### Fase-acceptatie
+
+- twee browsers/apparaten delen settings/team zonder lokaal dataverlies;
+- één account gebruikt veilig meerdere organisaties en teams;
+- Emulator-tests bewijzen organisatie-, team- en rolisolatie;
+- hosting en backend blijven los vervangbare adapters;
+- geen productieomgeving is aangemaakt of gepubliceerd zonder aparte opdracht.
+
+## 11. Fase 6 — Overige v1-flows modulair herbouwen
+
+### Doel
+
+Nu de volledige architectuurketen is bewezen, de rest van de monoliet in kleine
+verticale flows vervangen. Elke PR levert UI, domain, application,
+infrastructure en tests voor één gebruikersdoel. Alle data hoort aantoonbaar bij
+de actieve organisatie/teamcontext.
+
+### PR 6.1 — wedstrijdopzet
+
+- deelnemers, precies vijf starters, tegenstander, competitie, klokrichting en
+  classificatielimiet;
+- stabiele wedstrijd- en game-player-UUID's en historische spelersnapshot;
+- startvalidatie en hervatten van een voorbereide wedstrijd;
+- actieve organisatie/teamcontext verplicht opslaan en na start vergrendelen;
+- v1-key blijft tijdens compatibiliteitsperiode leesbaar.
+
+### PR 6.2 — live wedstrijd offline-first
+
+- scorebediening, klok/segmenttijd, wissels en classificatiewaarschuwing;
+- pure segment-, score-, speeltijd- en lineupberekeningen;
+- iedere bevestigde handeling als lokale, append-only actie met unieke ID;
+- vliegtuigmodus en app-crash mogen geen bevestigde actie verliezen;
+- score en status zijn reproduceerbaar uit acties; nog geen multi-writer.
+
+### PR 6.3 — afronden, historie en export
+
+- afgeronde wedstrijd plus afleidbare snapshot bewaren;
+- historie, detail en verwijderen volgens het vastgelegde beleid;
+- afgeronde wedstrijd standaard onveranderlijk;
+- byte-exact gelijk Nederlands CSV-contract;
+- semantisch gelijk JSON-back-upcontract of expliciet gemigreerde versie.
+
+### PR 6.4 — statistieken
+
+- lineupcombinaties, on/off, plus/min, speeltijd en per-10-minuten;
+- handmatig narekenbare fixtures;
+- totalen blijven afleidbaar uit bronacties/segmenten en niet alleen caches;
+- meet Firestore-querykosten, maar bouw nog geen cloudbrede rapportagelaag.
+
+### PR 6.5 — trends
+
+- chronologische spelertrends, gemiddelde speeltijd en plus/min;
+- lopende wedstrijd als voorlopig datapunt volgens v1-gedrag;
+- mobiele weergave en lege/partiële/cachedata duidelijk onderscheiden.
+
+### PR 6.6 — back-up, import en lokale migratie
+
+- bestaande v1-back-up valideren en veilig migreren;
+- preview vóór import en automatische downloadbare back-up;
+- gebruiker kiest expliciet doelorganisatie en doelteam;
+- lege, oude, gedeeltelijke, dubbele en mislukte migratie testen;
+- alleen-lokale modus blijft mogelijk zolang de gebruiker cloud niet kiest.
 
 ### Acceptatiecriteria
 
-- Een volledige wedstrijd kan in vliegtuigmodus worden gespeeld en afgerond.
-- Na opnieuw verbinden verschijnt de wedstrijd exact één keer in de database.
-- Opnieuw laden of app-crash verliest geen bevestigde lokale actie.
-- Dubbele verzending verandert score of speeltijd niet.
-- Een conflict wordt zichtbaar en leidt niet tot stil dataverlies.
-- Bestaande lokale gebruikers kunnen migreren én een back-up behouden.
+- de compatibiliteitsmatrix is per flow afgedekt;
+- CSV is byte-exact en JSON semantisch compatibel;
+- volledige wedstrijd kan lokaal/offline worden gespeeld en afgerond;
+- actieve wedstrijd kan niet stil van organisatie/team wisselen;
+- geen UI-component praat rechtstreeks met Firestore, IndexedDB of localStorage.
 
-### Modeladvies
+## 12. Fase 7 — Wedstrijdsync en migratie naar gedeeld gebruik
 
-Gebruik `opencode-go/glm-5.2` voor sync-protocol en conflictmodel; `opencode-go/kimi-k2.7-code` voor incrementele implementatie en Playwright-tests.
+### Doel
 
-## 12. Fase 7 — Offline betrouwbaarheid en toegankelijkheid
+De complexe wedstrijddata pas synchroniseren nadat zowel de live lokale flow als
+de eenvoudige settings/team-sync bewezen zijn.
 
-### PR 7.1 — PWA-updategedrag
+### PR 7.1 — Firestore-wedstrijdmodel
 
-- Test eerste installatie, offline herladen en een nieuwe app-shellversie.
-- Controleer dat nieuwe assets in de platformneutrale productiebuild en offline app-shell worden opgenomen.
-- Voorkom een mix van oude HTML en nieuwe scripts.
-- Maak updatefouten zichtbaar in ontwikkeling; slik ze niet volledig stil in.
+- `games/{gameId}` voor identiteit/status/snapshot en
+  `games/{gameId}/actions/{actionId}` voor append-only bronacties;
+- actions dragen auteur, client-ID, volgnummer, tijd en organisatie/teamcontext;
+- historische spelergegevens blijven onveranderlijk;
+- score, plus/min en speeltijd blijven reproduceerbaar;
+- documentgrootte, indexes, reads/writes en exportbaarheid worden getest.
 
-### PR 7.2 — Toegankelijkheid
+### PR 7.2 — afgeronde wedstrijden synchroniseren
 
-- Voeg toegankelijke namen toe aan icon-only knoppen.
-- Controleer focusvolgorde en zichtbare focus.
-- Zorg dat modals focus vasthouden en na sluiten teruggeven.
-- Controleer score- en wisselbediening met toetsenbord.
-- Controleer contrast voor clubkleur-presets en aangepaste kleuren.
-- Respecteer `prefers-reduced-motion` bij alle animaties.
+- clientgegenereerde IDs maken retries idempotent;
+- voortgang en herstelbare foutstatus;
+- verwijdering met tombstone en bewaarbeleid;
+- historie op een tweede apparaat beschikbaar;
+- afgeronde wedstrijd standaard onveranderlijk.
 
-### PR 7.3 — Fout- en herstelgedrag
+### PR 7.3 — actieve wedstrijd single-writer
 
-- Toon herstelbare fouten zonder wedstrijddata kwijt te raken.
-- Voeg waar passend undo toe voor lokale destructieve acties.
-- Maak onderscheid tussen een lege wedstrijd, ongeldige data en een technische fout.
+- expliciet scorer-eigenaarschap/lease met auditvelden;
+- andere apparaten read-only met zichtbare cache-/serveractualiteit;
+- expliciete overname met revisiecontrole en sterke bevestiging;
+- verlies van netwerk blokkeert de actieve scorer niet;
+- dubbele of late actions veranderen score/segmenten niet;
+- organisatie/teamcontext blijft gedurende de wedstrijd vergrendeld.
 
-### Modeladvies
+### PR 7.4 — bestaande gebruiker naar cloud
 
-`opencode-go/kimi-k2.7-code` voor implementatie en `opencode-go/qwen3.7-plus` voor een toegankelijkheids- en tekstcontrole.
+- toon vooraf te migreren teams, spelers en wedstrijden;
+- laat account, doelorganisatie en doelteam bevestigen;
+- deterministische mapping voorkomt duplicaten bij opnieuw proberen;
+- rollback en lokale back-up blijven beschikbaar;
+- cloudmigratie is opt-in en wist de bron niet automatisch.
 
-## 13. Fase 8 — Aanvullende productverbeteringen
+### Acceptatiecriteria
 
-Na fase 0 tot en met 7 volgt eerst een productkeuze. Bouw niet alle opties tegelijk.
+- een wedstrijd kan volledig in vliegtuigmodus worden gespeeld en afgerond;
+- na reconnect staan acties en wedstrijd exact één keer in Firestore;
+- apparaat B kan veilig meekijken en alleen na overname schrijven;
+- conflicten of rule-weigeringen zijn zichtbaar en herstelbaar;
+- Security Rules beschermen alle wedstrijd- en actionpaden per context en rol.
 
-Mogelijke richtingen:
+## 13. Fase 8 — Hardening, acceptatie en cutover
 
-1. **Analyse verdiepen** — filters, lineupvergelijking, exporteerbare rapporten.
-2. **Meerdere teams/seizoenen** — vereist een expliciet nieuw datamodel en migratie.
-3. **Veilige toesteloverdracht** — verbeterde lokale back-up zonder cloudaccount.
-4. **Coachdashboard** — wedstrijdselectie, trends en rapportages buiten de live scoringsinterface.
-5. **Veilige Airtable-export** — als aparte server-side export of importworkflow, nooit met geheime tokens in de browserapp.
-6. **Wedstrijdherstel** — undo voor laatste acties, expliciet heropenen en privacyveilige auditgeschiedenis.
-7. **Datakwaliteit** — automatische controles op ontbrekende minuten, ongeldige lineups en afwijkende totalen.
-8. **Deelbare rapporten** — alleen na expliciete keuze welke gegevens buiten het team zichtbaar mogen zijn.
-9. **Installatie en updates** — zichtbare PWA-updatebeschikbaarheid en een gecontroleerde verversactie.
-10. **Beheer en levenscyclus** — seizoensarchivering, teamoverdracht, export en verwijdering.
+### PR 8.1 — PWA-updates en herstel
 
-Voor synchronisatie of directe Airtable-integratie is een afzonderlijk beslisdocument nodig met minimaal:
+- eerste installatie, offline reload en app-shellupdate;
+- geen mix van oude HTML en nieuwe gehashte assets;
+- zichtbare updatebeschikbaarheid en gecontroleerde refresh;
+- pre-game offline-readinesscheck;
+- herstelbare technische/syncfouten zonder wedstrijdverlies.
 
-- gebruikersdoel;
-- gegevensclassificatie en AVG-impact;
-- authenticatie en autorisatie;
-- eigenaarschap en verwijdering van data;
-- offline conflicten;
-- kosten en beheer;
-- exporteerbaarheid en exit-strategie.
+### PR 8.2 — toegankelijkheid en courtside QA
 
-## 14. Werkwijze voor OpenCode
+- focusvolgorde, modal focus trap/restore en zichtbare focus;
+- score-, wissel- en contextbediening met touch en toetsenbord;
+- contrast van clubkleuren en `prefers-reduced-motion`;
+- gangbare telefoonviewports, oudere doeltelefoon en zwakke/offline verbinding;
+- gedeeld apparaat: vertrouwd-apparaatkeuze, uitloggen en cache wissen.
+
+### PR 8.3 — beveiliging, privacy, kosten en beheer
+
+- volledige Emulator Rules-suite en review zonder open hoge bevindingen;
+- rate limits/misbruikscenario's, App Check-besluit en privacyveilige logging;
+- organisatie-export, account-/organisatieverwijdering, back-up en herstelproef;
+- Firestore-gebruik meten en budgetwaarschuwingen configureren;
+- Spark/Blaze-keuze, regio, DPA, afhankelijkheden en platformvoorwaarden
+  opnieuw valideren; betaalde functies alleen na expliciete goedkeuring.
+
+### PR 8.4 — parallelle acceptatie
+
+- dezelfde fictieve wedstrijden in v1 en v2 vergelijken;
+- score, minuten, lineups, CSV, back-up, historie, stats en trends gelijk;
+- coachtest op echte doelapparaten en met twee organisatiecontexten, maar zonder
+  echte data in Git of logs;
+- cutover- en rollbackplan met exact te publiceren build/SHA.
+
+### PR 8.5 — productie-cutover
+
+Alleen na afzonderlijke expliciete goedkeuring:
+
+- Netlify-productieconfig en afzonderlijk Firebase-productieproject controleren;
+- Security Rules, indexes, toegestane authproviders, quota en alerts verifiëren;
+- exacte commit publiceren en toegang/headers/offline gedrag verifiëren;
+- rollbackpad en lokale back-up beschikbaar houden;
+- v1 pas in een latere aparte PR archiveren of verwijderen.
+
+## 14. Fase 9 — Groei na de multi-organisatiebasis
+
+De basis voor meerdere organisaties, teams en verschillende coachrollen bestaat
+al sinds fase 5. Deze fase begint pas na stabiele productie en voegt schaal- en
+self-servicefuncties toe op basis van echte gebruikersvragen.
+
+Mogelijke afzonderlijke producttracks:
+
+1. uitgebreide self-service organisatieaanmaak, uitnodigingen en
+   eigendomsoverdracht;
+2. meerdere teams, seizoensarchivering en bonds-/programmahiërarchie;
+3. coachdashboard en organisatiebrede rapporten;
+4. datakwaliteitscontroles en auditgeschiedenis;
+5. deelbare rapporten met expliciet privacy- en toegangsmodel;
+6. veilige server-side Airtable-/andere integraties;
+7. quota, kostenbewaking, support- en beheertools;
+8. aggregatie-/analyticslaag of datawarehouse wanneer Firestore-queries niet
+   meer doelmatig zijn;
+9. echte multi-writer wedstrijdbediening, alleen als single-writer aantoonbaar
+   onvoldoende is.
+
+Iedere track krijgt een eigen productbesluit, AVG-beoordeling, ADR waar nodig,
+kleine PR's en exit-/verwijderstrategie.
+
+## 15. Werkwijze voor OpenCode
 
 ### Eén taak per sessie
 
@@ -631,33 +782,49 @@ Oplevering:
 ### Eerste aanbevolen opdracht
 
 ```text
-Lees README.md, package.json, playwright.config.js, tests/ui.spec.js en index.html.
-Lees daarna docs/IMPLEMENTATION_PLAN.md, met nadruk op fase 0 en fase 1.
+Lees README.md, AGENTS.md, docs/IMPLEMENTATION_PLAN.md,
+docs/architecture/adr-000-frontend-architecture.md, de root-testconfiguratie en
+v2/package.json.
 
-Voer alleen fase 0 uit. Wijzig geen productiecode.
+Voer uitsluitend PR 3.2a uit. Voeg nog geen settings-, roster-, Firebase- of
+Netlify-implementatie toe.
 
-Maak:
-- docs/architecture/current-state.md
-- docs/data-contracts.md
+Realiseer de gesplitste TypeScript-configuratie, typeveilige runtime-i18n,
+v2-Playwright-harness, injectManifest-PWA, centrale CSS-tokens en statische
+toegankelijkheidslinting. Behoud uitsluitend lineup-tracker-lang en raak de
+overige v1-localStorage-keys niet aan.
 
-Documenteer alle localStorage-keys, objectvormen, statusovergangen,
-berekeningen, CSV-kolommen en JSON-back-upstructuur. Voeg voor score,
-speeltijd, plus/min en lineupcode minimaal één handmatig narekenbaar voorbeeld toe.
-Benoem onzekerheden expliciet en presenteer voorstellen niet als bestaand gedrag.
+Voer lint, formatter-check, Vitest, v2-Playwright, productiebuild en de volledige
+v1-Playwright-suite uit. Bewijs installatie/offline reload en NL/EN-wissel met
+gerichte assertions. Rapporteer wijzigingen, testresultaten en open risico's.
 ```
 
 ### Tweede aanbevolen opdracht
 
 ```text
-Voer alleen PR 1.1 uit docs/IMPLEMENTATION_PLAN.md uit.
+Start alleen nadat PR 3.2a is gemerged en opnieuw groen is gevalideerd.
+Voer uitsluitend PR 3.2b uit docs/IMPLEMENTATION_PLAN.md uit.
 
-Maak de Playwright-testbasis deterministisch met vaste, fictieve testdata.
-Vervang conditioneel overslaan van kritieke flows door expliciete assertions.
-Verander geen productiegedrag en voer nog niet de volledige wedstrijdflow in.
-Voer de tests uit en rapporteer exact wat wel en niet is getest.
+Bouw de volledige Instellingen-flow via SettingsRepository en application-
+use-cases, met exact lineup-tracker-settings als opslagkey. Behoud de v1-vorm,
+NL/EN en offline gedrag. Voeg nog geen roster, wedstrijd, Firebase of Netlify toe.
+Voer alle acceptatiecriteria en regressietests uit en rapporteer exact resultaat.
 ```
 
-## 15. Modelstrategie
+### Derde aanbevolen opdracht
+
+```text
+Start alleen nadat PR 3.2b is gemerged en opnieuw groen is gevalideerd.
+Voer uitsluitend PR 3.2c uit docs/IMPLEMENTATION_PLAN.md uit.
+
+Bouw de Team-flow via RosterRepository en application-use-cases, met exact
+lineup-tracker-roster als opslagkey. Behoud sortering, IDs, classificatievelden,
+NL/EN en offline gedrag. Raak wedstrijd- en historiekeys niet aan en voeg nog
+geen Firebase of Netlify toe. Voer alle acceptatiecriteria en regressietests uit.
+Stop na PR 3.2c bij de architectuurreview; begin fase 4 niet automatisch.
+```
+
+## 16. Modelstrategie
 
 - Dagelijkse implementatie: `opencode-go/kimi-k2.7-code`.
 - Goedkoop bulkwerk, testvarianten en mechanische documentatie: `opencode-go/deepseek-v4-flash`.
@@ -665,7 +832,7 @@ Voer de tests uit en rapporteer exact wat wel en niet is getest.
 - Moeilijke architectuur, migraties en onafhankelijke review: `opencode-go/glm-5.2`.
 - Laat risicovolle code bij voorkeur controleren door een andere modelfamilie dan waarmee deze is geschreven.
 
-## 16. Voortgang bijhouden
+## 17. Voortgang bijhouden
 
 Gebruik GitHub Issues of een kleine tabel in dit bestand. Issues zijn beter zodra meerdere wijzigingen parallel of verspreid over langere tijd plaatsvinden.
 
@@ -677,26 +844,33 @@ Gebruik GitHub Issues of een kleine tabel in dit bestand. Issues zijn beter zodr
 | PR 1.3 — hervatten en back-up | Voltooid |  | backup-resume.spec.js met resume, export, import, invalid |
 | PR 1.4 — mobiel en taal | Voltooid |  | mobile-lang.spec.js met iPhone viewport, NL/EN flows |
 | PR 1.5 — GitHub Actions CI | Voltooid | #6 | .github/workflows/ci.yml, Playwright tests in CI |
-| PR 1.6 — fase-1-dekking | Voltooid | #7 | coverage-gaps.spec.js; P0-1 als test.fail |
+| PR 1.6 — fase-1-dekking | Voltooid | #7 | coverage-gaps.spec.js; P0-1 was tijdelijk als `test.fail()` vastgelegd en is in PR #8 opgelost |
 | PR 1.7 — importveiligheid | Voltooid | #8 | `isPlainObject` validatie in index.html; P0-1 opgelost |
 | PR 2.1 — schemaversie | Voltooid | #9 | `SCHEMA_VERSION` + `lineup-tracker-schema-version`; toekomstige versies geweigerd |
-| PR 2.2 — importvalidatie | Voltooid | #10 | `validateBackupData()` met type-checks, referentie-checks, lege-data-detectie; vertaalbare foutmeldingen. Review-opvolging: type-checks toegevoegd voor `game`-velden (string/getal/boolean/array); dubbele `t()`-aanroep op reeds-vertaalde submeldingen verwijderd in `validateBackupData`/`validateGames` |
-| PR 2.3 — migratieframework | Voltooid |  | `migrateBackup()` met `MIGRATIONS` map; automatisch in importflow; veilige weigering bij falende migratie |
-| Fase 2 — data-integriteit | Niet gestart |  |  |
+| PR 2.2 — importvalidatie | Voltooid | #10, #14 | `validateBackupData()` met type-checks, referentie-checks, lege-data-detectie; vertaalbare foutmeldingen. Review-opvolging: type-checks toegevoegd voor `game`-velden (string/getal/boolean/array); dubbele `t()`-aanroep op reeds-vertaalde submeldingen verwijderd in `validateBackupData`/`validateGames` |
+| PR 2.3 — migratieframework | Voltooid | #12, #13 | `migrateBackup()` met `MIGRATIONS` map; automatisch in importflow; veilige weigering bij falende migratie; testisolatie en contract verduidelijkt in follow-up |
+| Fase 2 — data-integriteit | Voltooid | #9, #10, #12–#14 | Schemaversie, inhoudelijke validatie en migratieraamwerk zijn aanwezig en getest |
 | ADR-000 — frontendarchitectuur | Voltooid | #15 | `docs/architecture/adr-000-frontend-architecture.md`: Preact + TypeScript + Vite, laaggrenzen, i18n/PWA/teststrategie, gecorrigeerde migratievolgorde |
-| PR 3.1 — v2 scaffold | Klaar voor review |  | `v2/` met Vite/Preact/TS-strict/ESLint9/Prettier/Vitest, triviale NL/EN-pagina met `aria-label` en `<html lang>`-sync, één sanity-test, `engines: node>=24`. v1 ongewijzigd. CI uitgebreid met Prettier-check, Vitest en Vite build naast Playwright. Geen lege mappen onder `src/`. `vite-plugin-pwa` bewust uitgesteld naar de eerste verticale flow (instellingen/team) per walking-skeleton-valideringspoort in ADR-000 |
-| Fase 4 — databasebesluit | Niet gestart |  |  |
-| Fase 5 — database, auth en rollen | Niet gestart |  |  |
-| Fase 6 — offline synchronisatie en migratie | Niet gestart |  |  |
-| Fase 7 — offline en toegankelijkheid | Niet gestart |  |  |
-| Fase 8 — productkeuze | Niet gestart |  |  |
+| PR 3.1 — v2 scaffold | Voltooid | #16 | `v2/` met Vite/Preact/TS-strict/ESLint9/Prettier/Vitest, triviale NL/EN-pagina met `aria-label` en `<html lang>`-sync, één sanity-test, `engines: node>=24`. v1 ongewijzigd. CI uitgebreid met Prettier-check, Vitest en Vite build naast Playwright. Geen lege mappen onder `src/`. `vite-plugin-pwa` bewust uitgesteld naar de eerste verticale flow (instellingen/team) per walking-skeleton-valideringspoort in ADR-000 |
+| PR 3.2a — technisch fundament | Gepland |  | TypeScript-grens, typed i18n, v2-Playwright, injectManifest-PWA, CSS-tokens en a11y-lint |
+| PR 3.2b — Instellingen | Gepland |  | Volledige instellingenflow via application-port en bestaande v1-key |
+| PR 3.2c — Team | Gepland |  | Volledige rosterflow via application-port en bestaande v1-key |
+| Fase 3 — frontend-walking-skeleton | In uitvoering | #15, #16 | ADR en scaffold voltooid; 3.2a-c zijn concreet vastgelegd |
+| Fase 4 — cloud/sync/tenancy-ADR's | Niet gestart |  | Firebase Auth + Firestore en Netlify zijn voorkeursroute; Supabase is alleen fallback na een gefaalde gate |
+| Fase 5 — platformpilot settings/team | Niet gestart |  | Firebase Emulator/Rules, Auth, multi-organisatiecontext, offline cache, twee apparaten en optionele Netlify-staging |
+| Fase 6 — overige v1-flows | Niet gestart |  | Wedstrijdopzet, live, historie/export, stats, trends en back-up |
+| Fase 7 — wedstrijdsync en migratie | Niet gestart |  | Afgeronde games, single-writer live sync en opt-in cloudmigratie |
+| Fase 8 — hardening en cutover | Niet gestart |  | PWA, a11y, security, parallelle acceptatie en expliciete productiecutover |
+| Fase 9 — groei na multi-organisatiebasis | Niet gestart |  | Multi-organisatie zit in fase 5; self-service schaalfuncties volgen na stabiele productie |
 
-## 17. Bewuste uitsluitingen
+## 18. Bewuste uitsluitingen
 
 Dit plan geeft nog geen toestemming voor:
 
 - database-implementatie voordat fase 4 expliciet is goedgekeurd;
-- databasebeheersleutels, service-role-sleutels of Airtable-tokens in frontendcode;
+- Firebase service-accountkeys, Admin SDK-credentials,
+  databasebeheersleutels, service-role-sleutels of Airtable-tokens in
+  frontendcode;
 - wijziging van historische statistiekdefinities;
 - deployment, hostingwijziging of productie-cutover zonder afzonderlijke expliciete goedkeuring;
 - een frontendstack die afwijkt van het goedgekeurde architectuurbesluit;

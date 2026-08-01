@@ -1,11 +1,13 @@
 # Data Contracts — Lineup Tracker
 
-**Datum**: 29 juli 2026  
-**Basis**: `main` op commit `3e8e512`
+**Datum**: 1 augustus 2026
+**Basis**: `main` op commit `a0eab1b`
 
 ## Overzicht
 
-Dit document beschrijft de data-contracten van de Lineup Tracker: CSV-export formaten, JSON-back-up structuur, en localStorage schema's. Deze contracten zijn onderhandelbaar voor v2, maar moeten expliciet worden gemigreerd.
+Dit document beschrijft de data-contracten van de Lineup Tracker: CSV-exportformaten, JSON-back-upstructuur en localStorage-schema's. Het Nederlandse CSV-contract is bevroren. Andere contractwijzigingen vereisen een expliciet besluit, een schemaversie en een geteste migratie; ze zijn niet vrij onderhandelbaar tijdens de v2-herbouw.
+
+Laatst gevalideerd tegen `main` op commit `a0eab1b` (1 augustus 2026).
 
 ## CSV Contracten
 
@@ -293,8 +295,8 @@ Taalvoorkeur: `"nl"` of `"en"`.
 ### V2 Vereisten
 
 1. **Schema versie**: aanwezig in zowel localStorage (`lineup-tracker-schema-version`) als in elke back-up payload.
-2. **Validatie**: structureel (PR 1.7) + versie (PR 2.1); diepgaande veld-/referentie-validatie volgt in PR 2.2.
-3. **Migratie functie**: `migrate(data, fromVersion, toVersion)` (PR 2.3).
+2. **Validatie**: structureel (PR #8), versiegebonden (PR #9) en inhoudelijk op velden/referenties (PR #10 en #14); v2 moet dit gedrag behouden.
+3. **Migratiefunctie**: `migrateBackup(data, fromVersion, toVersion)` en de `MIGRATIONS`-registratie uit PR #12/#13; v2 moet dit contract behouden of expliciet migreren.
 4. **Backward compatibility**: back-ups zonder `version` worden als versie 1 gelezen.
 5. **Forward compatibility**: back-ups met `version > 1` worden veilig geweigerd met de bestaande `importBackupInvalid` melding.
 
@@ -353,7 +355,7 @@ Als een speler wordt verwijderd die in de lopende wedstrijd speelde:
 - `playerById(id)` returns `null`
 - Lineup wordt onherkenbaar in CSV en UI
 
-**Oplossing in v2**: Soft delete of snapshot validatie.
+**Nog te besluiten voor v2**: soft delete, blokkeren tijdens een actieve wedstrijd of uitgebreidere snapshotvalidatie. Dit document kiest nog geen oplossing.
 
 ## Type Definites (voor TypeScript migratie)
 
@@ -482,7 +484,9 @@ Bij validatiefouten: eerste foutmelding wordt getoond plus samenvatting van het 
 - Retourneert `null` bij: niet-plain-object invoer, ontbrekende migratie, runtime-fout in een migratie, of een non-object resultaat.
 - De importflow gebruikt `null` als signaal om de import af te wijzen met `importBackupMigrationFailed`.
 
-### Segment Validatie (toekomstig, PR 2.3+)
+### Aanvullende segmentvalidatie voor de modulaire v2
+
+PR #10 valideert tijdens import al segmentvormen en spelerreferenties. Onderstaande domeinregels moeten bij de modulaire migratie expliciet worden bevestigd en met pure tests worden afgedwongen:
 
 1. **DurSec > 0**: Segment moet positieve duur hebben
 2. **Lineup length = 5**: Precies 5 spelers
@@ -490,7 +494,9 @@ Bij validatiefouten: eerste foutmelding wordt getoond plus samenvatting van het 
 4. **PF/PA >= 0**: Niet-negatieve punten
 5. **Begin/Eind consistent**: Afhankelijk van clockDown
 
-### Player Validatie (toekomstig, PR 2.3+)
+### Aanvullende spelervalidatie voor de modulaire v2
+
+PR #10/#14 dwingen tijdens import al een deel van deze regels af. De resterende productregels zijn nog geen nieuw architectuurbesluit:
 
 1. **ID uniek**: Geen dubbele IDs (gedeeltelijk afgedwongen in PR 2.2)
 2. **Nr niet leeg**: Rugnummer verplicht

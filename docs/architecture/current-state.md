@@ -1,19 +1,20 @@
 # Current State — Lineup Tracker
 
-**Datum**: 29 juli 2026  
-**Basis**: `main` op commit `3e8e512`
+**Datum**: 1 augustus 2026
+**Basis**: `main` op commit `a0eab1b`
 
 ## Overzicht
 
-De Lineup Tracker is een mobiele PWA voor het registreren van lineups, segmenten en statistieken in wheelchair basketball. De app draait volledig lokaal in de browser zonder backend.
+De v1-referentie van de Lineup Tracker is een mobiele PWA voor het registreren van lineups, segmenten en statistieken in wheelchair basketball. De app draait volledig lokaal in de browser zonder backend. Daarnaast bevat `v2/` sinds PR #16 een minimale Preact/TypeScript/Vite-scaffold; die bevat nog geen productflow en verandert de hieronder beschreven v1-werking niet.
 
 ## Architectuur
 
-- **Enkel bestand**: Alle HTML, CSS en JavaScript staat in `index.html` (2326 regels)
+- **V1-monoliet**: Vrijwel alle UI, CSS en JavaScript staat in `index.html` (2587 regels)
 - **Geen build-stap**: Direct openen in browser mogelijk
 - **PWA**: Service worker (`sw.js`) voor offline caching
 - **Talen**: Nederlands en Engels via `STRINGS` object
 - **Opslag**: `localStorage` voor alle data
+- **V2-scaffold**: Preact + TypeScript strict + Vite + Vitest in `v2/`; nog geen domein-, opslag- of functionele migratie
 
 ## localStorage Keys
 
@@ -24,6 +25,7 @@ De Lineup Tracker is een mobiele PWA voor het registreren van lineups, segmenten
 | `lineup-tracker-games` | Afgeronde wedstrijden | Historie, stats, trends |
 | `lineup-tracker-settings` | Instellingen | Teamnaam, kleuren, classificatie |
 | `lineup-tracker-lang` | Taalvoorkeur | `nl` of `en` |
+| `lineup-tracker-schema-version` | Huidige lokale schemaversie | Migraties en compatibiliteitscontrole; ontbrekend wordt als versie 1 gelezen |
 
 ## Data Structuren
 
@@ -269,8 +271,8 @@ pmPer10 = (pm * 600) / seconds;
 ### Data Verlies
 1. **Speler verwijderen**: Als speler in lopende wedstrijd speelde, worden lineup data onherkenbaar
 2. **Browser cache wissen**: Alle data verloren zonder back-up
-3. **Import zonder validatie**: Ongeldige JSON overschrijft bestaande data
-4. **Geen schema versie**: Migratie bij structuurwijziging niet mogelijk
+3. **Import is niet transactioneel**: Na validatie en bevestiging worden de opslagkeys afzonderlijk geschreven; een opslagfout midden in die reeks kan gedeeltelijke state achterlaten
+4. **Toekomstige schemawijzigingen**: Schemaversie en migratieraamwerk bestaan, maar iedere nieuwe versie vereist vóór verhoging een expliciete migratiefunctie en regressiefixtures
 
 ### Berekeningen
 1. **Segment bewerken**: Score wordt herberekend, maar live score niet aangepast
@@ -340,7 +342,7 @@ pmPer10 = (pm * 600) / seconds;
 1. **localStorage compatibiliteit**: Bestaande keys en datastructuur behouden
 2. **CSV contract**: Nederlandse kolomnamen en waarden vast
 3. **Offline first**: PWA moet zonder netwerk werken
-4. **Geen backend**: Geen externe data verzending
+4. **Geen backend in fase 0-3**: Geen externe dataoverdracht vóór een afzonderlijk goedgekeurd cloudarchitectuurbesluit
 5. **Talen**: Nederlands en Engels verplicht
 6. **Mobiel first**: Touchbediening en smalle schermen
 7. **Geen echte spelersdata**: Fictieve data in tests en screenshots
