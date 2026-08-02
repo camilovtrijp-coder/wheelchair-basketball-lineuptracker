@@ -7,3 +7,11 @@ if (!root) {
   throw new Error('Root element #app niet gevonden');
 }
 render(<App />, root);
+
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    void navigator.serviceWorker.register('/sw.js', { scope: '/', type: 'module' }).catch((err) => {
+      console.error('Service worker registratie mislukt', err);
+    });
+  });
+}

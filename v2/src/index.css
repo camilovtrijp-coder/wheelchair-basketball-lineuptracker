@@ -1,21 +1,42 @@
+@import './styles/tokens.css';
+
 :root {
-  font-family:
-    system-ui,
-    -apple-system,
-    'Segoe UI',
-    Roboto,
-    sans-serif;
+  font-family: var(--lt-font-sans);
   color-scheme: light dark;
+  font-size: var(--lt-font-size-md);
+  line-height: var(--lt-line-height-normal);
 }
 
 body {
   margin: 0;
+  background: var(--lt-color-bg);
+  color: var(--lt-color-fg);
 }
 
 main {
-  padding: 1rem;
+  padding: var(--lt-space-4);
+  max-width: 48rem;
+  margin: 0 auto;
 }
 
 button {
   font: inherit;
+  background: var(--lt-color-accent);
+  color: var(--lt-color-accent-fg);
+  border: var(--lt-border-thin);
+  border-radius: var(--lt-radius-md);
+  padding: var(--lt-space-2) var(--lt-space-4);
+  cursor: pointer;
+}
+
+button:focus-visible {
+  outline: var(--lt-focus-ring);
+  outline-offset: var(--lt-focus-offset);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * {
+    animation: none !important;
+    transition: none !important;
+  }
 }

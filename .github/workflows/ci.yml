@@ -54,3 +54,15 @@ jobs:
       - name: Build v2 scaffold
         working-directory: v2
         run: npm run build
+
+      - name: Run v2 Playwright e2e tests
+        working-directory: v2
+        run: npm run test:e2e
+
+      - name: Upload v2 Playwright report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: v2-playwright-report
+          path: v2/playwright-report/
+          retention-days: 7
