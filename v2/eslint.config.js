@@ -24,10 +24,4 @@ export default tseslint.config(
       ...jsxA11y.configs.recommended.rules,
     },
   },
-  {
-    files: ['**/*.tsx'],
-    rules: {
-      ...jsxA11y.configs.recommended.rules,
-    },
-  },
 );

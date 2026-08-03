@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'preact/hooks';
 import { browserStorage } from '../i18n/browserStorage';
 import { readLang, writeLang } from '../i18n/persistence';
-import { resolveInitialLang, detectInitialLang } from '../i18n/detect';
+import { resolveInitialLang } from '../i18n/detect';
 import { SUPPORTED_LANGS, translate, type Lang, type StringKey } from '../i18n/strings';
 
 function initialLang(): Lang {
@@ -43,5 +43,3 @@ export function App() {
     </main>
   );
 }
-
-export { detectInitialLang };
