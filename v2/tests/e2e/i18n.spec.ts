@@ -4,8 +4,8 @@ const LANG_KEY = 'lineup-tracker-lang';
 const V1_KEYS_THAT_MUST_NOT_BE_TOUCHED = [
   'lineup-tracker-v1',
   'lineup-tracker-games',
-  'lineup-tracker-settings',
   'lineup-tracker-schema-version',
+  'lineup-tracker-roster',
 ];
 
 async function readAllLocalStorage(page: Page): Promise<Record<string, string>> {
@@ -36,21 +36,19 @@ test.describe('v2 i18n', () => {
   test('toont NL wanneer localStorage "nl" bevat', async ({ page, context }) => {
     await seedLang(context, 'nl');
     await page.goto('/');
-    await expect(page.locator('h1')).toHaveText('v2 leeg');
     await expect(page.locator('html')).toHaveAttribute('lang', 'nl');
+    await expect(page.getByTestId('lang-switch')).toBeVisible();
   });
 
   test('wisselt zonder reload van NL naar EN en terug', async ({ page, context }) => {
     await seedLang(context, 'nl');
     await page.goto('/');
-    await expect(page.locator('h1')).toHaveText('v2 leeg');
+    await expect(page.locator('html')).toHaveAttribute('lang', 'nl');
 
     await page.getByTestId('lang-switch').click();
-    await expect(page.locator('h1')).toHaveText('v2 empty');
     await expect(page.locator('html')).toHaveAttribute('lang', 'en');
 
     await page.getByTestId('lang-switch').click();
-    await expect(page.locator('h1')).toHaveText('v2 leeg');
     await expect(page.locator('html')).toHaveAttribute('lang', 'nl');
   });
 
@@ -58,8 +56,8 @@ test.describe('v2 i18n', () => {
     await page.goto('/');
     await page.evaluate((key) => window.localStorage.setItem(key, 'nl'), LANG_KEY);
     await page.reload();
+    await expect(page.locator('html')).toHaveAttribute('lang', 'nl');
 
-    await expect(page.locator('h1')).toHaveText('v2 leeg');
     await page.getByTestId('lang-switch').click();
     await expect(page.locator('html')).toHaveAttribute('lang', 'en');
 
@@ -67,19 +65,16 @@ test.describe('v2 i18n', () => {
     expect(stored).toBe('en');
 
     await page.reload();
-
-    await expect(page.locator('h1')).toHaveText('v2 empty');
     await expect(page.locator('html')).toHaveAttribute('lang', 'en');
   });
 
   test('ongeldige opgeslagen taal wordt genegeerd', async ({ page, context }) => {
     await seedLang(context, 'nl');
     await page.goto('/');
-    await expect(page.locator('h1')).toHaveText('v2 leeg');
+    await expect(page.locator('html')).toHaveAttribute('lang', 'nl');
 
     await page.evaluate((key) => window.localStorage.setItem(key, 'fr'), LANG_KEY);
     await page.reload();
-
     await expect(page.locator('html')).toHaveAttribute('lang', 'nl');
     const stored = await page.evaluate((key) => window.localStorage.getItem(key), LANG_KEY);
     expect(stored).toBe('nl');
@@ -105,7 +100,7 @@ test.describe('v2 i18n', () => {
     await context.addInitScript(() => {
       window.localStorage.setItem('lineup-tracker-v1', JSON.stringify({ players: [] }));
       window.localStorage.setItem('lineup-tracker-games', '[]');
-      window.localStorage.setItem('lineup-tracker-settings', '{}');
+      window.localStorage.setItem('lineup-tracker-roster', '[]');
       window.localStorage.setItem('lineup-tracker-schema-version', '1');
     });
     await page.goto('/');
@@ -115,6 +110,9 @@ test.describe('v2 i18n', () => {
     const all = await readAllLocalStorage(page);
     const keys = Object.keys(all);
     expect(keys).toContain(LANG_KEY);
+    // settings wordt pas geschreven bij save/reset; alleen-lezen mount laat
+    // de key nog ongemoeid. v2-keys (lang + settings) mogen niet stiekem
+    // andere v1-keys meeschrijven of overschrijven.
 
     for (const protectedKey of V1_KEYS_THAT_MUST_NOT_BE_TOUCHED) {
       const current = await page.evaluate((k) => window.localStorage.getItem(k), protectedKey);
