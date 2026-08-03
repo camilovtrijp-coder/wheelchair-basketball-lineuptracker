@@ -680,7 +680,9 @@ de eenvoudige settings/team-sync bewezen zijn.
 - geen mix van oude HTML en nieuwe gehashte assets;
 - zichtbare updatebeschikbaarheid en gecontroleerde refresh;
 - pre-game offline-readinesscheck;
-- herstelbare technische/syncfouten zonder wedstrijdverlies.
+- herstelbare technische/syncfouten zonder wedstrijdverlies;
+- **Safari + iPadOS-ondersteuning verifiëren** voor de in PR 3.2a gekozen `type: 'module'` service-worker-registratie (Workbox-precache + NavigationRoute); module-SW heeft historisch beperkte ondersteuning in WebKit en vereist een echte Safari-test voordat dit als "PWA werkt" kan worden afgevinkt;
+- **fallback-strategie** bepalen wanneer Safari geen module-SW accepteert (klassieke SW, alleen precache, of detectie + gebruikersmelding), en die keuze vastleggen voordat productie-cutover plaatsvindt.
 
 ### PR 8.2 — toegankelijkheid en courtside QA
 
@@ -852,7 +854,7 @@ Gebruik GitHub Issues of een kleine tabel in dit bestand. Issues zijn beter zodr
 | Fase 2 — data-integriteit | Voltooid | #9, #10, #12–#14 | Schemaversie, inhoudelijke validatie en migratieraamwerk zijn aanwezig en getest |
 | ADR-000 — frontendarchitectuur | Voltooid | #15 | `docs/architecture/adr-000-frontend-architecture.md`: Preact + TypeScript + Vite, laaggrenzen, i18n/PWA/teststrategie, gecorrigeerde migratievolgorde |
 | PR 3.1 — v2 scaffold | Voltooid | #16 | `v2/` met Vite/Preact/TS-strict/ESLint9/Prettier/Vitest, triviale NL/EN-pagina met `aria-label` en `<html lang>`-sync, één sanity-test, `engines: node>=24`. v1 ongewijzigd. CI uitgebreid met Prettier-check, Vitest en Vite build naast Playwright. Geen lege mappen onder `src/`. `vite-plugin-pwa` bewust uitgesteld naar de eerste verticale flow (instellingen/team) per walking-skeleton-valideringspoort in ADR-000 |
-| PR 3.2a — technisch fundament | Gepland |  | TypeScript-grens, typed i18n, v2-Playwright, injectManifest-PWA, CSS-tokens en a11y-lint |
+| PR 3.2a — technisch fundament | Gepland |  | TypeScript-grens, typed i18n, v2-Playwright, injectManifest-PWA, CSS-tokens en a11y-lint. Volgpunten: `browserStorage` vangt nu ook throws van de `localStorage`-property-access af (Vitest-dekkend); `import.meta.env.PROD`-guard in `main.tsx` voorkomt dev-mode ruis. Safari + iPadOS-module-SW-verificatie blijft een aandachtspunt voor PR 8.1 |
 | PR 3.2b — Instellingen | Gepland |  | Volledige instellingenflow via application-port en bestaande v1-key |
 | PR 3.2c — Team | Gepland |  | Volledige rosterflow via application-port en bestaande v1-key |
 | Fase 3 — frontend-walking-skeleton | In uitvoering | #15, #16 | ADR en scaffold voltooid; 3.2a-c zijn concreet vastgelegd |

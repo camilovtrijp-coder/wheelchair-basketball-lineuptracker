@@ -8,7 +8,7 @@ if (!root) {
 }
 render(<App />, root);
 
-if ('serviceWorker' in navigator) {
+if (import.meta.env.PROD && 'serviceWorker' in navigator) {
   window.addEventListener('load', () => {
     void navigator.serviceWorker.register('/sw.js', { scope: '/', type: 'module' }).catch((err) => {
       console.error('Service worker registratie mislukt', err);

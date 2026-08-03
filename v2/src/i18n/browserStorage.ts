@@ -1,29 +1,35 @@
 import type { KeyValueStorage } from './persistence';
 
-function safeGet(storage: KeyValueStorage, key: string): string | null {
+export function createBrowserStorage(getStorage: () => Storage | null): KeyValueStorage {
+  return {
+    getItem: (key) => {
+      try {
+        return getStorage()?.getItem(key) ?? null;
+      } catch {
+        return null;
+      }
+    },
+    setItem: (key, value) => {
+      try {
+        getStorage()?.setItem(key, value);
+      } catch {
+        /* negeer */
+      }
+    },
+    removeItem: (key) => {
+      try {
+        getStorage()?.removeItem(key);
+      } catch {
+        /* negeer */
+      }
+    },
+  };
+}
+
+export const browserStorage: KeyValueStorage = createBrowserStorage(() => {
   try {
-    return storage.getItem(key);
+    return window.localStorage;
   } catch {
     return null;
   }
-}
-
-function safeSet(storage: KeyValueStorage, key: string, value: string): void {
-  try {
-    storage.setItem(key, value);
-  } catch {
-    /* opslag kan falen (geheugen vol, uitgeschakeld); negeer voor taalvoorkeur */
-  }
-}
-
-export const browserStorage: KeyValueStorage = {
-  getItem: (key) => safeGet(window.localStorage, key),
-  setItem: (key, value) => safeSet(window.localStorage, key, value),
-  removeItem: (key) => {
-    try {
-      window.localStorage.removeItem(key);
-    } catch {
-      /* negeer */
-    }
-  },
-};
+});
