@@ -1,43 +1,41 @@
 import { useEffect, useState } from 'preact/hooks';
+import { browserStorage } from '../i18n/browserStorage';
+import { readLang, writeLang } from '../i18n/persistence';
+import { resolveInitialLang } from '../i18n/detect';
+import { SUPPORTED_LANGS, translate, type Lang, type StringKey } from '../i18n/strings';
 
-const STRINGS = {
-  nl: {
-    heading: 'v2 leeg',
-    note: 'Scaffold voor Preact + TypeScript + Vite.',
-    switchToEn: 'Schakel naar Engels',
-    switchToNl: 'Schakel naar Nederlands',
-  },
-  en: {
-    heading: 'v2 empty',
-    note: 'Scaffold for Preact + TypeScript + Vite.',
-    switchToEn: 'Switch to English',
-    switchToNl: 'Switch to Dutch',
-  },
-} as const;
+function initialLang(): Lang {
+  const stored = readLang(browserStorage);
+  return resolveInitialLang(
+    typeof navigator !== 'undefined' ? navigator.language : undefined,
+    stored,
+  );
+}
 
-type Lang = keyof typeof STRINGS;
-
-function detectInitialLang(): Lang {
-  if (typeof navigator !== 'undefined' && navigator.language?.toLowerCase().startsWith('en')) {
-    return 'en';
-  }
-  return 'nl';
+function tFor(lang: Lang): (key: StringKey) => string {
+  return (key) => translate(lang, key);
 }
 
 export function App() {
-  const [lang, setLang] = useState<Lang>(detectInitialLang());
+  const [lang, setLang] = useState<Lang>(initialLang);
+
   useEffect(() => {
     document.documentElement.lang = lang;
+    writeLang(browserStorage, lang);
   }, [lang]);
-  const t = STRINGS[lang];
-  const other: Lang = lang === 'nl' ? 'en' : 'nl';
+
+  const t = tFor(lang);
+  const other: Lang = lang === SUPPORTED_LANGS[0] ? SUPPORTED_LANGS[1] : SUPPORTED_LANGS[0];
+  const otherLabel = t(other === 'en' ? 'switchToEn' : 'switchToNl');
+
   return (
     <main>
-      <h1>{t.heading}</h1>
-      <p>{t.note}</p>
+      <h1>{t('appHeading')}</h1>
+      <p>{t('appNote')}</p>
       <button
         type="button"
-        aria-label={other === 'en' ? t.switchToEn : t.switchToNl}
+        aria-label={otherLabel}
+        data-testid="lang-switch"
         onClick={() => setLang(other)}
       >
         {other.toUpperCase()}
