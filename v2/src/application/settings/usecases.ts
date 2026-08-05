@@ -9,19 +9,21 @@ export function getSettings(repo: SettingsRepository): Settings & Record<string,
 export function saveSettings(
   repo: SettingsRepository,
   settings: Settings & Record<string, unknown>,
-): void {
-  repo.write(settings);
+): boolean {
+  return repo.write(settings);
 }
 
+/**
+ * Past een veld-update toe in het geheugen zonder te persisteren. Schrijven
+ * naar de repository gebeurt uitsluitend via een expliciete `saveSettings`-
+ * of `resetSettings`-aanroep (save-/reset-knop in de UI).
+ */
 export function updateSetting(
-  repo: SettingsRepository,
   current: Settings & Record<string, unknown>,
   field: SettingsKey,
   value: unknown,
 ): Settings & Record<string, unknown> {
-  const next = applySettingUpdate(current, field, value);
-  repo.write(next);
-  return next;
+  return applySettingUpdate(current, field, value);
 }
 
 export function resetSettings(repo: SettingsRepository): Settings & Record<string, unknown> {

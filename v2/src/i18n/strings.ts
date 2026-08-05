@@ -41,6 +41,8 @@ const nl = {
   customColorBtn: 'Aangepast',
   saveBtn: 'Opslaan',
   settingsResetBtn: 'Standaardinstellingen herstellen',
+  logoTooLargeError: 'Logo is te groot (max 500 KB). Kies een kleinere afbeelding.',
+  settingsSaveError: 'Opslaan is mislukt. Controleer de opslagruimte van je browser.',
 } as const;
 
 const en = {
@@ -79,6 +81,8 @@ const en = {
   customColorBtn: 'Custom',
   saveBtn: 'Save',
   settingsResetBtn: 'Reset to defaults',
+  logoTooLargeError: 'Logo is too large (max 500 KB). Choose a smaller image.',
+  settingsSaveError: "Saving failed. Check your browser's storage space.",
 } as const;
 
 export const STRINGS = { nl, en } as const;

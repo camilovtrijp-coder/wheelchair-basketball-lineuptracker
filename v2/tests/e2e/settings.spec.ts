@@ -169,6 +169,57 @@ test.describe('v2 settings', () => {
     expect(stored2.teamName).toBe('Recovered');
   });
 
+  test('veldwijzigingen persisteren pas na een expliciete save, niet per toetsaanslag', async ({
+    page,
+  }) => {
+    await page.goto('/');
+    await expect(page.getByTestId('settings-teamName')).toBeVisible();
+
+    // Nog geen save geklikt: er mag nog geen v2-settings-key in localStorage staan.
+    expect(await readSettings(page)).toEqual({});
+
+    await page.getByTestId('settings-teamName').fill('Niet opgeslagen');
+    await page.getByTestId('settings-quarterCount').fill('7');
+    expect(await readSettings(page)).toEqual({});
+
+    await page.getByTestId('settings-save').click();
+    const stored = await readSettings(page);
+    expect(stored.teamName).toBe('Niet opgeslagen');
+    expect(stored.quarterCount).toBe(7);
+  });
+
+  test('aangepaste kleur is bereikbaar via een knop gekoppeld aan de native color-input', async ({
+    page,
+  }) => {
+    await page.goto('/');
+    const customBtn = page.getByTestId('primaryColor-custom');
+    await expect(customBtn).toBeVisible();
+
+    const nativeInput = page.getByTestId('primaryColor-native');
+    await nativeInput.evaluate((el: HTMLInputElement) => {
+      el.value = '#112233';
+      el.dispatchEvent(new Event('input', { bubbles: true }));
+      el.dispatchEvent(new Event('change', { bubbles: true }));
+    });
+
+    await page.getByTestId('settings-save').click();
+    const stored = await readSettings(page);
+    expect(stored.primaryColor).toBe('#112233');
+  });
+
+  test('een te groot logo toont een foutmelding en wordt niet toegepast', async ({ page }) => {
+    await page.goto('/');
+    const tooLarge = Buffer.alloc(600 * 1024, 1);
+    await page.getByTestId('settings-logo-input').setInputFiles({
+      name: 'big-logo.png',
+      mimeType: 'image/png',
+      buffer: tooLarge,
+    });
+
+    await expect(page.getByTestId('settings-error')).toBeVisible();
+    await expect(page.getByTestId('settings-logo-preview')).toHaveCount(0);
+  });
+
   test('NL/EN-switch toont de juiste settings-labels', async ({ page, context }) => {
     await context.addInitScript(
       ({ key, value }) => {

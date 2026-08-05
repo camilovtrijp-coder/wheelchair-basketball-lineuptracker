@@ -67,6 +67,9 @@ export const DEFAULT_SETTINGS: Settings = {
 export const QUARTER_COUNT_MIN = 1;
 export const QUARTER_COUNT_MAX = 12;
 
+/** Bovengrens voor een geüploade logo-afbeelding, vóór base64-encodering. */
+export const LOGO_MAX_BYTES = 500 * 1024;
+
 export type SettingsKey = (typeof SETTINGS_KEYS)[number];
 export type SettingsBooleanKey = (typeof SETTINGS_BOOLEAN_KEYS)[number];
 export type SettingsNumberKey = (typeof SETTINGS_NUMBER_KEYS)[number];

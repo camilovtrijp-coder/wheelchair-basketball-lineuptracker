@@ -200,6 +200,12 @@ button:focus-visible {
   outline-offset: 2px;
 }
 
+.settings-error {
+  margin: 0;
+  font-size: var(--lt-font-size-sm);
+  color: var(--lt-color-danger);
+}
+
 @media (prefers-reduced-motion: reduce) {
   * {
     animation: none !important;
