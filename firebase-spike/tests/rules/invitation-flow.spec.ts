@@ -88,6 +88,34 @@ describe('uitnodiging aanmaken', () => {
     );
   });
 
+  it('admin (bob) mag GEEN uitnodiging aanmaken met rol organizationOwner', async () => {
+    const db = authCtx(env, USERS.bob.uid, { email: USERS.bob.email, email_verified: true });
+    await assertFails(
+      setDoc(doc(db, 'organizations', ORG_A, 'invitations', INV_ID + '-bob-owner'), {
+        email: USERS.grace.email,
+        role: 'organizationOwner',
+        status: 'pending',
+        invitedBy: USERS.bob.uid,
+        invitedAt: new Date(),
+        acceptedAt: null,
+      }),
+    );
+  });
+
+  it('owner (alice) KAN uitnodiging aanmaken met rol organizationOwner', async () => {
+    const db = authCtx(env, USERS.alice.uid, { email: USERS.alice.email, email_verified: true });
+    await assertSucceeds(
+      setDoc(doc(db, 'organizations', ORG_A, 'invitations', INV_ID + '-alice-owner'), {
+        email: USERS.grace.email,
+        role: 'organizationOwner',
+        status: 'pending',
+        invitedBy: USERS.alice.uid,
+        invitedAt: new Date(),
+        acceptedAt: null,
+      }),
+    );
+  });
+
   it('aanmaak wordt geweigerd als status niet pending is', async () => {
     const db = authCtx(env, USERS.alice.uid, { email: USERS.alice.email, email_verified: true });
     await assertFails(

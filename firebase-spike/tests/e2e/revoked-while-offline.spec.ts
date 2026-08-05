@@ -4,8 +4,8 @@
 // 3. waarde leesbaar vanuit cache terwijl offline;
 // 4. kevin's teamMembers-doc wordt verwijderd via Node.js fetch naar emulator REST API (intrekking);
 // 5. reconnect → write-promise wordt geweigerd door Firestore (membership ingetrokken);
-// 6. syncState = 'actie-nodig' of write was al gesynchroniseerd (emulator-afwijking gedocumenteerd);
-// 7. server-verificatie via alice: waarde moet origineel zijn (of revokedName bij emulator-afwijking).
+// 6. syncState = 'actie-nodig', herstelpayload bewaard in pendingActionNodig (ADR-002);
+// 7. server-verificatie via alice: waarde MOET de originele zijn (write was geweigerd).
 //
 // Noot: de "reload terwijl offline"-stap uit de planning is niet testbaar in deze dev-server-setup
 // (Vite vereist netwerkverbinding voor reload; een productie-PWA met service worker zou dit
@@ -30,6 +30,7 @@ type W = Window & {
     readSettings(): Promise<{ teamName: string }>;
     writeSettings(patch: { teamName: string }): Promise<{ ok: boolean; syncState: { status: string } }>;
     getLastSyncState(): { status: string };
+    getPendingActionNodig(): Array<{ type: string; payload: Record<string, unknown>; timestamp: number }>;
   };
 };
 
@@ -116,17 +117,24 @@ test.describe('revoked-while-offline', () => {
     }
 
     // ---- Kevin: reconnect met ingetrokken membership.
+    // Geen nieuwe subscribeSettings() — voorkomt syncState-race met de afwijzing van de write.
     await ctxK.setOffline(false);
-    await pageK.evaluate(() => (window as unknown as W).harness.subscribeSettings());
 
-    // Na reconnect moet de syncState ofwel 'actie-nodig' worden (write geweigerd)
-    // ofwel 'gesynchroniseerd' (emulator-afwijking: rules niet afgedwongen bij queue-flush).
+    // Wacht tot de gequeuede write is afgewezen: Firestore rejectet de setDoc
+    // na reconnect omdat kevins membership is verwijderd.
+    // De harness vangt de rejection op en schrijft de payload naar pendingActionNodig.
     await expect
       .poll(
-        () => pageK.evaluate(() => (window as unknown as W).harness.getLastSyncState().status),
+        () => pageK.evaluate(() => (window as unknown as W).harness.getPendingActionNodig().length),
         { timeout: 20_000, intervals: [500, 1000] },
       )
-      .toMatch(/^(actie-nodig|gesynchroniseerd)$/);
+      .toBeGreaterThan(0);
+
+    // Controleer dat de herstelpayload de ingetrokken write bevat (ADR-002: "nooit stil verloren").
+    const pendingActions = await pageK.evaluate(
+      () => (window as unknown as W).harness.getPendingActionNodig(),
+    );
+    expect(pendingActions[0].payload['teamName']).toBe(revokedName);
 
     // ---- Verifieer server-waarde via een tweede context (alice).
     const ctxVerify = await browser.newContext({ storageState: undefined });
@@ -143,10 +151,9 @@ test.describe('revoked-while-offline', () => {
       (window as unknown as W).harness.readSettings().then((s) => s.teamName),
     );
 
-    // Server moet de originele waarde tonen (write geweigerd) ÓFTE de revokedName
-    // als de emulator-rules de write toch hebben doorgelaten (emulator-afwijking gedocumenteerd).
+    // Server MOET de originele waarde tonen — de write was geweigerd.
     console.log(`[test] serverName="${serverName}" | origineel="${originalName}" | ingetrokken="${revokedName}"`);
-    expect([originalName, revokedName]).toContain(serverName);
+    expect(serverName).toBe(originalName);
 
     // Opruimen.
     await ctxK.close();

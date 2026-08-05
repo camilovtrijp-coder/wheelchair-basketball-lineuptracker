@@ -81,15 +81,27 @@ service cloud.firestore {
           get(invRef(orgId, request.resource.data.invitationId)).data.email == request.auth.token.email &&
           get(invRef(orgId, request.resource.data.invitationId)).data.role == request.resource.data.role;
 
-        // Alleen owner/admin wijzigt/verwijdert andermans membership — nooit het eigen document.
-        allow update, delete: if isOrgOwnerOrAdmin(orgId) && request.auth.uid != uid;
+        // Owner wijzigt/verwijdert andermans membership onbeperkt — nooit het eigen document.
+        allow update, delete: if isOrgOwnerOrAdmin(orgId) &&
+          orgRole(orgId) == 'organizationOwner' && request.auth.uid != uid;
+
+        // Admin wijzigt andermans membership, maar mag GEEN owner-rol aanraken (instellen of verwijderen).
+        allow delete: if isOrgOwnerOrAdmin(orgId) &&
+          orgRole(orgId) == 'organizationAdmin' && request.auth.uid != uid &&
+          resource.data.role != 'organizationOwner';
+        allow update: if isOrgOwnerOrAdmin(orgId) &&
+          orgRole(orgId) == 'organizationAdmin' && request.auth.uid != uid &&
+          resource.data.role != 'organizationOwner' &&
+          request.resource.data.role != 'organizationOwner';
       }
 
       // ---- invitations/{invitationId} ----
       match /invitations/{invitationId} {
+        // Owner mag uitnodigingen aanmaken met elke rol; admin mag NIET de owner-rol uitnodigen.
         allow create: if isOrgOwnerOrAdmin(orgId) &&
           request.resource.data.status == 'pending' &&
-          request.resource.data.invitedBy == request.auth.uid;
+          request.resource.data.invitedBy == request.auth.uid &&
+          (orgRole(orgId) == 'organizationOwner' || request.resource.data.role != 'organizationOwner');
 
         // Intrekken (owner/admin): alleen statusveld naar 'revoked'.
         allow update: if isOrgOwnerOrAdmin(orgId) &&

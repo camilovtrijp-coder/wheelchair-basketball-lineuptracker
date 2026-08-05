@@ -44,6 +44,43 @@ async function waitForSyncStatus(
     .toBe(target);
 }
 
+test.describe('nooit-gecachte-context-offline', () => {
+  test('readSettings() gooit fout als document nooit gecachet is en de context offline is', async ({
+    browser,
+  }) => {
+    const ctx = await browser.newContext({ storageState: undefined });
+    const page = await ctx.newPage();
+    await page.goto('/');
+    await page.waitForFunction(() => typeof (window as unknown as Record<string, unknown>).harness !== 'undefined');
+
+    // Inloggen als carol — alleen authenticatie, geen subscribeSettings() of readSettings().
+    await page.evaluate(
+      ({ email, password, org, team }: { email: string; password: string; org: string; team: string }) =>
+        (window as unknown as W).harness.signIn(email, password, org, team),
+      { email: CAROL.email, password: CAROL.password, org: ORG_A, team: TEAM_A1 },
+    );
+    // Settings zijn nu NOOIT gecachet (geen subscribe, geen read).
+
+    // Ga offline.
+    await ctx.setOffline(true);
+
+    // Probeer settings te lezen terwijl offline en nooit gecachet.
+    // readSettings() moet gooien (getDocFromCache throws, getDoc throws offline)
+    // — NIET stilzwijgend DEFAULT_SETTINGS teruggeven als leeg team.
+    const result = await page.evaluate(async () => {
+      try {
+        await (window as unknown as W).harness.readSettings();
+        return { threw: false };
+      } catch {
+        return { threw: true };
+      }
+    });
+    expect(result.threw).toBe(true);
+
+    await ctx.close();
+  });
+});
+
 test.describe('offline-edit-reload-reconnect-second-client', () => {
   test('wijziging offline → cache leesbaar offline → reconnect → tweede cliënt ziet dezelfde waarde', async ({
     browser,

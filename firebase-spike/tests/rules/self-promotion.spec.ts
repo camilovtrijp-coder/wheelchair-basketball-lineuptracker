@@ -5,7 +5,7 @@
 //   (enkel het andermans-pad is toegestaan voor owner/admin).
 
 import { beforeAll, afterAll, beforeEach, describe, it } from 'vitest';
-import { doc, setDoc, updateDoc, getDoc } from 'firebase/firestore';
+import { doc, setDoc, updateDoc, deleteDoc, getDoc } from 'firebase/firestore';
 import type { RulesTestEnvironment } from '@firebase/rules-unit-testing';
 import {
   createTestEnv, assertSucceeds, assertFails, authCtx, withAdmin,
@@ -26,6 +26,9 @@ beforeEach(async () => {
     await db.collection('organizations').doc(ORG_A)
       .collection('organizationMembers').doc(USERS.alice.uid)
       .set({ role: 'organizationOwner', email: USERS.alice.email });
+    await db.collection('organizations').doc(ORG_A)
+      .collection('organizationMembers').doc(USERS.bob.uid)
+      .set({ role: 'organizationAdmin', email: USERS.bob.email });
     await db.collection('organizations').doc(ORG_A)
       .collection('organizationMembers').doc(USERS.erin.uid)
       .set({ role: 'viewer', email: USERS.erin.email });
@@ -72,6 +75,35 @@ describe('erin (viewer) self-promotion pogingen', () => {
       setDoc(
         doc(db, 'organizations', ORG_A, 'organizationMembers', USERS.erin.uid),
         { role: 'organizationOwner', email: USERS.erin.email },
+      ),
+    );
+  });
+});
+
+describe('bob (admin) mag GEEN owner-rol aanraken', () => {
+  it('admin mag een viewer NIET naar organizationOwner promoveren', async () => {
+    const db = authCtx(env, USERS.bob.uid, { email: USERS.bob.email, email_verified: true });
+    await assertFails(
+      updateDoc(
+        doc(db, 'organizations', ORG_A, 'organizationMembers', USERS.erin.uid),
+        { role: 'organizationOwner' },
+      ),
+    );
+  });
+
+  it('admin mag het ownership-membership van de owner NIET verwijderen', async () => {
+    const db = authCtx(env, USERS.bob.uid, { email: USERS.bob.email, email_verified: true });
+    await assertFails(
+      deleteDoc(doc(db, 'organizations', ORG_A, 'organizationMembers', USERS.alice.uid)),
+    );
+  });
+
+  it('admin KAN een viewer naar organizationAdmin promoveren (niet-owner-rol wél toegestaan)', async () => {
+    const db = authCtx(env, USERS.bob.uid, { email: USERS.bob.email, email_verified: true });
+    await assertSucceeds(
+      updateDoc(
+        doc(db, 'organizations', ORG_A, 'organizationMembers', USERS.erin.uid),
+        { role: 'organizationAdmin' },
       ),
     );
   });

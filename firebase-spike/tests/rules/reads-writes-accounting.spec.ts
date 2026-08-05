@@ -70,9 +70,10 @@ describe('Flow 1: laden settings + roster', () => {
     counts.loginAndLoad.reads++;
     await getDoc(doc(db, 'organizations', ORG_A, 'teams', TEAM_A1, 'roster', 'current'));
     counts.loginAndLoad.reads++;
-    // membership-check (exists()) is intern in de rule maar kost ook een read
-    // via de SDK wordt elke getDoc() in rules als extra rule-read geteld;
-    // hier registreren we de client-reads:
+    // NB: telt alleen client-zijdige SDK-reads (getDoc/setDoc-aanroepen vanuit de applicatie).
+    // Rules-interne get()/exists()-aanroepen voor membership-checks zijn hier niet zichtbaar
+    // maar tellen wél mee voor de Firestore-quotastelling server-zijde.
+    // Zie §3 SPIKE_REPORT.md voor toelichting en correctiefactor.
   });
 });
 
