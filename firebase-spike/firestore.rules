@@ -116,6 +116,15 @@ service cloud.firestore {
           request.resource.data.status == 'accepted' &&
           request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'acceptedAt']);
 
+        // Claimen: de uitgenodigde markeert zijn eigen uitnodiging als 'claimed' na het aanmaken
+        // van het membership. Verplichte stap in de claim-flow: voorkomt hergebruik van dezelfde
+        // uitnodiging als het membership later door een admin wordt verwijderd (replay-blokkade).
+        allow update: if signedIn() &&
+          request.auth.token.email == resource.data.email &&
+          resource.data.status == 'accepted' &&
+          request.resource.data.status == 'claimed' &&
+          request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'claimedAt']);
+
         allow read: if isOrgOwnerOrAdmin(orgId) ||
           (signedIn() && request.auth.token.email == resource.data.email);
       }

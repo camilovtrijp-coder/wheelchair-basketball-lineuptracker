@@ -1,4 +1,10 @@
 import { defineConfig, devices } from '@playwright/test';
+import * as fs from 'fs';
+
+// Gebruik de CI/CCR-systeeminstallatie als die bestaat; anders laat Playwright de standaard
+// ontdekking doen (na "npx playwright install chromium" of via PLAYWRIGHT_BROWSERS_PATH).
+const ccrChromiumPath = '/opt/pw-browsers/chromium';
+const chromiumExecutable = fs.existsSync(ccrChromiumPath) ? ccrChromiumPath : undefined;
 
 export default defineConfig({
   testDir: './tests/e2e',
@@ -10,10 +16,9 @@ export default defineConfig({
   use: {
     baseURL: 'http://127.0.0.1:5183',
     headless: true,
-    // Chromium is voorgeïnstalleerd in de CCR-omgeving; executablePath overschrijft de versie-check.
     ...devices['Desktop Chrome'],
     launchOptions: {
-      executablePath: '/opt/pw-browsers/chromium',
+      ...(chromiumExecutable ? { executablePath: chromiumExecutable } : {}),
     },
   },
   webServer: {

@@ -80,10 +80,10 @@ export class FirestoreSettingsRepository implements AsyncSettingsRepository {
       this.ref(),
       { includeMetadataChanges: true },
       (snap) => {
-        const data = snap.exists()
-          ? (snap.data() as Settings & Record<string, unknown>)
-          : { ...DEFAULT_SETTINGS };
-        onNext(data, deriveSyncState(snap.metadata));
+        // Emitteer alleen als het document bestaat. Niet-bestaande documenten tonen geen
+        // DEFAULT_SETTINGS — dat maskeert een fout- of laadtoestand (gate 5, ADR-002).
+        if (!snap.exists()) return;
+        onNext(snap.data() as Settings & Record<string, unknown>, deriveSyncState(snap.metadata));
       },
       (err) => console.error('[FirestoreSettings] onSnapshot error:', err.code, err.message),
     );

@@ -4,6 +4,9 @@
   "private": true,
   "type": "module",
   "description": "PR 4.4 — begrensde Firebase-spike (Emulator Suite, uitsluitend fictieve data). Losstaand van v2/; zie docs/SPIKE_REPORT.md.",
+  "engines": {
+    "node": ">=18"
+  },
   "scripts": {
     "seed": "tsx scripts/seed.ts",
     "type-check": "tsc --noEmit",

@@ -134,7 +134,9 @@ test.describe('revoked-while-offline', () => {
     const pendingActions = await pageK.evaluate(
       () => (window as unknown as W).harness.getPendingActionNodig(),
     );
-    expect(pendingActions[0].payload['teamName']).toBe(revokedName);
+    const firstAction = pendingActions[0];
+    if (!firstAction) throw new Error('pendingActionNodig is leeg ondanks poll > 0');
+    expect(firstAction.payload['teamName']).toBe(revokedName);
 
     // ---- Verifieer server-waarde via een tweede context (alice).
     const ctxVerify = await browser.newContext({ storageState: undefined });

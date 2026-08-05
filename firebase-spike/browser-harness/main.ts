@@ -21,6 +21,7 @@ const { db, auth } = initSpikeFirebase();
 const pendingActionNodig: Array<{ type: string; payload: unknown; timestamp: number }> = [];
 
 let lastSyncState: SyncState = { status: 'lokaal-beschikbaar', fromCache: true, hasPendingWrites: false };
+let settingsEmitCount = 0;
 let currentSettingsRepo: FirestoreSettingsRepository | null = null;
 let currentRosterRepo: FirestoreRosterRepository | null = null;
 let settingsUnsub: (() => void) | null = null;
@@ -42,6 +43,7 @@ interface Harness {
   readRoster(): Promise<Roster>;
   writeRoster(players: Roster): Promise<{ ok: boolean; syncState: SyncState }>;
   getLastSyncState(): SyncState;
+  getSettingsEmitCount(): number;
   getPendingActionNodig(): Array<{ type: string; payload: unknown; timestamp: number }>;
   subscribeSettings(): void;
   subscribeRoster(): void;
@@ -104,6 +106,10 @@ const harness: Harness = {
     return lastSyncState;
   },
 
+  getSettingsEmitCount() {
+    return settingsEmitCount;
+  },
+
   getPendingActionNodig() {
     return pendingActionNodig;
   },
@@ -112,6 +118,7 @@ const harness: Harness = {
     if (!currentSettingsRepo) throw new Error('Niet ingelogd');
     settingsUnsub?.();
     settingsUnsub = currentSettingsRepo.subscribe((_settings, sync) => {
+      settingsEmitCount++;
       lastSyncState = sync;
       log(`onSnapshot settings: ${JSON.stringify(sync)}`);
     });

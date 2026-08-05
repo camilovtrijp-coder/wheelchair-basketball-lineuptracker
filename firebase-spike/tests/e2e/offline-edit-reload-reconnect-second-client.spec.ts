@@ -27,6 +27,7 @@ type W = Window & {
     readSettings(): Promise<{ teamName: string }>;
     writeSettings(patch: { teamName: string }): Promise<{ ok: boolean; syncState: { status: string } }>;
     getLastSyncState(): { status: string };
+    getSettingsEmitCount(): number;
   };
 };
 
@@ -76,6 +77,13 @@ test.describe('nooit-gecachte-context-offline', () => {
       }
     });
     expect(result.threw).toBe(true);
+
+    // Ook subscribeSettings() mag geen DEFAULT_SETTINGS emitteren voor een nooit-gecachte context.
+    // De subscribe-callback wordt alleen aangeroepen als snap.exists() === true.
+    await page.evaluate(() => (window as unknown as W).harness.subscribeSettings());
+    await page.waitForTimeout(600);
+    const emitCount = await page.evaluate(() => (window as unknown as W).harness.getSettingsEmitCount());
+    expect(emitCount).toBe(0);
 
     await ctx.close();
   });

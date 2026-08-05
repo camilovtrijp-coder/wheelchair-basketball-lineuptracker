@@ -61,8 +61,7 @@ Elke write op settings/roster kost 1–3 extra Rules-reads (membership, eventuee
 De tabeltelling is daarmee een onderschatting van de werkelijke serverbelasting.
 
 **Spark-quotaruimte (gratis plan):** 50.000 reads/dag, 20.000 writes/dag, 1 GB opslag.
-Een wedstrijdsessie met ~14 client-reads plus Rules-overhead laat comfortabel meer dan
-1.000 wedstrijdsessies per dag vrij op Spark-quota — ruim voor de pilotfase.
+50.000 ÷ 14 client-reads ≈ **~3.500 wedstrijdsessies/dag** op Spark-quota — ruim voor de pilotfase.
 
 ---
 
@@ -138,7 +137,38 @@ bij het instellen van de owner-rol. De uitnodigings-create-regel eist dat alleen
 `organizationOwner`-rol kan uitnodigen. Bewijzende negatieve tests toegevoegd in
 `tests/rules/self-promotion.spec.ts` (3 tests) en `tests/rules/invitation-flow.spec.ts` (2 tests).
 
-### 5.6 `logoUri` base64-in-document (productie-aandachtspunt)
+### 5.6 Uitnodiging replay-blokkade (tweede correctieronde)
+
+**Gevonden in tweede onafhankelijke review (5 aug. 2026):** Een geaccepteerde uitnodiging
+(`status: 'accepted'`) bleef herbruikbaar nadat het bijbehorende membership door een admin
+was verwijderd. De Rules-create-check voor membership eiste alleen `status == 'accepted'`, zonder
+te registreren dat de uitnodiging al was verbruikt.
+
+**Hersteld:** Nieuwe `allow update`-regel toegevoegd in `invitations/{invitationId}` waarmee
+de uitgenodigde zelf de uitnodiging van `accepted` → `claimed` kan zetten (raakt alleen
+`status` + `claimedAt`). Verplichte stap in de claim-flow: na het aanmaken van het membership
+voert de client ook deze update uit. Daarna blokkeert de membership-create-rule een herhaalde
+claim omdat `status == 'claimed'` (niet `'accepted'`).
+
+Bewijzende test toegevoegd: `tests/rules/invitation-flow.spec.ts` — "uitgebruikte uitnodiging
+blokkeert herinstroom" (4-staps scenario: claim → mark claimed → owner deletes → her-claim assertFails).
+
+### 5.7 subscribe() toont geen DEFAULT_SETTINGS meer voor niet-bestaande documenten (tweede correctieronde)
+
+**Gevonden in tweede onafhankelijke review (5 aug. 2026):** `FirestoreSettingsRepository.subscribe()`
+riep `onNext(DEFAULT_SETTINGS, ...)` aan wanneer `snap.exists() === false` — ook bij een
+nooit-gecachte offline context. Dit maskeerde een fout- of laadtoestand.
+
+**Hersteld:** De `onSnapshot`-success-callback keert vroegtijdig terug als `!snap.exists()`.
+`onNext` wordt dan niet aangeroepen. De subscriber blijft in laadtoestand (geen zichtbare
+standaardwaarden). De gate "ongecachete context offline niet als leeg team getoond" geldt
+nu voor beide paden: `readSettings()` (gooit fout) én `subscribeSettings()` (emitteert niets).
+
+Bewijs: `getSettingsEmitCount()` is toegevoegd aan het testharnas;
+`tests/e2e/offline-edit-reload-reconnect-second-client.spec.ts` ("nooit-gecachte-context-offline")
+verifieert dat `emitCount === 0` na `subscribeSettings()` in een nooit-gecachte offline context.
+
+### 5.8 `logoUri` base64-in-document (productie-aandachtspunt)
 
 De huidige `Settings`-type laat `logoUri` toe als (potentieel) base64-string. In een
 Firestore-document heeft dit een maximale documentgrootte van 1 MB. Voor een logo dat groter is
@@ -151,7 +181,7 @@ PR 5.3.**
 
 | Aspect | Status | Bevinding |
 |---|---|---|
-| Spark-quotaruimte | ✅ ruim | ~3.500 wedstrijdsessies/dag op vrije quota |
+| Spark-quotaruimte | ✅ ruim | ~3.500 wedstrijdsessies/dag op vrije Spark-quota (50.000 reads ÷ ~14 reads/sessie) |
 | Regio / AVG | ✅ geaccepteerd | Firestore `eur3` (EU), Auth-metadata mogelijk buiten EU — door eigenaar geaccepteerd in ADR-001 |
 | Export / dataportabiliteit | ✅ haalbaar | Firestore `gcloud firestore export` naar GCS; geen lock-in op documentvorm |
 | Verwijdering | ✅ haalbaar | Firestore `delete()` per document; cascadering voor subcollecties via Admin SDK |
@@ -164,39 +194,51 @@ PR 5.3.**
 
 | Gate | Status | Bewijzend testbestand |
 |---|---|---|
-| Gecachte settings/teamdata offline leesbaar en schrijfbaar | ✅ PASS | `tests/e2e/offline-edit-reload-reconnect-second-client.spec.ts` (stap 2–3: offline write → cache gelezen binnen zelfde paginasessie; reload niet testbaar in dev-server-setup, zie §10.1) |
-| Synchronisatie na reconnect zonder stille duplicaten of verliezen | ✅ PASS | `tests/e2e/offline-edit-reload-reconnect-second-client.spec.ts` (stap 4–5: reconnect → `gesynchroniseerd` → tweede client leest exact dezelfde waarde) |
-| Security Rules dwingen volledige rol- en organisatie-isolatiematrix af | ✅ PASS | `tests/rules/membership-and-roles.spec.ts`, `tests/rules/cross-org-isolation.spec.ts`, `tests/rules/self-promotion.spec.ts` (incl. admin→owner-negatieve tests, correctieronde) |
-| Queries, export, verwijdering en statistiekvolumes beheersbaar | ✅ PASS (schatting) | §3 (client-reads/writes; Rules-overhead niet meegeteld, zie §3), §4 (geen composite indexes), §6 (kosten/export) |
-| Ongecachete context offline niet als leeg team getoond | ✅ PASS (`readSettings`) | `tests/e2e/offline-edit-reload-reconnect-second-client.spec.ts` (test "nooit-gecachte-context-offline": `readSettings()` gooit fout, niet stilzwijgend leeg). Aandachtspunt: `subscribeSettings()` kan lege standaardwaarden tonen voor nooit-gecachte documenten — productie-UI moet dit in Fase 5 afvangen met een expliciete laadindicator |
+| Gecachte settings/teamdata offline leesbaar en schrijfbaar | ✅ PASS (paginasessie) | `tests/e2e/offline-edit-reload-reconnect-second-client.spec.ts` — offline write → lokale cache leesbaar binnen zelfde paginasessie. **PARTIAL:** volledige offline reload (IndexedDB overleeft tab-herstart) is niet aantoonbaar met Vite dev server (vereist netwerkverbinding voor module-laden); productie-PWA met service worker zou dit ondersteunen |
+| Synchronisatie na reconnect zonder stille duplicaten of verliezen | ✅ PASS | `tests/e2e/offline-edit-reload-reconnect-second-client.spec.ts` — reconnect → `gesynchroniseerd` → tweede browsercontext leest exact dezelfde waarde |
+| Security Rules dwingen volledige rol- en organisatie-isolatiematrix af | ✅ PASS | `tests/rules/membership-and-roles.spec.ts`, `tests/rules/cross-org-isolation.spec.ts`, `tests/rules/self-promotion.spec.ts` (incl. admin→owner-negatieve tests, beide correctierondes) |
+| Queries, export, verwijdering en statistiekvolumes beheersbaar | ✅ PASS (schatting) | §3 (client-reads/writes; Rules-overhead niet meegeteld — zie §3 toelichting), §4 (geen composite indexes), §6 (kosten/export). Telling is onderschatting van werkelijke serverbelasting |
+| Ongecachete context offline niet als leeg team getoond | ✅ PASS (beide paden) | `tests/e2e/offline-edit-reload-reconnect-second-client.spec.ts` — `readSettings()` gooit fout (nooit-gecachte offline); `subscribeSettings()` emitteert niets (`getSettingsEmitCount() === 0`, tweede correctieronde). Geen stille standaardwaarden op beide paden |
 | Eigenaar kosten, regio, verwerking en herstel accepteert | ✅ PASS (uitgesteld) | Geaccepteerd in ADR-001 (#23) — back-upbeleid uitgesteld naar PR 8.3 |
-| Intrekking-tijdens-write geweigerd, geweigerde actie herstelbaar | ✅ PASS | `tests/rules/offline-revocation-node.spec.ts` (Node, deterministisch); `tests/e2e/revoked-while-offline.spec.ts` (browser: `actie-nodig` bevestigd, herstelpayload bewaard, serverwaarde = origineel) |
-| ADR-003 Rules-only uitnodigingsflow (create/accept/claim) | ✅ PASS | `tests/rules/invitation-flow.spec.ts` (incl. admin→owner-uitnodiging geblokkeerd, correctieronde) |
-| Negatieve gevallen (self-promotion, onverifieerd e-mailadres, uid-mismatch, admin→owner) | ✅ PASS | `tests/rules/self-promotion.spec.ts`, `tests/rules/invitation-flow.spec.ts` |
-| Cross-organisatietoegang geblokkeerd (via handmatig samengesteld direct pad) | ✅ PASS | `tests/rules/cross-org-isolation.spec.ts`. Aandachtspunt: cross-org collectionGroup-query niet getest (geen query-flows in spike-scope); index-review voor contextwisselaar volgt in PR 5.1/5.2 |
+| Intrekking-tijdens-write geweigerd, geweigerde actie herstelbaar | ✅ PASS | `tests/rules/offline-revocation-node.spec.ts` (Node, deterministisch); `tests/e2e/revoked-while-offline.spec.ts` (browser: `pendingActionNodig.length > 0`, herstelpayload geverifieerd, serverwaarde === origineel) |
+| ADR-003 Rules-only uitnodigingsflow (create/accept/claim) | ✅ PASS (incl. replay-blokkade) | `tests/rules/invitation-flow.spec.ts` — aanmaken/accepteren/claimen/intrekken incl. admin→owner geblokkeerd en replay-blokkade via `claimed`-status (tweede correctieronde, §5.6) |
+| Negatieve gevallen (self-promotion, onverifieerd e-mailadres, uid-mismatch, admin→owner, replay) | ✅ PASS | `tests/rules/self-promotion.spec.ts`, `tests/rules/invitation-flow.spec.ts` |
+| Cross-organisatietoegang geblokkeerd | ✅ PASS (direct pad) | `tests/rules/cross-org-isolation.spec.ts` — directe `getDoc`-paden over org-grens geblokkeerd. **PARTIAL:** verboden cross-org collectionGroup-query niet getest (geen query-flows in spike-scope); index-review voor contextwisselaar-query volgt in PR 5.1/5.2 |
 
 ---
 
 ## 8. Go/no-go-aanbeveling
 
-**Herreview vereist (correctieronde 5 aug. 2026 verwerkt).**
+**Herreview vereist (tweede correctieronde 5 aug. 2026 verwerkt).**
 
-Alle harde beslisgates zijn gepasseerd na verwerking van de onafhankelijke review-feedback.
-Aanbeveling: GO voor Fase 5 na bevestiging door reviewer op de gecorrigeerde head.
+De harde beslisgates zijn na twee correctierondes vrijwel volledig gepasseerd. Twee gates
+zijn bewust **PARTIAL** — niet als PASS gemarkeerd:
+
+- **Offline reload/crash-gate:** Aantoonbaar binnen dezelfde paginasessie (IndexedDB survives
+  tab-context wisseling). Volledige page-reload terwijl offline is niet testbaar met Vite dev
+  server (vereist netwerk voor module-laden). Productie-PWA met service worker vereist.
+- **Cross-org query-gate:** Directe paden geblokkeerd (bewezen). `collectionGroup`-query over
+  org-grens is niet gemodelleerd in de spike; index-review volgt bij de contextwisselaar (PR 5.1/5.2).
+
+Aanbeveling: **GO voor Fase 5** na bevestiging door reviewer op de gecorrigeerde head, met
+expliciete acceptatie van de twee PARTIAL-gates als bekende scope-beperkingen van de spike.
 
 Openstaande punten die Fase 5 (niet deze spike) moet adresseren:
 
 1. **Async poorten in de productie-UI (PR 5.3):** De v2-UI gebruikt synchrone poorten; migratie
    naar async of sync-over-async-cache-brug vereist een bewuste keuze van de eigenaar.
-2. **Roster-normalisatie (Fase 7):** Eén document vs. subcollectie per speler.
-3. **Index-review voor contextwisselaar-query (PR 5.1/5.2):** Nog niet gemodelleerd.
-4. **Bootstrap-mechanisme eigenaar-bevestiging:** `createdBy`-gebaseerde Rules-check is
+2. **`subscribeSettings()` laadtoestand (PR 5.3):** Subscribe emitteert nu niets voor
+   niet-bestaande documenten — productie-UI moet een expliciete laadindicator implementeren.
+3. **Invitation `claimed`-stap client-side (PR 5.3):** Claim-flow vereist twee schrijfoperaties
+   (setDoc membership + updateDoc invitation); productie-implementatie moet dit atomair of
+   gegarandeerd uitvoeren (bv. via Firestore-transactie of gecontroleerde error-afhandeling).
+4. **Roster-normalisatie (Fase 7):** Eén document vs. subcollectie per speler.
+5. **Index-review voor contextwisselaar-query (PR 5.1/5.2):** Nog niet gemodelleerd.
+6. **Bootstrap-mechanisme eigenaar-bevestiging:** `createdBy`-gebaseerde Rules-check is
    redelijk maar vraagt expliciete bevestiging.
-5. **`logoUri`-documentgroottegrens:** Grote logo's → Firebase Storage vóór productie.
-6. **Back-upbeleid (PR 8.3):** Bewust uitgesteld zoals geaccepteerd in ADR-001.
-7. **`subscribeSettings()` bij nooit-gecachte context offline:** toont standaardwaarden i.p.v.
-   een laadindicator. Productie-UI moet dit afvangen via een expliciete offline/laden-staat (PR 5.3).
-8. **`npm audit`-bevindingen (14, uitsluitend dev-tooling):** zie §12.
+7. **`logoUri`-documentgroottegrens:** Grote logo's → Firebase Storage vóór productie.
+8. **Back-upbeleid (PR 8.3):** Bewust uitgesteld zoals geaccepteerd in ADR-001.
+9. **`npm audit`-bevindingen (14, uitsluitend dev-tooling):** zie §12.
 
 De spikecode (`firebase-spike/`) is geïsoleerd als zelfstandige workspace en kan na de
 go/no-go-beslissing worden verwijderd of in isolatie worden behouden als referentie.
@@ -205,7 +247,7 @@ go/no-go-beslissing worden verwijderd of in isolatie worden behouden als referen
 
 ## 9. Werkelijke testresultaten
 
-Initiële run van `npm run spike:verify` op 5 augustus 2026 (vóór correctieronde):
+Initiële run van `npm run spike:verify` op 5 augustus 2026 (vóór correctierondes):
 
 | Suite | Resultaat | Testbestanden | Tests |
 |---|---|---|---|
@@ -213,13 +255,21 @@ Initiële run van `npm run spike:verify` op 5 augustus 2026 (vóór correctieron
 | Playwright e2e (headless Chromium, IndexedDB) | ✅ PASS | 2 | 2 |
 | **Totaal** | ✅ **PASS** | **8** | **39** |
 
-Verwachte tellingen na correctieronde (admin→owner-tests + uncached-offline-test):
+Na eerste correctieronde (admin→owner-beveiliging + intrekkingstest strict + uncached-offline-test):
 
-| Suite | Resultaat | Testbestanden | Tests (verwacht) |
-|---|---|---|---|
-| Vitest rules | — (herreview) | 6 | 42 (+5) |
-| Playwright e2e | — (herreview) | 2 | 3 (+1) |
-| **Totaal** | — | **8** | **45** |
+| Suite | Testbestanden | Tests |
+|---|---|---|
+| Vitest rules | 6 | 42 (+5: self-promotion ×3, invitation-flow ×2) |
+| Playwright e2e | 2 | 3 (+1: nooit-gecachte-context-offline) |
+| **Totaal** | **8** | **45** |
+
+Na tweede correctieronde (TS2532-fix, replay-blokkade, subscribe()-fix, playwright-pad, engines):
+
+| Suite | Testbestanden | Tests |
+|---|---|---|
+| Vitest rules | 6 | 43 (+1: replay-blokkade in invitation-flow) |
+| Playwright e2e | 2 | 3 (ongewijzigd; bestaande test uitgebreid met subscribe-emitCount-assertie) |
+| **Totaal** | **8** | **46** |
 
 Duur rules-suite (initieel): ~5–6 s. Duur e2e-suite (initieel): ~7 s.
 
@@ -244,15 +294,15 @@ De rules-tests roepen `env.clearFirestore()` aan in `beforeEach`. Na de laatste 
 ## 11. Reproductie
 
 Vereisten:
-- **Node.js 24+** (zie `package.json` `engines`)
+- **Node.js 18+** (zie `package.json` `engines`)
 - **Java JDK 11+** — vereist door de Firebase Emulator Suite (Firebase CLI start de emulator via JVM)
-- Playwright Chromium: eenmalig installeren met `npx playwright install chromium` (of gebruik de
-  systeembrede installatie via `PLAYWRIGHT_BROWSERS_PATH`/`PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD`)
+- Playwright Chromium: eenmalig installeren met `npm run test:e2e:install` of
+  `npx playwright install chromium`
 
 ```bash
 cd firebase-spike
 npm ci
-npx playwright install chromium   # eenmalig; skip als /opt/pw-browsers/chromium beschikbaar
+npm run test:e2e:install   # eenmalig; skip in omgevingen waar /opt/pw-browsers/chromium bestaat
 npm run spike:verify
 ```
 
@@ -261,9 +311,10 @@ data twee keer (één keer voor en één keer na de rules-suite), draait de Vite
 en de Playwright-e2e-testsuite, en breekt de emulators daarna af. Geen leftover state, geen
 echt Firebase-project aangeraakt.
 
-**Platformnoot:** `playwright.config.ts` configureert `executablePath: '/opt/pw-browsers/chromium'`
-— een vaste pad-instelling voor de CI/CD-containeromgeving. Pas dit aan of verwijder de instelling
-voor lokaal gebruik op Windows of macOS (Playwright gebruikt dan de standaard systeembrowser).
+**Chromium-detectie:** `playwright.config.ts` controleert automatisch of `/opt/pw-browsers/chromium`
+bestaat (CI/CCR-containeromgeving). Als dat zo is, wordt dat pad gebruikt; anders laat Playwright
+de standaard ontdekking doen via `PLAYWRIGHT_BROWSERS_PATH` of de lokale installatie.
+`npx playwright install chromium` werkt correct op Windows, macOS en Linux buiten de container.
 
 ## 12. Overige bevindingen (P2)
 
@@ -275,8 +326,10 @@ afhankelijkheden). Deze bevindingen zijn niet aanwezig in productiecode (`fireba
 heeft geen bekende kritieke kwetsbaarheden). Actie vereist: de eigenaar beslist of en wanneer
 afhankelijkheden worden bijgewerkt vóór hergebruik van de spikecode in Fase 5.
 
-### 12.2 Hardgecodeerd Chromium-pad
+### 12.2 Chromium-pad conditioneel gemaakt (tweede correctieronde)
 
-`playwright.config.ts:executablePath` bevat `/opt/pw-browsers/chromium` — specifiek voor de
-CI-containeromgeving. Documentatie toegevoegd in §11. Pas dit pad aan voor lokaal gebruik buiten
-de containeromgeving.
+`playwright.config.ts` gebruikte een vaste `executablePath: '/opt/pw-browsers/chromium'` die
+niet werkte buiten de CI-container. Opgelost: het config-bestand controleert nu met
+`fs.existsSync()` of het pad beschikbaar is. Als het niet bestaat, wordt `executablePath`
+weggelaten en valt Playwright terug op standaard browser-ontdekking (via `PLAYWRIGHT_BROWSERS_PATH`
+of de lokale installatie na `npx playwright install chromium`).

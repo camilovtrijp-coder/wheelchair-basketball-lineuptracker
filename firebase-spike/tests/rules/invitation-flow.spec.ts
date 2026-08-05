@@ -6,7 +6,7 @@
 // - ingetrokken-vóór-acceptatie blokkeert claim.
 
 import { beforeAll, afterAll, beforeEach, describe, it } from 'vitest';
-import { doc, setDoc, updateDoc, getDoc } from 'firebase/firestore';
+import { doc, setDoc, updateDoc, deleteDoc, getDoc } from 'firebase/firestore';
 import type { RulesTestEnvironment } from '@firebase/rules-unit-testing';
 import {
   createTestEnv, assertSucceeds, assertFails, authCtx, withAdmin,
@@ -313,6 +313,48 @@ describe('ingetrokken uitnodiging blokkeert claim', () => {
           joinedAt: new Date(),
         },
       ),
+    );
+  });
+});
+
+describe('uitgebruikte uitnodiging blokkeert herinstroom (replay-blokkade)', () => {
+  it('grace kan membership niet opnieuw aanmaken na claim → owner-delete → her-claim', async () => {
+    await withAdmin(env, async (db) => {
+      await db.collection('organizations').doc(ORG_A)
+        .collection('invitations').doc(INV_ID).set({
+          email: USERS.grace.email, role: 'viewer', status: 'accepted',
+          invitedBy: USERS.bob.uid, invitedAt: new Date(), acceptedAt: new Date(),
+        });
+    });
+
+    const graceDb = authCtx(env, USERS.grace.uid, { email: USERS.grace.email, email_verified: true });
+
+    // Stap 1: grace claimt membership.
+    await assertSucceeds(
+      setDoc(doc(graceDb, 'organizations', ORG_A, 'organizationMembers', USERS.grace.uid), {
+        role: 'viewer', email: USERS.grace.email, invitationId: INV_ID, joinedAt: new Date(),
+      }),
+    );
+
+    // Stap 2: grace markeert uitnodiging als geclaimd (verplichte claim-stap per Rules-contract).
+    await assertSucceeds(
+      updateDoc(doc(graceDb, 'organizations', ORG_A, 'invitations', INV_ID), {
+        status: 'claimed', claimedAt: new Date(),
+      }),
+    );
+
+    // Stap 3: owner (alice) trekt het membership in.
+    const aliceDb = authCtx(env, USERS.alice.uid, { email: USERS.alice.email, email_verified: true });
+    await assertSucceeds(
+      deleteDoc(doc(aliceDb, 'organizations', ORG_A, 'organizationMembers', USERS.grace.uid)),
+    );
+
+    // Stap 4: grace probeert dezelfde uitnodiging opnieuw te gebruiken — moet mislukken.
+    // Uitnodiging heeft status 'claimed' (niet 'accepted'), dus de claim-rule wijst af.
+    await assertFails(
+      setDoc(doc(graceDb, 'organizations', ORG_A, 'organizationMembers', USERS.grace.uid), {
+        role: 'viewer', email: USERS.grace.email, invitationId: INV_ID, joinedAt: new Date(),
+      }),
     );
   });
 });
