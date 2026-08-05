@@ -2,7 +2,7 @@
 
 ## Status
 
-**Voorgesteld** — concept, 5 augustus 2026. Nog niet geaccepteerd.
+**Geaccepteerd — 5 augustus 2026.** De openstaande vraag uit het concept is door de projecteigenaar beantwoord; zie §"Besluit van de eigenaar".
 
 Voert PR 4.3 uit zoals gescoped in `docs/IMPLEMENTATION_PLAN.md` §9, en bouwt voort op [ADR-001](./adr-001-cloud-data-platform.md) (backend: Firebase) en [ADR-002](./adr-002-offline-sync-strategy.md) (offline-synccontract: append-only acties, altijd met organisatie/teamcontext). Dit ADR legt vast **wie wat mag** — de laatste van de drie fase-4-ADR's vóór de begrensde spike (PR 4.4).
 
@@ -109,6 +109,6 @@ De contextwisselaar toont uitsluitend organisatie/teamcombinaties waarvoor een g
 - PR 5.2 (authenticatie, onboarding, contextwisselaar) implementeert de UI-kant: eerste-organisatie-aanmaak, uitnodiging accepteren, contextwisselaar.
 - De "laatste eigenaar"-beperking (application-laag, geen Rules-garantie) is een bewust aanvaard risico dat bij PR 5.1/5.2 als zodanig gedocumenteerd moet worden in de code, niet stilzwijgend.
 
-## Openstaande vraag voor de eigenaar
+## Besluit van de eigenaar (5 augustus 2026)
 
-Akkoord met het Rules-only-uitnodigingsontwerp (geen Cloud Function, geen Blaze-vereiste voor deze specifieke flow), inclusief de bewust aanvaarde "laatste eigenaar niet Rules-afgedwongen"-beperking? Dit is de belangrijkste nieuwe architectuurkeuze in dit ADR en verdient expliciete instemming vóór PR 4.4 het daadwerkelijk in de Emulator bouwt.
+Akkoord met het Rules-only-uitnodigingsontwerp (geen Cloud Function, geen Blaze-vereiste voor deze flow), inclusief de bewust aanvaarde "laatste eigenaar niet Rules-afgedwongen"-beperking in de application-laag. Dit ontwerp gaat als bindend naar PR 4.4 (Emulator-bewijs) en PR 5.1 (daadwerkelijke `firestore.rules`-implementatie).
