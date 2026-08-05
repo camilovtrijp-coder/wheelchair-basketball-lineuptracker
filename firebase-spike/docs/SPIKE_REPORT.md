@@ -197,7 +197,7 @@ PR 5.3.**
 
 | Gate | Status | Bewijzend testbestand |
 |---|---|---|
-| Gecachte settings/teamdata offline leesbaar en schrijfbaar | ✅ PASS (paginasessie) | `tests/e2e/offline-edit-reload-reconnect-second-client.spec.ts` — offline write → lokale cache leesbaar binnen zelfde paginasessie. **PARTIAL:** volledige offline reload (IndexedDB overleeft tab-herstart) is niet aantoonbaar met Vite dev server (vereist netwerkverbinding voor module-laden); productie-PWA met service worker zou dit ondersteunen |
+| Gecachte settings/teamdata offline leesbaar en schrijfbaar | ⚠️ PARTIAL — volledige reload OPEN (#27) | `tests/e2e/offline-edit-reload-reconnect-second-client.spec.ts` — offline write → lokale cache leesbaar binnen dezelfde paginasessie. Volledige offline page reload met PWA/service worker is nog niet bewezen en blijft een harde gate in issue #27 |
 | Synchronisatie na reconnect zonder stille duplicaten of verliezen | ✅ PASS | `tests/e2e/offline-edit-reload-reconnect-second-client.spec.ts` — reconnect → `gesynchroniseerd` → tweede browsercontext leest exact dezelfde waarde |
 | Security Rules dwingen volledige rol- en organisatie-isolatiematrix af | ✅ PASS | `tests/rules/membership-and-roles.spec.ts`, `tests/rules/cross-org-isolation.spec.ts`, `tests/rules/self-promotion.spec.ts` (incl. admin→owner-negatieve tests, beide correctierondes) |
 | Queries, export, verwijdering en statistiekvolumes beheersbaar | ✅ PASS (schatting) | §3 (client-reads/writes; Rules-overhead niet meegeteld — zie §3 toelichting), §4 (geen composite indexes), §6 (kosten/export). Telling is onderschatting van werkelijke serverbelasting |
@@ -206,25 +206,28 @@ PR 5.3.**
 | Intrekking-tijdens-write geweigerd, geweigerde actie herstelbaar | ✅ PASS | `tests/rules/offline-revocation-node.spec.ts` (Node, deterministisch); `tests/e2e/revoked-while-offline.spec.ts` (browser: `pendingActionNodig.length > 0`, herstelpayload geverifieerd, serverwaarde === origineel) |
 | ADR-003 Rules-only uitnodigingsflow (create/accept/claim) | ✅ PASS (incl. replay-blokkade) | `tests/rules/invitation-flow.spec.ts` — aanmaken/accepteren/claimen/intrekken incl. admin→owner geblokkeerd en replay-blokkade via `claimed`-status (tweede correctieronde, §5.6) |
 | Negatieve gevallen (self-promotion, onverifieerd e-mailadres, uid-mismatch, admin→owner, replay) | ✅ PASS | `tests/rules/self-promotion.spec.ts`, `tests/rules/invitation-flow.spec.ts` |
-| Cross-organisatietoegang geblokkeerd | ✅ PASS (direct pad) | `tests/rules/cross-org-isolation.spec.ts` — directe `getDoc`-paden over org-grens geblokkeerd. **PARTIAL:** verboden cross-org collectionGroup-query niet getest (geen query-flows in spike-scope); index-review voor contextwisselaar-query volgt in PR 5.1/5.2 |
+| Cross-organisatietoegang geblokkeerd | ⚠️ PARTIAL — querypad OPEN (#28) | `tests/rules/cross-org-isolation.spec.ts` — directe `getDoc`-paden over org-grens geblokkeerd. Een cross-org `collectionGroup`-query is niet getest en blijft verboden totdat issue #28 aantoonbaar is afgerond |
 
 ---
 
 ## 8. Go/no-go-aanbeveling
 
-**Herreview vereist (tweede correctieronde 5 aug. 2026 verwerkt).**
+**Eigenaarbesluit 5 augustus 2026: GO voor Fase 5.**
 
-De harde beslisgates zijn na twee correctierondes vrijwel volledig gepasseerd. Twee gates
-zijn bewust **PARTIAL** — niet als PASS gemarkeerd:
+De onafhankelijke herreview is afgerond op head `e37ec09c822d2f543612e3599cbb8cbf10bd9687`:
+de bestaande CI-job en de volledige `firebase-spike`-job zijn groen (type-check, 45 rules-tests,
+3 Playwright-tests). De eigenaar accepteert de volgende twee gates uitsluitend als
+**scopebeperking van PR 4.4**. Ze blijven **PARTIAL/OPEN** en worden niet door de merge gesloten:
 
-- **Offline reload/crash-gate:** Aantoonbaar binnen dezelfde paginasessie (IndexedDB survives
-  tab-context wisseling). Volledige page-reload terwijl offline is niet testbaar met Vite dev
-  server (vereist netwerk voor module-laden). Productie-PWA met service worker vereist.
+- **Offline reload/crash-gate — issue #27:** Aantoonbaar binnen dezelfde paginasessie.
+  Volledige page-reload terwijl offline vereist een PWA-capabele testbuild. PR 5.3 mag niet
+  als voltooid worden gemarkeerd voordat de automatische acceptatietest uit #27 groen is.
 - **Cross-org query-gate:** Directe paden geblokkeerd (bewezen). `collectionGroup`-query over
-  org-grens is niet gemodelleerd in de spike; index-review volgt bij de contextwisselaar (PR 5.1/5.2).
+  org-grens is niet gemodelleerd. `collectionGroup`-queries blijven verboden totdat het
+  querycontract en de positieve/negatieve Rules-tests uit issue #28 zijn afgerond.
 
-Aanbeveling: **GO voor Fase 5** na bevestiging door reviewer op de gecorrigeerde head, met
-expliciete acceptatie van de twee PARTIAL-gates als bekende scope-beperkingen van de spike.
+Besluit: **GO voor Fase 5**. Dit besluit sluit issues #27 en #28 niet en verandert hun status
+niet in PASS; ze blijven harde acceptatievoorwaarden voor de genoemde Fase 5-PR's.
 
 Openstaande punten die Fase 5 (niet deze spike) moet adresseren:
 
@@ -234,13 +237,16 @@ Openstaande punten die Fase 5 (niet deze spike) moet adresseren:
    niet-bestaande documenten — productie-UI moet een expliciete laadindicator implementeren.
 3. **Invitation claim-batch client-side (PR 5.3):** Claim-flow vereist één Firestore-batch met
    twee writes (membership + invitation `claimed`); losse writes worden door de Rules afgewezen.
-4. **Roster-normalisatie (Fase 7):** Eén document vs. subcollectie per speler.
-5. **Index-review voor contextwisselaar-query (PR 5.1/5.2):** Nog niet gemodelleerd.
-6. **Bootstrap-mechanisme eigenaar-bevestiging:** `createdBy`-gebaseerde Rules-check is
+4. **Harde offline-reload-gate (PR 5.3, issue #27):** PWA offline laden, volledige reload,
+   offline wijziging, reconnect en tweede-clientcontrole automatisch in CI bewijzen.
+5. **Roster-normalisatie (Fase 7):** Eén document vs. subcollectie per speler.
+6. **Harde cross-org-query-gate (PR 5.1/5.2, issue #28):** `collectionGroup` verboden totdat
+   querycontract, indexes en positieve/negatieve Rules-tests aantoonbaar groen zijn.
+7. **Bootstrap-mechanisme eigenaar-bevestiging:** `createdBy`-gebaseerde Rules-check is
    redelijk maar vraagt expliciete bevestiging.
-7. **`logoUri`-documentgroottegrens:** Grote logo's → Firebase Storage vóór productie.
-8. **Back-upbeleid (PR 8.3):** Bewust uitgesteld zoals geaccepteerd in ADR-001.
-9. **`npm audit`-bevindingen (14, uitsluitend dev-tooling):** zie §12.
+8. **`logoUri`-documentgroottegrens:** Grote logo's → Firebase Storage vóór productie.
+9. **Back-upbeleid (PR 8.3):** Bewust uitgesteld zoals geaccepteerd in ADR-001.
+10. **`npm audit`-bevindingen (14, uitsluitend dev-tooling):** zie §12.
 
 De spikecode (`firebase-spike/`) is geïsoleerd als zelfstandige workspace en kan na de
 go/no-go-beslissing worden verwijderd of in isolatie worden behouden als referentie.
