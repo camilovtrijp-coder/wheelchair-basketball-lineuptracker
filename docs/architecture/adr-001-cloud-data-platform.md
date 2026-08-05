@@ -2,9 +2,9 @@
 
 ## Status
 
-**Voorgesteld** — concept, 5 augustus 2026. Nog niet geaccepteerd.
+**Geaccepteerd — 5 augustus 2026.** De drie openstaande vragen uit het concept (§9) zijn door de projecteigenaar expliciet beantwoord; zie §9 voor de besluiten en motivatie.
 
-Dit document voert PR 4.1 uit zoals gescoped in `docs/IMPLEMENTATION_PLAN.md` §9. Het formaliseert en actualiseert `docs/architecture/platform-evaluation.md` (1 augustus 2026) tot een besluitrecord, en valideert de daarin genoemde cijfers opnieuw tegen actuele bronnen (augustus 2026). Acceptatie vereist expliciete goedkeuring door de projecteigenaar — dit ADR beslist niets op eigen gezag over kosten, dataresidentie of AVG-risico's die de eigenaar zelf moet afwegen.
+Dit document voert PR 4.1 uit zoals gescoped in `docs/IMPLEMENTATION_PLAN.md` §9. Het formaliseert en actualiseert `docs/architecture/platform-evaluation.md` (1 augustus 2026) tot een besluitrecord, en valideert de daarin genoemde cijfers opnieuw tegen actuele bronnen (augustus 2026).
 
 Dit ADR volgt op een afgeronde poort: de walking-skeleton-fase (PR 3.1 t/m 3.2c) is gemerged en een aparte architectuurreview (importgrenzen, opslagcompatibiliteit, PWA-updategedrag, mobiele bediening, toegankelijkheid, testdekking) is uitgevoerd. Twee bevindingen uit die review zijn relevant voor dit ADR maar veranderen de platformkeuze niet: er ontbreekt nog een zichtbare PWA-update-UX en runtime-a11y-verificatie — beide expliciet PR 8.1/8.2-scope, niet vervroegd (zie §17 van het plan).
 
@@ -50,7 +50,7 @@ Firestore biedt een `eur3`-multiregio met read-write-replica's in `europe-west1`
 
 **Belangrijk risico dat nog niet eerder was vastgelegd**: aanpalende diensten (Cloud Functions, FCM, en met name Firebase Authentication) bieden niet dezelfde residentiegarantie. Auth-tokens kunnen Amerikaanse infrastructuur passeren, ook wanneer Firestore zelf op `eur3` staat. Firebase biedt momenteel geen volledig EU-residente multiregio-oplossing die alle onderdelen (Auth incluis) dekt.
 
-**Consequentie voor dit ADR**: dit is een reëel, niet-triviaal AVG-aandachtspunt dat de projecteigenaar bewust moet accepteren vóór PR 4.4 (de Firebase-spike) — niet iets wat een ADR namens de eigenaar kan wegwuiven. Aanbevolen vervolgstap: Google Cloud's actuele Data Processing Amendment/subverwerkersvoorwaarden opvragen (via Firebase Console → juridische/compliance-documentatie) en beoordelen of "Firestore-data in de EU, Auth-metadata mogelijk niet" acceptabel is voor dit gebruik (spelersnamen, rugnummers, classificaties — geen bijzondere persoonsgegevens, geen geboortedata of medische data, conform de productstandaarden in `platform-evaluation.md` §"Productstandaarden").
+**Besluit van de eigenaar (5 augustus 2026)**: geaccepteerd, met documentatie — niet stilzwijgend. De app bewaart uitsluitend niet-gevoelige teamdata (naam, rugnummer, classificatie; geen geboortedata of medische gegevens, conform de productstandaarden in `platform-evaluation.md` §"Productstandaarden"). Gegeven die beperkte gevoeligheid weegt het risico van mogelijke VS-transit van auth-metadata niet op tegen de kosten van een aparte DPA-opvraagronde of een alternatieve auth-provider. Deze afweging staat hier vastgelegd zodat ze bij een latere uitbreiding van de opgeslagen persoonsgegevens opnieuw beoordeeld kan worden.
 
 ### Quota (Spark, gratis plan) — herbevestigd, ongewijzigd t.o.v. 1 augustus
 
@@ -74,7 +74,7 @@ Bron: [Netlify — Credit-based pricing plans](https://docs.netlify.com/manage/a
 
 ### Back-ups en herstel
 
-- **Firestore**: point-in-time recovery en geplande back-ups zijn Blaze-only functies, niet onderdeel van het gratis Spark-quotum. Dit ADR neemt geen besluit over wélk back-upbeleid nodig is — dat hoort in PR 8.3 (beveiliging, privacy, kosten en beheer) samen met een concreet herstelbeleid.
+- **Firestore**: point-in-time recovery en geplande back-ups zijn Blaze-only functies, niet onderdeel van het gratis Spark-quotum. **Besluit van de eigenaar**: het concrete back-upbeleid wordt pas bij PR 8.3 (beveiliging, privacy, kosten en beheer) uitgewerkt, niet nu al vooruitgeschoven — dit blijft passend zolang de lokale JSON-back-up (zie hieronder) het vangnet is.
 - **v2-eigen laag**: de bestaande JSON-back-up/import (fase 2, PR #9/#10/#12) blijft ongeacht het cloudbesluit bestaan als lokaal, downloadbaar vangnet — dit is al een niet-onderhandelbare eis in §3 ("cloudmigratie... lokale bron en een downloadbare back-up blijven beschikbaar").
 
 ### Exit-strategie (platformonafhankelijkheid)
@@ -105,7 +105,7 @@ Deze gates zijn ongewijzigd overgenomen uit `platform-evaluation.md` — dit ADR
 - PR 4.2 (ADR-002, offline synchronisatiestrategie) en PR 4.3 (ADR-003, tenancy/autorisatie) bouwen direct op dit besluit voort en kunnen nu starten.
 - PR 4.4 (begrensde Firebase-spike, uitsluitend fictieve data via de Emulator Suite) is het eerste punt waarop dit besluit empirisch wordt getoetst, niet alleen op papier.
 - Geen productie-Firebase-project, geen Netlify-deployment en geen echte spelersdata worden aangemaakt of gebruikt vóórdat de gates in §7 zijn gehaald en de eigenaar dat apart goedkeurt (§3, §9 van het plan).
-- Het AVG/regio-risico bij Firebase Authentication (zie §5) is een **open, aan de eigenaar voor te leggen vraag**, geen stilzwijgend geaccepteerd risico — dit moet vóór PR 4.4 expliciet worden afgetikt.
+- Het AVG/regio-risico bij Firebase Authentication (zie §5) is door de eigenaar expliciet geaccepteerd, met documentatie van de afweging — geen open punt meer, wel iets om te herbeoordelen bij een latere uitbreiding van opgeslagen persoonsgegevens.
 
 ## Alternatieven expliciet verworpen
 
@@ -113,10 +113,10 @@ Deze gates zijn ongewijzigd overgenomen uit `platform-evaluation.md` — dit ADR
 - **Firebase-project per club/organisatie**: verworpen door de niet-onderhandelbare eis van één globale gebruikersidentiteit met app-level organisaties/teams/memberships (§3). Een project per club zou multi-organisatie-toegang voor één coach onmogelijk of onnodig complex maken.
 - **Firebase Hosting i.p.v. Netlify**: niet gekozen als eerste optie. Blijft technisch beschikbaar als alternatief, maar Netlify past al bij de bestaande Git-workflow (Deploy Previews, GitHub-koppeling) en er is geen reden om dat nu te wijzigen.
 
-## Openstaande vragen voor de eigenaar
+## Besluiten van de eigenaar (5 augustus 2026)
 
-Dit ADR beslist niet zelfstandig over de volgende punten — die vereisen een expliciete keuze van de projecteigenaar vóór PR 4.4:
+Het concept van dit ADR bevatte drie openstaande vragen. De projecteigenaar heeft ze als volgt beantwoord, waarmee dit ADR van "Voorgesteld" naar "Geaccepteerd" gaat:
 
-1. Is het AVG-risico rond Firebase Authentication (mogelijk VS-transit van auth-metadata, ondanks `eur3`-Firestore-data in de EU) acceptabel voor dit gebruik, of is een aanvullende maatregel (bijv. alternatieve auth-provider, of een bewuste risicoacceptatie) gewenst?
-2. Welk back-up-/herstelbeleid is nodig zodra Blaze-functies (point-in-time recovery) relevant worden — nu, of pas bij PR 8.3?
-3. Akkoord om door te gaan naar PR 4.2 (ADR-002, offline sync) en PR 4.3 (ADR-003, tenancy) op basis van dit concept, of eerst dit ADR expliciet formeel accepteren?
+1. **AVG-risico rond Firebase Authentication**: geaccepteerd, met documentatie van de afweging (zie §5) — geen aanvullende maatregel of alternatieve auth-provider nodig gezien de beperkte gevoeligheid van de opgeslagen teamdata.
+2. **Back-up-/herstelbeleid**: uitwerken bij PR 8.3, niet nu al vooruitgeschoven (zie §"Back-ups en herstel").
+3. **Vervolgstap**: dit concept is voldoende basis om door te gaan naar PR 4.2 (ADR-002, offline sync) en PR 4.3 (ADR-003, tenancy) — geen aparte formele-acceptatiestap nodig vóór die PR's starten.
