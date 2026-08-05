@@ -4,7 +4,7 @@ Status: actief implementatieplan voor afzonderlijke v2-/herbouwrepository
 Repository: `camilovtrijp-coder/wheelchair-basketball-lineuptracker`
 Oorspronkelijke basis: `main` op commit `e2684047985d13740b913938887ea692a6c44dc7`
 Laatst gevalideerd: `main` op commit `a0eab1bfe668568e2ec72ed367b075f52fa6c2e4`
-Bijgewerkt: 1 augustus 2026
+Bijgewerkt: 5 augustus 2026
 
 ## 1. Doel
 
@@ -862,8 +862,9 @@ Gebruik GitHub Issues of een kleine tabel in dit bestand. Issues zijn beter zodr
 | PR 4.1 — ADR-001 clouddataplatform | Voltooid | #23 | `docs/architecture/adr-001-cloud-data-platform.md`: Firebase Auth + Firestore + Netlify, Supabase als begrensde fallback. Regio/AVG/quota/prijsplan/back-ups/exit geverifieerd (aug. 2026); AVG-aandachtspunt (Auth-metadata mogelijk buiten EU ondanks `eur3`-Firestore-data) door eigenaar expliciet geaccepteerd met documentatie. Back-upbeleid bewust uitgesteld naar PR 8.3 |
 | PR 4.2 — ADR-002 offline-sync | Voltooid | #24 | `docs/architecture/adr-002-offline-sync-strategy.md`: syncstatuscontract (4 toestanden), append-only wedstrijdacties met clientgegenereerde UUID's i.p.v. één overschreven megadocument, tombstones, single-writer-model, pre-game-offline-readinesscheck. Single-tab persistence door eigenaar geaccepteerd als startaanname |
 | PR 4.3 — ADR-003 tenancy/autorisatie | Voltooid | #25 | `docs/architecture/adr-003-tenancy-and-authorization.md`: datamodel (uid als membership-doc-ID), rollentabel, Rules-only-uitnodigingsflow zonder Cloud Function/Blaze (create/accept/claim in drie stappen met `email_verified`-mitigatie tegen self-grant), door eigenaar geaccepteerd. "Laatste eigenaar niet Rules-afgedwongen" bewust aanvaard als application-laag-beperking |
-| Fase 4 — cloud/sync/tenancy-ADR's | Voltooid | #23, #24, #25 | ADR-001, ADR-002 en ADR-003 alle geaccepteerd. Volgende stap: PR 4.4, de begrensde Firebase-spike met uitsluitend fictieve data via de Emulator Suite |
-| Fase 5 — platformpilot settings/team | Niet gestart |  | Firebase Emulator/Rules, Auth, multi-organisatiecontext, offline cache, twee apparaten en optionele Netlify-staging |
+| PR 4.4 — begrensde Firebase-spike | Voltooid; twee Fase 5-gates blijven OPEN | #26, #27, #28 | `firebase-spike/` zelfstandige workspace; Firebase Emulator Suite (Firestore :8080, Auth :9099), fictieve data, geen echt GCP-project. Bewijst: offline edit/reconnect/tweede cliënt (Playwright); volledige rol- en organisatie-isolatiematrix (Vitest + rules-unit-testing); Rules-only uitnodigingsflow (create/accept/claim); intrekking-tijdens-queued-write (Node- en browser-variant). Herreviewcorrecties: admin→owner-beveiliging, strikte intrekkingstest, ongecachete offline-test, atomaire invitation-claim, subscribe()-DEFAULT_SETTINGS-fix, type-check en volledige spike-CI. 45 rules + 3 e2e = 48 tests. Eigenaarbesluit 5 aug. 2026: GO voor Fase 5, maar offline volledige reload (#27) en cross-org querytests (#28) blijven expliciet PARTIAL/OPEN en worden niet door merge van #26 gesloten. Zie `firebase-spike/docs/SPIKE_REPORT.md` |
+| Fase 4 — cloud/sync/tenancy-ADR's | Voltooid | #23–#26 | ADR-001, ADR-002 en ADR-003 geaccepteerd en empirisch getoetst via PR 4.4; onafhankelijke herreview en go/no-go afgerond. De twee begrensde vervolg-gates staan open als #27 en #28 |
+| Fase 5 — platformpilot settings/team | Niet gestart — harde gates #27 en #28 OPEN | #27, #28 | Firebase Emulator/Rules, Auth, multi-organisatiecontext, offline cache, twee apparaten en optionele Netlify-staging. PR 5.3 is niet voltooid zonder volledige offline-reloadtest (#27); `collectionGroup`-queries zijn verboden totdat querycontract en cross-org Rules-tests groen zijn (#28) |
 | Fase 6 — overige v1-flows | Niet gestart |  | Wedstrijdopzet, live, historie/export, stats, trends en back-up |
 | Fase 7 — wedstrijdsync en migratie | Niet gestart |  | Afgeronde games, single-writer live sync en opt-in cloudmigratie |
 | Fase 8 — hardening en cutover | Niet gestart |  | PWA, a11y, security, parallelle acceptatie en expliciete productiecutover |
