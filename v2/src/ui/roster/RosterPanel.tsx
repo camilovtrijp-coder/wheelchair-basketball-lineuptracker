@@ -51,7 +51,7 @@ export function RosterPanel({
 
   function handleSave() {
     const ok = saveRoster(repo, roster);
-    setError(ok ? null : t(lang, 'settingsSaveError'));
+    setError(ok ? null : t(lang, 'rosterSaveError'));
   }
 
   function handleRefresh() {

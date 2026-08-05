@@ -142,6 +142,16 @@ describe('domain/roster/normalize', () => {
       const next = removePlayer(players, 1);
       expect(next.map((p) => p.id)).toEqual([2]);
     });
+
+    it('op een lege lijst levert een lege lijst op', () => {
+      expect(removePlayer([], 1)).toEqual([]);
+    });
+
+    it('bij een niet-bestaand id blijft de lijst ongewijzigd', () => {
+      const players = [player({ id: 1 }), player({ id: 2 })];
+      const next = removePlayer(players, 999);
+      expect(next).toEqual(players);
+    });
   });
 
   describe('toStoredPlayers', () => {

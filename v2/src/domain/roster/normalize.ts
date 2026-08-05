@@ -41,7 +41,16 @@ function nextPlayerId(players: Roster): number {
   return players.reduce((max, p) => (typeof p.id === 'number' && p.id > max ? p.id : max), 0) + 1;
 }
 
-/** Voegt een nieuwe speler toe met v1-standaardwaarden en sorteert opnieuw. */
+/**
+ * Voegt een nieuwe speler toe met v1-standaardwaarden en sorteert opnieuw.
+ *
+ * `nr` is een suggestie op basis van het huidige aantal spelers (spiegelt
+ * v1: `String(state.players.length + 1)`), niet op basis van het hoogste
+ * bestaande rugnummer. Als rugnummers handmatig naar hoge waarden zijn
+ * aangepast (bijv. 100, 200), kan dit een laag "vrij" nummer opleveren dat
+ * al bestaat — de gebruiker past het dan zelf aan. Dit is bestaand
+ * v1-gedrag, geen v2-regressie.
+ */
 export function addPlayer(players: Roster): Roster {
   const player: RosterPlayer = {
     id: nextPlayerId(players),

@@ -54,6 +54,7 @@ const nl = {
   removePlayerBtn: 'Verwijderen',
   confirmDeletePlayer: 'Deze speler definitief verwijderen? Dit kan niet ongedaan worden gemaakt.',
   dupNumberWarningLabel: '⚠ Dubbel rugnummer:',
+  rosterSaveError: 'Opslaan is mislukt. Controleer de opslagruimte van je browser.',
 } as const;
 
 const en = {
@@ -105,6 +106,7 @@ const en = {
   removePlayerBtn: 'Remove',
   confirmDeletePlayer: 'Permanently delete this player? This cannot be undone.',
   dupNumberWarningLabel: '⚠ Duplicate shirt number:',
+  rosterSaveError: "Saving failed. Check your browser's storage space.",
 } as const;
 
 export const STRINGS = { nl, en } as const;
