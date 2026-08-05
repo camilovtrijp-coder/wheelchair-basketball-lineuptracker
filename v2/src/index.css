@@ -206,6 +206,98 @@ button:focus-visible {
   color: var(--lt-color-danger);
 }
 
+.app-nav {
+  display: flex;
+  gap: var(--lt-space-2);
+  padding: var(--lt-space-2) var(--lt-space-4);
+  border-bottom: var(--lt-border-thin);
+  background: var(--lt-color-surface);
+}
+
+.app-nav__tab {
+  background: transparent;
+  color: var(--lt-color-muted);
+  border: none;
+  border-radius: var(--lt-radius-sm);
+  padding: var(--lt-space-2) var(--lt-space-3);
+}
+
+.app-nav__tab--active {
+  background: var(--lt-color-bg);
+  color: var(--lt-color-fg);
+  font-weight: 600;
+}
+
+.roster-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--lt-space-3);
+}
+
+.roster-player-card {
+  display: flex;
+  flex-direction: column;
+  gap: var(--lt-space-2);
+  border: var(--lt-border-thin);
+  border-radius: var(--lt-radius-lg);
+  padding: var(--lt-space-3);
+  background: var(--lt-color-surface);
+}
+
+.roster-player-row {
+  display: flex;
+  align-items: flex-end;
+  gap: var(--lt-space-2);
+}
+
+.roster-player-row--class {
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.roster-player-nr {
+  width: 4.5rem;
+  flex: none;
+}
+
+.roster-player-name {
+  flex: 1;
+  min-width: 0;
+}
+
+.roster-player-kl {
+  width: 4.5rem;
+  flex: none;
+}
+
+.roster-nr-input--dup {
+  border-color: var(--lt-color-danger);
+}
+
+.roster-remove-btn {
+  flex: none;
+  padding: var(--lt-space-2);
+}
+
+.roster-add-btn {
+  width: 100%;
+}
+
+.toggle-btn {
+  background: transparent;
+  color: var(--lt-color-muted);
+  border: var(--lt-border-thin);
+}
+
+.toggle-btn--on {
+  background: var(--lt-color-accent);
+  color: var(--lt-color-accent-fg);
+  border-color: var(--lt-color-accent);
+}
+
 @media (prefers-reduced-motion: reduce) {
   * {
     animation: none !important;

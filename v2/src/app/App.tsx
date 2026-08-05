@@ -7,6 +7,12 @@ import { LocalStorageSettingsRepository } from '../infrastructure/settings/Local
 import { getSettings } from '../application/settings/usecases';
 import type { Settings } from '../domain/settings/types';
 import { SettingsPanel } from '../ui/settings/SettingsPanel';
+import { LocalStorageRosterRepository } from '../infrastructure/roster/LocalStorageRosterRepository';
+import { getRoster } from '../application/roster/usecases';
+import type { Roster } from '../domain/roster/types';
+import { RosterPanel } from '../ui/roster/RosterPanel';
+
+type Tab = 'settings' | 'roster';
 
 function initialLang(): Lang {
   const stored = readLang(browserStorage);
@@ -21,12 +27,15 @@ function tFor(lang: Lang): (key: StringKey) => string {
 }
 
 const settingsRepo = new LocalStorageSettingsRepository(browserStorage);
+const rosterRepo = new LocalStorageRosterRepository(browserStorage);
 
 export function App() {
   const [lang, setLang] = useState<Lang>(initialLang);
+  const [tab, setTab] = useState<Tab>('settings');
   const [settings, setSettings] = useState<Settings & Record<string, unknown>>(() =>
     getSettings(settingsRepo),
   );
+  const [roster, setRoster] = useState<Roster>(() => getRoster(rosterRepo));
 
   useEffect(() => {
     document.documentElement.lang = lang;
@@ -37,6 +46,8 @@ export function App() {
   const t = tFor(lang);
   const other: Lang = lang === SUPPORTED_LANGS[0] ? SUPPORTED_LANGS[1] : SUPPORTED_LANGS[0];
   const otherLabel = t(other === 'en' ? 'switchToEn' : 'switchToNl');
+  const tag1Label = (settings.tag1Label as string) || t('toggleTag1Default');
+  const tag2Label = (settings.tag2Label as string) || t('toggleTag2Default');
 
   return (
     <div className="app">
@@ -56,13 +67,46 @@ export function App() {
         </div>
       </header>
 
+      <nav className="app-nav" aria-label={t('settingsTitle')}>
+        <button
+          type="button"
+          className={`app-nav__tab${tab === 'settings' ? ' app-nav__tab--active' : ''}`}
+          aria-current={tab === 'settings' ? 'page' : undefined}
+          data-testid="nav-settings"
+          onClick={() => setTab('settings')}
+        >
+          {t('settingsTitle')}
+        </button>
+        <button
+          type="button"
+          className={`app-nav__tab${tab === 'roster' ? ' app-nav__tab--active' : ''}`}
+          aria-current={tab === 'roster' ? 'page' : undefined}
+          data-testid="nav-roster"
+          onClick={() => setTab('roster')}
+        >
+          {t('rosterTitle')}
+        </button>
+      </nav>
+
       <main className="app-main">
-        <SettingsPanel
-          lang={lang}
-          repo={settingsRepo}
-          settings={settings}
-          onSettingsChange={setSettings}
-        />
+        {tab === 'settings' ? (
+          <SettingsPanel
+            lang={lang}
+            repo={settingsRepo}
+            settings={settings}
+            onSettingsChange={setSettings}
+          />
+        ) : (
+          <RosterPanel
+            lang={lang}
+            repo={rosterRepo}
+            roster={roster}
+            onRosterChange={setRoster}
+            useClassLimit={settings.useClassLimit === true}
+            tag1Label={tag1Label}
+            tag2Label={tag2Label}
+          />
+        )}
       </main>
     </div>
   );

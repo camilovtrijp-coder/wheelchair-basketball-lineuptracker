@@ -5,7 +5,6 @@ const V1_KEYS_THAT_MUST_NOT_BE_TOUCHED = [
   'lineup-tracker-v1',
   'lineup-tracker-games',
   'lineup-tracker-schema-version',
-  'lineup-tracker-roster',
 ];
 
 async function readAllLocalStorage(page: Page): Promise<Record<string, string>> {

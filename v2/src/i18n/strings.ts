@@ -43,6 +43,17 @@ const nl = {
   settingsResetBtn: 'Standaardinstellingen herstellen',
   logoTooLargeError: 'Logo is te groot (max 500 KB). Kies een kleinere afbeelding.',
   settingsSaveError: 'Opslaan is mislukt. Controleer de opslagruimte van je browser.',
+
+  rosterTitle: 'Team',
+  rosterIntro:
+    'Beheer hier je spelerslijst: rugnummer, naam en — als je het classificatiesysteem gebruikt (instellingen) — een classificatiewaarde en categorieën.',
+  playerNrLabel: 'Rugnummer',
+  playerNameLabel: 'Naam',
+  playerClassLabel: 'Klasse',
+  addPlayerBtn: '+ Speler toevoegen',
+  removePlayerBtn: 'Verwijderen',
+  confirmDeletePlayer: 'Deze speler definitief verwijderen? Dit kan niet ongedaan worden gemaakt.',
+  dupNumberWarningLabel: '⚠ Dubbel rugnummer:',
 } as const;
 
 const en = {
@@ -83,6 +94,17 @@ const en = {
   settingsResetBtn: 'Reset to defaults',
   logoTooLargeError: 'Logo is too large (max 500 KB). Choose a smaller image.',
   settingsSaveError: "Saving failed. Check your browser's storage space.",
+
+  rosterTitle: 'Team',
+  rosterIntro:
+    'Manage your player roster here: shirt number, name and — if you use the classification system (settings) — a classification value and categories.',
+  playerNrLabel: 'Shirt number',
+  playerNameLabel: 'Name',
+  playerClassLabel: 'Class',
+  addPlayerBtn: '+ Add player',
+  removePlayerBtn: 'Remove',
+  confirmDeletePlayer: 'Permanently delete this player? This cannot be undone.',
+  dupNumberWarningLabel: '⚠ Duplicate shirt number:',
 } as const;
 
 export const STRINGS = { nl, en } as const;
