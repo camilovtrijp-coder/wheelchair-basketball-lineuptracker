@@ -55,8 +55,8 @@ describe('i18n/strings', () => {
   });
 
   it('translate levert de juiste string per taal', () => {
-    expect(translate('nl', 'appHeading')).toBe('v2 leeg');
-    expect(translate('en', 'appHeading')).toBe('v2 empty');
+    expect(translate('nl', 'appNameFallback')).toBe('Lineup Tracker');
+    expect(translate('en', 'appNameFallback')).toBe('Lineup Tracker');
     expect(translate('nl', 'switchToEn')).toBe('Schakel naar Engels');
     expect(translate('en', 'switchToEn')).toBe('Switch to English');
   });
