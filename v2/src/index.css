@@ -1,5 +1,14 @@
 @import './styles/tokens.css';
 
+/* Zonder deze reset telt content-box de padding bovenop een expliciete
+   width op (bijv. .app-main), wat op smalle viewports horizontale
+   overflow veroorzaakt. */
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
 :root {
   font-family: var(--lt-font-sans);
   color-scheme: light dark;
@@ -101,6 +110,10 @@ button:focus-visible {
   padding: var(--lt-space-3) var(--lt-space-4);
   background: var(--lt-color-surface);
   margin: 0;
+  /* <fieldset> heeft een browser-default min-width: min-content dat niet
+     meekrimpt als flex-item; zonder deze override overflowt de pagina
+     horizontaal op smalle (mobiele) viewports. */
+  min-width: 0;
 }
 
 .settings-section legend {
