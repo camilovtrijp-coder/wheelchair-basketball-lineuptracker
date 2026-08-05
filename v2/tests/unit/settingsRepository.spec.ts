@@ -83,12 +83,26 @@ describe('LocalStorageSettingsRepository', () => {
     expect(repo.read()).toEqual(DEFAULT_SETTINGS);
   });
 
-  it('write slaat het volledige object op en raakt geen andere keys', () => {
+  it('write slaat het volledige object op, raakt geen andere keys en retourneert true', () => {
     const { repo, storage } = repoWith();
-    repo.write({ ...DEFAULT_SETTINGS, teamName: 'B' });
+    const ok = repo.write({ ...DEFAULT_SETTINGS, teamName: 'B' });
+    expect(ok).toBe(true);
     expect(storage.writtenKeys).toEqual([SETTINGS_STORAGE_KEY]);
     expect(storage.accessedKeys).toEqual([]);
     expect(storage.removedKeys).toEqual([]);
+  });
+
+  it('write retourneert false wanneer de opslag faalt (bijv. quota overschreden)', () => {
+    const failingStorage: KeyValueStorage = {
+      getItem: () => null,
+      setItem: () => {
+        throw new Error('QuotaExceededError');
+      },
+      removeItem: () => {},
+    };
+    const repo = new LocalStorageSettingsRepository(failingStorage);
+    const ok = repo.write({ ...DEFAULT_SETTINGS, teamName: 'B' });
+    expect(ok).toBe(false);
   });
 
   it('write behoudt onbekende keys in het opgeslagen object', () => {

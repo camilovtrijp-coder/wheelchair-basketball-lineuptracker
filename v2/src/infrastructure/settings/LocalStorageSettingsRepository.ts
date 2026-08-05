@@ -28,11 +28,13 @@ export class LocalStorageSettingsRepository implements SettingsRepository {
     return normalizeSettings(parsed);
   }
 
-  write(settings: Settings & Record<string, unknown>): void {
+  write(settings: Settings & Record<string, unknown>): boolean {
     try {
       this.storage.setItem(SETTINGS_STORAGE_KEY, JSON.stringify(settings));
+      return true;
     } catch {
-      /* opslag kan falen (geheugen vol, uitgeschakeld); negeer */
+      /* opslag kan falen (quota overschreden, uitgeschakeld); laat caller het weten */
+      return false;
     }
   }
 

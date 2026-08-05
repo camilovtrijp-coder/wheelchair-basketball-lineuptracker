@@ -7,6 +7,7 @@
   --lt-color-border: #e5e7eb;
   --lt-color-surface: #f9fafb;
   --lt-color-focus: #2563eb;
+  --lt-color-danger: #b91c1c;
 
   --lt-font-sans: system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
   --lt-font-size-xs: 0.75rem;
@@ -43,5 +44,6 @@
     --lt-color-accent-fg: #0b1220;
     --lt-color-border: #1f2937;
     --lt-color-surface: #111827;
+    --lt-color-danger: #f87171;
   }
 }

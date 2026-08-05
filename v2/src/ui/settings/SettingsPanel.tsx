@@ -1,5 +1,5 @@
-import { useRef } from 'preact/hooks';
-import type { Settings } from '../../domain/settings/types';
+import { useRef, useState } from 'preact/hooks';
+import { LOGO_MAX_BYTES, type Settings } from '../../domain/settings/types';
 import { translate, type Lang, type StringKey } from '../../i18n/strings';
 import {
   getSettings,
@@ -35,14 +35,20 @@ function t(lang: Lang, key: StringKey): string {
 
 export function SettingsPanel({ lang, repo, settings, onSettingsChange }: SettingsPanelProps) {
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const [error, setError] = useState<string | null>(null);
 
   function handleField<K extends keyof Settings>(field: K, value: Settings[K]) {
-    const next = updateSetting(repo, settings, field, value);
+    const next = updateSetting(settings, field, value);
     onSettingsChange(next);
   }
 
   function handleLogoFile(file: File | undefined) {
     if (!file) return;
+    if (file.size > LOGO_MAX_BYTES) {
+      setError(t(lang, 'logoTooLargeError'));
+      return;
+    }
+    setError(null);
     const reader = new FileReader();
     reader.onload = () => {
       if (typeof reader.result === 'string') {
@@ -55,14 +61,17 @@ export function SettingsPanel({ lang, repo, settings, onSettingsChange }: Settin
   function handleReset() {
     const defaults = resetSettings(repo);
     onSettingsChange(defaults);
+    setError(null);
   }
 
   function handleRefresh() {
     onSettingsChange(getSettings(repo));
+    setError(null);
   }
 
   function handleSave() {
-    saveSettings(repo, settings);
+    const ok = saveSettings(repo, settings);
+    setError(ok ? null : t(lang, 'settingsSaveError'));
   }
 
   const useClass = settings.useClassLimit === true;
@@ -133,6 +142,7 @@ export function SettingsPanel({ lang, repo, settings, onSettingsChange }: Settin
             value={settings.primaryColor as string}
             onChange={(c) => handleField('primaryColor', c)}
             testIdPrefix="primaryColor"
+            customLabel={t(lang, 'customColorBtn')}
           />
         </div>
 
@@ -142,6 +152,7 @@ export function SettingsPanel({ lang, repo, settings, onSettingsChange }: Settin
             value={settings.accentColor as string}
             onChange={(c) => handleField('accentColor', c)}
             testIdPrefix="accentColor"
+            customLabel={t(lang, 'customColorBtn')}
           />
         </div>
       </fieldset>
@@ -291,6 +302,12 @@ export function SettingsPanel({ lang, repo, settings, onSettingsChange }: Settin
         ) : null}
       </fieldset>
 
+      {error ? (
+        <p className="settings-error" role="alert" data-testid="settings-error">
+          {error}
+        </p>
+      ) : null}
+
       <div className="settings-actions">
         <button
           type="button"
@@ -325,9 +342,10 @@ interface ColorPickerRowProps {
   value: string;
   onChange: (value: string) => void;
   testIdPrefix: string;
+  customLabel: string;
 }
 
-function ColorPickerRow({ value, onChange, testIdPrefix }: ColorPickerRowProps) {
+function ColorPickerRow({ value, onChange, testIdPrefix, customLabel }: ColorPickerRowProps) {
   const ref = useRef<HTMLInputElement | null>(null);
   const current = String(value || '').toLowerCase();
   return (
@@ -341,15 +359,24 @@ function ColorPickerRow({ value, onChange, testIdPrefix }: ColorPickerRowProps) 
             className={`swatch${selected ? ' swatch--selected' : ''}`}
             style={`background:${c}`}
             aria-label={c}
+            aria-pressed={selected}
             data-testid={`${testIdPrefix}-${c.slice(1)}`}
             onClick={() => onChange(c)}
           />
         );
       })}
+      <button
+        type="button"
+        className="btn-outline"
+        data-testid={`${testIdPrefix}-custom`}
+        onClick={() => ref.current?.click()}
+      >
+        {customLabel}
+      </button>
       <input
         ref={ref}
         type="color"
-        style="position:absolute;width:1px;height:1px;opacity:0;pointer-events:none"
+        style="display:none"
         value={value}
         data-testid={`${testIdPrefix}-native`}
         onChange={(e) => onChange((e.target as HTMLInputElement).value)}
