@@ -4,7 +4,6 @@ const SETTINGS_KEY = 'lineup-tracker-settings';
 const V1_KEYS_THAT_MUST_NOT_BE_TOUCHED = [
   'lineup-tracker-v1',
   'lineup-tracker-games',
-  'lineup-tracker-roster',
   'lineup-tracker-schema-version',
 ];
 
@@ -228,11 +227,11 @@ test.describe('v2 settings', () => {
       { key: 'lineup-tracker-lang', value: 'nl' },
     );
     await page.goto('/');
-    await expect(page.getByText('Instellingen', { exact: true })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Instellingen', exact: true })).toBeVisible();
     await expect(page.getByText('Teamnaam', { exact: true })).toBeVisible();
 
     await page.getByTestId('lang-switch').click();
-    await expect(page.getByText('Settings', { exact: true })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Settings', exact: true })).toBeVisible();
     await expect(page.getByText('Team name', { exact: true })).toBeVisible();
   });
 });
