@@ -2,7 +2,7 @@
 
 ## Status
 
-**Voorgesteld** — concept, 5 augustus 2026. Nog niet geaccepteerd.
+**Geaccepteerd — 5 augustus 2026.** De twee openstaande vragen uit het concept zijn door de projecteigenaar beantwoord; zie §"Besluiten van de eigenaar".
 
 Voert PR 4.2 uit zoals gescoped in `docs/IMPLEMENTATION_PLAN.md` §9, en bouwt direct voort op [ADR-001](./adr-001-cloud-data-platform.md) (Geaccepteerd, 5 augustus 2026): Firebase Authentication + Cloud Firestore is de gekozen backend. Dit ADR legt vast **hoe** die keuze offline-first courtside-gebruik daadwerkelijk waarmaakt — ADR-001 koos het platform, dit ADR ontwerpt het synchronisatiecontract erbovenop.
 
@@ -98,7 +98,7 @@ Ontbreekt één van deze vijf, dan toont de app dat vóór de wedstrijd begint �
 - PR 7.1 (Firestore-wedstrijdmodel) en PR 7.3 (single-writer) implementeren dit contract daadwerkelijk voor de live wedstrijdflow; dit ADR legt het ontwerp vast, niet de implementatie.
 - Tombstone-bewaarbeleid blijft een open punt tot PR 7.2 — hier bewust niet vooruitgeschoven, zelfde afweging als het Firestore-back-upbeleid in ADR-001 (PR 8.3).
 
-## Openstaande vragen voor de eigenaar
+## Besluiten van de eigenaar (5 augustus 2026)
 
-1. Is single-tab persistence (i.p.v. multi-tab) een acceptabele startaanname, gegeven dat courtside-gebruik typisch één scorer op één toestel/tabblad is?
-2. Akkoord om dit ADR te accepteren en door te gaan naar PR 4.3 (ADR-003, tenancy/autorisatie) op basis van dit concept?
+1. **Single-tab persistence**: geaccepteerd als startaanname. Courtside-gebruik is typisch één scorer op één toestel/tabblad; multi-tab-coördinatie voegt complexiteit toe zonder concrete behoefte. Heroverwegen indien een toekomstige flow bewust meerdere tabbladen tegelijk vereist.
+2. **Vervolgstap**: dit concept is voldoende basis om direct door te gaan naar PR 4.3 (ADR-003, tenancy/autorisatie) — geen aparte formele-acceptatiestap nodig, zelfde redenering als bij ADR-001.
