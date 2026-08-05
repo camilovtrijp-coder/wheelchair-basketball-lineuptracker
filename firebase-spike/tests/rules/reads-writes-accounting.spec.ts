@@ -2,7 +2,7 @@
 // De output wordt gebruikt als brondata voor SPIKE_REPORT.md §3.
 
 import { beforeAll, afterAll, describe, it } from 'vitest';
-import { doc, getDoc, setDoc, updateDoc } from 'firebase/firestore';
+import { doc, getDoc, setDoc, updateDoc, writeBatch } from 'firebase/firestore';
 import type { RulesTestEnvironment } from '@firebase/rules-unit-testing';
 import {
   createTestEnv, authCtx, withAdmin,
@@ -101,13 +101,19 @@ describe('Flow 3: uitnodiging accepteren + membership claimen', () => {
     );
     counts.inviteAccept.writes++;
 
-    // Stap 2: grace claimt membership.
-    await setDoc(
+    // Stap 2: grace claimt membership + uitnodiging atomair.
+    const batch = writeBatch(graceDb);
+    batch.set(
       doc(graceDb, 'organizations', ORG_A, 'organizationMembers', USERS.grace.uid),
       { role: 'viewer', email: USERS.grace.email, invitationId: 'inv-acc-grace', joinedAt: new Date() },
     );
-    counts.inviteAccept.writes++;
-    // Elke setDoc kost de Rule-engine ook een paar interne get()'s (membership, uitnodiging);
+    batch.update(
+      doc(graceDb, 'organizations', ORG_A, 'invitations', 'inv-acc-grace'),
+      { status: 'claimed', claimedAt: new Date() },
+    );
+    await batch.commit();
+    counts.inviteAccept.writes += 2;
+    // Elke batch-write kost de Rule-engine ook een paar interne get()/getAfter()-aanroepen;
     // die zijn hier niet apart geteld maar wel zichtbaar in de emulator-UI.
   });
 });

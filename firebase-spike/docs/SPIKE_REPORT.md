@@ -2,7 +2,8 @@
 
 **Datum:** augustus 2026
 **Projectid (emulator):** `demo-lineup-tracker-spike`
-**Testsuite-commando:** `npm run spike:verify` (Firebase Emulator Suite, fictieve data)
+**Testsuite-commando:** `npm run spike:verify` (type-check + Firebase Emulator Suite, fictieve data).
+GitHub Actions voert dit commando ook uit in de afzonderlijke job `firebase-spike`.
 
 ---
 
@@ -50,9 +51,9 @@ authenticatie.
 | Edit roster + opslaan | 1 + 1 | 1 | identiek aan settings-flow |
 | Uitnodiging aanmaken | 0 | 1 | `setDoc` op invitations/{id} |
 | Uitnodiging accepteren | 2 | 1 | read invitation (exists-check rules) + read voor merge; write status-update |
-| Membership claimen | 3 | 1 | read org (exists-check), read invitation (role/status), read voor merge; write membership |
+| Membership claimen | 3 | 2 | read org (exists-check), read invitation (role/status), read voor merge; atomaire batch met membership + invitation `claimed` |
 | Intrekking (revoke) | 0 | 1 | `updateDoc` status-only |
-| Totaal typische sessie (load + edit × 2 + invite + accept + claim) | ~14 | ~6 | — |
+| Totaal typische sessie (load + edit × 2 + invite + accept + claim) | ~14 | ~7 | — |
 
 **Toelichting op de telling:** de teller in `reads-writes-accounting.spec.ts` registreert alleen
 client-zijdige SDK-aanroepen (`getDoc`/`setDoc`). Rules-interne `get()`/`exists()`-aanroepen voor
@@ -61,7 +62,9 @@ Elke write op settings/roster kost 1–3 extra Rules-reads (membership, eventuee
 De tabeltelling is daarmee een onderschatting van de werkelijke serverbelasting.
 
 **Spark-quotaruimte (gratis plan):** 50.000 reads/dag, 20.000 writes/dag, 1 GB opslag.
-50.000 ÷ 14 client-reads ≈ **~3.500 wedstrijdsessies/dag** op Spark-quota — ruim voor de pilotfase.
+50.000 ÷ 14 client-reads ≈ **~3.500 wedstrijdsessies/dag als theoretische client-call-bovengrens**.
+Omdat Rules-reads daarin ontbreken, ligt de werkelijke capaciteit lager. Voor de pilot is
+**>1.000 typische sessies/dag** een bewust conservatieve werkhypothese, geen gemeten garantie.
 
 ---
 
@@ -144,14 +147,14 @@ bij het instellen van de owner-rol. De uitnodigings-create-regel eist dat alleen
 was verwijderd. De Rules-create-check voor membership eiste alleen `status == 'accepted'`, zonder
 te registreren dat de uitnodiging al was verbruikt.
 
-**Hersteld:** Nieuwe `allow update`-regel toegevoegd in `invitations/{invitationId}` waarmee
-de uitgenodigde zelf de uitnodiging van `accepted` → `claimed` kan zetten (raakt alleen
-`status` + `claimedAt`). Verplichte stap in de claim-flow: na het aanmaken van het membership
-voert de client ook deze update uit. Daarna blokkeert de membership-create-rule een herhaalde
-claim omdat `status == 'claimed'` (niet `'accepted'`).
+**Hersteld en bij herreview aangescherpt:** De membership-create en de uitnodigingsupdate van
+`accepted` → `claimed` moeten in dezelfde Firestore-batch staan. De Rules koppelen beide writes
+met `getAfter()`/`existsAfter()`: een losse membership-write en een losse claimed-update falen.
+Daarmee kan een client de tweede stap niet overslaan. Na de batch blokkeert `status == 'claimed'`
+een herhaalde claim.
 
-Bewijzende test toegevoegd: `tests/rules/invitation-flow.spec.ts` — "uitgebruikte uitnodiging
-blokkeert herinstroom" (4-staps scenario: claim → mark claimed → owner deletes → her-claim assertFails).
+Bewijzende tests in `tests/rules/invitation-flow.spec.ts`: losse membership-write faalt; atomaire
+batch slaagt; na owner-delete faalt ook een volledige replay-batch.
 
 ### 5.7 subscribe() toont geen DEFAULT_SETTINGS meer voor niet-bestaande documenten (tweede correctieronde)
 
@@ -181,7 +184,7 @@ PR 5.3.**
 
 | Aspect | Status | Bevinding |
 |---|---|---|
-| Spark-quotaruimte | ✅ ruim | ~3.500 wedstrijdsessies/dag op vrije Spark-quota (50.000 reads ÷ ~14 reads/sessie) |
+| Spark-quotaruimte | ✅ ruim voor pilot | >1.000 typische sessies/dag als conservatieve werkhypothese; ~3.500 is alleen de client-call-bovengrens en sluit Rules-reads uit |
 | Regio / AVG | ✅ geaccepteerd | Firestore `eur3` (EU), Auth-metadata mogelijk buiten EU — door eigenaar geaccepteerd in ADR-001 |
 | Export / dataportabiliteit | ✅ haalbaar | Firestore `gcloud firestore export` naar GCS; geen lock-in op documentvorm |
 | Verwijdering | ✅ haalbaar | Firestore `delete()` per document; cascadering voor subcollecties via Admin SDK |
@@ -229,9 +232,8 @@ Openstaande punten die Fase 5 (niet deze spike) moet adresseren:
    naar async of sync-over-async-cache-brug vereist een bewuste keuze van de eigenaar.
 2. **`subscribeSettings()` laadtoestand (PR 5.3):** Subscribe emitteert nu niets voor
    niet-bestaande documenten — productie-UI moet een expliciete laadindicator implementeren.
-3. **Invitation `claimed`-stap client-side (PR 5.3):** Claim-flow vereist twee schrijfoperaties
-   (setDoc membership + updateDoc invitation); productie-implementatie moet dit atomair of
-   gegarandeerd uitvoeren (bv. via Firestore-transactie of gecontroleerde error-afhandeling).
+3. **Invitation claim-batch client-side (PR 5.3):** Claim-flow vereist één Firestore-batch met
+   twee writes (membership + invitation `claimed`); losse writes worden door de Rules afgewezen.
 4. **Roster-normalisatie (Fase 7):** Eén document vs. subcollectie per speler.
 5. **Index-review voor contextwisselaar-query (PR 5.1/5.2):** Nog niet gemodelleerd.
 6. **Bootstrap-mechanisme eigenaar-bevestiging:** `createdBy`-gebaseerde Rules-check is
@@ -263,13 +265,13 @@ Na eerste correctieronde (admin→owner-beveiliging + intrekkingstest strict + u
 | Playwright e2e | 2 | 3 (+1: nooit-gecachte-context-offline) |
 | **Totaal** | **8** | **45** |
 
-Na tweede correctieronde (TS2532-fix, replay-blokkade, subscribe()-fix, playwright-pad, engines):
+Na herreviewcorrectie (atomaire replay-blokkade, type-check in `spike:verify`):
 
 | Suite | Testbestanden | Tests |
 |---|---|---|
-| Vitest rules | 6 | 43 (+1: replay-blokkade in invitation-flow) |
+| Vitest rules | 6 | 45 (+2: losse membership- en losse claimed-write falen) |
 | Playwright e2e | 2 | 3 (ongewijzigd; bestaande test uitgebreid met subscribe-emitCount-assertie) |
-| **Totaal** | **8** | **46** |
+| **Totaal** | **8** | **48** |
 
 Duur rules-suite (initieel): ~5–6 s. Duur e2e-suite (initieel): ~7 s.
 

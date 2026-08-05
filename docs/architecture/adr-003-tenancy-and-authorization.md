@@ -2,7 +2,7 @@
 
 ## Status
 
-**Geaccepteerd — 5 augustus 2026.** De openstaande vraag uit het concept is door de projecteigenaar beantwoord; zie §"Besluit van de eigenaar".
+**Geaccepteerd — 5 augustus 2026.** De openstaande vraag uit het concept is door de projecteigenaar beantwoord; zie §"Besluit van de eigenaar". In PR 4.4 is de claimstap aangescherpt tot een door Security Rules afgedwongen atomaire batch, zodat een uitnodiging niet kan worden hergebruikt nadat een membership is verwijderd.
 
 Voert PR 4.3 uit zoals gescoped in `docs/IMPLEMENTATION_PLAN.md` §9, en bouwt voort op [ADR-001](./adr-001-cloud-data-platform.md) (backend: Firebase) en [ADR-002](./adr-002-offline-sync-strategy.md) (offline-synccontract: append-only acties, altijd met organisatie/teamcontext). Dit ADR legt vast **wie wat mag** — de laatste van de drie fase-4-ADR's vóór de begrensde spike (PR 4.4).
 
@@ -57,23 +57,25 @@ Dit is het kernontwerp dat PR 4.3 expliciet vereist te bewijzen of te motiveren.
 organizations/{organizationId}/invitations/{invitationId}
   email: string          // genormaliseerd, lowercase
   role: string            // toegekende rol bij acceptatie
-  status: "pending" | "accepted" | "revoked"
+  status: "pending" | "accepted" | "claimed" | "revoked"
   invitedBy: uid
   invitedAt: timestamp
   acceptedAt: timestamp | null
+  claimedAt: timestamp | null
 ```
 
 ### Rules-ontwerp (in pseudocode, uit te werken als daadwerkelijke `firestore.rules` in PR 5.1)
 
 1. **Aanmaken van een uitnodiging** (`invitations/{invitationId}`, create): alleen toegestaan als `request.auth` een bestaand `organizationMembers/{uid}`-document heeft met rol `organizationOwner` of `organizationAdmin` in dezelfde organisatie. `email` en `role` worden bij aanmaak vastgelegd; `status` moet `"pending"` zijn.
 2. **Accepteren van een uitnodiging** (`invitations/{invitationId}`, update): alleen toegestaan als `request.auth.token.email` gelijk is aan `resource.data.email` (Firebase Authentication's e-mailverificatie is hier het vertrouwde anker) én de wijziging **uitsluitend** `status` (naar `"accepted"`) en `acceptedAt` raakt — geen enkel ander veld, zeker niet `role`.
-3. **Aanmaken van het membership** (`organizationMembers/{uid}`, create): alleen toegestaan als:
+3. **Membership atomair claimen** (`organizationMembers/{uid}` create + `invitations/{invitationId}` update in één Firestore-batch): alleen toegestaan als:
    - `request.auth.uid == uid` (je kunt uitsluitend je eigen membershipdocument aanmaken, nooit dat van een ander — dit is de kern van "geen self-grant voor een ander");
    - er een `invitations/{invitationId}`-document bestaat in dezelfde organisatie met `email == request.auth.token.email` en `status == "accepted"`;
    - `request.resource.data.role == invitation.data.role` — de geclaimde rol moet exact overeenkomen met wat de uitnodiging toekende; een gebruiker kan zichzelf dus nooit een hogere rol geven dan waarvoor hij is uitgenodigd.
-4. **Wijzigen/verwijderen van andermans membership** (rol aanpassen, toegang intrekken): alleen toegestaan voor een aanvrager met rol `organizationOwner` of `organizationAdmin` in dezelfde organisatie — nooit door de gebruiker zelf op zijn eigen document (voorkomt self-promotion via een update-pad in plaats van create).
+   - de uitnodiging in dezelfde batch van `accepted` naar `claimed` gaat en uitsluitend `status` en `claimedAt` wijzigt; Rules gebruiken `getAfter()`/`existsAfter()` om beide writes te koppelen. Een losse membership-write of losse claimed-update wordt geweigerd.
+4. **Wijzigen/verwijderen van andermans membership** (rol aanpassen, toegang intrekken): alleen toegestaan voor een owner/admin in dezelfde organisatie, nooit door de gebruiker zelf. Een admin mag een bestaande owner niet wijzigen/verwijderen en niemand naar `organizationOwner` promoveren; alleen een owner mag owner-rollen beheren.
 
-Dit ontwerp heeft geen Cloud Function nodig: elke stap is een Rules-`get()`/`exists()`-check op een voorspelbaar pad (het eigen uid, of een specifiek invitation-ID dat de client al kent uit de uitnodigings-e-mail/-link). Er is geen stap die serverlogica vereist zoals het automatisch aanmaken van het membership namens de gebruiker.
+Dit ontwerp heeft geen Cloud Function nodig: elke stap is een Rules-`get()`/`exists()`/`getAfter()`-check op een voorspelbaar pad (het eigen uid, of een specifiek invitation-ID dat de client al kent uit de uitnodigings-e-mail/-link). Er is geen stap die serverlogica vereist zoals het automatisch aanmaken van het membership namens de gebruiker.
 
 **Bekende beperking, expliciet geaccepteerd voor v1**: dit ontwerp vertrouwt op Firebase Authentication's e-mailverificatie (`request.auth.token.email`) als anker. Een gebruiker die zijn e-mailadres nog niet heeft geverifieerd, zou in theorie een uitnodiging voor een ander (nog niet geregistreerd) e-mailadres kunnen proberen te claimen als hij dat adres later zelf verifieert. **Mitigatie**: Rules vereisen aanvullend `request.auth.token.email_verified == true` voor stap 2 (accepteren). Dit wordt in PR 5.1 als expliciete Emulator-test opgenomen (positief: geverifieerd e-mailadres kan accepteren; negatief: ongeverifieerd e-mailadres kan niet).
 

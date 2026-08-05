@@ -2,11 +2,11 @@
 // - aanmaken: alleen owner/admin, niet coach/scorer/viewer;
 // - accepteren: geverifieerde e-mail van de uitgenodigde, alleen status+acceptedAt;
 // - negatief accepteren: verkeerde e-mail, niet-geverifieerd, al geaccepteerd;
-// - membership claimen: uid moet matchen, rol moet matchen;
+// - membership claimen: uid/rol moeten matchen en membership+claimed-update zijn atomair;
 // - ingetrokken-vóór-acceptatie blokkeert claim.
 
 import { beforeAll, afterAll, beforeEach, describe, it } from 'vitest';
-import { doc, setDoc, updateDoc, deleteDoc, getDoc } from 'firebase/firestore';
+import { doc, setDoc, updateDoc, deleteDoc, getDoc, writeBatch } from 'firebase/firestore';
 import type { RulesTestEnvironment } from '@firebase/rules-unit-testing';
 import {
   createTestEnv, assertSucceeds, assertFails, authCtx, withAdmin,
@@ -230,22 +230,50 @@ describe('membership claimen na acceptatie', () => {
     });
   });
 
-  it('grace mag haar eigen membership aanmaken met de juiste rol', async () => {
+  it('grace mag membership en claimed-status atomair aanmaken met de juiste rol', async () => {
     const db = authCtx(env, USERS.grace.uid, {
       email: USERS.grace.email,
       email_verified: true,
     });
-    await assertSucceeds(
-      setDoc(
-        doc(db, 'organizations', ORG_A, 'organizationMembers', USERS.grace.uid),
-        {
-          role: 'viewer',
-          email: USERS.grace.email,
-          invitationId: INV_ID,
-          joinedAt: new Date(),
-        },
-      ),
-    );
+    const batch = writeBatch(db);
+    batch.set(doc(db, 'organizations', ORG_A, 'organizationMembers', USERS.grace.uid), {
+      role: 'viewer',
+      email: USERS.grace.email,
+      invitationId: INV_ID,
+      joinedAt: new Date(),
+    });
+    batch.update(doc(db, 'organizations', ORG_A, 'invitations', INV_ID), {
+      status: 'claimed',
+      claimedAt: new Date(),
+    });
+    await assertSucceeds(batch.commit());
+  });
+
+  it('grace mag membership NIET los aanmaken zonder de uitnodiging atomair te claimen', async () => {
+    const db = authCtx(env, USERS.grace.uid, {
+      email: USERS.grace.email,
+      email_verified: true,
+    });
+    await assertFails(setDoc(
+      doc(db, 'organizations', ORG_A, 'organizationMembers', USERS.grace.uid),
+      {
+        role: 'viewer',
+        email: USERS.grace.email,
+        invitationId: INV_ID,
+        joinedAt: new Date(),
+      },
+    ));
+  });
+
+  it('grace mag de uitnodiging NIET los claimen zonder atomair membership aan te maken', async () => {
+    const db = authCtx(env, USERS.grace.uid, {
+      email: USERS.grace.email,
+      email_verified: true,
+    });
+    await assertFails(updateDoc(
+      doc(db, 'organizations', ORG_A, 'invitations', INV_ID),
+      { status: 'claimed', claimedAt: new Date() },
+    ));
   });
 
   it('grace mag GEEN hogere rol claimen dan de uitnodiging toekende', async () => {
@@ -253,17 +281,18 @@ describe('membership claimen na acceptatie', () => {
       email: USERS.grace.email,
       email_verified: true,
     });
-    await assertFails(
-      setDoc(
-        doc(db, 'organizations', ORG_A, 'organizationMembers', USERS.grace.uid),
-        {
-          role: 'organizationOwner', // uitnodiging gaf 'viewer'
-          email: USERS.grace.email,
-          invitationId: INV_ID,
-          joinedAt: new Date(),
-        },
-      ),
-    );
+    const batch = writeBatch(db);
+    batch.set(doc(db, 'organizations', ORG_A, 'organizationMembers', USERS.grace.uid), {
+      role: 'organizationOwner', // uitnodiging gaf 'viewer'
+      email: USERS.grace.email,
+      invitationId: INV_ID,
+      joinedAt: new Date(),
+    });
+    batch.update(doc(db, 'organizations', ORG_A, 'invitations', INV_ID), {
+      status: 'claimed',
+      claimedAt: new Date(),
+    });
+    await assertFails(batch.commit());
   });
 
   it('erin mag het membership NIET claimen met grace\'s uitnodiging (uid mismatch)', async () => {
@@ -272,17 +301,18 @@ describe('membership claimen na acceptatie', () => {
       email_verified: true,
     });
     // Erin probeert grace's invitation te gebruiken voor haar eigen uid.
-    await assertFails(
-      setDoc(
-        doc(db, 'organizations', ORG_A, 'organizationMembers', USERS.erin.uid),
-        {
-          role: 'viewer',
-          email: USERS.erin.email,
-          invitationId: INV_ID, // dit is grace's invitation
-          joinedAt: new Date(),
-        },
-      ),
-    );
+    const batch = writeBatch(db);
+    batch.set(doc(db, 'organizations', ORG_A, 'organizationMembers', USERS.erin.uid), {
+      role: 'viewer',
+      email: USERS.erin.email,
+      invitationId: INV_ID, // dit is grace's invitation
+      joinedAt: new Date(),
+    });
+    batch.update(doc(db, 'organizations', ORG_A, 'invitations', INV_ID), {
+      status: 'claimed',
+      claimedAt: new Date(),
+    });
+    await assertFails(batch.commit());
   });
 });
 
@@ -303,17 +333,18 @@ describe('ingetrokken uitnodiging blokkeert claim', () => {
       email: USERS.henry.email,
       email_verified: true,
     });
-    await assertFails(
-      setDoc(
-        doc(db, 'organizations', ORG_A, 'organizationMembers', USERS.henry.uid),
-        {
-          role: 'coach',
-          email: USERS.henry.email,
-          invitationId: 'inv-henry',
-          joinedAt: new Date(),
-        },
-      ),
-    );
+    const batch = writeBatch(db);
+    batch.set(doc(db, 'organizations', ORG_A, 'organizationMembers', USERS.henry.uid), {
+      role: 'coach',
+      email: USERS.henry.email,
+      invitationId: 'inv-henry',
+      joinedAt: new Date(),
+    });
+    batch.update(doc(db, 'organizations', ORG_A, 'invitations', 'inv-henry'), {
+      status: 'claimed',
+      claimedAt: new Date(),
+    });
+    await assertFails(batch.commit());
   });
 });
 
@@ -329,33 +360,31 @@ describe('uitgebruikte uitnodiging blokkeert herinstroom (replay-blokkade)', () 
 
     const graceDb = authCtx(env, USERS.grace.uid, { email: USERS.grace.email, email_verified: true });
 
-    // Stap 1: grace claimt membership.
-    await assertSucceeds(
-      setDoc(doc(graceDb, 'organizations', ORG_A, 'organizationMembers', USERS.grace.uid), {
-        role: 'viewer', email: USERS.grace.email, invitationId: INV_ID, joinedAt: new Date(),
-      }),
-    );
+    // Stap 1: grace claimt membership en uitnodiging in één atomaire batch.
+    const claimBatch = writeBatch(graceDb);
+    claimBatch.set(doc(graceDb, 'organizations', ORG_A, 'organizationMembers', USERS.grace.uid), {
+      role: 'viewer', email: USERS.grace.email, invitationId: INV_ID, joinedAt: new Date(),
+    });
+    claimBatch.update(doc(graceDb, 'organizations', ORG_A, 'invitations', INV_ID), {
+      status: 'claimed', claimedAt: new Date(),
+    });
+    await assertSucceeds(claimBatch.commit());
 
-    // Stap 2: grace markeert uitnodiging als geclaimd (verplichte claim-stap per Rules-contract).
-    await assertSucceeds(
-      updateDoc(doc(graceDb, 'organizations', ORG_A, 'invitations', INV_ID), {
-        status: 'claimed', claimedAt: new Date(),
-      }),
-    );
-
-    // Stap 3: owner (alice) trekt het membership in.
+    // Stap 2: owner (alice) trekt het membership in.
     const aliceDb = authCtx(env, USERS.alice.uid, { email: USERS.alice.email, email_verified: true });
     await assertSucceeds(
       deleteDoc(doc(aliceDb, 'organizations', ORG_A, 'organizationMembers', USERS.grace.uid)),
     );
 
-    // Stap 4: grace probeert dezelfde uitnodiging opnieuw te gebruiken — moet mislukken.
-    // Uitnodiging heeft status 'claimed' (niet 'accepted'), dus de claim-rule wijst af.
-    await assertFails(
-      setDoc(doc(graceDb, 'organizations', ORG_A, 'organizationMembers', USERS.grace.uid), {
-        role: 'viewer', email: USERS.grace.email, invitationId: INV_ID, joinedAt: new Date(),
-      }),
-    );
+    // Stap 3: grace probeert dezelfde atomaire claim opnieuw — moet mislukken.
+    const replayBatch = writeBatch(graceDb);
+    replayBatch.set(doc(graceDb, 'organizations', ORG_A, 'organizationMembers', USERS.grace.uid), {
+      role: 'viewer', email: USERS.grace.email, invitationId: INV_ID, joinedAt: new Date(),
+    });
+    replayBatch.update(doc(graceDb, 'organizations', ORG_A, 'invitations', INV_ID), {
+      status: 'claimed', claimedAt: new Date(),
+    });
+    await assertFails(replayBatch.commit());
   });
 });
 

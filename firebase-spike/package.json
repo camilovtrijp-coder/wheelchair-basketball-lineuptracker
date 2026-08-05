@@ -14,7 +14,7 @@
     "test:e2e": "playwright test",
     "test:e2e:install": "playwright install chromium",
     "emulators": "firebase emulators:start --project demo-lineup-tracker-spike",
-    "spike:verify": "firebase emulators:exec --project demo-lineup-tracker-spike --only firestore,auth \"npm run seed && npm run test:rules && npm run seed && npm run test:e2e\""
+    "spike:verify": "npm run type-check && firebase emulators:exec --project demo-lineup-tracker-spike --only firestore,auth \"npm run seed && npm run test:rules && npm run seed && npm run test:e2e\""
   },
   "dependencies": {
     "firebase": "^12.17.1"
