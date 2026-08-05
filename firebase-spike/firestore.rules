@@ -1,0 +1,137 @@
+rules_version = '2';
+
+// PR 4.4 — begrensde Firebase-spike. Bewijst ADR-003's Rules-only-uitnodigingsflow en
+// organisatie-/team-/rolgebonden autorisatie voor uitsluitend settings/roster (fase-4-scope).
+// Wedstrijd-/actiepaden (games/actions/seasons) zijn NIET gedefinieerd → default-deny (Fase 7).
+//
+// Expliciete ontwerpkeuzes die ADR-003 openlaat (gedocumenteerd in docs/SPIKE_REPORT.md):
+//  1. rolopslag: organizationMembers/{uid}.role is bron van waarheid op org-niveau;
+//     teamMembers/{uid}.role is een gedenormaliseerde kopie — voorkomt extra get() per team-rule.
+//  2. organizationOwner/organizationAdmin krijgen impliciet toegang tot alle teams zonder
+//     een los teamMembers-document; coach/scorer/viewer hebben een expliciet teamMembers-doc nodig.
+//  3. Bootstrap van eerste organisatie: organizations.createdBy + een Rules-get()-check.
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    function orgMemberPath(orgId) {
+      return /databases/$(database)/documents/organizations/$(orgId)/organizationMembers/$(request.auth.uid);
+    }
+
+    function isOrgMember(orgId) {
+      return signedIn() && exists(orgMemberPath(orgId));
+    }
+
+    function orgRole(orgId) {
+      return get(orgMemberPath(orgId)).data.role;
+    }
+
+    function isOrgOwnerOrAdmin(orgId) {
+      return isOrgMember(orgId) && orgRole(orgId) in ['organizationOwner', 'organizationAdmin'];
+    }
+
+    function teamMemberPath(orgId, teamId) {
+      return /databases/$(database)/documents/organizations/$(orgId)/teams/$(teamId)/teamMembers/$(request.auth.uid);
+    }
+
+    function isTeamMember(orgId, teamId) {
+      return signedIn() && exists(teamMemberPath(orgId, teamId));
+    }
+
+    function teamRole(orgId, teamId) {
+      return get(teamMemberPath(orgId, teamId)).data.role;
+    }
+
+    function canReadTeam(orgId, teamId) {
+      return isOrgMember(orgId) || isTeamMember(orgId, teamId);
+    }
+
+    function canManageTeamData(orgId, teamId) {
+      return isOrgOwnerOrAdmin(orgId) ||
+        (isTeamMember(orgId, teamId) && teamRole(orgId, teamId) == 'coach');
+    }
+
+    function invRef(orgId, invId) {
+      return /databases/$(database)/documents/organizations/$(orgId)/invitations/$(invId);
+    }
+
+    // ---- organizations/{orgId} ----
+    match /organizations/{orgId} {
+      allow create: if signedIn() && request.resource.data.createdBy == request.auth.uid;
+      allow read:   if isOrgMember(orgId);
+      allow update, delete: if isOrgMember(orgId) && orgRole(orgId) == 'organizationOwner';
+
+      // ---- organizationMembers/{uid} ----
+      match /organizationMembers/{uid} {
+        allow read: if isOrgMember(orgId);
+
+        // Bootstrap: maker van de org claimt zijn eigen owner-membership.
+        allow create: if signedIn() && request.auth.uid == uid &&
+          request.resource.data.role == 'organizationOwner' &&
+          get(/databases/$(database)/documents/organizations/$(orgId)).data.createdBy == request.auth.uid;
+
+        // Join via geaccepteerde uitnodiging — rol moet exact overeenkomen (geen self-upgrade).
+        allow create: if signedIn() && request.auth.uid == uid &&
+          request.resource.data.invitationId is string &&
+          get(invRef(orgId, request.resource.data.invitationId)).data.status == 'accepted' &&
+          get(invRef(orgId, request.resource.data.invitationId)).data.email == request.auth.token.email &&
+          get(invRef(orgId, request.resource.data.invitationId)).data.role == request.resource.data.role;
+
+        // Alleen owner/admin wijzigt/verwijdert andermans membership — nooit het eigen document.
+        allow update, delete: if isOrgOwnerOrAdmin(orgId) && request.auth.uid != uid;
+      }
+
+      // ---- invitations/{invitationId} ----
+      match /invitations/{invitationId} {
+        allow create: if isOrgOwnerOrAdmin(orgId) &&
+          request.resource.data.status == 'pending' &&
+          request.resource.data.invitedBy == request.auth.uid;
+
+        // Intrekken (owner/admin): alleen statusveld naar 'revoked'.
+        allow update: if isOrgOwnerOrAdmin(orgId) &&
+          request.resource.data.status == 'revoked' &&
+          request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status']);
+
+        // Accepteren: geverifieerde e-mail van de uitgenodigde; raakt alleen status + acceptedAt.
+        allow update: if signedIn() &&
+          request.auth.token.email == resource.data.email &&
+          request.auth.token.email_verified == true &&
+          resource.data.status == 'pending' &&
+          request.resource.data.status == 'accepted' &&
+          request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'acceptedAt']);
+
+        allow read: if isOrgOwnerOrAdmin(orgId) ||
+          (signedIn() && request.auth.token.email == resource.data.email);
+      }
+
+      // ---- teams/{teamId} ----
+      match /teams/{teamId} {
+        allow create: if isOrgOwnerOrAdmin(orgId) &&
+          request.resource.data.createdBy == request.auth.uid;
+        allow read:   if canReadTeam(orgId, teamId);
+        allow update, delete: if isOrgOwnerOrAdmin(orgId);
+
+        match /teamMembers/{uid} {
+          allow read: if canReadTeam(orgId, teamId);
+          allow create, update, delete: if isOrgOwnerOrAdmin(orgId);
+        }
+
+        // Één settings-document per team: settings/current.
+        match /settings/{settingsId} {
+          allow read:  if canReadTeam(orgId, teamId);
+          allow write: if settingsId == 'current' && canManageTeamData(orgId, teamId);
+        }
+
+        // Één roster-document per team: roster/current (volledige array, zie SPIKE_REPORT.md).
+        match /roster/{rosterId} {
+          allow read:  if canReadTeam(orgId, teamId);
+          allow write: if rosterId == 'current' && canManageTeamData(orgId, teamId);
+        }
+      }
+    }
+  }
+}
