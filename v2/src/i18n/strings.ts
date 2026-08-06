@@ -99,6 +99,30 @@ const nl = {
   stateContextRevokedTitle: 'Geen toegang meer',
   stateContextRevokedBody: 'Je toegang tot deze organisatie of dit team is ingetrokken.',
   stateContextRevokedBackBtn: 'Terug naar organisatie-overzicht',
+
+  authVerifyEmailTitle: 'Bevestig je e-mailadres',
+  authVerifyEmailBody:
+    'We hebben een bevestigingslink naar je e-mailadres gestuurd. Bevestig je e-mailadres om deze uitnodiging te accepteren.',
+  authResendVerificationBtn: 'Verificatiemail opnieuw versturen',
+
+  invitationLoginHint:
+    'Log in of maak een account aan met het e-mailadres waarop je bent uitgenodigd.',
+  invitationNotFoundTitle: 'Uitnodiging niet gevonden',
+  invitationNotFoundBody:
+    'Deze uitnodiging bestaat niet (meer), of je hebt er geen toegang toe met dit account.',
+  invitationRevokedTitle: 'Uitnodiging ingetrokken',
+  invitationRevokedBody:
+    'Deze uitnodiging is ingetrokken. Vraag de beheerder om een nieuwe uitnodiging.',
+  invitationAcceptTitle: 'Uitnodiging accepteren',
+  invitationPendingBody: 'Je bent uitgenodigd met rol:',
+  invitationAcceptBtn: 'Uitnodiging accepteren',
+  invitationClaimTitle: 'Lidmaatschap voltooien',
+  invitationAcceptedBody:
+    'Uitnodiging geaccepteerd. Voltooi je lidmaatschap om toegang te krijgen.',
+  invitationClaimBtn: 'Lidmaatschap voltooien',
+  invitationAlreadyClaimedTitle: 'Al voltooid',
+  invitationAlreadyClaimedBody: 'Deze uitnodiging is al gebruikt. Log in om toegang te krijgen.',
+  invitationDismissBtn: 'Doorgaan',
 } as const;
 
 const en = {
@@ -195,6 +219,27 @@ const en = {
   stateContextRevokedTitle: 'No longer have access',
   stateContextRevokedBody: 'Your access to this organization or team has been revoked.',
   stateContextRevokedBackBtn: 'Back to organization overview',
+
+  authVerifyEmailTitle: 'Verify your email address',
+  authVerifyEmailBody:
+    "We've sent a verification link to your email address. Verify it to accept this invitation.",
+  authResendVerificationBtn: 'Resend verification email',
+
+  invitationLoginHint: 'Log in or create an account with the email address you were invited with.',
+  invitationNotFoundTitle: 'Invitation not found',
+  invitationNotFoundBody:
+    "This invitation doesn't exist (anymore), or you don't have access to it with this account.",
+  invitationRevokedTitle: 'Invitation revoked',
+  invitationRevokedBody: 'This invitation has been revoked. Ask your admin for a new invitation.',
+  invitationAcceptTitle: 'Accept invitation',
+  invitationPendingBody: "You've been invited with role:",
+  invitationAcceptBtn: 'Accept invitation',
+  invitationClaimTitle: 'Complete membership',
+  invitationAcceptedBody: 'Invitation accepted. Complete your membership to get access.',
+  invitationClaimBtn: 'Complete membership',
+  invitationAlreadyClaimedTitle: 'Already completed',
+  invitationAlreadyClaimedBody: 'This invitation has already been used. Log in to get access.',
+  invitationDismissBtn: 'Continue',
 } as const;
 
 export const STRINGS = { nl, en } as const;

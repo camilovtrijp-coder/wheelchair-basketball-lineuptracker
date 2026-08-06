@@ -12,13 +12,22 @@ export interface AuthFormProps {
   mode: AuthFormMode;
   onSubmit: (email: string, password: string) => Promise<AuthResult>;
   onSwitchMode: () => void;
+  /** Bijv. gebruikt om aan te geven dat er een uitnodiging wacht op dit inlog-/registratiemoment. */
+  banner?: string;
 }
 
 function t(lang: Lang, key: StringKey): string {
   return translate(lang, key);
 }
 
-export function AuthForm({ lang, onSwitchLang, mode, onSubmit, onSwitchMode }: AuthFormProps) {
+export function AuthForm({
+  lang,
+  onSwitchLang,
+  mode,
+  onSubmit,
+  onSwitchMode,
+  banner,
+}: AuthFormProps) {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [submitting, setSubmitting] = useState(false);
@@ -61,6 +70,11 @@ export function AuthForm({ lang, onSwitchLang, mode, onSubmit, onSwitchMode }: A
         </div>
       </header>
       <main className="app-main">
+        {banner ? (
+          <p className="auth-form__banner" data-testid="auth-invitation-banner">
+            {banner}
+          </p>
+        ) : null}
         <form className="auth-form" onSubmit={handleSubmit}>
           <label className="auth-form__field">
             {t(lang, 'authEmailLabel')}

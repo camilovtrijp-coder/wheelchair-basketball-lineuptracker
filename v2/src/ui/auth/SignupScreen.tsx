@@ -7,9 +7,16 @@ export interface SignupScreenProps {
   onSwitchLang: (lang: Lang) => void;
   onSubmit: (email: string, password: string) => Promise<AuthResult>;
   onSwitchToLogin: () => void;
+  banner?: string;
 }
 
-export function SignupScreen({ lang, onSwitchLang, onSubmit, onSwitchToLogin }: SignupScreenProps) {
+export function SignupScreen({
+  lang,
+  onSwitchLang,
+  onSubmit,
+  onSwitchToLogin,
+  banner,
+}: SignupScreenProps) {
   return (
     <AuthForm
       lang={lang}
@@ -17,6 +24,7 @@ export function SignupScreen({ lang, onSwitchLang, onSubmit, onSwitchToLogin }: 
       mode="signup"
       onSubmit={onSubmit}
       onSwitchMode={onSwitchToLogin}
+      banner={banner}
     />
   );
 }

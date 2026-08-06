@@ -15,6 +15,11 @@ import {
   writeSelectedContext,
 } from '../infrastructure/context/selectedContext';
 import {
+  clearInvitationLinkFromUrl,
+  parseInvitationLink,
+  type InvitationLinkParams,
+} from '../infrastructure/invitations/invitationLink';
+import {
   getFirestoreDb,
   initFirebase,
   reinitFirestoreForTrustLevel,
@@ -30,6 +35,8 @@ import { ContextRevokedScreen } from '../ui/status/ContextRevokedScreen';
 import { NoOrganizationsScreen } from '../ui/onboarding/NoOrganizationsScreen';
 import { ContextSwitcher } from '../ui/context/ContextSwitcher';
 import { SessionBar } from '../ui/context/SessionBar';
+import { AcceptInvitationScreen } from '../ui/invitations/AcceptInvitationScreen';
+import { translate } from '../i18n/strings';
 import { App } from './App';
 
 function initialLang(): Lang {
@@ -42,6 +49,10 @@ function initialLang(): Lang {
 
 function initialOnline(): boolean {
   return typeof navigator === 'undefined' || navigator.onLine;
+}
+
+function initialInvitationLink(): InvitationLinkParams | null {
+  return typeof window === 'undefined' ? null : parseInvitationLink(window.location.search);
 }
 
 export interface AuthGateProps {
@@ -71,6 +82,9 @@ export function AuthGate({ authGateway }: AuthGateProps) {
   const [justSignedUp, setJustSignedUp] = useState(false);
   const [selectedContext, setSelectedContext] = useState<SelectedContext | null>(() =>
     readSelectedContext(browserStorage),
+  );
+  const [pendingInvitationLink, setPendingInvitationLink] = useState<InvitationLinkParams | null>(
+    initialInvitationLink,
   );
 
   useEffect(() => {
@@ -168,8 +182,35 @@ export function AuthGate({ authGateway }: AuthGateProps) {
     setSelectedContext(null);
   }
 
+  function handleInvitationDismiss() {
+    clearInvitationLinkFromUrl();
+    setPendingInvitationLink(null);
+  }
+
+  function handleInvitationResolved() {
+    clearInvitationLinkFromUrl();
+    setPendingInvitationLink(null);
+    // Nieuw membership erbij: forceer een verse listMyMemberships()-call zodat
+    // de contextwisselaar de zojuist geclaimde organisatie direct toont.
+    setMembershipsRefreshKey((key) => key + 1);
+  }
+
   if (authLoading) {
     return <LoadingScreen lang={lang} />;
+  }
+
+  if (authUser && trustedDeviceAnswered && pendingInvitationLink && organizationGateway) {
+    return (
+      <AcceptInvitationScreen
+        lang={lang}
+        authUser={authUser}
+        link={pendingInvitationLink}
+        organizationGateway={organizationGateway}
+        onResolved={handleInvitationResolved}
+        onDismiss={handleInvitationDismiss}
+        onResendVerification={() => authGateway.sendVerificationEmail()}
+      />
+    );
   }
 
   const appState = deriveAppState({
@@ -182,13 +223,17 @@ export function AuthGate({ authGateway }: AuthGateProps) {
   });
 
   switch (appState.kind) {
-    case 'not-logged-in':
+    case 'not-logged-in': {
+      const invitationBanner = pendingInvitationLink
+        ? translate(lang, 'invitationLoginHint')
+        : undefined;
       return mode === 'login' ? (
         <LoginScreen
           lang={lang}
           onSwitchLang={setLang}
           onSubmit={(email, password) => authGateway.signIn(email, password)}
           onSwitchToSignup={() => setMode('signup')}
+          banner={invitationBanner}
         />
       ) : (
         <SignupScreen
@@ -196,8 +241,10 @@ export function AuthGate({ authGateway }: AuthGateProps) {
           onSwitchLang={setLang}
           onSubmit={handleSignUp}
           onSwitchToLogin={() => setMode('login')}
+          banner={invitationBanner}
         />
       );
+    }
 
     case 'trusted-device-prompt':
       return <TrustedDevicePrompt lang={lang} onAnswer={handleTrustedDeviceAnswer} />;

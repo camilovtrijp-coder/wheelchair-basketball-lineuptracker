@@ -347,6 +347,15 @@ button:focus-visible {
   color: var(--lt-color-danger);
 }
 
+.auth-form__banner {
+  margin: 0 0 var(--lt-space-3);
+  padding: var(--lt-space-2) var(--lt-space-3);
+  border-radius: var(--lt-radius-sm);
+  background: var(--lt-color-surface);
+  font-size: var(--lt-font-size-sm);
+  color: var(--lt-color-muted);
+}
+
 .auth-form__switch {
   margin-top: var(--lt-space-3);
   font-size: var(--lt-font-size-sm);
