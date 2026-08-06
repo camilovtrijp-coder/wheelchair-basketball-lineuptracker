@@ -6,9 +6,14 @@ import type { Lang } from '../i18n/strings';
 import type { AuthGateway, AuthResult } from '../application/auth/AuthGateway';
 import type { OrganizationGateway } from '../application/organizations/OrganizationGateway';
 import type { AuthUser } from '../domain/auth/types';
-import type { Membership } from '../domain/organizations/types';
+import type { Membership, SelectedContext } from '../domain/organizations/types';
 import { deriveAppState } from '../domain/organizations/deriveAppState';
 import { readTrustedDevice, writeTrustedDevice } from '../infrastructure/device/trustedDevice';
+import {
+  clearSelectedContext,
+  readSelectedContext,
+  writeSelectedContext,
+} from '../infrastructure/context/selectedContext';
 import {
   getFirestoreDb,
   initFirebase,
@@ -19,9 +24,12 @@ import { FirestoreOrganizationGateway } from '../infrastructure/organizations/Fi
 import { LoginScreen } from '../ui/auth/LoginScreen';
 import { SignupScreen } from '../ui/auth/SignupScreen';
 import { TrustedDevicePrompt } from '../ui/auth/TrustedDevicePrompt';
-import { SignOutBar } from '../ui/auth/SignOutBar';
 import { LoadingScreen } from '../ui/status/LoadingScreen';
+import { OfflineUncachedScreen } from '../ui/status/OfflineUncachedScreen';
+import { ContextRevokedScreen } from '../ui/status/ContextRevokedScreen';
 import { NoOrganizationsScreen } from '../ui/onboarding/NoOrganizationsScreen';
+import { ContextSwitcher } from '../ui/context/ContextSwitcher';
+import { SessionBar } from '../ui/context/SessionBar';
 import { App } from './App';
 
 function initialLang(): Lang {
@@ -30,6 +38,10 @@ function initialLang(): Lang {
     typeof navigator !== 'undefined' ? navigator.language : undefined,
     stored,
   );
+}
+
+function initialOnline(): boolean {
+  return typeof navigator === 'undefined' || navigator.onLine;
 }
 
 export interface AuthGateProps {
@@ -43,15 +55,10 @@ type AuthFormMode = 'login' | 'signup';
  * `deriveAppState()` — of die getoond mag worden. Beheert een eigen `lang`-
  * status omdat login/signup-schermen gerenderd worden vóórdat `App` (met
  * zijn eigen `lang`-status) bestaat.
- *
- * `selectedContext` wordt hier nog niet gemodelleerd (dat is stap 7, de
- * echte contextwisselaar met rol per team en offline/ingetrokken-status).
- * Tot die tijd is elke membership voldoende om door te gaan naar `App`
- * (`context-switcher`/`selected-context-revoked`/`active` renderen hier dus
- * allemaal hetzelfde) — bewust een tijdelijke vereenvoudiging, zie stap 7.
  */
 export function AuthGate({ authGateway }: AuthGateProps) {
   const [lang, setLang] = useState<Lang>(initialLang);
+  const [online, setOnline] = useState<boolean>(initialOnline);
   const [authLoading, setAuthLoading] = useState(true);
   const [authUser, setAuthUser] = useState<AuthUser | null>(null);
   const [mode, setMode] = useState<AuthFormMode>('login');
@@ -62,11 +69,29 @@ export function AuthGate({ authGateway }: AuthGateProps) {
   const [memberships, setMemberships] = useState<Membership[] | null>(null);
   const [membershipsRefreshKey, setMembershipsRefreshKey] = useState(0);
   const [justSignedUp, setJustSignedUp] = useState(false);
+  const [selectedContext, setSelectedContext] = useState<SelectedContext | null>(() =>
+    readSelectedContext(browserStorage),
+  );
 
   useEffect(() => {
     document.documentElement.lang = lang;
     writeLang(browserStorage, lang);
   }, [lang]);
+
+  useEffect(() => {
+    function handleOnline() {
+      setOnline(true);
+    }
+    function handleOffline() {
+      setOnline(false);
+    }
+    window.addEventListener('online', handleOnline);
+    window.addEventListener('offline', handleOffline);
+    return () => {
+      window.removeEventListener('online', handleOnline);
+      window.removeEventListener('offline', handleOffline);
+    };
+  }, []);
 
   useEffect(() => {
     return authGateway.subscribe((user) => {
@@ -133,16 +158,26 @@ export function AuthGate({ authGateway }: AuthGateProps) {
     }
   }
 
+  function handleSelectContext(context: SelectedContext) {
+    writeSelectedContext(browserStorage, context);
+    setSelectedContext(context);
+  }
+
+  function handleBackToSwitcher() {
+    clearSelectedContext(browserStorage);
+    setSelectedContext(null);
+  }
+
   if (authLoading) {
     return <LoadingScreen lang={lang} />;
   }
 
   const appState = deriveAppState({
-    online: true, // stap 7 koppelt echte navigator.onLine-detectie
+    online,
     authUser,
     trustedDeviceAnswered,
     memberships,
-    selectedContext: null, // stap 7 voegt echte contextselectie toe
+    selectedContext,
     hasEverHadMemberships: !justSignedUp,
   });
 
@@ -168,9 +203,10 @@ export function AuthGate({ authGateway }: AuthGateProps) {
       return <TrustedDevicePrompt lang={lang} onAnswer={handleTrustedDeviceAnswer} />;
 
     case 'loading':
-    case 'uncached-offline':
-      // Stap 7 onderscheidt deze twee met een expliciete "vraagt om netwerk"-melding.
       return <LoadingScreen lang={lang} />;
+
+    case 'uncached-offline':
+      return <OfflineUncachedScreen lang={lang} />;
 
     case 'no-organizations':
       return (
@@ -183,11 +219,26 @@ export function AuthGate({ authGateway }: AuthGateProps) {
       );
 
     case 'context-switcher':
+      return (
+        <ContextSwitcher
+          lang={lang}
+          memberships={memberships!}
+          organizationGateway={organizationGateway!}
+          onSelect={handleSelectContext}
+        />
+      );
+
     case 'selected-context-revoked':
+      return <ContextRevokedScreen lang={lang} onBackToSwitcher={handleBackToSwitcher} />;
+
     case 'active':
       return (
         <>
-          <SignOutBar lang={lang} onSignOut={handleSignOut} />
+          <SessionBar
+            lang={lang}
+            onSignOut={handleSignOut}
+            onSwitchContext={handleBackToSwitcher}
+          />
           <App />
         </>
       );

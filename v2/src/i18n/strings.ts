@@ -89,6 +89,16 @@ const nl = {
   onboardingOrgNameLabel: 'Naam organisatie',
   onboardingTeamNameLabel: 'Naam eerste team',
   onboardingCreateBtn: 'Organisatie aanmaken',
+
+  contextSwitcherTitle: 'Kies een organisatie en team',
+  contextSwitcherSwitchBtn: 'Wissel van organisatie/team',
+  contextSwitcherTeamsLoading: 'Teams laden…',
+  stateUncachedOfflineTitle: 'Geen verbinding',
+  stateUncachedOfflineBody:
+    'Er is nog geen lokale kopie van je organisaties op dit apparaat. Ga online om verder te gaan.',
+  stateContextRevokedTitle: 'Geen toegang meer',
+  stateContextRevokedBody: 'Je toegang tot deze organisatie of dit team is ingetrokken.',
+  stateContextRevokedBackBtn: 'Terug naar organisatie-overzicht',
 } as const;
 
 const en = {
@@ -175,6 +185,16 @@ const en = {
   onboardingOrgNameLabel: 'Organization name',
   onboardingTeamNameLabel: 'First team name',
   onboardingCreateBtn: 'Create organization',
+
+  contextSwitcherTitle: 'Choose an organization and team',
+  contextSwitcherSwitchBtn: 'Switch organization/team',
+  contextSwitcherTeamsLoading: 'Loading teams…',
+  stateUncachedOfflineTitle: 'No connection',
+  stateUncachedOfflineBody:
+    "There isn't a local copy of your organizations on this device yet. Go online to continue.",
+  stateContextRevokedTitle: 'No longer have access',
+  stateContextRevokedBody: 'Your access to this organization or team has been revoked.',
+  stateContextRevokedBackBtn: 'Back to organization overview',
 } as const;
 
 export const STRINGS = { nl, en } as const;
