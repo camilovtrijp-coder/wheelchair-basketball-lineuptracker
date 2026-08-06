@@ -79,6 +79,16 @@ const nl = {
     'Op een vertrouwd apparaat (bijv. je eigen telefoon of laptop) blijven gegevens lokaal beschikbaar, ook offline. Op een gedeeld apparaat (bijv. een clubtablet) worden je gegevens bij het uitloggen automatisch gewist.',
   trustedDeviceYesBtn: 'Ja, vertrouwd apparaat',
   trustedDeviceNoBtn: 'Nee, gedeeld apparaat',
+
+  onboardingFreshSignupTitle: 'Welkom! Maak je eerste organisatie aan',
+  onboardingFreshSignupBody:
+    'Je hebt nog geen organisatie. Maak er hieronder één aan om te beginnen — je wordt automatisch eigenaar.',
+  onboardingLostMembershipsTitle: 'Geen toegang tot een organisatie',
+  onboardingLostMembershipsBody:
+    'Je hebt momenteel geen toegang meer tot een organisatie. Vraag een beheerder om je opnieuw uit te nodigen, of maak hieronder een nieuwe organisatie aan.',
+  onboardingOrgNameLabel: 'Naam organisatie',
+  onboardingTeamNameLabel: 'Naam eerste team',
+  onboardingCreateBtn: 'Organisatie aanmaken',
 } as const;
 
 const en = {
@@ -155,6 +165,16 @@ const en = {
     'On a trusted device (e.g. your own phone or laptop), data stays available locally, even offline. On a shared device (e.g. a club tablet), your data is automatically wiped when you log out.',
   trustedDeviceYesBtn: 'Yes, trusted device',
   trustedDeviceNoBtn: 'No, shared device',
+
+  onboardingFreshSignupTitle: 'Welcome! Create your first organization',
+  onboardingFreshSignupBody:
+    "You don't have an organization yet. Create one below to get started — you'll automatically become the owner.",
+  onboardingLostMembershipsTitle: 'No access to an organization',
+  onboardingLostMembershipsBody:
+    "You currently don't have access to any organization. Ask an admin to invite you again, or create a new organization below.",
+  onboardingOrgNameLabel: 'Organization name',
+  onboardingTeamNameLabel: 'First team name',
+  onboardingCreateBtn: 'Create organization',
 } as const;
 
 export const STRINGS = { nl, en } as const;
