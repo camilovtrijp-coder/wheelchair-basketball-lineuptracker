@@ -1,0 +1,232 @@
+rules_version = '2';
+
+// PR 5.1 — reproduceerbare Firebase-basis. Vervolg op de begrensde spike (PR 4.4,
+// zie firebase-spike/). Implementeert ADR-003's Rules-only-uitnodigingsflow en
+// organisatie-/team-/rolgebonden autorisatie voor settings/roster (fase-4/5-scope).
+// Wedstrijd-/actiepaden (games/actions/seasons) zijn NIET gedefinieerd → default-deny (Fase 7).
+//
+// Expliciete ontwerpkeuzes, overgenomen uit de spike (zie firebase-spike/docs/SPIKE_REPORT.md):
+//  1. rolopslag: organizationMembers/{uid}.role is bron van waarheid op org-niveau;
+//     teamMembers/{uid}.role is een gedenormaliseerde kopie — voorkomt extra get() per team-rule.
+//  2. organizationOwner/organizationAdmin krijgen impliciet toegang tot alle teams zonder
+//     een los teamMembers-document; coach/scorer/viewer hebben een expliciet teamMembers-doc nodig.
+//  3. Bootstrap van eerste organisatie: organizations.createdBy + een Rules-get()-check.
+//
+// Nieuw in PR 5.1 — oplossing voor issue #28 (querycontract contextwisselaar):
+//  4. organizationMembers/{uid} draagt nu ook een `uid`-veld (gelijk aan de document-ID).
+//     Onderaan staat een APARTE, recursieve-wildcard match
+//     (`match /{path=**}/organizationMembers/{uid}`) die uitsluitend
+//     `resource.data.uid == request.auth.uid` toestaat. Empirisch bleek dit
+//     nodig te zijn: de bestaande geneste match
+//     (`organizations/{orgId}/organizationMembers/{uid}`) governeert directe
+//     GET's/writes prima, maar een `collectionGroup`-LIST-query tegen die
+//     geneste match gaf altijd "No matching allow statements" — ook met een
+//     triviale, puur resource.data-gebaseerde voorwaarde en zonder enige
+//     get()/exists() in de expressie. Firestore lijkt collectionGroup-queries
+//     alleen te autoriseren via een `{path=**}`-recursieve match, niet via een
+//     vaste geneste match, ongeacht de complexiteit van de voorwaarde zelf.
+//     Zie firebase/docs/QUERY_CONTRACT.md voor het volledige, empirisch
+//     beproefde contract.
+//  5. [P1, review-opvolging] De owner/admin-update-regels voor organizationMembers
+//     eisen nu expliciet dat `uid` ongewijzigd blijft (`request.resource.data.uid
+//     == uid == resource.data.uid`). Zonder deze eis kon een update het
+//     querybepalende `uid`-veld laten afwijken van de document-ID, waardoor de
+//     recursieve collectionGroup-regel in punt 4 een membership aan de verkeerde
+//     gebruiker had kunnen tonen (of de echte eigenaar het liet "verdwijnen" uit
+//     diens eigen contextwisselaar-query). Zie
+//     tests/rules/self-promotion.spec.ts voor de bewijzende negatieve tests.
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    function orgMemberPath(orgId) {
+      return /databases/$(database)/documents/organizations/$(orgId)/organizationMembers/$(request.auth.uid);
+    }
+
+    function isOrgMember(orgId) {
+      return signedIn() && exists(orgMemberPath(orgId));
+    }
+
+    function orgRole(orgId) {
+      return get(orgMemberPath(orgId)).data.role;
+    }
+
+    function isOrgOwnerOrAdmin(orgId) {
+      return isOrgMember(orgId) && orgRole(orgId) in ['organizationOwner', 'organizationAdmin'];
+    }
+
+    function teamMemberPath(orgId, teamId) {
+      return /databases/$(database)/documents/organizations/$(orgId)/teams/$(teamId)/teamMembers/$(request.auth.uid);
+    }
+
+    function isTeamMember(orgId, teamId) {
+      return signedIn() && exists(teamMemberPath(orgId, teamId));
+    }
+
+    function teamRole(orgId, teamId) {
+      return get(teamMemberPath(orgId, teamId)).data.role;
+    }
+
+    function canReadTeam(orgId, teamId) {
+      return isOrgMember(orgId) || isTeamMember(orgId, teamId);
+    }
+
+    function canManageTeamData(orgId, teamId) {
+      return isOrgOwnerOrAdmin(orgId) ||
+        (isTeamMember(orgId, teamId) && teamRole(orgId, teamId) == 'coach');
+    }
+
+    function invRef(orgId, invId) {
+      return /databases/$(database)/documents/organizations/$(orgId)/invitations/$(invId);
+    }
+
+    function orgMemberRef(orgId, uid) {
+      return /databases/$(database)/documents/organizations/$(orgId)/organizationMembers/$(uid);
+    }
+
+    // ---- organizations/{orgId} ----
+    match /organizations/{orgId} {
+      allow create: if signedIn() && request.resource.data.createdBy == request.auth.uid;
+      allow read:   if isOrgMember(orgId);
+      allow update, delete: if isOrgMember(orgId) && orgRole(orgId) == 'organizationOwner';
+
+      // ---- organizationMembers/{uid} ----
+      match /organizationMembers/{uid} {
+        // Directe GET's/writes: bestaand gedrag, ongewijzigd. Voor de
+        // collectionGroup-LIST-query (issue #28) is een aparte recursieve
+        // match verderop in dit bestand nodig — zie de toelichting bovenaan.
+        allow read: if isOrgMember(orgId);
+
+        // Bootstrap: maker van de org claimt zijn eigen owner-membership.
+        // `uid`-veld verplicht en moet matchen (issue #28 — betrouwbaar queryveld).
+        allow create: if signedIn() && request.auth.uid == uid &&
+          request.resource.data.role == 'organizationOwner' &&
+          request.resource.data.uid == uid &&
+          get(/databases/$(database)/documents/organizations/$(orgId)).data.createdBy == request.auth.uid;
+
+        // Join via geaccepteerde uitnodiging — membership-create en accepted → claimed moeten
+        // in dezelfde batch zitten. getAfter() maakt overslaan van de claim-stap onmogelijk.
+        // `uid`-veld verplicht en moet matchen (issue #28 — betrouwbaar queryveld).
+        allow create: if signedIn() && request.auth.uid == uid &&
+          request.auth.token.email_verified == true &&
+          request.resource.data.uid == uid &&
+          request.resource.data.invitationId is string &&
+          get(invRef(orgId, request.resource.data.invitationId)).data.status == 'accepted' &&
+          get(invRef(orgId, request.resource.data.invitationId)).data.email == request.auth.token.email &&
+          get(invRef(orgId, request.resource.data.invitationId)).data.role == request.resource.data.role &&
+          getAfter(invRef(orgId, request.resource.data.invitationId)).data.status == 'claimed';
+
+        // Owner verwijdert andermans membership onbeperkt — nooit het eigen document.
+        allow delete: if isOrgOwnerOrAdmin(orgId) &&
+          orgRole(orgId) == 'organizationOwner' && request.auth.uid != uid;
+
+        // Owner wijzigt andermans membership onbeperkt — nooit het eigen document.
+        // `uid`-veld moet bij UPDATE ongewijzigd blijven (== document-ID == huidige
+        // waarde): zonder deze eis kan owner/admin per ongeluk of moedwillig het
+        // querybepalende veld (issue #28) laten afwijken van de document-ID, waardoor
+        // de recursieve collectionGroup-regel (die uitsluitend `resource.data.uid`
+        // controleert) dit membership aan de verkeerde gebruiker toont of de echte
+        // eigenaar het laat "verdwijnen" uit diens eigen contextwisselaar-query.
+        allow update: if isOrgOwnerOrAdmin(orgId) &&
+          orgRole(orgId) == 'organizationOwner' && request.auth.uid != uid &&
+          request.resource.data.uid == uid && request.resource.data.uid == resource.data.uid;
+
+        // Admin verwijdert andermans membership, maar mag GEEN owner-rol aanraken.
+        allow delete: if isOrgOwnerOrAdmin(orgId) &&
+          orgRole(orgId) == 'organizationAdmin' && request.auth.uid != uid &&
+          resource.data.role != 'organizationOwner';
+
+        // Admin wijzigt andermans membership, maar mag GEEN owner-rol aanraken (instellen
+        // of verwijderen); zelfde `uid`-invariant als hierboven bij owner.
+        allow update: if isOrgOwnerOrAdmin(orgId) &&
+          orgRole(orgId) == 'organizationAdmin' && request.auth.uid != uid &&
+          resource.data.role != 'organizationOwner' &&
+          request.resource.data.role != 'organizationOwner' &&
+          request.resource.data.uid == uid && request.resource.data.uid == resource.data.uid;
+      }
+
+      // ---- invitations/{invitationId} ----
+      match /invitations/{invitationId} {
+        // Owner mag uitnodigingen aanmaken met elke rol; admin mag NIET de owner-rol uitnodigen.
+        allow create: if isOrgOwnerOrAdmin(orgId) &&
+          request.resource.data.status == 'pending' &&
+          request.resource.data.invitedBy == request.auth.uid &&
+          (orgRole(orgId) == 'organizationOwner' || request.resource.data.role != 'organizationOwner');
+
+        // Intrekken (owner/admin): alleen statusveld naar 'revoked'.
+        allow update: if isOrgOwnerOrAdmin(orgId) &&
+          request.resource.data.status == 'revoked' &&
+          request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status']);
+
+        // Accepteren: geverifieerde e-mail van de uitgenodigde; raakt alleen status + acceptedAt.
+        allow update: if signedIn() &&
+          request.auth.token.email == resource.data.email &&
+          request.auth.token.email_verified == true &&
+          resource.data.status == 'pending' &&
+          request.resource.data.status == 'accepted' &&
+          request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'acceptedAt']);
+
+        // Claimen: de uitgenodigde markeert de uitnodiging als 'claimed' in dezelfde batch waarin
+        // het bijbehorende membership ontstaat. exists/getAfter koppelen beide writes atomair.
+        allow update: if signedIn() &&
+          request.auth.token.email == resource.data.email &&
+          request.auth.token.email_verified == true &&
+          resource.data.status == 'accepted' &&
+          request.resource.data.status == 'claimed' &&
+          request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'claimedAt']) &&
+          !exists(orgMemberRef(orgId, request.auth.uid)) &&
+          existsAfter(orgMemberRef(orgId, request.auth.uid)) &&
+          getAfter(orgMemberRef(orgId, request.auth.uid)).data.invitationId == invitationId &&
+          getAfter(orgMemberRef(orgId, request.auth.uid)).data.role == resource.data.role &&
+          getAfter(orgMemberRef(orgId, request.auth.uid)).data.email == resource.data.email;
+
+        allow read: if isOrgOwnerOrAdmin(orgId) ||
+          (signedIn() && request.auth.token.email == resource.data.email);
+      }
+
+      // ---- teams/{teamId} ----
+      match /teams/{teamId} {
+        allow create: if isOrgOwnerOrAdmin(orgId) &&
+          request.resource.data.createdBy == request.auth.uid;
+        allow read:   if canReadTeam(orgId, teamId);
+        allow update, delete: if isOrgOwnerOrAdmin(orgId);
+
+        match /teamMembers/{uid} {
+          allow read: if canReadTeam(orgId, teamId);
+          allow create, update, delete: if isOrgOwnerOrAdmin(orgId);
+        }
+
+        // Één settings-document per team: settings/current.
+        match /settings/{settingsId} {
+          allow read:  if canReadTeam(orgId, teamId);
+          allow write: if settingsId == 'current' && canManageTeamData(orgId, teamId);
+        }
+
+        // Één roster-document per team: roster/current (volledige array, zie SPIKE_REPORT.md).
+        match /roster/{rosterId} {
+          allow read:  if canReadTeam(orgId, teamId);
+          allow write: if rosterId == 'current' && canManageTeamData(orgId, teamId);
+        }
+      }
+    }
+
+    // ---- issue #28: querycontract contextwisselaar ----
+    // Recursieve-wildcard match, uitsluitend om de ENE toegestane
+    // collectionGroup-query mogelijk te maken (zie firebase/docs/QUERY_CONTRACT.md):
+    //   collectionGroup('organizationMembers').where('uid','==',eigenUid)
+    // Bewust de smalst mogelijke voorwaarde: geen get()/exists(), puur
+    // resource.data vergeleken met request.auth.uid — dat is precies wat
+    // Firestore voor een collectionGroup-LIST-query vooraf kan bewijzen.
+    // Dit governeert UITSLUITEND leestoegang tot het eigen membershipdocument
+    // via een collectionGroup-query; alle overige toegang (collega's binnen
+    // dezelfde org lezen, create/update/delete) loopt via de geneste match
+    // hierboven en is hier niet herhaald.
+    match /{path=**}/organizationMembers/{uid} {
+      allow read: if signedIn() && resource.data.uid == request.auth.uid;
+    }
+  }
+}

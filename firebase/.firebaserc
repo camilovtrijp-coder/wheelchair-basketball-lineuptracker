@@ -1,0 +1,8 @@
+{
+  "projects": {
+    "default": "demo-lineup-tracker-dev",
+    "development": "demo-lineup-tracker-dev",
+    "staging": "demo-lineup-tracker-staging",
+    "production": "demo-lineup-tracker-prod"
+  }
+}
