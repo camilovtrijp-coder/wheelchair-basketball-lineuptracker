@@ -5,8 +5,16 @@ import { resolveInitialLang } from '../i18n/detect';
 import type { Lang } from '../i18n/strings';
 import type { AuthGateway } from '../application/auth/AuthGateway';
 import type { AuthUser } from '../domain/auth/types';
+import { readTrustedDevice, writeTrustedDevice } from '../infrastructure/device/trustedDevice';
+import {
+  initFirebase,
+  reinitFirestoreForTrustLevel,
+  wipeLocalFirebaseData,
+} from '../infrastructure/firebase/firebaseClient';
 import { LoginScreen } from '../ui/auth/LoginScreen';
 import { SignupScreen } from '../ui/auth/SignupScreen';
+import { TrustedDevicePrompt } from '../ui/auth/TrustedDevicePrompt';
+import { SignOutBar } from '../ui/auth/SignOutBar';
 import { LoadingScreen } from '../ui/status/LoadingScreen';
 import { App } from './App';
 
@@ -29,15 +37,18 @@ type AuthFormMode = 'login' | 'signup';
  * worden. Beheert een eigen `lang`-status omdat login/signup-schermen
  * gerenderd worden vóórdat `App` (met zijn eigen `lang`-status) bestaat.
  *
- * Toont nu alleen sessieherstel en login/signup. Latere stappen in deze PR
- * voegen de vertrouwd-apparaatprompt, onboarding-bootstrap, lege-status en
- * contextwisselaar toe tussen "ingelogd" en het renderen van `App`.
+ * Toont nu sessieherstel, login/signup en de vertrouwd-apparaatprompt.
+ * Onboarding-bootstrap, lege-status en contextwisselaar uit latere stappen
+ * worden hiertussen ingevoegd, vóór het renderen van `App`.
  */
 export function AuthGate({ authGateway }: AuthGateProps) {
   const [lang, setLang] = useState<Lang>(initialLang);
   const [authLoading, setAuthLoading] = useState(true);
   const [authUser, setAuthUser] = useState<AuthUser | null>(null);
   const [mode, setMode] = useState<AuthFormMode>('login');
+  const [trustedDeviceAnswered, setTrustedDeviceAnswered] = useState(
+    () => readTrustedDevice(browserStorage) !== null,
+  );
 
   useEffect(() => {
     document.documentElement.lang = lang;
@@ -48,8 +59,32 @@ export function AuthGate({ authGateway }: AuthGateProps) {
     return authGateway.subscribe((user) => {
       setAuthUser(user);
       setAuthLoading(false);
+      // Zonder deze reset blijft een eerder gekozen 'signup'-modus staan na
+      // uitloggen, waardoor herinloggen per ongeluk een nieuw account met
+      // hetzelfde e-mailadres probeert aan te maken (auth/email-already-in-use).
+      if (user === null) {
+        setMode('login');
+      }
     });
   }, [authGateway]);
+
+  async function handleTrustedDeviceAnswer(trusted: boolean) {
+    writeTrustedDevice(browserStorage, trusted);
+    await reinitFirestoreForTrustLevel(trusted);
+    setTrustedDeviceAnswered(true);
+  }
+
+  async function handleSignOut() {
+    // Vertrouwd-apparaatkeuze is een apparaateigenschap, geen sessie-eigenschap
+    // — die blijft bewust staan na uitloggen (zie infrastructure/device/trustedDevice.ts).
+    const trusted = readTrustedDevice(browserStorage) ?? false;
+    await authGateway.signOut();
+    if (!trusted) {
+      await wipeLocalFirebaseData();
+      // Firestore moet weer bruikbaar zijn voor een eventuele volgende login in dezelfde sessie.
+      initFirebase(false);
+    }
+  }
 
   if (authLoading) {
     return <LoadingScreen lang={lang} />;
@@ -73,5 +108,14 @@ export function AuthGate({ authGateway }: AuthGateProps) {
     );
   }
 
-  return <App />;
+  if (!trustedDeviceAnswered) {
+    return <TrustedDevicePrompt lang={lang} onAnswer={handleTrustedDeviceAnswer} />;
+  }
+
+  return (
+    <>
+      <SignOutBar lang={lang} onSignOut={handleSignOut} />
+      <App />
+    </>
+  );
 }

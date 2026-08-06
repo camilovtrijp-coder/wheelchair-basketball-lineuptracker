@@ -73,6 +73,12 @@ const nl = {
   authWeakPasswordError: 'Kies een wachtwoord van minstens 6 tekens.',
   authInvalidEmailError: 'Vul een geldig e-mailadres in.',
   authGenericError: 'Er ging iets mis. Probeer het opnieuw.',
+
+  trustedDevicePromptTitle: 'Is dit een vertrouwd apparaat?',
+  trustedDevicePromptBody:
+    'Op een vertrouwd apparaat (bijv. je eigen telefoon of laptop) blijven gegevens lokaal beschikbaar, ook offline. Op een gedeeld apparaat (bijv. een clubtablet) worden je gegevens bij het uitloggen automatisch gewist.',
+  trustedDeviceYesBtn: 'Ja, vertrouwd apparaat',
+  trustedDeviceNoBtn: 'Nee, gedeeld apparaat',
 } as const;
 
 const en = {
@@ -143,6 +149,12 @@ const en = {
   authWeakPasswordError: 'Choose a password of at least 6 characters.',
   authInvalidEmailError: 'Enter a valid email address.',
   authGenericError: 'Something went wrong. Please try again.',
+
+  trustedDevicePromptTitle: 'Is this a trusted device?',
+  trustedDevicePromptBody:
+    'On a trusted device (e.g. your own phone or laptop), data stays available locally, even offline. On a shared device (e.g. a club tablet), your data is automatically wiped when you log out.',
+  trustedDeviceYesBtn: 'Yes, trusted device',
+  trustedDeviceNoBtn: 'No, shared device',
 } as const;
 
 export const STRINGS = { nl, en } as const;
