@@ -1,4 +1,7 @@
 import type { FirestoreDataConverter, QueryDocumentSnapshot, Timestamp } from 'firebase/firestore';
+import { assertBoolean, assertNonEmptyString, assertNumber, assertString, assertTimestamp } from './validation.js';
+
+const TYPE = 'settings';
 
 /**
  * organizations/{orgId}/teams/{teamId}/settings/current
@@ -33,21 +36,21 @@ export const settingsConverter: FirestoreDataConverter<SettingsDocument> = {
   fromFirestore(snapshot: QueryDocumentSnapshot): SettingsDocument {
     const data = snapshot.data();
     return {
-      teamName: data.teamName,
-      logoUri: data.logoUri,
-      primaryColor: data.primaryColor,
-      accentColor: data.accentColor,
-      quarterCount: data.quarterCount,
-      periodLabel: data.periodLabel,
-      useClassLimit: data.useClassLimit,
-      tag1Label: data.tag1Label,
-      tag2Label: data.tag2Label,
-      classBaseLimit: data.classBaseLimit,
-      maxBonus: data.maxBonus,
-      bonusTag1Only: data.bonusTag1Only,
-      bonusTag2Only: data.bonusTag2Only,
-      bonusBoth: data.bonusBoth,
-      updatedAt: data.updatedAt,
+      teamName: assertString(TYPE, 'teamName', data.teamName),
+      logoUri: assertString(TYPE, 'logoUri', data.logoUri),
+      primaryColor: assertNonEmptyString(TYPE, 'primaryColor', data.primaryColor),
+      accentColor: assertNonEmptyString(TYPE, 'accentColor', data.accentColor),
+      quarterCount: assertNumber(TYPE, 'quarterCount', data.quarterCount),
+      periodLabel: assertString(TYPE, 'periodLabel', data.periodLabel),
+      useClassLimit: assertBoolean(TYPE, 'useClassLimit', data.useClassLimit),
+      tag1Label: assertString(TYPE, 'tag1Label', data.tag1Label),
+      tag2Label: assertString(TYPE, 'tag2Label', data.tag2Label),
+      classBaseLimit: assertNumber(TYPE, 'classBaseLimit', data.classBaseLimit),
+      maxBonus: assertNumber(TYPE, 'maxBonus', data.maxBonus),
+      bonusTag1Only: assertNumber(TYPE, 'bonusTag1Only', data.bonusTag1Only),
+      bonusTag2Only: assertNumber(TYPE, 'bonusTag2Only', data.bonusTag2Only),
+      bonusBoth: assertNumber(TYPE, 'bonusBoth', data.bonusBoth),
+      updatedAt: assertTimestamp(TYPE, 'updatedAt', data.updatedAt),
     };
   },
 };

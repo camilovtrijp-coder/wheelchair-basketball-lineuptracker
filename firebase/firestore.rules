@@ -27,6 +27,14 @@ rules_version = '2';
 //     vaste geneste match, ongeacht de complexiteit van de voorwaarde zelf.
 //     Zie firebase/docs/QUERY_CONTRACT.md voor het volledige, empirisch
 //     beproefde contract.
+//  5. [P1, review-opvolging] De owner/admin-update-regels voor organizationMembers
+//     eisen nu expliciet dat `uid` ongewijzigd blijft (`request.resource.data.uid
+//     == uid == resource.data.uid`). Zonder deze eis kon een update het
+//     querybepalende `uid`-veld laten afwijken van de document-ID, waardoor de
+//     recursieve collectionGroup-regel in punt 4 een membership aan de verkeerde
+//     gebruiker had kunnen tonen (of de echte eigenaar het liet "verdwijnen" uit
+//     diens eigen contextwisselaar-query). Zie
+//     tests/rules/self-promotion.spec.ts voor de bewijzende negatieve tests.
 
 service cloud.firestore {
   match /databases/{database}/documents {
@@ -112,18 +120,33 @@ service cloud.firestore {
           get(invRef(orgId, request.resource.data.invitationId)).data.role == request.resource.data.role &&
           getAfter(invRef(orgId, request.resource.data.invitationId)).data.status == 'claimed';
 
-        // Owner wijzigt/verwijdert andermans membership onbeperkt — nooit het eigen document.
-        allow update, delete: if isOrgOwnerOrAdmin(orgId) &&
+        // Owner verwijdert andermans membership onbeperkt — nooit het eigen document.
+        allow delete: if isOrgOwnerOrAdmin(orgId) &&
           orgRole(orgId) == 'organizationOwner' && request.auth.uid != uid;
 
-        // Admin wijzigt andermans membership, maar mag GEEN owner-rol aanraken (instellen of verwijderen).
+        // Owner wijzigt andermans membership onbeperkt — nooit het eigen document.
+        // `uid`-veld moet bij UPDATE ongewijzigd blijven (== document-ID == huidige
+        // waarde): zonder deze eis kan owner/admin per ongeluk of moedwillig het
+        // querybepalende veld (issue #28) laten afwijken van de document-ID, waardoor
+        // de recursieve collectionGroup-regel (die uitsluitend `resource.data.uid`
+        // controleert) dit membership aan de verkeerde gebruiker toont of de echte
+        // eigenaar het laat "verdwijnen" uit diens eigen contextwisselaar-query.
+        allow update: if isOrgOwnerOrAdmin(orgId) &&
+          orgRole(orgId) == 'organizationOwner' && request.auth.uid != uid &&
+          request.resource.data.uid == uid && request.resource.data.uid == resource.data.uid;
+
+        // Admin verwijdert andermans membership, maar mag GEEN owner-rol aanraken.
         allow delete: if isOrgOwnerOrAdmin(orgId) &&
           orgRole(orgId) == 'organizationAdmin' && request.auth.uid != uid &&
           resource.data.role != 'organizationOwner';
+
+        // Admin wijzigt andermans membership, maar mag GEEN owner-rol aanraken (instellen
+        // of verwijderen); zelfde `uid`-invariant als hierboven bij owner.
         allow update: if isOrgOwnerOrAdmin(orgId) &&
           orgRole(orgId) == 'organizationAdmin' && request.auth.uid != uid &&
           resource.data.role != 'organizationOwner' &&
-          request.resource.data.role != 'organizationOwner';
+          request.resource.data.role != 'organizationOwner' &&
+          request.resource.data.uid == uid && request.resource.data.uid == resource.data.uid;
       }
 
       // ---- invitations/{invitationId} ----

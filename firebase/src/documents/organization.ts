@@ -1,4 +1,7 @@
 import type { FirestoreDataConverter, QueryDocumentSnapshot, Timestamp } from 'firebase/firestore';
+import { assertNonEmptyString, assertTimestamp } from './validation.js';
+
+const TYPE = 'organization';
 
 /** organizations/{orgId} */
 export interface OrganizationDocument {
@@ -14,9 +17,9 @@ export const organizationConverter: FirestoreDataConverter<OrganizationDocument>
   fromFirestore(snapshot: QueryDocumentSnapshot): OrganizationDocument {
     const data = snapshot.data();
     return {
-      name: data.name,
-      createdBy: data.createdBy,
-      createdAt: data.createdAt,
+      name: assertNonEmptyString(TYPE, 'name', data.name),
+      createdBy: assertNonEmptyString(TYPE, 'createdBy', data.createdBy),
+      createdAt: assertTimestamp(TYPE, 'createdAt', data.createdAt),
     };
   },
 };

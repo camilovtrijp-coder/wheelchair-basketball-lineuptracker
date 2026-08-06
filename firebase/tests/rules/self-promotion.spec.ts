@@ -3,10 +3,13 @@
 // - een gebruiker kan zichzelf NIET een membership aanmaken op een org die hij niet gemaakt heeft;
 // - een owner kan zijn EIGEN membership-document niet via het update-pad wijzigen
 //   (enkel het andermans-pad is toegestaan voor owner/admin);
-// - het nieuwe `uid`-veld (issue #28) kan niet vervalst worden bij create.
+// - het nieuwe `uid`-veld (issue #28) kan niet vervalst worden bij create;
+// - het `uid`-veld kan ook niet vervalst worden bij UPDATE door owner/admin
+//   (P1-review #29), inclusief het bewijs dat de outsider-contextquery na de
+//   geblokkeerde poging nog steeds niets teruggeeft.
 
-import { beforeAll, afterAll, beforeEach, describe, it } from 'vitest';
-import { doc, setDoc, updateDoc, deleteDoc } from 'firebase/firestore';
+import { beforeAll, afterAll, beforeEach, describe, it, expect } from 'vitest';
+import { doc, setDoc, updateDoc, deleteDoc, collectionGroup, getDocs, query, where } from 'firebase/firestore';
 import type { RulesTestEnvironment } from '@firebase/rules-unit-testing';
 import { createTestEnv, assertSucceeds, assertFails, authCtx, withAdmin } from './helpers/testEnv.js';
 import { ORG_A, TEAM_A1, USERS } from './helpers/fixtures.js';
@@ -138,6 +141,24 @@ describe('bob (admin) mag GEEN owner-rol aanraken', () => {
       }),
     );
   });
+
+  it('admin mag het `uid`-veld van andermans membership NIET wijzigen (P1-review #29)', async () => {
+    const db = authCtx(env, USERS.bob.uid, { email: USERS.bob.email, email_verified: true });
+    await assertFails(
+      updateDoc(doc(db, 'organizations', ORG_A, 'organizationMembers', USERS.erin.uid), {
+        uid: USERS.dave.uid, // vervalst — moet gelijk blijven aan de document-ID
+      }),
+    );
+
+    // Outsider-contextquery: dave (op wiens uid de poging mikte) mag na de
+    // geblokkeerde update nog steeds NIETS terugkrijgen van org A — het
+    // `uid`-veld op erins doc is onveranderd gebleven.
+    const daveDb = authCtx(env, USERS.dave.uid, { email: USERS.dave.email, email_verified: true });
+    const snap = await getDocs(
+      query(collectionGroup(daveDb, 'organizationMembers'), where('uid', '==', USERS.dave.uid)),
+    );
+    expect(snap.empty).toBe(true);
+  });
 });
 
 describe('alice (owner) mag haar EIGEN membership NIET via het owner/admin-pad wijzigen', () => {
@@ -157,5 +178,25 @@ describe('alice (owner) mag haar EIGEN membership NIET via het owner/admin-pad w
         role: 'coach',
       }),
     );
+  });
+
+  it('owner mag het `uid`-veld van andermans membership NIET wijzigen (P1-review #29)', async () => {
+    // Vervalste update van erins membership: uid laten afwijken van de document-ID.
+    // Zonder de fix zou dit erins membership "onvindbaar" maken voor haarzelf via
+    // de collectionGroup-query (issue #28) en het membership aan een ander tonen.
+    const db = authCtx(env, USERS.alice.uid, { email: USERS.alice.email, email_verified: true });
+    await assertFails(
+      updateDoc(doc(db, 'organizations', ORG_A, 'organizationMembers', USERS.erin.uid), {
+        uid: USERS.dave.uid, // vervalst — moet gelijk blijven aan de document-ID
+      }),
+    );
+
+    // Outsider-contextquery: dave (op wiens uid de poging mikte) mag na de
+    // geblokkeerde update nog steeds NIETS terugkrijgen van org A.
+    const daveDb = authCtx(env, USERS.dave.uid, { email: USERS.dave.email, email_verified: true });
+    const snap = await getDocs(
+      query(collectionGroup(daveDb, 'organizationMembers'), where('uid', '==', USERS.dave.uid)),
+    );
+    expect(snap.empty).toBe(true);
   });
 });

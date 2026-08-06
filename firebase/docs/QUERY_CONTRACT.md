@@ -93,6 +93,19 @@ override kan Firestore de toegestane query niet uitvoeren.
 - **Regressie:** de bestaande directe-padisolatietest
   (`tests/rules/cross-org-isolation.spec.ts`) blijft ongewijzigd slagen.
 
+**Review-opvolging (#29, P1 — blocker):** het contract steunt volledig op de
+aanname dat `resource.data.uid` altijd gelijk is aan de document-ID. Die
+invariant werd bij *create* al afgedwongen, maar niet bij *update* — een
+owner/admin kon het `uid`-veld van andermans membership laten afwijken zonder
+dat er een aparte Rules-check op lette. Dat zou de query-uitkomst kunnen
+corrumperen: het membership zou onvindbaar worden voor de echte eigenaar
+en/of zichtbaar voor een outsider op wiens uid de vervalsing mikte. Beide
+owner- en admin-updateregels in `firestore.rules` eisen nu expliciet
+`request.resource.data.uid == uid && request.resource.data.uid ==
+resource.data.uid`. Bewezen in `tests/rules/self-promotion.spec.ts`
+(negatieve update-pogingen voor owner en admin, elk gevolgd door een
+outsider-contextquery die aantoont dat er niets lekt).
+
 ## Buiten scope van dit contract
 
 - De contextwisselaar-**UI** die deze query daadwerkelijk aanroept: PR 5.2.

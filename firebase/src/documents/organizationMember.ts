@@ -1,4 +1,7 @@
 import type { FirestoreDataConverter, QueryDocumentSnapshot, Timestamp } from 'firebase/firestore';
+import { assertEmail, assertNonEmptyString, assertOneOf, assertOptionalTimestamp } from './validation.js';
+
+const TYPE = 'organizationMember';
 
 export const ORGANIZATION_ROLES = [
   'organizationOwner',
@@ -35,11 +38,12 @@ export const organizationMemberConverter: FirestoreDataConverter<OrganizationMem
   fromFirestore(snapshot: QueryDocumentSnapshot): OrganizationMemberDocument {
     const data = snapshot.data();
     return {
-      role: data.role,
-      email: data.email,
-      uid: data.uid,
-      joinedAt: data.joinedAt,
-      invitationId: data.invitationId,
+      role: assertOneOf(TYPE, 'role', data.role, ORGANIZATION_ROLES),
+      email: assertEmail(TYPE, 'email', data.email),
+      uid: assertNonEmptyString(TYPE, 'uid', data.uid),
+      joinedAt: assertOptionalTimestamp(TYPE, 'joinedAt', data.joinedAt),
+      invitationId:
+        data.invitationId === undefined ? undefined : assertNonEmptyString(TYPE, 'invitationId', data.invitationId),
     };
   },
 };

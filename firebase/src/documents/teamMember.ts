@@ -1,5 +1,8 @@
 import type { FirestoreDataConverter, QueryDocumentSnapshot, Timestamp } from 'firebase/firestore';
-import type { OrganizationRole } from './organizationMember.js';
+import { ORGANIZATION_ROLES, type OrganizationRole } from './organizationMember.js';
+import { assertEmail, assertOneOf, assertOptionalTimestamp } from './validation.js';
+
+const TYPE = 'teamMember';
 
 /**
  * organizations/{orgId}/teams/{teamId}/teamMembers/{uid}
@@ -21,9 +24,9 @@ export const teamMemberConverter: FirestoreDataConverter<TeamMemberDocument> = {
   fromFirestore(snapshot: QueryDocumentSnapshot): TeamMemberDocument {
     const data = snapshot.data();
     return {
-      role: data.role,
-      email: data.email,
-      addedAt: data.addedAt,
+      role: assertOneOf(TYPE, 'role', data.role, ORGANIZATION_ROLES),
+      email: assertEmail(TYPE, 'email', data.email),
+      addedAt: assertOptionalTimestamp(TYPE, 'addedAt', data.addedAt),
     };
   },
 };

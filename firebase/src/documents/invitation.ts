@@ -1,5 +1,15 @@
 import type { FirestoreDataConverter, QueryDocumentSnapshot, Timestamp } from 'firebase/firestore';
-import type { OrganizationRole } from './organizationMember.js';
+import { ORGANIZATION_ROLES, type OrganizationRole } from './organizationMember.js';
+import {
+  assertEmail,
+  assertNonEmptyString,
+  assertNullableTimestamp,
+  assertOneOf,
+  assertOptionalTimestamp,
+  assertTimestamp,
+} from './validation.js';
+
+const TYPE = 'invitation';
 
 export const INVITATION_STATUSES = ['pending', 'accepted', 'claimed', 'revoked'] as const;
 export type InvitationStatus = (typeof INVITATION_STATUSES)[number];
@@ -22,13 +32,13 @@ export const invitationConverter: FirestoreDataConverter<InvitationDocument> = {
   fromFirestore(snapshot: QueryDocumentSnapshot): InvitationDocument {
     const data = snapshot.data();
     return {
-      email: data.email,
-      role: data.role,
-      status: data.status,
-      invitedBy: data.invitedBy,
-      invitedAt: data.invitedAt,
-      acceptedAt: data.acceptedAt,
-      claimedAt: data.claimedAt,
+      email: assertEmail(TYPE, 'email', data.email),
+      role: assertOneOf(TYPE, 'role', data.role, ORGANIZATION_ROLES),
+      status: assertOneOf(TYPE, 'status', data.status, INVITATION_STATUSES),
+      invitedBy: assertNonEmptyString(TYPE, 'invitedBy', data.invitedBy),
+      invitedAt: assertTimestamp(TYPE, 'invitedAt', data.invitedAt),
+      acceptedAt: assertNullableTimestamp(TYPE, 'acceptedAt', data.acceptedAt),
+      claimedAt: assertOptionalTimestamp(TYPE, 'claimedAt', data.claimedAt),
     };
   },
 };
