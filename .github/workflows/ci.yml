@@ -20,7 +20,7 @@ jobs:
           cache: npm
           cache-dependency-path: package-lock.json
 
-      - name: Install dependencies (workspaces: root, v2, firebase)
+      - name: "Install dependencies (workspaces: root, v2, firebase)"
         run: npm ci
 
       - name: Install Playwright Chromium browser
@@ -126,7 +126,7 @@ jobs:
           distribution: temurin
           java-version: 21
 
-      - name: Install dependencies (workspaces: root, v2, firebase)
+      - name: "Install dependencies (workspaces: root, v2, firebase)"
         working-directory: .
         run: npm ci
 
