@@ -7,6 +7,12 @@
   "engines": {
     "node": ">=18"
   },
+  "exports": {
+    "./documents": {
+      "types": "./src/documents/index.ts",
+      "default": "./src/documents/index.ts"
+    }
+  },
   "scripts": {
     "seed": "tsx scripts/seed.ts",
     "type-check": "tsc --noEmit",

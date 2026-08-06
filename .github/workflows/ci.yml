@@ -18,11 +18,9 @@ jobs:
         with:
           node-version: 24
           cache: npm
-          cache-dependency-path: |
-            package-lock.json
-            v2/package-lock.json
+          cache-dependency-path: package-lock.json
 
-      - name: Install dependencies
+      - name: Install dependencies (workspaces: root, v2, firebase)
         run: npm ci
 
       - name: Install Playwright Chromium browser
@@ -38,10 +36,6 @@ jobs:
           name: playwright-report
           path: playwright-report/
           retention-days: 7
-
-      - name: Install v2 dependencies
-        working-directory: v2
-        run: npm ci
 
       - name: Install v2 Playwright Chromium browser
         working-directory: v2
@@ -124,7 +118,7 @@ jobs:
         with:
           node-version: 24
           cache: npm
-          cache-dependency-path: firebase/package-lock.json
+          cache-dependency-path: package-lock.json
 
       - name: Set up Java for Firebase Emulator Suite
         uses: actions/setup-java@v4
@@ -132,7 +126,8 @@ jobs:
           distribution: temurin
           java-version: 21
 
-      - name: Install firebase-base dependencies
+      - name: Install dependencies (workspaces: root, v2, firebase)
+        working-directory: .
         run: npm ci
 
       - name: Verify firebase-base (type-check, converter unit tests, seed + Rules tests)
