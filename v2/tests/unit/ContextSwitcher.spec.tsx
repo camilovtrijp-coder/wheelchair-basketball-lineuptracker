@@ -41,6 +41,9 @@ class DeferredTeamsGateway implements OrganizationGateway {
   listMyMemberships(): never {
     throw new Error('niet gebruikt in deze test');
   }
+  listMyTeamOnlyContexts(): never {
+    throw new Error('niet gebruikt in deze test');
+  }
   createOrganizationWithOwner(): never {
     throw new Error('niet gebruikt in deze test');
   }
@@ -71,6 +74,7 @@ describe('ui/context/ContextSwitcher — race tussen verouderde en actuele teamr
       <ContextSwitcher
         lang="nl"
         memberships={[orgA, orgB]}
+        teamOnlyContexts={[]}
         organizationGateway={gateway}
         onSelect={() => {}}
       />,

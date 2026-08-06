@@ -1,5 +1,10 @@
 import type { Invitation } from '../../domain/invitations/types';
-import type { Membership, OrganizationRole, TeamSummary } from '../../domain/organizations/types';
+import type {
+  Membership,
+  OrganizationRole,
+  TeamOnlyContext,
+  TeamSummary,
+} from '../../domain/organizations/types';
 import type { TeamAccess } from '../../domain/organizations/teamAccess';
 
 export interface OperationResult<T = undefined> {
@@ -10,8 +15,14 @@ export interface OperationResult<T = undefined> {
 }
 
 export interface OrganizationGateway {
-  /** De enige toegestane query voor "al mijn organisaties" (zie firebase/docs/QUERY_CONTRACT.md). */
+  /** De enige toegestane query voor "al mijn organisatielidmaatschappen" (zie firebase/docs/QUERY_CONTRACT.md). */
   listMyMemberships(): Promise<Membership[]>;
+  /**
+   * De andere toegestane query (issue #31): teams waar deze gebruiker via een expliciet
+   * `teamMembers`-document toegang toe heeft, ONAFHANKELIJK van `listMyMemberships()` —
+   * nodig voor gebruikers zonder enig `organizationMembers`-document in die organisatie.
+   */
+  listMyTeamOnlyContexts(): Promise<TeamOnlyContext[]>;
   /**
    * `resumeOrgId`: geef het `orgId` uit een eerder mislukte poging door (zie `value` op een
    * `ok:false`-resultaat) om een weesorganisatie te herstellen i.p.v. een nieuwe aan te maken.
@@ -22,9 +33,21 @@ export interface OrganizationGateway {
   ): Promise<OperationResult<{ orgId: string }>>;
   createTeam(orgId: string, name: string): Promise<OperationResult<{ teamId: string }>>;
   listTeams(orgId: string): Promise<TeamSummary[]>;
-  getMyTeamAccess(orgId: string, teamId: string, orgRole: OrganizationRole): Promise<TeamAccess>;
+  /**
+   * `orgRole` is `null` voor een team-only context (issue #31 — geen `organizationMembers`
+   * in deze organisatie); zie `deriveTeamAccess()`.
+   */
+  getMyTeamAccess(
+    orgId: string,
+    teamId: string,
+    orgRole: OrganizationRole | null,
+  ): Promise<TeamAccess>;
   /** Bestaat het team nog en heeft deze gebruiker er nog aantoonbaar toegang toe? */
-  validateSelectedTeam(orgId: string, teamId: string, orgRole: OrganizationRole): Promise<boolean>;
+  validateSelectedTeam(
+    orgId: string,
+    teamId: string,
+    orgRole: OrganizationRole | null,
+  ): Promise<boolean>;
   /** `null` als de uitnodiging niet bestaat, of niet leesbaar is voor de ingelogde gebruiker. */
   getInvitationByLink(orgId: string, invitationId: string): Promise<Invitation | null>;
   acceptInvitation(orgId: string, invitationId: string): Promise<OperationResult>;

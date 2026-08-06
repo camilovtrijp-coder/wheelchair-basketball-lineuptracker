@@ -6,8 +6,9 @@ import type { Lang } from '../i18n/strings';
 import type { AuthGateway, AuthResult } from '../application/auth/AuthGateway';
 import type { OrganizationGateway } from '../application/organizations/OrganizationGateway';
 import type { AuthUser } from '../domain/auth/types';
-import type { Membership, SelectedContext } from '../domain/organizations/types';
+import type { Membership, SelectedContext, TeamOnlyContext } from '../domain/organizations/types';
 import { deriveAppState } from '../domain/organizations/deriveAppState';
+import { mergeMemberships } from '../domain/organizations/mergeMemberships';
 import { readTrustedDevice, writeTrustedDevice } from '../infrastructure/device/trustedDevice';
 import {
   clearSelectedContext,
@@ -78,6 +79,7 @@ export function AuthGate({ authGateway }: AuthGateProps) {
   );
   const [organizationGateway, setOrganizationGateway] = useState<OrganizationGateway | null>(null);
   const [memberships, setMemberships] = useState<Membership[] | null>(null);
+  const [teamOnlyContexts, setTeamOnlyContexts] = useState<TeamOnlyContext[]>([]);
   const [membershipsRefreshKey, setMembershipsRefreshKey] = useState(0);
   const [justSignedUp, setJustSignedUp] = useState(false);
   const [selectedContext, setSelectedContext] = useState<SelectedContext | null>(() =>
@@ -125,6 +127,7 @@ export function AuthGate({ authGateway }: AuthGateProps) {
     if (!authUser || !trustedDeviceAnswered) {
       setOrganizationGateway(null);
       setMemberships(null);
+      setTeamOnlyContexts([]);
       return;
     }
     const gateway = new FirestoreOrganizationGateway(
@@ -134,10 +137,14 @@ export function AuthGate({ authGateway }: AuthGateProps) {
     );
     setOrganizationGateway(gateway);
     let cancelled = false;
-    gateway
-      .listMyMemberships()
-      .then((result) => {
-        if (!cancelled) setMemberships(result);
+    // Beide toegestane membershipbronnen (issue #31) samen ophalen en pas daarna samenvoegen —
+    // net als bij de enkele query hieronder blijft `memberships` bij een netwerkfout op `null`
+    // staan ("nog niet geladen"/ongecacht), i.p.v. een onvolledige gedeeltelijke lijst te tonen.
+    Promise.all([gateway.listMyMemberships(), gateway.listMyTeamOnlyContexts()])
+      .then(([orgMemberships, teamOnly]) => {
+        if (cancelled) return;
+        setMemberships(mergeMemberships(orgMemberships, teamOnly));
+        setTeamOnlyContexts(teamOnly);
       })
       .catch(() => {
         // Netwerkfout: memberships blijft null ("nog niet geladen"/ongecacht).
@@ -298,6 +305,7 @@ export function AuthGate({ authGateway }: AuthGateProps) {
         <ContextSwitcher
           lang={lang}
           memberships={memberships!}
+          teamOnlyContexts={teamOnlyContexts}
           organizationGateway={organizationGateway!}
           onSelect={handleSelectContext}
         />

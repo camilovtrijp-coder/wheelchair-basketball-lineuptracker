@@ -26,14 +26,25 @@ const OWNER_OR_ADMIN: ReadonlySet<OrganizationRole> = new Set([
  * teamMembers-document; coach/scorer/viewer hebben alleen een teamspecifieke
  * rol via een expliciet teamMembers-document, en alleen 'coach' mag er
  * schrijven (zie firebase/firestore.rules, canManageTeamData).
+ *
+ * `orgRole` is `null` voor een team-only gebruiker (issue #31): iemand met
+ * uitsluitend een `teamMembers`-document, geen `organizationMembers` in deze
+ * organisatie. Zo iemand kan nooit owner/admin zijn (dat vereist per definitie
+ * een organizationMembers-document), dus `isOwnerOrAdmin` is dan altijd false
+ * en `effectiveRole` valt terug op `teamMemberRole`. De `?? 'viewer'`-fallback
+ * op `effectiveRole` is puur defensief: bij geldig gebruik is `teamMemberRole`
+ * altijd gezet zodra `orgRole` `null` is (een team-only context bestaat per
+ * definitie via een gevonden teamMembers-document) — die combinatie mag hier
+ * dus nooit voorkomen, maar een expliciete, veilige fallback is beter dan een
+ * onveilige cast als dat toch een keer misgaat.
  */
 export function deriveTeamAccess(
-  orgRole: OrganizationRole,
+  orgRole: OrganizationRole | null,
   teamMemberRole: OrganizationRole | null,
 ): TeamAccess {
-  const isOwnerOrAdmin = OWNER_OR_ADMIN.has(orgRole);
+  const isOwnerOrAdmin = orgRole !== null && OWNER_OR_ADMIN.has(orgRole);
   return {
-    effectiveRole: isOwnerOrAdmin ? orgRole : (teamMemberRole ?? orgRole),
+    effectiveRole: (isOwnerOrAdmin ? orgRole : (teamMemberRole ?? orgRole)) ?? 'viewer',
     canManageTeamData: isOwnerOrAdmin || teamMemberRole === 'coach',
     isExplicitlyAuthorized: isOwnerOrAdmin || teamMemberRole !== null,
   };

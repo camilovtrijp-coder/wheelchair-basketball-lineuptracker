@@ -5,6 +5,11 @@
       "collectionGroup": "organizationMembers",
       "fieldPath": "uid",
       "indexes": [{ "order": "ASCENDING", "queryScope": "COLLECTION_GROUP" }]
+    },
+    {
+      "collectionGroup": "teamMembers",
+      "fieldPath": "uid",
+      "indexes": [{ "order": "ASCENDING", "queryScope": "COLLECTION_GROUP" }]
     }
   ]
 }

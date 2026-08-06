@@ -36,13 +36,14 @@ test.describe('intrekking van toegang isoleert per organisatie', () => {
       joinedAt: new Date(),
     });
     const teamBRef = orgBRef.collection('teams').doc();
-    await teamBRef.set({ name: 'Team B', createdBy: uid, createdAt: new Date() });
+    await teamBRef.set({ name: 'Team B', orgName: 'Org B', createdBy: uid, createdAt: new Date() });
     // Org-brede rollen (owner/admin uitgezonderd) geven sinds de PR 5.2-review geen impliciete
     // teamtoegang meer — een expliciet teamMembers-document is nodig om Team B zichtbaar/
     // selecteerbaar te maken voor deze org-viewer.
     await teamBRef.collection('teamMembers').doc(uid).set({
       role: 'viewer',
       email,
+      uid,
       addedAt: new Date(),
     });
 

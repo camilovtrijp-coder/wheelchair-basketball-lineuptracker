@@ -32,13 +32,24 @@ test.describe('team-niveau autorisatie in de contextwisselaar', () => {
       joinedAt: new Date(),
     });
     const teamAllowedRef = orgRef.collection('teams').doc();
-    await teamAllowedRef.set({ name: 'Toegestaan team', createdBy: uid, createdAt: new Date() });
+    await teamAllowedRef.set({
+      name: 'Toegestaan team',
+      orgName: 'Zichtbaarheid Org',
+      createdBy: uid,
+      createdAt: new Date(),
+    });
     const teamHiddenRef = orgRef.collection('teams').doc();
-    await teamHiddenRef.set({ name: 'Verborgen team', createdBy: uid, createdAt: new Date() });
+    await teamHiddenRef.set({
+      name: 'Verborgen team',
+      orgName: 'Zichtbaarheid Org',
+      createdBy: uid,
+      createdAt: new Date(),
+    });
     // Expliciet teamMembers-document alléén voor teamAllowedRef.
     await teamAllowedRef.collection('teamMembers').doc(uid).set({
       role: 'coach',
       email,
+      uid,
       addedAt: new Date(),
     });
 
@@ -71,9 +82,14 @@ test.describe('team-niveau autorisatie in de contextwisselaar', () => {
       joinedAt: new Date(),
     });
     const teamRef = orgRef.collection('teams').doc();
-    await teamRef.set({ name: 'Team', createdBy: uid, createdAt: new Date() });
+    await teamRef.set({
+      name: 'Team',
+      orgName: 'Intrekking Org',
+      createdBy: uid,
+      createdAt: new Date(),
+    });
     const teamMemberRef = teamRef.collection('teamMembers').doc(uid);
-    await teamMemberRef.set({ role: 'coach', email, addedAt: new Date() });
+    await teamMemberRef.set({ role: 'coach', email, uid, addedAt: new Date() });
 
     await page.reload();
     await page.waitForSelector(`[data-testid="context-org-${orgRef.id}"]`, { timeout: 10_000 });

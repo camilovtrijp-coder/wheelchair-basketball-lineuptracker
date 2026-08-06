@@ -46,6 +46,7 @@ beforeEach(async () => {
     // carol is GEEN org-member — alleen via team (voor de negatieve aanmaak-test)
     await db.collection('organizations').doc(ORG_A).collection('teams').doc('team-u23').set({
       name: 'U23',
+      orgName: 'Org A',
       createdBy: USERS.alice.uid,
     });
     await db
@@ -55,7 +56,7 @@ beforeEach(async () => {
       .doc('team-u23')
       .collection('teamMembers')
       .doc(USERS.carol.uid)
-      .set({ role: 'coach', email: USERS.carol.email });
+      .set({ role: 'coach', email: USERS.carol.email, uid: USERS.carol.uid });
   });
 });
 

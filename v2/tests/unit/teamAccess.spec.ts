@@ -71,5 +71,29 @@ describe('domain/organizations/teamAccess', () => {
         isExplicitlyAuthorized: false,
       });
     });
+
+    it('team-only gebruiker (orgRole null, issue #31) is coach: effectieve rol komt van het teamMembers-document, mag schrijven', () => {
+      expect(deriveTeamAccess(null, 'coach')).toEqual({
+        effectiveRole: 'coach',
+        canManageTeamData: true,
+        isExplicitlyAuthorized: true,
+      });
+    });
+
+    it('team-only gebruiker (orgRole null, issue #31) is viewer: mag niet schrijven', () => {
+      expect(deriveTeamAccess(null, 'viewer')).toEqual({
+        effectiveRole: 'viewer',
+        canManageTeamData: false,
+        isExplicitlyAuthorized: true,
+      });
+    });
+
+    it('zonder orgRole EN zonder teamMembers-document (onbereikbaar bij geldig gebruik) valt terug op een veilige, niet-schrijvende default', () => {
+      expect(deriveTeamAccess(null, null)).toEqual({
+        effectiveRole: 'viewer',
+        canManageTeamData: false,
+        isExplicitlyAuthorized: false,
+      });
+    });
   });
 });

@@ -1,12 +1,19 @@
 import { useRef, useState } from 'preact/hooks';
 import { translate, type Lang, type StringKey } from '../../i18n/strings';
-import type { Membership, SelectedContext, TeamSummary } from '../../domain/organizations/types';
+import type {
+  Membership,
+  SelectedContext,
+  TeamOnlyContext,
+  TeamSummary,
+} from '../../domain/organizations/types';
 import type { OrganizationGateway } from '../../application/organizations/OrganizationGateway';
-import { type TeamAccess } from '../../domain/organizations/teamAccess';
+import { deriveTeamAccess, type TeamAccess } from '../../domain/organizations/teamAccess';
 
 export interface ContextSwitcherProps {
   lang: Lang;
   memberships: Membership[];
+  /** Teams uit `listMyTeamOnlyContexts()` (issue #31) — nodig voor `membership.role === null`. */
+  teamOnlyContexts: TeamOnlyContext[];
   organizationGateway: OrganizationGateway;
   onSelect: (context: SelectedContext) => void;
 }
@@ -18,6 +25,7 @@ function t(lang: Lang, key: StringKey): string {
 export function ContextSwitcher({
   lang,
   memberships,
+  teamOnlyContexts,
   organizationGateway,
   onSelect,
 }: ContextSwitcherProps) {
@@ -40,6 +48,24 @@ export function ContextSwitcher({
     setExpandedOrgId(membership.orgId);
     setTeams(null);
     setLoadingTeams(true);
+
+    if (membership.role === null) {
+      // Team-only context (issue #31): `listTeams()` zou door de Rules geweigerd worden — zonder
+      // organizationMembers-document in deze organisatie kan Firestore een ongefilterde
+      // lijstquery niet vooraf bewijzen (zie firebase/docs/QUERY_CONTRACT.md). Gebruik i.p.v.
+      // een netwerkcall de al opgehaalde teamOnlyContexts, lokaal gefilterd op deze organisatie.
+      const contexts = teamOnlyContexts.filter((context) => context.orgId === membership.orgId);
+      if (latestRequestId.current !== requestId) return;
+      setTeamAccess(
+        Object.fromEntries(
+          contexts.map((context) => [context.teamId, deriveTeamAccess(null, context.role)]),
+        ),
+      );
+      setTeams(contexts.map((context) => ({ teamId: context.teamId, name: context.teamName })));
+      setLoadingTeams(false);
+      return;
+    }
+
     const teamList = await organizationGateway.listTeams(membership.orgId);
     const accessEntries = await Promise.all(
       teamList.map(async (team) => {

@@ -20,16 +20,37 @@ export const ORGANIZATION_ROLES = [
 ] as const;
 export type OrganizationRole = (typeof ORGANIZATION_ROLES)[number];
 
-/** Eén organisatielidmaatschap van de ingelogde gebruiker, zoals getoond in de contextwisselaar. */
+/**
+ * Eén organisatiecontext van de ingelogde gebruiker, zoals getoond in de contextwisselaar.
+ * `role` is `null` voor een team-only groep (issue #31): een organisatie waar deze gebruiker
+ * uitsluitend via één of meer expliciete `teamMembers`-documenten toegang toe heeft, zonder
+ * eigen `organizationMembers`-document. Zulke groepen worden door AuthGate opgebouwd uit
+ * `listMyTeamOnlyContexts()` (zie `TeamOnlyContext` hieronder), niet uit `listMyMemberships()`.
+ */
 export interface Membership {
   orgId: string;
   orgName: string;
-  role: OrganizationRole;
+  role: OrganizationRole | null;
 }
 
 export interface TeamSummary {
   teamId: string;
   name: string;
+}
+
+/**
+ * Eén team waar de ingelogde gebruiker toegang toe heeft via een expliciet `teamMembers`-
+ * document, ONAFHANKELIJK van een eventueel `organizationMembers`-document (issue #31) —
+ * het resultaat van `listMyTeamOnlyContexts()`. Bevat, anders dan `Membership`+`TeamSummary`,
+ * altijd al de teamrol: voor een team-only context is er geen aparte `getMyTeamAccess()`-call
+ * nodig (en die zou voor zo'n gebruiker ook niet altijd mogelijk zijn — zie ContextSwitcher).
+ */
+export interface TeamOnlyContext {
+  orgId: string;
+  orgName: string;
+  teamId: string;
+  teamName: string;
+  role: OrganizationRole;
 }
 
 export interface SelectedContext {

@@ -43,6 +43,7 @@ beforeEach(async () => {
       .set({ role: 'organizationAdmin', email: USERS.bob.email, uid: USERS.bob.uid });
     await db.collection('organizations').doc(ORG_A).collection('teams').doc(TEAM_A1).set({
       name: 'U23',
+      orgName: 'Org A',
       createdBy: USERS.alice.uid,
     });
     // carol = coach, dave = scorer, erin = viewer op team A1
@@ -58,7 +59,7 @@ beforeEach(async () => {
         .doc(TEAM_A1)
         .collection('teamMembers')
         .doc(uid)
-        .set({ role, email });
+        .set({ role, email, uid });
     }
     // Initieel settings/roster
     await db
@@ -97,6 +98,7 @@ beforeEach(async () => {
       .set({ role: 'viewer', email: USERS.alice.email, uid: USERS.alice.uid });
     await db.collection('organizations').doc(ORG_B).collection('teams').doc(TEAM_B1).set({
       name: 'NBB Selectie',
+      orgName: 'Org B',
       createdBy: USERS.frank.uid,
     });
     await db

@@ -20,7 +20,12 @@ import {
   teamMemberConverter,
 } from 'firebase-base/documents';
 import type { Invitation } from '../../domain/invitations/types';
-import type { Membership, OrganizationRole, TeamSummary } from '../../domain/organizations/types';
+import type {
+  Membership,
+  OrganizationRole,
+  TeamOnlyContext,
+  TeamSummary,
+} from '../../domain/organizations/types';
 import { deriveTeamAccess, type TeamAccess } from '../../domain/organizations/teamAccess';
 import type {
   OperationResult,
@@ -84,6 +89,42 @@ export class FirestoreOrganizationGateway implements OrganizationGateway {
       });
     }
     return memberships;
+  }
+
+  /**
+   * De andere toegestane query (issue #31): teams waar deze gebruiker via een expliciet
+   * `teamMembers`-document toegang toe heeft, ONAFHANKELIJK van `organizationMembers` — nodig
+   * voor gebruikers zonder enig `organizationMembers`-document in die organisatie (bijv. een
+   * puur team-only coach/scorer/viewer). `memberSnapshot.ref.parent.parent` is direct de
+   * `teams/{teamId}`-documentref (twee niveaus boven een `teamMembers`-document); die read is
+   * toegestaan via `canReadTeam`'s `isTeamMember`-tak, ook zonder organizationMembers-document.
+   * Organisatienaam komt van het gedenormaliseerde `orgName`-veld op het teamdocument, NIET van
+   * een rechtstreekse `organizations/{orgId}`-read — die blijft `isOrgMember`-only (zie
+   * firebase/docs/QUERY_CONTRACT.md).
+   */
+  async listMyTeamOnlyContexts(): Promise<TeamOnlyContext[]> {
+    const teamMembershipQuery = query(
+      collectionGroup(this.db, 'teamMembers'),
+      where('uid', '==', this.ownUid),
+    ).withConverter(teamMemberConverter);
+    const snapshot = await getDocs(teamMembershipQuery);
+
+    const contexts: TeamOnlyContext[] = [];
+    for (const memberSnapshot of snapshot.docs) {
+      const teamDocRef = memberSnapshot.ref.parent.parent;
+      const orgId = teamDocRef?.parent.parent?.id;
+      if (!teamDocRef || !orgId) continue;
+      const teamSnapshot = await getDoc(teamDocRef.withConverter(teamConverter));
+      if (!teamSnapshot.exists()) continue;
+      contexts.push({
+        orgId,
+        orgName: teamSnapshot.data().orgName,
+        teamId: teamDocRef.id,
+        teamName: teamSnapshot.data().name,
+        role: memberSnapshot.data().role,
+      });
+    }
+    return contexts;
   }
 
   /**
@@ -155,8 +196,20 @@ export class FirestoreOrganizationGateway implements OrganizationGateway {
 
   async createTeam(orgId: string, name: string): Promise<OperationResult<{ teamId: string }>> {
     try {
+      // Denormaliseer de organisatienaam op het teamdocument (issue #31): team-only leden
+      // kunnen `organizations/{orgId}` niet lezen (die regel blijft bewust `isOrgMember`-only),
+      // maar hebben via `canReadTeam` altijd al leestoegang tot hun eigen team.
+      const orgSnapshot = await getDoc(orgRef(this.db, orgId).withConverter(organizationConverter));
+      if (!orgSnapshot.exists()) {
+        return { ok: false, errorCode: 'not-found' };
+      }
       const newTeamRef = doc(teamsCollectionRef(this.db, orgId));
-      await setDoc(newTeamRef, { name, createdBy: this.ownUid, createdAt: serverTimestamp() });
+      await setDoc(newTeamRef, {
+        name,
+        orgName: orgSnapshot.data().name,
+        createdBy: this.ownUid,
+        createdAt: serverTimestamp(),
+      });
       return { ok: true, value: { teamId: newTeamRef.id } };
     } catch (error) {
       return toOperationResult(error);
@@ -174,7 +227,7 @@ export class FirestoreOrganizationGateway implements OrganizationGateway {
   async getMyTeamAccess(
     orgId: string,
     teamId: string,
-    orgRole: OrganizationRole,
+    orgRole: OrganizationRole | null,
   ): Promise<TeamAccess> {
     const snapshot = await getDoc(
       teamMemberRef(this.db, orgId, teamId, this.ownUid).withConverter(teamMemberConverter),
@@ -204,7 +257,7 @@ export class FirestoreOrganizationGateway implements OrganizationGateway {
   async validateSelectedTeam(
     orgId: string,
     teamId: string,
-    orgRole: OrganizationRole,
+    orgRole: OrganizationRole | null,
   ): Promise<boolean> {
     try {
       const teamSnapshot = await getDoc(
