@@ -109,3 +109,31 @@ jobs:
           name: firebase-spike-playwright-report
           path: firebase-spike/playwright-report/
           retention-days: 7
+
+  firebase-base:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: firebase
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: firebase/package-lock.json
+
+      - name: Set up Java for Firebase Emulator Suite
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+
+      - name: Install firebase-base dependencies
+        run: npm ci
+
+      - name: Verify firebase-base (type-check, converter unit tests, seed + Rules tests)
+        run: npm run verify
