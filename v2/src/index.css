@@ -311,6 +311,48 @@ button:focus-visible {
   border-color: var(--lt-color-accent);
 }
 
+.auth-form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--lt-space-3);
+  max-width: 24rem;
+}
+
+.auth-form__field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--lt-space-1);
+  font-size: var(--lt-font-size-sm);
+  color: var(--lt-color-muted);
+}
+
+.auth-form__field input {
+  font: inherit;
+  color: var(--lt-color-fg);
+  padding: var(--lt-space-2) var(--lt-space-3);
+  border: var(--lt-border-thin);
+  border-radius: var(--lt-radius-sm);
+  background: var(--lt-color-bg);
+}
+
+.auth-form__field input:focus-visible {
+  outline: var(--lt-focus-ring);
+  outline-offset: var(--lt-focus-offset);
+  border-color: var(--lt-color-focus);
+}
+
+.auth-form__error {
+  margin: 0;
+  font-size: var(--lt-font-size-sm);
+  color: var(--lt-color-danger);
+}
+
+.auth-form__switch {
+  margin-top: var(--lt-space-3);
+  font-size: var(--lt-font-size-sm);
+  color: var(--lt-color-muted);
+}
+
 @media (prefers-reduced-motion: reduce) {
   * {
     animation: none !important;

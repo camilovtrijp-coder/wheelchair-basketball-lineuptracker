@@ -55,6 +55,24 @@ const nl = {
   confirmDeletePlayer: 'Deze speler definitief verwijderen? Dit kan niet ongedaan worden gemaakt.',
   dupNumberWarningLabel: '⚠ Dubbel rugnummer:',
   rosterSaveError: 'Opslaan is mislukt. Controleer de opslagruimte van je browser.',
+
+  authLoadingTitle: 'Bezig met laden…',
+  authEmailLabel: 'E-mailadres',
+  authPasswordLabel: 'Wachtwoord',
+  authLoginTitle: 'Inloggen',
+  authLoginBtn: 'Inloggen',
+  authSignupTitle: 'Account aanmaken',
+  authSignupBtn: 'Account aanmaken',
+  authSwitchToSignupPrompt: 'Nog geen account?',
+  authSwitchToSignupBtn: 'Account aanmaken',
+  authSwitchToLoginPrompt: 'Al een account?',
+  authSwitchToLoginBtn: 'Inloggen',
+  authSignOutBtn: 'Uitloggen',
+  authInvalidCredentialError: 'Onjuist e-mailadres of wachtwoord.',
+  authEmailInUseError: 'Er bestaat al een account voor dit e-mailadres.',
+  authWeakPasswordError: 'Kies een wachtwoord van minstens 6 tekens.',
+  authInvalidEmailError: 'Vul een geldig e-mailadres in.',
+  authGenericError: 'Er ging iets mis. Probeer het opnieuw.',
 } as const;
 
 const en = {
@@ -107,6 +125,24 @@ const en = {
   confirmDeletePlayer: 'Permanently delete this player? This cannot be undone.',
   dupNumberWarningLabel: '⚠ Duplicate shirt number:',
   rosterSaveError: "Saving failed. Check your browser's storage space.",
+
+  authLoadingTitle: 'Loading…',
+  authEmailLabel: 'Email address',
+  authPasswordLabel: 'Password',
+  authLoginTitle: 'Log in',
+  authLoginBtn: 'Log in',
+  authSignupTitle: 'Create account',
+  authSignupBtn: 'Create account',
+  authSwitchToSignupPrompt: "Don't have an account yet?",
+  authSwitchToSignupBtn: 'Create one',
+  authSwitchToLoginPrompt: 'Already have an account?',
+  authSwitchToLoginBtn: 'Log in',
+  authSignOutBtn: 'Log out',
+  authInvalidCredentialError: 'Incorrect email address or password.',
+  authEmailInUseError: 'An account already exists for this email address.',
+  authWeakPasswordError: 'Choose a password of at least 6 characters.',
+  authInvalidEmailError: 'Enter a valid email address.',
+  authGenericError: 'Something went wrong. Please try again.',
 } as const;
 
 export const STRINGS = { nl, en } as const;
