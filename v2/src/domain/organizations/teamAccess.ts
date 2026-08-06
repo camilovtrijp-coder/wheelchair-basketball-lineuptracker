@@ -3,6 +3,16 @@ import type { OrganizationRole } from './types';
 export interface TeamAccess {
   effectiveRole: OrganizationRole;
   canManageTeamData: boolean;
+  /**
+   * Of dit specifieke team getoond/geselecteerd mag worden als context: owner/admin
+   * (impliciet elk team) of een expliciet teamMembers-document. Puur organisatielidmaatschap
+   * zonder van beide (bijv. een org-viewer zonder teamMembers-document) geeft `effectiveRole`
+   * via de orgrol-fallback hierboven — dat blijft correct voor "welke rol zou ik hebben als ik
+   * hier toegang toe had", maar mag niet gebruikt worden om te bepalen OF een team getoond of
+   * geactiveerd mag worden (zie PR 5.2-review: contextwisselaar toonde anders elk team van de
+   * organisatie aan elk lid, en verborg team-only leden nergens expliciet voor).
+   */
+  isExplicitlyAuthorized: boolean;
 }
 
 const OWNER_OR_ADMIN: ReadonlySet<OrganizationRole> = new Set([
@@ -25,5 +35,6 @@ export function deriveTeamAccess(
   return {
     effectiveRole: isOwnerOrAdmin ? orgRole : (teamMemberRole ?? orgRole),
     canManageTeamData: isOwnerOrAdmin || teamMemberRole === 'coach',
+    isExplicitlyAuthorized: isOwnerOrAdmin || teamMemberRole !== null,
   };
 }

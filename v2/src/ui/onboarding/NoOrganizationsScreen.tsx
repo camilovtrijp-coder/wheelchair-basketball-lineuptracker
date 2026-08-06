@@ -25,6 +25,14 @@ export function NoOrganizationsScreen({
   const [teamName, setTeamName] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Onthoudt voortgang tussen pogingen zodat een retry na een gedeeltelijke mislukking de
+  // al geslaagde stappen niet herhaalt: anders maakt een retry na een mislukte createTeam()
+  // een TWEEDE organisatie aan (de eerste, met een geldige owner-membership, blijft dan als
+  // duplicaat achter), en zonder `bootstrapOrgId` kan een mislukte membership-write ná een
+  // geslaagde org-write nooit meer hersteld worden (de gebruiker kan die wees-organisatie
+  // zonder membership niet zelf verwijderen — Rules eisen daarvoor een membership).
+  const [bootstrapOrgId, setBootstrapOrgId] = useState<string | null>(null);
+  const [orgReady, setOrgReady] = useState(false);
 
   const title =
     reason === 'fresh-signup'
@@ -40,14 +48,27 @@ export function NoOrganizationsScreen({
     setSubmitting(true);
     setError(null);
 
-    const orgResult = await organizationGateway.createOrganizationWithOwner(orgName.trim());
-    if (!orgResult.ok || !orgResult.value) {
-      setSubmitting(false);
-      setError(t(lang, 'authGenericError'));
-      return;
+    let orgId = bootstrapOrgId;
+    if (!orgReady) {
+      const orgResult = await organizationGateway.createOrganizationWithOwner(
+        orgName.trim(),
+        orgId ?? undefined,
+      );
+      if (!orgResult.ok || !orgResult.value) {
+        setSubmitting(false);
+        setError(t(lang, 'authGenericError'));
+        // Als de organisatie zelf al bestaat (alleen de membership-write mislukte), onthouden
+        // we het orgId zodat een volgende poging dat hervat i.p.v. een tweede, wees geworden
+        // organisatie aan te maken.
+        if (orgResult.value) setBootstrapOrgId(orgResult.value.orgId);
+        return;
+      }
+      orgId = orgResult.value.orgId;
+      setBootstrapOrgId(orgId);
+      setOrgReady(true);
     }
 
-    const teamResult = await organizationGateway.createTeam(orgResult.value.orgId, teamName.trim());
+    const teamResult = await organizationGateway.createTeam(orgId!, teamName.trim());
     setSubmitting(false);
     if (!teamResult.ok) {
       setError(t(lang, 'authGenericError'));

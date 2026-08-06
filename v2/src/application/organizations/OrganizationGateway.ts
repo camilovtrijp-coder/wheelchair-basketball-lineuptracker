@@ -12,10 +12,19 @@ export interface OperationResult<T = undefined> {
 export interface OrganizationGateway {
   /** De enige toegestane query voor "al mijn organisaties" (zie firebase/docs/QUERY_CONTRACT.md). */
   listMyMemberships(): Promise<Membership[]>;
-  createOrganizationWithOwner(name: string): Promise<OperationResult<{ orgId: string }>>;
+  /**
+   * `resumeOrgId`: geef het `orgId` uit een eerder mislukte poging door (zie `value` op een
+   * `ok:false`-resultaat) om een weesorganisatie te herstellen i.p.v. een nieuwe aan te maken.
+   */
+  createOrganizationWithOwner(
+    name: string,
+    resumeOrgId?: string,
+  ): Promise<OperationResult<{ orgId: string }>>;
   createTeam(orgId: string, name: string): Promise<OperationResult<{ teamId: string }>>;
   listTeams(orgId: string): Promise<TeamSummary[]>;
   getMyTeamAccess(orgId: string, teamId: string, orgRole: OrganizationRole): Promise<TeamAccess>;
+  /** Bestaat het team nog en heeft deze gebruiker er nog aantoonbaar toegang toe? */
+  validateSelectedTeam(orgId: string, teamId: string, orgRole: OrganizationRole): Promise<boolean>;
   /** `null` als de uitnodiging niet bestaat, of niet leesbaar is voor de ingelogde gebruiker. */
   getInvitationByLink(orgId: string, invitationId: string): Promise<Invitation | null>;
   acceptInvitation(orgId: string, invitationId: string): Promise<OperationResult>;

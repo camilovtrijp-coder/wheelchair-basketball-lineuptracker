@@ -242,6 +242,15 @@ async function seed(): Promise<void> {
   await settingsRef(orgB, teamB1).set({ ...SEED_SETTINGS_B, updatedAt: now });
   await rosterRef(orgB, teamB1).set({ players: SEED_PLAYERS_B, updatedAt: now });
 
+  // Org-brede rollen (owner/admin uitgezonderd) geven sinds de PR 5.2-review geen impliciete
+  // teamtoegang meer — alice (org-viewer) heeft een expliciet teamMembers-document nodig om
+  // team-selectie te mogen zien/activeren in de contextwisselaar.
+  await teamMemberRef(orgB, teamB1, USERS.alice.uid).set({
+    role: 'viewer',
+    email: USERS.alice.email,
+    addedAt: now,
+  });
+
   console.log('[seed] Klaar. 2 organisaties, 3 teams, 10 gebruikers geseed.');
 }
 

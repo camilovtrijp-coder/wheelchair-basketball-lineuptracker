@@ -41,6 +41,9 @@ function memberRef(db: Firestore, orgId: string, uid: string) {
 function teamsCollectionRef(db: Firestore, orgId: string) {
   return collection(db, 'organizations', orgId, 'teams');
 }
+function teamRef(db: Firestore, orgId: string, teamId: string) {
+  return doc(db, 'organizations', orgId, 'teams', teamId);
+}
 function teamMemberRef(db: Firestore, orgId: string, teamId: string, uid: string) {
   return doc(db, 'organizations', orgId, 'teams', teamId, 'teamMembers', uid);
 }
@@ -83,7 +86,22 @@ export class FirestoreOrganizationGateway implements OrganizationGateway {
     return memberships;
   }
 
-  async createOrganizationWithOwner(name: string): Promise<OperationResult<{ orgId: string }>> {
+  /**
+   * `resumeOrgId` maakt dit herstelbaar i.p.v. atomair: de twee writes kunnen
+   * niet gebatcht worden (zie hieronder), dus een mislukking tussen beide in
+   * laat een organisatie zonder owner-membership achter — die kan de
+   * gebruiker zelf niet meer opruimen (Rules eisen een membership om te
+   * mogen verwijderen). Geef bij een retry het `orgId` uit een eerdere
+   * mislukte poging door (zie `value` in het `OperationResult` hieronder,
+   * ook bij `ok:false`) zodat alleen de ontbrekende membership-write
+   * herhaald wordt i.p.v. een tweede, wees geworden organisatie aan te
+   * maken. `setDoc` op hetzelfde pad is idempotent, dus herhaling van een
+   * al geslaagde stap is altijd veilig.
+   */
+  async createOrganizationWithOwner(
+    name: string,
+    resumeOrgId?: string,
+  ): Promise<OperationResult<{ orgId: string }>> {
     // Bewust GEEN writeBatch: firestore.rules' bootstrap-create-regel voor
     // organizationMembers gebruikt `get(orgRef)` (niet `getAfter()`) om
     // `createdBy` te controleren, en ziet daardoor alleen al vóór deze
@@ -91,19 +109,41 @@ export class FirestoreOrganizationGateway implements OrganizationGateway {
     // membership-create dus altijd laten falen. Zie
     // firebase/tests/rules/bootstrap-and-invitation-flow.spec.ts, waar
     // exact dezelfde twee sequentiële writes al bewezen zijn.
+    let orgId = resumeOrgId;
     try {
-      const newOrgRef = doc(collection(this.db, 'organizations'));
-      await setDoc(newOrgRef, { name, createdBy: this.ownUid, createdAt: serverTimestamp() });
-      const newMemberRef = memberRef(this.db, newOrgRef.id, this.ownUid);
+      if (!orgId) {
+        const newOrgRef = doc(collection(this.db, 'organizations'));
+        await setDoc(newOrgRef, { name, createdBy: this.ownUid, createdAt: serverTimestamp() });
+        orgId = newOrgRef.id;
+      } else {
+        // Hervatting: als de membership er al staat — bijv. omdat de vorige poging server-side
+        // wél slaagde maar de bevestiging de client nooit bereikte (netwerkonderbreking net
+        // daarna) — is er niets meer te doen. Rules zien een herhaalde `setDoc` op een reeds
+        // bestaand document als een 'update' (geen matchende Rule voor het aanpassen van je
+        // eigen membership), dus zonder deze check zou zo'n herhaling ten onrechte falen.
+        // `getDoc` op een NOG NIET bestaand eigen membership-document wordt zelf ook geweigerd
+        // (de leesregel `isOrgMember(orgId)` vereist dat het doc al bestaat om het te mogen
+        // lezen — een kip-en-ei-situatie) — permission-denied betekent hier dus specifiek "dit
+        // membership bestaat nog niet", niet "onbekende fout": val terug op de create-poging.
+        try {
+          const existingMember = await getDoc(memberRef(this.db, orgId, this.ownUid));
+          if (existingMember.exists()) {
+            return { ok: true, value: { orgId } };
+          }
+        } catch {
+          // Bestaat nog niet — ga door naar de create-poging hieronder.
+        }
+      }
+      const newMemberRef = memberRef(this.db, orgId, this.ownUid);
       await setDoc(newMemberRef, {
         role: 'organizationOwner' satisfies OrganizationRole,
         email: this.ownEmail,
         uid: this.ownUid,
         joinedAt: serverTimestamp(),
       });
-      return { ok: true, value: { orgId: newOrgRef.id } };
+      return { ok: true, value: { orgId } };
     } catch (error) {
-      return toOperationResult(error);
+      return { ...toOperationResult(error), value: orgId ? { orgId } : undefined };
     }
   }
 
@@ -135,6 +175,41 @@ export class FirestoreOrganizationGateway implements OrganizationGateway {
     );
     const teamMemberRole = snapshot.exists() ? snapshot.data().role : null;
     return deriveTeamAccess(orgRole, teamMemberRole);
+  }
+
+  /**
+   * Hervalideert een eerder gekozen (bijv. uit localStorage herstelde) context: bestaat het
+   * team nog, en heeft deze gebruiker er nog aantoonbaar toegang toe (owner/admin impliciet,
+   * anders een expliciet teamMembers-document)? `deriveAppState` gebruikt dit om ook
+   * team-niveau-intrekking te detecteren — puur organisatielidmaatschap alleen (het eerdere
+   * gedrag) miste een ingetrokken, verwijderd of via localStorage vervalst `teamId`.
+   *
+   * Bij een genuine online controle gooien deze reads nooit een fout: zodra het
+   * organisatiemembership al bevestigd is (voorwaarde om deze functie aan te roepen), staat
+   * `canReadTeam`/de eigen-membership-leesregel altijd toe — "bestaat niet (meer)" en "geen
+   * expliciete teamMembers-rol" komen terug als een schone, foutloze `false`, niet als een
+   * exception. Een exception hier betekent dus specifiek "geen (cache-)antwoord beschikbaar"
+   * (bijv. offline zonder gecachete respons voor dit specifieke document) — dat NIET als
+   * "ingetrokken" behandelen zou een eerder geldige, gecachete context bij elke offline reload
+   * laten afketsen, in strijd met ADR-002's offline-first-uitgangspunt. Fail open (nog geldig
+   * totdat het tegendeel online bewezen is), net als `listMyMemberships()`'s netwerkfout-pad
+   * hierboven `memberships` op `null` laat i.p.v. op een lege lijst te zetten.
+   */
+  async validateSelectedTeam(
+    orgId: string,
+    teamId: string,
+    orgRole: OrganizationRole,
+  ): Promise<boolean> {
+    try {
+      const teamSnapshot = await getDoc(
+        teamRef(this.db, orgId, teamId).withConverter(teamConverter),
+      );
+      if (!teamSnapshot.exists()) return false;
+      const access = await this.getMyTeamAccess(orgId, teamId, orgRole);
+      return access.isExplicitlyAuthorized;
+    } catch {
+      return true;
+    }
   }
 
   async getInvitationByLink(orgId: string, invitationId: string): Promise<Invitation | null> {

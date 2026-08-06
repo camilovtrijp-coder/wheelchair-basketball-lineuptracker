@@ -19,6 +19,15 @@ export interface DeriveAppStateInput {
   /** `null` = nog niet geladen (geen cache, geen serverrespons ontvangen). */
   memberships: Membership[] | null;
   selectedContext: SelectedContext | null;
+  /**
+   * Of de geselecteerde TEAM-context (niet alleen de organisatie) nog aantoonbaar geldig is:
+   * bestaat het team nog, en heeft de gebruiker er nog aantoonbaar toegang toe (owner/admin
+   * impliciet, anders een expliciet teamMembers-document)? `null` = nog aan het controleren
+   * (alleen relevant zolang `selectedContext` niet `null` is). Zonder deze check bleef een
+   * ingetrokken, verwijderd of via localStorage vervalst team-onderdeel van de context
+   * onopgemerkt zolang alleen het organisatiemembership nog bestond.
+   */
+  selectedContextTeamValid: boolean | null;
   /** Of deze gebruiker ooit memberships heeft gehad, om een verse registratie te onderscheiden van intrekking. */
   hasEverHadMemberships: boolean;
 }
@@ -48,8 +57,12 @@ export function deriveAppState(input: DeriveAppStateInput): AppState {
   }
   if (input.selectedContext !== null) {
     const selected = input.selectedContext;
-    const stillValid = input.memberships.some((m) => m.orgId === selected.orgId);
-    return stillValid ? { kind: 'active' } : { kind: 'selected-context-revoked' };
+    const orgStillValid = input.memberships.some((m) => m.orgId === selected.orgId);
+    if (!orgStillValid) return { kind: 'selected-context-revoked' };
+    if (input.selectedContextTeamValid === null) return { kind: 'loading' };
+    return input.selectedContextTeamValid
+      ? { kind: 'active' }
+      : { kind: 'selected-context-revoked' };
   }
   return { kind: 'context-switcher' };
 }

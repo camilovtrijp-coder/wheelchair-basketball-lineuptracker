@@ -7,6 +7,7 @@ describe('domain/organizations/teamAccess', () => {
       expect(deriveTeamAccess('organizationOwner', null)).toEqual({
         effectiveRole: 'organizationOwner',
         canManageTeamData: true,
+        isExplicitlyAuthorized: true,
       });
     });
 
@@ -14,6 +15,7 @@ describe('domain/organizations/teamAccess', () => {
       expect(deriveTeamAccess('organizationAdmin', null)).toEqual({
         effectiveRole: 'organizationAdmin',
         canManageTeamData: true,
+        isExplicitlyAuthorized: true,
       });
     });
 
@@ -21,6 +23,7 @@ describe('domain/organizations/teamAccess', () => {
       expect(deriveTeamAccess('organizationOwner', 'viewer')).toEqual({
         effectiveRole: 'organizationOwner',
         canManageTeamData: true,
+        isExplicitlyAuthorized: true,
       });
     });
 
@@ -28,6 +31,7 @@ describe('domain/organizations/teamAccess', () => {
       expect(deriveTeamAccess('coach', 'coach')).toEqual({
         effectiveRole: 'coach',
         canManageTeamData: true,
+        isExplicitlyAuthorized: true,
       });
     });
 
@@ -35,6 +39,7 @@ describe('domain/organizations/teamAccess', () => {
       expect(deriveTeamAccess('scorer', 'scorer')).toEqual({
         effectiveRole: 'scorer',
         canManageTeamData: false,
+        isExplicitlyAuthorized: true,
       });
     });
 
@@ -42,13 +47,28 @@ describe('domain/organizations/teamAccess', () => {
       expect(deriveTeamAccess('viewer', 'viewer')).toEqual({
         effectiveRole: 'viewer',
         canManageTeamData: false,
+        isExplicitlyAuthorized: true,
       });
     });
 
-    it('valt terug op de orgrol als effectieve rol zonder teamspecifiek document', () => {
+    it('valt terug op de orgrol als effectieve rol zonder teamspecifiek document, maar is niet aantoonbaar geautoriseerd', () => {
       expect(deriveTeamAccess('viewer', null)).toEqual({
         effectiveRole: 'viewer',
         canManageTeamData: false,
+        isExplicitlyAuthorized: false,
+      });
+    });
+
+    it('org-coach/scorer zonder teamMembers-document zijn evenmin aantoonbaar geautoriseerd voor een specifiek team', () => {
+      expect(deriveTeamAccess('coach', null)).toEqual({
+        effectiveRole: 'coach',
+        canManageTeamData: false,
+        isExplicitlyAuthorized: false,
+      });
+      expect(deriveTeamAccess('scorer', null)).toEqual({
+        effectiveRole: 'scorer',
+        canManageTeamData: false,
+        isExplicitlyAuthorized: false,
       });
     });
   });

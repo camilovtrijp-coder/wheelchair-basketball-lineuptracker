@@ -83,6 +83,7 @@ export function AuthGate({ authGateway }: AuthGateProps) {
   const [selectedContext, setSelectedContext] = useState<SelectedContext | null>(() =>
     readSelectedContext(browserStorage),
   );
+  const [selectedContextTeamValid, setSelectedContextTeamValid] = useState<boolean | null>(null);
   const [pendingInvitationLink, setPendingInvitationLink] = useState<InvitationLinkParams | null>(
     initialInvitationLink,
   );
@@ -145,6 +146,32 @@ export function AuthGate({ authGateway }: AuthGateProps) {
       cancelled = true;
     };
   }, [authUser, trustedDeviceAnswered, membershipsRefreshKey]);
+
+  // Hervalideert de TEAM-kant van een geselecteerde context (zie deriveAppState's
+  // selectedContextTeamValid): puur organisatielidmaatschap miste een ingetrokken,
+  // verwijderd of via localStorage vervalst teamId. Draait opnieuw zodra de context
+  // wisselt of memberships verversen (bijv. na een reload).
+  useEffect(() => {
+    if (!organizationGateway || !selectedContext || !memberships) {
+      setSelectedContextTeamValid(null);
+      return;
+    }
+    const membership = memberships.find((m) => m.orgId === selectedContext.orgId);
+    if (!membership) {
+      setSelectedContextTeamValid(null);
+      return;
+    }
+    setSelectedContextTeamValid(null);
+    let cancelled = false;
+    organizationGateway
+      .validateSelectedTeam(selectedContext.orgId, selectedContext.teamId, membership.role)
+      .then((valid) => {
+        if (!cancelled) setSelectedContextTeamValid(valid);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [organizationGateway, selectedContext, memberships]);
 
   async function handleSignUp(email: string, password: string): Promise<AuthResult> {
     const result = await authGateway.signUp(email, password);
@@ -219,6 +246,7 @@ export function AuthGate({ authGateway }: AuthGateProps) {
     trustedDeviceAnswered,
     memberships,
     selectedContext,
+    selectedContextTeamValid,
     hasEverHadMemberships: !justSignedUp,
   });
 

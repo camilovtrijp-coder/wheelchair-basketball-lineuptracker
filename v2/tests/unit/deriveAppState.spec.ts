@@ -26,6 +26,7 @@ function input(overrides: Partial<DeriveAppStateInput> = {}): DeriveAppStateInpu
     trustedDeviceAnswered: true,
     memberships: [rotterdam],
     selectedContext: null,
+    selectedContextTeamValid: true,
     hasEverHadMemberships: true,
     ...overrides,
   };
@@ -110,5 +111,41 @@ describe('domain/organizations/deriveAppState', () => {
     );
     expect(stateWithBothOrgs).toEqual({ kind: 'active' });
     expect(stateAfterRotterdamRevoked).toEqual({ kind: 'active' });
+  });
+
+  it('toont loading zolang de teamtoegang van de gekozen context nog gecontroleerd wordt', () => {
+    expect(
+      deriveAppState(
+        input({
+          memberships: [rotterdam],
+          selectedContext: { orgId: 'org-rotterdam', teamId: 'team-1' },
+          selectedContextTeamValid: null,
+        }),
+      ),
+    ).toEqual({ kind: 'loading' });
+  });
+
+  it('markeert de context als ingetrokken als het organisatiemembership nog bestaat maar de teamtoegang niet meer geldig is (bijv. teamMembers-document verwijderd, of team zelf niet-bestaand)', () => {
+    expect(
+      deriveAppState(
+        input({
+          memberships: [rotterdam],
+          selectedContext: { orgId: 'org-rotterdam', teamId: 'team-1' },
+          selectedContextTeamValid: false,
+        }),
+      ),
+    ).toEqual({ kind: 'selected-context-revoked' });
+  });
+
+  it('org-validatie gaat vóór team-validatie: bij een ingetrokken organisatie wordt de teamcheck niet afgewacht', () => {
+    expect(
+      deriveAppState(
+        input({
+          memberships: [nbb],
+          selectedContext: { orgId: 'org-rotterdam', teamId: 'team-1' },
+          selectedContextTeamValid: null,
+        }),
+      ),
+    ).toEqual({ kind: 'selected-context-revoked' });
   });
 });
