@@ -2,6 +2,12 @@ import { useState } from 'preact/hooks';
 import type { JSX } from 'preact';
 import { translate, type Lang, type StringKey } from '../../i18n/strings';
 import type { OrganizationGateway } from '../../application/organizations/OrganizationGateway';
+import { browserStorage } from '../../i18n/browserStorage';
+import {
+  clearBootstrapOrgId,
+  readBootstrapOrgId,
+  writeBootstrapOrgId,
+} from '../../infrastructure/onboarding/bootstrapProgress';
 
 export interface NoOrganizationsScreenProps {
   lang: Lang;
@@ -31,7 +37,14 @@ export function NoOrganizationsScreen({
   // duplicaat achter), en zonder `bootstrapOrgId` kan een mislukte membership-write ná een
   // geslaagde org-write nooit meer hersteld worden (de gebruiker kan die wees-organisatie
   // zonder membership niet zelf verwijderen — Rules eisen daarvoor een membership).
-  const [bootstrapOrgId, setBootstrapOrgId] = useState<string | null>(null);
+  // Gepersisteerd (niet alleen componentstate) zodat dit ook een reload/crash halverwege de
+  // onboarding-flow overleeft — puur in-memory state zou dan alsnog een tweede organisatie
+  // toestaan. `orgReady` blijft bewust wél puur componentstate: na een reload weten we niet
+  // zeker of de membership-write destijds slaagde, en `createOrganizationWithOwner()`'s
+  // resumepad controleert dat zelf al veilig/idempotent (zie de gateway-toelichting).
+  const [bootstrapOrgId, setBootstrapOrgId] = useState<string | null>(() =>
+    readBootstrapOrgId(browserStorage),
+  );
   const [orgReady, setOrgReady] = useState(false);
 
   const title =
@@ -58,13 +71,17 @@ export function NoOrganizationsScreen({
         setSubmitting(false);
         setError(t(lang, 'authGenericError'));
         // Als de organisatie zelf al bestaat (alleen de membership-write mislukte), onthouden
-        // we het orgId zodat een volgende poging dat hervat i.p.v. een tweede, wees geworden
-        // organisatie aan te maken.
-        if (orgResult.value) setBootstrapOrgId(orgResult.value.orgId);
+        // we het orgId zodat een volgende poging — ook na een reload/crash — dat hervat i.p.v.
+        // een tweede, wees geworden organisatie aan te maken.
+        if (orgResult.value) {
+          setBootstrapOrgId(orgResult.value.orgId);
+          writeBootstrapOrgId(browserStorage, orgResult.value.orgId);
+        }
         return;
       }
       orgId = orgResult.value.orgId;
       setBootstrapOrgId(orgId);
+      writeBootstrapOrgId(browserStorage, orgId);
       setOrgReady(true);
     }
 
@@ -75,6 +92,7 @@ export function NoOrganizationsScreen({
       return;
     }
 
+    clearBootstrapOrgId(browserStorage);
     onCreated();
   }
 

@@ -65,4 +65,42 @@ test.describe('bootstrap van de eerste organisatie is herstelbaar na een gedeelt
     expect(secondResult.ok).toBe(true);
     expect(secondResult.value?.orgId).toBe(orphanOrgRef.id);
   });
+
+  // Herreviewbevinding [P1] op 435239d: `orgId` werd pas ná de `await setDoc(...)` toegewezen,
+  // dus als de ALLEREERSTE write zelf faalt (bijv. de servercommit lukt maar de bevestiging
+  // gaat door een netwerkonderbreking verloren, of — zoals hier reproduceerbaar gemaakt — de
+  // write wordt door Rules geweigerd) kreeg de aanroeper geen `orgId` terug om een retry op te
+  // laten hervatten, en zou een volgende poging alsnog een tweede organisatie aanmaken. Deze
+  // test forceert een deterministische, echte weigering van de EERSTE write (org-create-Rule
+  // `createdBy == request.auth.uid`) door de gateway met een UID te construeren die niet
+  // overeenkomt met de daadwerkelijk ingelogde gebruiker, en bewijst dat `orgId` desondanks al
+  // in het resultaat zit (client-side gegenereerd vóór de write, niet pas erna).
+  test('als de allereerste (org-create) write zelf faalt, staat het client-side gegenereerde orgId toch al in het resultaat', async () => {
+    const app = initializeApp(
+      {
+        projectId: 'demo-lineup-tracker-dev',
+        apiKey: 'demo-key',
+        authDomain: 'demo-lineup-tracker-dev.firebaseapp.com',
+      },
+      `bootstrap-recoverability-firstwrite-${Date.now()}`,
+    );
+    const auth = getAuth(app);
+    connectAuthEmulator(auth, 'http://127.0.0.1:9099', { disableWarnings: true });
+    const db = getFirestore(app);
+    connectFirestoreEmulator(db, '127.0.0.1', 8080);
+
+    const email = uniqueTestEmail('bootstrap-firstwrite');
+    const password = 'Bootstrap123!';
+    await createUserWithEmailAndPassword(auth, email, password);
+
+    // Bewust een UID die niet overeenkomt met de echt ingelogde gebruiker: de org-create-Rule
+    // (`request.resource.data.createdBy == request.auth.uid`) wijst de write dan gegarandeerd
+    // af, ongeacht enige emulator-timing — een deterministische stand-in voor "de eerste write
+    // faalt", zonder afhankelijk te zijn van een genuine netwerkonderbreking.
+    const gateway = new FirestoreOrganizationGateway(db, 'uid-mismatched-not-the-real-user', email);
+    const result = await gateway.createOrganizationWithOwner('Never Fully Created');
+
+    expect(result.ok).toBe(false);
+    expect(result.value?.orgId).toBeDefined();
+  });
 });

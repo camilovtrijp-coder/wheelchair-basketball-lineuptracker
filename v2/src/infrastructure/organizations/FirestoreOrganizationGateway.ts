@@ -112,9 +112,15 @@ export class FirestoreOrganizationGateway implements OrganizationGateway {
     let orgId = resumeOrgId;
     try {
       if (!orgId) {
+        // `doc()` genereert het ID client-side, synchroon — vóór de `await` toewijzen (i.p.v.
+        // pas na een geslaagde write) is precies wat dit pad herstelbaar maakt: als de server de
+        // write wél commit maar de bevestiging de client nooit bereikt (netwerkonderbreking net
+        // daarna), reject de promise, maar `orgId` staat dan al vast en komt alsnog terug in
+        // `value` via de catch hieronder — een retry kan zo hervatten i.p.v. een tweede,
+        // wees geworden organisatie aan te maken.
         const newOrgRef = doc(collection(this.db, 'organizations'));
-        await setDoc(newOrgRef, { name, createdBy: this.ownUid, createdAt: serverTimestamp() });
         orgId = newOrgRef.id;
+        await setDoc(newOrgRef, { name, createdBy: this.ownUid, createdAt: serverTimestamp() });
       } else {
         // Hervatting: als de membership er al staat — bijv. omdat de vorige poging server-side
         // wél slaagde maar de bevestiging de client nooit bereikte (netwerkonderbreking net
