@@ -1,4 +1,5 @@
-import { test, expect, type Page, type BrowserContext } from '@playwright/test';
+import { expect, type Page, type BrowserContext } from '@playwright/test';
+import { test } from './fixtures';
 
 const LANG_KEY = 'lineup-tracker-lang';
 const V1_KEYS_THAT_MUST_NOT_BE_TOUCHED = [

@@ -1,4 +1,5 @@
-import { test, expect, type Page } from '@playwright/test';
+import { expect, type Page } from '@playwright/test';
+import { test } from './fixtures';
 
 const SETTINGS_KEY = 'lineup-tracker-settings';
 const V1_KEYS_THAT_MUST_NOT_BE_TOUCHED = [

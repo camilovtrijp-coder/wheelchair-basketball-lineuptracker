@@ -1,4 +1,5 @@
-import { test, expect, type Page } from '@playwright/test';
+import { expect, type Page } from '@playwright/test';
+import { test } from './fixtures';
 
 const ROSTER_KEY = 'lineup-tracker-roster';
 const SETTINGS_KEY = 'lineup-tracker-settings';
