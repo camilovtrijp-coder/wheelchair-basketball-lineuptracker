@@ -1,6 +1,8 @@
-export type { InvitationStatus } from 'firebase-base/documents';
+import type { OrganizationRole } from '../organizations/types';
 
-import type { InvitationStatus, OrganizationRole } from 'firebase-base/documents';
+/** Moet gelijk blijven aan firebase/src/documents/invitation.ts' INVITATION_STATUSES — zie de toelichting in domain/organizations/types.ts over waarom domain/ geen packages importeert. */
+export const INVITATION_STATUSES = ['pending', 'accepted', 'claimed', 'revoked'] as const;
+export type InvitationStatus = (typeof INVITATION_STATUSES)[number];
 
 /** UI-gerichte weergave van organizations/{orgId}/invitations/{invitationId}. */
 export interface Invitation {

@@ -1,6 +1,5 @@
-import type { OrganizationRole } from 'firebase-base/documents';
 import type { Invitation } from '../../domain/invitations/types';
-import type { Membership, TeamSummary } from '../../domain/organizations/types';
+import type { Membership, OrganizationRole, TeamSummary } from '../../domain/organizations/types';
 import type { TeamAccess } from '../../domain/organizations/teamAccess';
 
 export interface OperationResult<T = undefined> {

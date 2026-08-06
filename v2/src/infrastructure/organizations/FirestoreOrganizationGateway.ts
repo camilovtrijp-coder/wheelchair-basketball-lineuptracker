@@ -18,10 +18,9 @@ import {
   organizationMemberConverter,
   teamConverter,
   teamMemberConverter,
-  type OrganizationRole,
 } from 'firebase-base/documents';
 import type { Invitation } from '../../domain/invitations/types';
-import type { Membership, TeamSummary } from '../../domain/organizations/types';
+import type { Membership, OrganizationRole, TeamSummary } from '../../domain/organizations/types';
 import { deriveTeamAccess, type TeamAccess } from '../../domain/organizations/teamAccess';
 import type {
   OperationResult,
