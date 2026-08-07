@@ -130,6 +130,15 @@ const nl = {
   invitationAlreadyClaimedTitle: 'Al voltooid',
   invitationAlreadyClaimedBody: 'Deze uitnodiging is al gebruikt. Log in om toegang te krijgen.',
   invitationDismissBtn: 'Doorgaan',
+
+  syncStatusLocal: 'Lokaal beschikbaar',
+  syncStatusPending: 'Wacht op synchronisatie',
+  syncStatusSynced: 'Gesynchroniseerd',
+  syncStatusActionNeeded: 'Actie nodig',
+  actionNeededTitle: 'Actie nodig',
+  actionNeededRetryBtn: 'Opnieuw proberen',
+  actionNeededDismissBtn: 'Negeren',
+  actionNeededExportBtn: 'Exporteren',
 } as const;
 
 const en = {
@@ -254,6 +263,15 @@ const en = {
   invitationAlreadyClaimedTitle: 'Already completed',
   invitationAlreadyClaimedBody: 'This invitation has already been used. Log in to get access.',
   invitationDismissBtn: 'Continue',
+
+  syncStatusLocal: 'Available locally',
+  syncStatusPending: 'Waiting to sync',
+  syncStatusSynced: 'Synced',
+  syncStatusActionNeeded: 'Action needed',
+  actionNeededTitle: 'Action needed',
+  actionNeededRetryBtn: 'Retry',
+  actionNeededDismissBtn: 'Dismiss',
+  actionNeededExportBtn: 'Export',
 } as const;
 
 export const STRINGS = { nl, en } as const;

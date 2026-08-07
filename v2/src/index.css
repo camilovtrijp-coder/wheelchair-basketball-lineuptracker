@@ -407,6 +407,50 @@ button:focus-visible {
   background: var(--lt-color-surface);
 }
 
+.sync-status-indicator {
+  align-self: center;
+  margin-right: auto;
+  padding: 0.15rem var(--lt-space-2);
+  border-radius: 999px;
+  border: var(--lt-border-thin);
+  font-size: 0.85rem;
+  color: var(--lt-color-muted);
+}
+
+.sync-status-indicator--actie-nodig {
+  color: var(--lt-color-danger);
+  border-color: var(--lt-color-danger);
+}
+
+.action-needed-panel {
+  padding: var(--lt-space-3) var(--lt-space-4);
+  border-bottom: var(--lt-border-thin);
+  background: var(--lt-color-surface);
+}
+
+.action-needed-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--lt-space-2);
+}
+
+.action-needed-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--lt-space-2);
+  flex-wrap: wrap;
+}
+
+.action-needed-item__actions {
+  display: flex;
+  gap: var(--lt-space-2);
+  flex-wrap: wrap;
+}
+
 .context-switcher__orgs,
 .context-switcher__teams {
   list-style: none;
