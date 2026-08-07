@@ -1,8 +1,8 @@
 # PR 5.3 — Voorbereidingsplan (Firestore-cache en settings/team-sync)
 
-**Status:** plan, klaar voor review door eigenaar
+**Status:** 5.3a/5.3b gemerged; §C/5.3c hieronder is bijgewerkt na reality-check en klaar voor review door eigenaar (open beslissingen §E.5–§E.7)
 **Repo:** `camilovtrijp-coder/wheelchair-basketball-lineuptracker` (v2-/herbouwomgeving)
-**Geverifieerd tegen:** `origin/main` op `f6d18d1` (PR 5.2)
+**Geverifieerd tegen:** `origin/main` op `07ec104` (PR 5.3b, #33)
 **Harde gate:** issue #27 (volledige offline-reload + cache-write + tweede cliënt), status PARTIAL/OPEN sinds PR 4.4
 
 ## A. Bijgewerkte reality-check
@@ -96,16 +96,52 @@ Risico: scope-creep richting "v1 volledig vervangen" — expliciet verboden in �
 
 ### 5.3c — Sync-status-UX + `Actie nodig`-pad
 
-Doel: de vier toestanden uit ADR-002 worden in de UI zichtbaar; geweigerde writes zijn herstelbaar en exporteerbaar.
+**Realitycheck (7 aug. 2026, na merge van #32/#33):** het oorspronkelijke plan hieronder ging ervan uit dat "de UI" tegen die tijd al async tegen de gekozen repository praat. Dat is niet zo: `App.tsx` instantieert nog altijd rechtstreeks `LocalStorageSettingsRepository`/`LocalStorageRosterRepository` en gebruikt de synchrone `getSettings`/`saveSettings`/`resetSettings`/`getRoster`/`saveRoster`-usecases; `AuthGate` rendert `<App />` zonder props in de `active`-state. `selectRepositories()` (5.3a) en `migrateLocalStorageToCloud()` (5.3b) bestaan en zijn unit-getest, maar worden buiten hun eigen tests nergens aangeroepen. `CloudImportBanner`'s `onMigrate`-prop staat overal `undefined` — de 5.3b-commit noemt dit expliciet: "de UI-sync→async-ombouw hoort bij 5.3c". Concreet: **een team dat via de contextwisselaar een cloud-team kiest, blijft settings/roster gewoon naar `localStorage` schrijven**; er komt nooit meer dan de eenmalige 5.3b-import in Firestore. Zonder de wiring hieronder kan 5.3d's #27-testsuite niet eens starten (die verwacht dat een save-actie in de UI daadwerkelijk `setDoc` op Firestore raakt). 5.3c is dus zwaarder dan de oorspronkelijk geschetste 6 punten; de rest van deze sectie vervangt ze en knipt het werk in twee sub-PR's (AGENTS §3, "vermijd één grote PR").
+
+#### 5.3c-1 — Repository-wiring: App en panels praten async (nog geen zichtbare statuswijziging)
+
+Doel: cloud-teams schrijven daadwerkelijk naar Firestore via de bestaande async-poort/adapters; lokale teams behouden exact het huidige localStorage-gedrag. Geen indicator, geen Actie-nodig-paneel — dat is 5.3c-2.
+
+**Architecturale keuze (vraagt akkoord, zie §E.5):** één uniforme async-laag. Panels praten nooit meer rechtstreeks met een concrete repository-implementatie; ze krijgen bound async-functies (`onSave`, `onReset`, `onRefresh`) van `App`. `App` praat zelf altijd tegen `AsyncSettingsRepository`/`AsyncRosterRepository`, nooit tegen de synchrone poort. Voor lokale (niet-cloud) teams wordt de bestaande synchrone `LocalStorage*Repository` ingepakt in een nieuwe, triviale async-wrapper, zodat er precies één codepad in `App`/de panels overblijft. Alternatief (twee gescheiden panel-implementaties voor lokaal vs. cloud) is **niet** aanbevolen: dubbele UI, dubbele tests, en precies het soort vertakking dat `selectRepositories`' eigen doc-comment al wilde vermijden ("één bron van waarheid").
+
+Nieuwe bestanden:
+
+- `v2/src/infrastructure/settings/LocalAsyncSettingsRepository.ts` — implementeert `AsyncSettingsRepository` bovenop een bestaande `SettingsRepository`-instantie; `read()`/`write()`/`reset()` resolven synchroon-in-een-Promise, `write()` rapporteert altijd `{status:'gesynchroniseerd', fromCache:false, hasPendingWrites:false}` (er is geen cloud om op te wachten), `subscribe()` roept `onNext` één keer aan bij het aanmaken (geen live server-updates in lokale modus, zoals nu).
+- `v2/src/infrastructure/roster/LocalAsyncRosterRepository.ts` — idem voor roster.
+- `v2/src/infrastructure/repositories/resolveAppRepositories.ts` — neemt de `RepositorySelection` uit `selectRepositories()` en levert altijd concrete `{ settings: AsyncSettingsRepository, roster: AsyncRosterRepository, mode: 'local' | 'cloud' }` op; bij `kind:'local'` bouwt het de twee nieuwe wrappers rond verse `LocalStorage*Repository(browserStorage)`-instanties, bij `kind:'cloud'` geeft het de Firestore-adapters uit `selection` ongewijzigd door. `selectRepositories()` zelf blijft ongewijzigd (al 5.3a-getest).
+
+Gewijzigde bestanden:
+
+- `v2/src/app/AuthGate.tsx` — in de `active`-case: `resolveAppRepositories(selectRepositories({ authUser, selectedContext, trustedDevice, firestoreDb: getFirestoreDb() }))`, gememoized op `[authUser, selectedContext]`; `<App repositories={repositories} />` i.p.v. `<App />`.
+- `v2/src/app/App.tsx` — nieuwe verplichte prop `repositories`. Settings/roster-state komt niet langer uit een synchrone `useState`-initializer maar uit een `useEffect` die `repositories.settings.subscribe(...)`/`repositories.roster.subscribe(...)` abonneert; tot de eerste emissie toont `App` de bestaande `LoadingScreen` (hergebruik, zie §E.6). Effect ruimt zijn subscriptie op en her-abonneert wanneer `repositories` wijzigt (contextwissel). `onSave`/`onReset`/`onRefresh` gaan als bound async closures naar de panels i.p.v. een rauwe `repo`-prop.
+- `v2/src/ui/settings/SettingsPanel.tsx` / `v2/src/ui/roster/RosterPanel.tsx` — prop `repo: SettingsRepository`/`RosterRepository` vervalt; `handleSave`/`handleReset`/`handleRefresh` worden `async`, roepen de nieuwe props aan en zetten `error` bij een afgewezen promise. `onCloudMigrate` blijft qua vorm ongewijzigd (5.3b), maar wordt nu vanuit `App` gevuld: `migrateLocalStorageToCloud(localSyncRepo, repositories.settings, storage)` wanneer `mode === 'cloud'` — de sync-`LocalStorage*Repository`-instanties blijven uitsluitend als leesbron voor die eenmalige import bestaan, nooit als schrijfpad.
+
+Tests:
+
+- `LocalAsyncSettingsRepository.spec.ts` / `LocalAsyncRosterRepository.spec.ts` (Vitest) — read/write/reset/subscribe-contract, inclusief dat `write()` de onderliggende sync-repo daadwerkelijk aanroept.
+- `resolveAppRepositories.spec.ts` — `kind:'local'` levert de wrapper, `kind:'cloud'` geeft de Firestore-adapters ongewijzigd door.
+- Bestaande `settingsUsecases.spec.ts`/`rosterUsecases.spec.ts` blijven ongewijzigd (de usecases zelf raken niet aan).
+- Nieuwe/uitgebreide `SettingsPanel`/`RosterPanel`-componenttests (`@testing-library/preact`, patroon `ContextSwitcher.spec.tsx`) voor de async save/reset/refresh-paden en foutweergave bij een afgewezen promise.
+- Bestaande `v2/tests/e2e-auth`-suite (login/roster/settings-flows) moet groen blijven zonder scenariowijziging — dat bewijst dat lokale modus zich identiek gedraagt vóór en na de wrapper.
+- Eén nieuwe e2e-test die met een cloud-context een settings-save doet en direct daarna (via dezelfde Emulator-REST-aanpak als `adminFixtures.ts`) controleert dat het document daadwerkelijk geschreven is — het eerste bewijs dat cloud-teams niet meer stilzwijgend naar localStorage schrijven.
+
+Buiten scope: zichtbare statusindicator, Actie-nodig-paneel, export, wijziging van `deriveAppState`/`AuthGate`-routering zelf.
+
+Risico: dit is de kern-architectuurwijziging van heel PR 5.3 — zonder deze stap is er geen werkende cloud-sync, alleen een eenmalige import. Regressietesten van de bestaande lokale flows is niet optioneel.
+
+#### 5.3c-2 — Sync-status-UX + `Actie nodig`-pad (bovenop 5.3c-1)
+
+Doel: de vier toestanden uit ADR-002 worden in de UI zichtbaar; geweigerde writes zijn herstelbaar en exporteerbaar. Pas haalbaar zodra 5.3c-1 de async-laag daadwerkelijk levert.
 
 Werk:
 
-1. **Sync-status hook** in `App`: leeft de huidige `AsyncSettingsRepository`/`AsyncRosterRepository` af, exposeert `{status, lastError, pendingPayload}[]` aan de UI.
-2. **Indicator in `SessionBar`:** niet-opdringerig, met NL/EN-vertaling — `Lokaal beschikbaar` / `Wacht op synchronisatie` / `Gesynchroniseerd` / `Actie nodig` (4 nieuwe toetsen in `v2/src/i18n/strings.ts`).
-3. **`Actie nodig`-paneel:** lijst van geweigerde payloads, per item `[Opnieuw proberen] [Negeren] [Exporteren]`.
-4. **Exportformaat (beslissing 3 — akkoord):** de geweigerde payload wordt geëxporteerd als één `.json`-bestand in de **v1-back-up-`data`-envelop** (spiegelt `validateBackupData`'s verwachtte structuur in `data-contracts.md` §"Backupformaat"), downloadbaar via `URL.createObjectURL` + `<a download>`. Voordeel: de gebruiker kan dit fragment later via de bestaande import-flow terugzetten zonder een nieuw sidecar-formaat te leren.
+1. **Sync-status hook** `v2/src/application/sync/useSyncStatus.ts` in `App`: leest de `SyncState` die `repositories.settings.subscribe`/`.roster.subscribe` al meeleveren, houdt per repo de laatst-geweigerde payload vast.
+2. **Indicator** — nieuw `v2/src/ui/sync/SyncStatusIndicator.tsx`, gerenderd in `SessionBar`, **uitsluitend wanneer `mode === 'cloud'`** (lokale modus toont geen indicator — er is niets om te syncen; "Gesynchroniseerd" tonen zonder cloud zou misleidend zijn). Vier toestanden NL/EN: `Lokaal beschikbaar` / `Wacht op synchronisatie` / `Gesynchroniseerd` / `Actie nodig`.
+3. **`Actie nodig`-paneel** — nieuw `v2/src/ui/sync/ActionNeededPanel.tsx`: lijst van geweigerde payloads, per item `[Opnieuw proberen] [Negeren] [Exporteren]`.
+4. **Exportformaat (beslissing 3 — akkoord):** de geweigerde payload wordt geëxporteerd als één `.json`-bestand in de **v1-back-up-`data`-envelop** (spiegelt `validateBackupData`'s verwachtte structuur in `data-contracts.md` §"Backupformaat"), nieuw `v2/src/infrastructure/sync/exportPendingPayload.ts`, downloadbaar via `URL.createObjectURL` + `<a download>`. Voordeel: de gebruiker kan dit fragment later via de bestaande import-flow terugzetten zonder een nieuw sidecar-formaat te leren.
 5. **"Negeren"** verwijdert uit de pending-store maar raakt `lineup-tracker-settings`/`-roster` niet aan.
-6. **Unit + e2e:** Vitest voor de hook (juiste indicator per `SyncState`-variant; "Opnieuw proberen" levert write opnieuw aan en wist pending bij `ok`). Mobiele e2e-test (zelfde patroon als PR 3.2a) voor het paneel.
+6. Nieuwe i18n-toetsen (NL+EN) in `v2/src/i18n/strings.ts`: `syncStatusLocal`, `syncStatusPending`, `syncStatusSynced`, `syncStatusActionNeeded`, `actionNeededTitle`, `actionNeededRetryBtn`, `actionNeededDismissBtn`, `actionNeededExportBtn`.
+7. **Unit + e2e:** Vitest voor de hook (juiste indicator per `SyncState`-variant; "Opnieuw proberen" levert write opnieuw aan en wist pending bij `ok`) en voor `exportPendingPayload` (output voldoet aan `validateBackupData`). Mobiele e2e-test (patroon PR 3.2a) voor het paneel, inclusief een geforceerde write-weigering (revoked membership tijdens queued write, fixture-aanpak zoals `revoke-access-isolation.spec.ts`).
 
 Buiten scope: cross-team sync-conflicten, sync van `games` of andere v1-keys.
 
@@ -152,6 +188,12 @@ Geen van deze tests is vandaag groen. 5.3d is dus **letterlijk de blocker** voor
 3. **`Actie nodig`-exportformaat** — **akkoord** op v1-back-up-`data`-envelop (zie 5.3c punt 4).
 
 4. **v1→cloud import: éénrichting** — **akkoord** op éénrichting (5.3b): één keer pushen, nooit v1→cloud-resync. Geen automatische sync van writes.
+
+5. **5.3c-1: uniforme async-laag (optie A) vs. gescheiden lokale/cloud panel-paden (optie B)** — aanbevolen: **A**. `App` en de panels praten na 5.3c-1 uitsluitend via `AsyncSettingsRepository`/`AsyncRosterRepository`; lokale modus krijgt een triviale async-wrapper om de bestaande synchrone `LocalStorage*Repository` heen, zodat er precies één codepad overblijft. Optie B (twee losse panel-implementaties) is niet aanbevolen: dubbele UI en tests, en tegenstrijdig met `selectRepositories`' eigen "één bron van waarheid"-uitgangspunt. Open voor akkoord vóór implementatie.
+
+6. **Loading-state tijdens de eerste async settings/roster-fetch in `App`** — aanbevolen: de bestaande `LoadingScreen` hergebruiken (consistent met hoe `AuthGate` al laadt), geen nieuw scherm. Open voor akkoord.
+
+7. **5.3c splitsen in 5.3c-1 (repository-wiring) en 5.3c-2 (statusindicator + Actie-nodig-paneel)** — aanbevolen: **ja**. 5.3c-1 is op zichzelf al een functionele wijziging (cloud-teams schrijven pas ná 5.3c-1 daadwerkelijk naar Firestore in plaats van alleen bij de eenmalige 5.3b-import) en groot genoeg om apart te reviewen; 5.3c-2 is puur UI bovenop een dan al werkende async-laag. Open voor akkoord.
 
 ## F. Aanbevolen volgorde
 

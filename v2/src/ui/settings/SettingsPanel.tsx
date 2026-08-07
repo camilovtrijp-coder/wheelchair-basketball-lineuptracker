@@ -2,13 +2,7 @@ import { useRef, useState } from 'preact/hooks';
 import { LOGO_MAX_BYTES, type Settings } from '../../domain/settings/types';
 import { translate, type Lang, type StringKey } from '../../i18n/strings';
 import type { KeyValueStorage } from '../../i18n/persistence';
-import {
-  getSettings,
-  resetSettings,
-  saveSettings,
-  updateSetting,
-} from '../../application/settings/usecases';
-import type { SettingsRepository } from '../../application/settings/SettingsRepository';
+import { updateSetting } from '../../application/settings/usecases';
 import { CloudImportBanner } from '../cloud/CloudImportBanner';
 
 const COLOR_PRESETS = [
@@ -26,13 +20,17 @@ const COLOR_PRESETS = [
 
 export interface SettingsPanelProps {
   lang: Lang;
-  repo: SettingsRepository;
   storage: KeyValueStorage;
   settings: Settings & Record<string, unknown>;
   onSettingsChange: (next: Settings & Record<string, unknown>) => void;
+  /** Persisteert `settings` via de actieve repository (lokaal of cloud); zie App.tsx. */
+  onSave: (settings: Settings & Record<string, unknown>) => Promise<boolean>;
+  onReset: () => Promise<Settings & Record<string, unknown>>;
+  onRefresh: () => Promise<Settings & Record<string, unknown>>;
   /**
-   * Optionele cloud-import-handler. PR 5.3b laat deze undefined zodat de
-   * banner dormant is; PR 5.3c wired 'm zodra de UI async draait.
+   * Optionele cloud-import-handler. `App` laat deze undefined in lokale
+   * modus zodat de banner dormant is (PR 5.3b-gedrag); in cloud-modus wordt
+   * 'm gevuld (PR 5.3c-1).
    */
   onCloudMigrate?: () => Promise<{ ok: boolean; errors: string[] }>;
 }
@@ -43,10 +41,12 @@ function t(lang: Lang, key: StringKey): string {
 
 export function SettingsPanel({
   lang,
-  repo,
   storage,
   settings,
   onSettingsChange,
+  onSave,
+  onReset,
+  onRefresh,
   onCloudMigrate,
 }: SettingsPanelProps) {
   const fileInputRef = useRef<HTMLInputElement | null>(null);
@@ -73,19 +73,19 @@ export function SettingsPanel({
     reader.readAsDataURL(file);
   }
 
-  function handleReset() {
-    const defaults = resetSettings(repo);
+  async function handleReset() {
+    const defaults = await onReset();
     onSettingsChange(defaults);
     setError(null);
   }
 
-  function handleRefresh() {
-    onSettingsChange(getSettings(repo));
+  async function handleRefresh() {
+    onSettingsChange(await onRefresh());
     setError(null);
   }
 
-  function handleSave() {
-    const ok = saveSettings(repo, settings);
+  async function handleSave() {
+    const ok = await onSave(settings);
     setError(ok ? null : t(lang, 'settingsSaveError'));
   }
 
