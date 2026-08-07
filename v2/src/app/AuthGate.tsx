@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'preact/hooks';
+import { useEffect, useMemo, useState } from 'preact/hooks';
 import { browserStorage } from '../i18n/browserStorage';
 import { readLang, writeLang } from '../i18n/persistence';
 import { resolveInitialLang } from '../i18n/detect';
@@ -27,6 +27,8 @@ import {
   wipeLocalFirebaseData,
 } from '../infrastructure/firebase/firebaseClient';
 import { FirestoreOrganizationGateway } from '../infrastructure/organizations/FirestoreOrganizationGateway';
+import { selectRepositories } from '../infrastructure/repositories/selectRepositories';
+import { resolveAppRepositories } from '../infrastructure/repositories/resolveAppRepositories';
 import { LoginScreen } from '../ui/auth/LoginScreen';
 import { SignupScreen } from '../ui/auth/SignupScreen';
 import { TrustedDevicePrompt } from '../ui/auth/TrustedDevicePrompt';
@@ -229,6 +231,29 @@ export function AuthGate({ authGateway }: AuthGateProps) {
     setMembershipsRefreshKey((key) => key + 1);
   }
 
+  // Alleen relevant in de 'active'-state hieronder, maar als Hook vóór elke
+  // early return berekend (Rules of Hooks). getFirestoreDb() mag pas worden
+  // aangeroepen zodra Firebase gegarandeerd geïnitialiseerd is — dezelfde
+  // guard als de organizationGateway-effect hierboven — anders crasht een
+  // render vóór inloggen. Zonder authUser/trustedDeviceAnswered blijft de
+  // keuze dus altijd 'local', ongeacht wat selectRepositories() zelf al
+  // afdwingt (zie docs/pr-5.3-plan.md §C/5.3c-1).
+  const repositories = useMemo(() => {
+    if (!authUser || !trustedDeviceAnswered) {
+      return resolveAppRepositories({ kind: 'local' }, browserStorage);
+    }
+    const trustedDevice = readTrustedDevice(browserStorage) ?? false;
+    return resolveAppRepositories(
+      selectRepositories({
+        authUser,
+        selectedContext,
+        trustedDevice,
+        firestoreDb: getFirestoreDb(),
+      }),
+      browserStorage,
+    );
+  }, [authUser, trustedDeviceAnswered, selectedContext]);
+
   if (authLoading) {
     return <LoadingScreen lang={lang} />;
   }
@@ -322,7 +347,7 @@ export function AuthGate({ authGateway }: AuthGateProps) {
             onSignOut={handleSignOut}
             onSwitchContext={handleBackToSwitcher}
           />
-          <App />
+          <App repositories={repositories} />
         </>
       );
   }

@@ -52,6 +52,33 @@ export interface CloudMigrationResult {
  * (`lineup-tracker-cloud-imported-settings`) zodat de banner niet opnieuw
  * verschijnt. Die vlag raakt de v1-data niet.
  */
+/**
+ * Async tegenhangers van getSettings/saveSettings/resetSettings (PR 5.3c-1):
+ * App praat na de repository-wiring uitsluitend via AsyncSettingsRepository,
+ * ongeacht of de actieve adapter lokaal (LocalAsyncSettingsRepository) of
+ * cloud (FirestoreSettingsRepository) is. De synchrone functies hierboven
+ * blijven bestaan voor de eenmalige v1-migratiebron in migrateLocalStorageToCloud.
+ */
+export async function getSettingsAsync(
+  repo: AsyncSettingsRepository,
+): Promise<Settings & Record<string, unknown>> {
+  return repo.read();
+}
+
+export async function saveSettingsAsync(
+  repo: AsyncSettingsRepository,
+  settings: Settings & Record<string, unknown>,
+): Promise<boolean> {
+  const result = await repo.write(settings);
+  return result.ok;
+}
+
+export async function resetSettingsAsync(
+  repo: AsyncSettingsRepository,
+): Promise<Settings & Record<string, unknown>> {
+  return repo.reset();
+}
+
 export async function migrateLocalStorageToCloud(
   local: SettingsRepository,
   cloud: AsyncSettingsRepository,

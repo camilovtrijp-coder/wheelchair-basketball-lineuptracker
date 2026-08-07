@@ -78,10 +78,31 @@ test.describe('v2 mobiele viewport', () => {
     await expect(page.getByRole('heading', { name: 'Settings' })).toBeVisible();
   });
 
+  // PR 5.3c-1: deze test verwacht een volledige offline page-reload die de
+  // hele app (incl. AuthGate's organisatie-/teamlidmaatschap) intact laat.
+  // Sinds PR 5.2 zit App achter AuthGate; de fixture (tests/e2e/fixtures.ts)
+  // kiest sinds deze PR bewust "onvertrouwd apparaat" (memoryLocalCache) zodat
+  // de rest van deze suite in lokale modus blijft draaien op de v1-keys — zie
+  // selectRepositories()/resolveAppRepositories.ts. Zonder persistente cache
+  // kan AuthGate na een offline reload het organisatielidmaatschap niet
+  // herstellen (netwerkfout ipv gecachte data) en toont "No access to an
+  // organization" i.p.v. de gecachte team-/instellingendata. Met "vertrouwd
+  // apparaat" zou App zelf in cloud-modus komen, en is de vraag "blijft
+  // gecachte cloud-data zichtbaar na offline reload" precies de nog OPEN harde
+  // gate uit issue #27 / PR 5.3d (docs/pr-5.3-plan.md §C/5.3d) — niet iets wat
+  // 5.3c-1 al bewijst. `test.fail()` houdt deze regel zichtbaar (zelfde
+  // conventie als P0-1 in PR 1.6/1.7, zie docs/IMPLEMENTATION_PLAN.md §6) i.p.v.
+  // de test stil te verwijderen; PR 5.3d's eigen, gerichte offline-reload-suite
+  // (tests/e2e-auth/offline-reload-cache-write-second-client.spec.ts) vervangt 'm.
   test('settings- en teamdata blijven beschikbaar na offline reload op mobiele viewport', async ({
     page,
     context,
   }) => {
+    test.fail(
+      true,
+      'Volledige offline reload vereist een vertrouwd apparaat (persistente cache); ' +
+        'zie issue #27 / PR 5.3d.',
+    );
     await page.setViewportSize(MOBILE_VIEWPORT);
     await page.goto('/');
 

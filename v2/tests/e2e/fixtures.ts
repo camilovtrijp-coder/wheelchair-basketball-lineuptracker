@@ -1,15 +1,24 @@
 import { test as base, type Page } from '@playwright/test';
 
 // Sinds PR 5.2 zit App achter AuthGate (login → vertrouwd-apparaat →
-// contextwisselaar). Deze bestaande e2e-suite test Settings/Roster zelf
-// (nog steeds volledig localStorage-gebaseerd, PR 5.3 verandert dat pas) en
-// hoeft niets van auth te weten — dus wordt `page.goto` hier eenmalig per
-// test "getransparanteerd": bij navigatie naar de root en een zichtbaar
-// login-scherm loggen we automatisch in als bob (organizationAdmin,
-// org-rotterdam/team-u23 — zie firebase/scripts/seed.ts) en kiezen we die
-// context, zodat elke bestaande test ongewijzigd blijft en gewoon in App
-// terechtkomt. Vereist de Firebase Auth-/Firestore-emulator + seed-data
-// (zie de v2-e2e-CI-job); zonder emulator faalt de login-stap.
+// contextwisselaar). Deze bestaande e2e-suite test Settings/Roster zelf via
+// de v1-localStorage-keys en hoeft niets van auth te weten — dus wordt
+// `page.goto` hier eenmalig per test "getransparanteerd": bij navigatie naar
+// de root en een zichtbaar login-scherm loggen we automatisch in als bob
+// (organizationAdmin, org-rotterdam/team-u23 — zie firebase/scripts/seed.ts)
+// en kiezen we die context, zodat elke bestaande test ongewijzigd blijft en
+// gewoon in App terechtkomt. Vereist de Firebase Auth-/Firestore-emulator +
+// seed-data (zie de v2-e2e-CI-job); zonder emulator faalt de login-stap.
+//
+// Bewuste keuze sinds PR 5.3c-1: "onvertrouwd apparaat" (trusted-device-no),
+// NIET "vertrouwd". selectRepositories() (5.3a) kiest de cloud-adapter enkel
+// wanneer authUser + selectedContext + trustedDevice alle drie waar zijn —
+// "onvertrouwd" houdt App dus in lokale modus (LocalAsyncSettingsRepository/
+// LocalAsyncRosterRepository over de bestaande v1-localStorage-keys), precies
+// wat deze suite al die tijd al testte. Zou dit "vertrouwd" zijn, dan zouden
+// settings-save/roster-save naar Firestore gaan en zouden alle
+// localStorage-asserties hieronder stilzwijgend niets meer meten. Het
+// cloud-pad zelf heeft een eigen, gerichte test (cloud-mode-write.spec.ts).
 const EXISTING_SUITE_EMAIL = 'bob@example.test';
 const EXISTING_SUITE_PASSWORD = 'Spike123!';
 
@@ -31,8 +40,8 @@ async function ensureInApp(page: Page): Promise<void> {
   await page.getByTestId('auth-password').fill(EXISTING_SUITE_PASSWORD);
   await page.getByTestId('auth-submit').click();
 
-  if (await waitVisible(page, 'trusted-device-yes', 10_000)) {
-    await page.getByTestId('trusted-device-yes').click();
+  if (await waitVisible(page, 'trusted-device-no', 10_000)) {
+    await page.getByTestId('trusted-device-no').click();
   }
 
   if (await waitVisible(page, 'context-org-org-rotterdam', 10_000)) {

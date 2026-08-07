@@ -4,13 +4,28 @@ import { readLang, writeLang } from '../i18n/persistence';
 import { resolveInitialLang } from '../i18n/detect';
 import { SUPPORTED_LANGS, translate, type Lang, type StringKey } from '../i18n/strings';
 import { LocalStorageSettingsRepository } from '../infrastructure/settings/LocalStorageSettingsRepository';
-import { getSettings } from '../application/settings/usecases';
+import {
+  getSettingsAsync,
+  migrateLocalStorageToCloud as migrateSettingsToCloud,
+  resetSettingsAsync,
+  saveSettingsAsync,
+} from '../application/settings/usecases';
 import type { Settings } from '../domain/settings/types';
 import { SettingsPanel } from '../ui/settings/SettingsPanel';
 import { LocalStorageRosterRepository } from '../infrastructure/roster/LocalStorageRosterRepository';
-import { getRoster } from '../application/roster/usecases';
+import {
+  getRosterAsync,
+  migrateLocalStorageToCloud as migrateRosterToCloud,
+  saveRosterAsync,
+} from '../application/roster/usecases';
 import type { Roster } from '../domain/roster/types';
 import { RosterPanel } from '../ui/roster/RosterPanel';
+import { LoadingScreen } from '../ui/status/LoadingScreen';
+import type { ResolvedAppRepositories } from '../infrastructure/repositories/resolveAppRepositories';
+
+export interface AppProps {
+  repositories: ResolvedAppRepositories;
+}
 
 type Tab = 'settings' | 'roster';
 
@@ -26,28 +41,74 @@ function tFor(lang: Lang): (key: StringKey) => string {
   return (key) => translate(lang, key);
 }
 
-const settingsRepo = new LocalStorageSettingsRepository(browserStorage);
-const rosterRepo = new LocalStorageRosterRepository(browserStorage);
+// Blijft uitsluitend de leesbron voor de eenmalige v1→cloud-import
+// (migrateLocalStorageToCloud); het daadwerkelijke schrijfpad loopt altijd
+// via `repositories` (5.3c-1) — deze twee instanties worden nooit meer
+// gebruikt om settings/roster op te slaan of te lezen voor weergave.
+const v1SettingsRepo = new LocalStorageSettingsRepository(browserStorage);
+const v1RosterRepo = new LocalStorageRosterRepository(browserStorage);
 
-export function App() {
+export function App({ repositories }: AppProps) {
   const [lang, setLang] = useState<Lang>(initialLang);
   const [tab, setTab] = useState<Tab>('settings');
-  const [settings, setSettings] = useState<Settings & Record<string, unknown>>(() =>
-    getSettings(settingsRepo),
-  );
-  const [roster, setRoster] = useState<Roster>(() => getRoster(rosterRepo));
+  const [settings, setSettings] = useState<(Settings & Record<string, unknown>) | null>(null);
+  const [roster, setRoster] = useState<Roster | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    setSettings(null);
+    setRoster(null);
+
+    // read() geeft altijd meteen een bruikbare eerste waarde (defaults/lege
+    // roster voor een team zonder document); subscribe() levert daarna live
+    // updates. Zonder deze read()-stap zou een cloud-team zonder bestaand
+    // Firestore-document nooit een eerste emissie krijgen (de adapters
+    // emitten bewust niet voor een niet-bestaand document, zie
+    // FirestoreSettingsRepository/FirestoreRosterRepository) en zou App
+    // eindeloos op LoadingScreen blijven staan.
+    Promise.all([repositories.settings.read(), repositories.roster.read()]).then(([s, r]) => {
+      if (cancelled) return;
+      setSettings(s);
+      setRoster(r);
+    });
+
+    const unsubSettings = repositories.settings.subscribe((s) => {
+      if (!cancelled) setSettings(s);
+    });
+    const unsubRoster = repositories.roster.subscribe((r) => {
+      if (!cancelled) setRoster(r);
+    });
+
+    return () => {
+      cancelled = true;
+      unsubSettings();
+      unsubRoster();
+    };
+  }, [repositories]);
 
   useEffect(() => {
     document.documentElement.lang = lang;
-    document.title = (settings.teamName as string) || translate(lang, 'appNameFallback');
+    document.title = (settings?.teamName as string) || translate(lang, 'appNameFallback');
     writeLang(browserStorage, lang);
-  }, [lang, settings.teamName]);
+  }, [lang, settings?.teamName]);
+
+  if (settings === null || roster === null) {
+    return <LoadingScreen lang={lang} />;
+  }
 
   const t = tFor(lang);
   const other: Lang = lang === SUPPORTED_LANGS[0] ? SUPPORTED_LANGS[1] : SUPPORTED_LANGS[0];
   const otherLabel = t(other === 'en' ? 'switchToEn' : 'switchToNl');
   const tag1Label = (settings.tag1Label as string) || t('toggleTag1Default');
   const tag2Label = (settings.tag2Label as string) || t('toggleTag2Default');
+
+  async function handleCloudMigrateSettings() {
+    return migrateSettingsToCloud(v1SettingsRepo, repositories.settings, browserStorage);
+  }
+
+  async function handleCloudMigrateRoster() {
+    return migrateRosterToCloud(v1RosterRepo, repositories.roster, browserStorage);
+  }
 
   return (
     <div className="app">
@@ -92,21 +153,26 @@ export function App() {
         {tab === 'settings' ? (
           <SettingsPanel
             lang={lang}
-            repo={settingsRepo}
             storage={browserStorage}
             settings={settings}
             onSettingsChange={setSettings}
+            onSave={(next) => saveSettingsAsync(repositories.settings, next)}
+            onReset={() => resetSettingsAsync(repositories.settings)}
+            onRefresh={() => getSettingsAsync(repositories.settings)}
+            onCloudMigrate={repositories.mode === 'cloud' ? handleCloudMigrateSettings : undefined}
           />
         ) : (
           <RosterPanel
             lang={lang}
-            repo={rosterRepo}
             storage={browserStorage}
             roster={roster}
             onRosterChange={setRoster}
+            onSave={(next) => saveRosterAsync(repositories.roster, next)}
+            onRefresh={() => getRosterAsync(repositories.roster)}
             useClassLimit={settings.useClassLimit === true}
             tag1Label={tag1Label}
             tag2Label={tag2Label}
+            onCloudMigrate={repositories.mode === 'cloud' ? handleCloudMigrateRoster : undefined}
           />
         )}
       </main>

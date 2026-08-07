@@ -30,6 +30,24 @@ export interface CloudMigrationResult {
  * (`lineup-tracker-cloud-imported-roster`) zodat de banner niet opnieuw
  * verschijnt. Die vlag raakt de v1-data niet.
  */
+/**
+ * Async tegenhangers van getRoster/saveRoster (PR 5.3c-1) — zie de
+ * uitgebreidere toelichting bij application/settings/usecases.ts. Roster
+ * heeft geen reset-usecase (RosterRepository/AsyncRosterRepository kennen
+ * geen reset(), RosterPanel heeft geen resetknop).
+ */
+export async function getRosterAsync(repo: AsyncRosterRepository): Promise<Roster> {
+  return repo.read();
+}
+
+export async function saveRosterAsync(
+  repo: AsyncRosterRepository,
+  players: Roster,
+): Promise<boolean> {
+  const result = await repo.write(players);
+  return result.ok;
+}
+
 export async function migrateLocalStorageToCloud(
   local: RosterRepository,
   cloud: AsyncRosterRepository,
