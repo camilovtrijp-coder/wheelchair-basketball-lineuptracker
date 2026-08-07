@@ -23,7 +23,8 @@
 // org-rotterdam/team-u23's settings/roster, dus de wijziging in test 3 hier
 // raakt niets anders in de suite.
 import { test, expect, type Page } from '@playwright/test';
-import { signIn, answerTrustedDevice, selectContext } from './helpers';
+import { signIn, signUp, answerTrustedDevice, selectContext, uniqueTestEmail } from './helpers';
+import { adminDb } from './adminFixtures';
 
 const SEED_TEAM_NAME = 'Rotterdam Basketball (fictief)';
 const SEED_PLAYER_NAMES = ['Fictief Speler Een', 'Fictief Speler Twee', 'Fictief Speler Drie'];
@@ -101,72 +102,112 @@ test.describe.serial('PR 5.3d — harde gate #27: offline reload, cache-write, t
     await context.setOffline(false);
   });
 
-  // BEVINDING (7 aug. 2026, eerste testrun — precies het "open punt" uit
-  // docs/pr-5.3-plan.md §C/5.3d's eigen risico-paragraaf): een offline write
-  // gevolgd door page.reload() terwijl nog offline hangt onbeperkt op
-  // LoadingScreen — bevestigd reproduceerbaar (2/2 pogingen, tot 30s+ zonder
-  // herstel, ongeacht of er tussen click en reload wordt gewacht). App.tsx's
-  // Promise.all([repositories.settings.read(), repositories.roster.read()])
-  // resolvet nooit: getDocFromCache() lijkt te hangen specifiek wanneer er
-  // een ongeacknowledgede write in de mutatiequeue staat op het moment van
-  // reload. Waarschijnlijke oorzaak: persistentSingleTabManager (Web Locks)
-  // in headless Chromium — al expliciet als risico benoemd in
-  // firebaseClient.ts ("Web Locks kon hangen in headless-Chromium-CI") en in
-  // pr-5.3-plan.md §C/5.3d's risico-paragraaf, maar nu voor het eerst
-  // empirisch bevestigd i.p.v. verondersteld. Nog niet vastgesteld of dit
-  // headless-CI-specifiek is of ook een reëel apparaat/browser raakt — dat
-  // vraagt een eigenaarsbeslissing (zie het gesprek), geen stille aanname.
-  // Test blijft gemarkeerd i.p.v. verwijderd, zodat dit zichtbaar blijft
-  // (zelfde conventie als P0-1 in PR 1.6/1.7 en de test.fail() in
-  // tests/e2e/mobile.spec.ts).
-  //
-  // VERVOLGONDERZOEK (zelfde dag): persistentMultipleTabManager() i.p.v.
-  // persistentSingleTabManager() lost dit NIET betrouwbaar op — twee
-  // opeenvolgende testruns met alleen die wijziging gaven twee verschillende
-  // uitkomsten: (a) nog steeds onbeperkt hangen op LoadingScreen, en (b) wél
-  // resolven na herladen, maar dan met de OUDE servervaarde in plaats van de
-  // offline geschreven waarde (stille dataverlies van de pending write i.p.v.
-  // een hang). Geen van beide tabManager-varianten voldoet dus aan het
-  // acceptatiecriterium "offline wijziging blijft lokaal beschikbaar na
-  // reload". Wijst eerder op een fundamenteler probleem in hoe
-  // getDocFromCache()/de lokale mutatiequeue zich gedraagt over een harde
-  // page-reload heen met een nog niet-geackte write, dan op de tabManager-
-  // keuze zelf. firebaseClient.ts is NIET gewijzigd — dit was uitsluitend
-  // een lokaal experiment, niet gecommit.
+  // GESCHIEDENIS (7 aug. 2026): de oorspronkelijke versie van deze test
+  // klikte save en herlaadde meteen (of na een vaste wachttijd), zonder ooit
+  // te bevestigen dat de write daadwerkelijk lokaal was toegepast vóór de
+  // reload. Dat gaf een onbeperkte hang op LoadingScreen (2/2 pogingen),
+  // ook niet verholpen door persistentMultipleTabManager() te proberen (die
+  // gaf op zijn beurt wisselend óf dezelfde hang, óf stille dataverlies van
+  // de offline write na reload — zie de PR-geschiedenis/#36 voor het volledige
+  // logboek). Root-cause-onderzoek wees uit dat `FirestoreSettingsRepository
+  // .write()`/de roster-tegenhanger op setDoc()'s eigen Promise wachtten —
+  // die resolvet pas na serverbevestiging en blijft offline onbeperkt
+  // pending, terwijl de write lokaal al is toegepast (latency compensation).
+  // Dat schrijfcontract is herzien (zie domain/syncState.ts — write()
+  // retourneert nu meteen het lokale resultaat + een apart, nooit-rejectend
+  // `settled`-Promise). Deze testversie volgt daarna het herziene 8-staps-
+  // protocol: pas herladen NADAT een listener de write met
+  // hasPendingWrites=true heeft waargenomen (stap 3), niet meteen na de
+  // save-klik — dat sluit de race uit waarbij de mutatie nog niet eens
+  // lokaal geregistreerd was op het moment van reload.
   test('test 3 — offline write + reload + reconnect + tweede client ziet serverwaarde', async ({
     page,
     context,
     browser,
   }) => {
-    test.fail(
-      true,
-      'Offline write + reload hangt op LoadingScreen (bevestigd, zie testcommentaar) — open eigenaarsvraag vóór #27 gesloten kan worden.',
-    );
+    test.setTimeout(60_000);
     await loginAndCacheTeamU23(page);
 
+    // Stap 1: gecontroleerd offline.
     await context.setOffline(true);
 
+    // Stap 2: voer de write uit.
     const newTeamName = `Offline Gewijzigd ${Date.now()}`;
     await page.getByTestId('settings-teamName').fill(newTeamName);
     await page.getByTestId('settings-save').click();
 
-    // Reload terwijl nog offline: de wijziging moet uit persistentLocalCache
-    // komen, niet uit een netwerkcall. Hangt hier op LoadingScreen — zie
-    // testcommentaar hierboven.
-    await page.reload();
+    // Stap 3: wacht tot een listener de nieuwe waarde MET hasPendingWrites=
+    // true heeft waargenomen — niet de React-state-update van het typen zelf
+    // (die is al waar zodra je stopt met typen), maar de daadwerkelijke
+    // onSnapshot-metadata-emissie die useSyncStatus.onSettingsSync doorzet
+    // naar de sync-status-indicator. Dit is het punt waarop de mutatie
+    // aantoonbaar in Firestore's lokale mutatiequeue staat.
+    //
+    // BEKENDE, GEVERIFIEERDE RODE STAP (PR 5.3d-onderzoeksrapport, aug. 2026):
+    // deze assertie faalt momenteel consistent — de sync-status-indicator
+    // blijft op 'lokaal-beschikbaar' staan. Directe instrumentatie op
+    // FirestoreSettingsRepository (setDoc/getDocFromCache/onSnapshot, zie
+    // git-geschiedenis van dit bestand voor het volledige logboek) toonde aan
+    // dat na een offline setDoc() op dit document zowel latere
+    // getDocFromCache()-aanroepen als de onSnapshot-listener voor PRECIES dat
+    // document nooit meer reageren (getest tot 25s), terwijl een gelijktijdige
+    // lezing van een ANDER document (roster) op dezelfde Firestore-client
+    // gewoon normaal resolvet. Reproduceerbaar via zowel context.setOffline()
+    // als een expliciete route.abort() op de emulatorpoort, en onafhankelijk
+    // van persistentLocalCache vs. memoryLocalCache en
+    // experimentalForceLongPolling vs. auto-detect — dus geen Playwright/CDP-
+    // artefact, geen Web-Locks-kwestie en geen client-brede AsyncQueue-
+    // blokkade. Bewust GEEN test.fail(): issue #27 blijft een harde open gate
+    // totdat dit is opgelost of op een echt apparaat weerlegd (zie het
+    // 5.3d-onderzoeksrapport voor de volledige triangulatie en het
+    // handmatige mobiele-apparaatprotocol).
     await expect(page.getByTestId('settings-teamName')).toHaveValue(newTeamName, {
       timeout: 10_000,
     });
+    await expect(page.getByTestId('sync-status-indicator')).toHaveAttribute(
+      'data-status',
+      'wacht-op-synchronisatie',
+      { timeout: 10_000 },
+    );
 
+    // Stap 4: pas nu de volledige offline reload.
+    await page.reload();
+
+    // Stap 5: bewijs dat de nieuwe waarde lokaal terugkomt. Bij een hang
+    // rapporteert LoadingScreen's begrensde-timeout-diagnostiek (App.tsx)
+    // na 8s per stap welke van settings-read/roster-read/settings-listener/
+    // roster-listener nog niet is afgerond — dat voorkomt dat een eventuele
+    // hang hier zonder onderscheid aan "Promise.all()" wordt toegeschreven.
+    try {
+      await expect(page.getByTestId('settings-teamName')).toHaveValue(newTeamName, {
+        timeout: 15_000,
+      });
+    } catch (error) {
+      const stalled = await page
+        .getByTestId('loading-stalled')
+        .getAttribute('data-steps')
+        .catch(() => null);
+      if (stalled) {
+        throw new Error(
+          `Vastgelopen stap(pen) volgens App.tsx's bounded-timeout-diagnostiek: ${stalled}. ` +
+            `Oorspronkelijke fout: ${String(error)}`,
+        );
+      }
+      throw error;
+    }
+
+    // Stap 6: reconnect.
     await context.setOffline(false);
+
+    // Stap 7: wacht op serverbevestiging.
     await expect(page.getByTestId('sync-status-indicator')).toHaveAttribute(
       'data-status',
       'gesynchroniseerd',
       { timeout: 20_000 },
     );
 
-    // Tweede, onafhankelijke client: bob (organizationAdmin van org-rotterdam)
-    // logt apart in en moet exact dezelfde servervaarde zien.
+    // Stap 8: controleer de waarde met een onafhankelijke tweede client
+    // (bob, organizationAdmin van org-rotterdam).
     const secondContext = await browser.newContext();
     const secondPage = await secondContext.newPage();
     try {
@@ -179,5 +220,80 @@ test.describe.serial('PR 5.3d — harde gate #27: offline reload, cache-write, t
     } finally {
       await secondContext.close();
     }
+  });
+});
+
+// Criterium 4 uit issue #27 (niet expliciet in de §D-tabel, wel in de
+// oorspronkelijke §C/5.3d-taakomschrijving): een werkelijk nooit-gecachete
+// teamcontext mag offline nooit als een leeg team getoond worden. Bewust
+// GEEN onderdeel van het serial-blok hierboven — dit scenario gebruikt een
+// eigen, verse gebruiker/organisatie (net als cloud-mode-write.spec.ts) en
+// raakt org-rotterdam/team-u23 niet.
+//
+// Afbakening t.o.v. de bestaande test in offline-and-trusted-device-
+// states.spec.ts ("vraagt expliciet om netwerk als memberships nog nooit
+// opgehaald zijn"): die dekt het geval waarin de MEMBERSHIPS-lijst zelf nog
+// nooit is opgehaald (AuthGate-niveau, deriveAppState's `memberships===null`
+// tak). Dit hier is een ANDER geval: memberships/organisatie/team-bestaan
+// zijn al bekend en gevalideerd (de gebruiker heeft al een actieve context
+// gehad), maar het specifieke tweede team heeft zijn eigen settings/roster-document
+// is nog nooit gelezen. `validateSelectedTeam()` faalt bewust "open" bij een
+// exception (zie FirestoreOrganizationGateway.validateSelectedTeam's eigen
+// documentatie) — een nooit-gecachete, offline teamcontext bereikt dus wél
+// AuthGate's 'active'-state en dus `<App/>`; het is daarom specifiek App.tsx's
+// nieuwe `uncachedOffline`-afhandeling (niet AuthGate's eigen
+// 'uncached-offline'-tak) die hier op de proef wordt gesteld. Beide tonen
+// toevallig hetzelfde scherm/dezelfde testid (OfflineUncachedScreen), dus de
+// assertie hieronder is niet gevoelig voor welke van de twee 'm toont.
+test.describe('PR 5.3d criterium 4: nooit-gecachete teamcontext offline', () => {
+  test('een tweede, nooit geopend team wordt offline niet als leeg team getoond', async ({
+    page,
+    context,
+  }) => {
+    test.setTimeout(45_000);
+    const email = uniqueTestEmail('never-cached');
+    const password = 'NeverCached123!';
+    await signUp(page, email, password);
+    await answerTrustedDevice(page, true);
+
+    await page.waitForSelector('[data-testid="onboarding-org-name"]', { timeout: 10_000 });
+    await page.getByTestId('onboarding-org-name').fill('Never Cached Club');
+    await page.getByTestId('onboarding-team-name').fill('Team A');
+    await page.getByTestId('onboarding-submit').click();
+
+    await page.waitForSelector('[data-testid^="context-org-"]', { timeout: 10_000 });
+    const orgId = (await page
+      .locator('[data-testid^="context-org-"]')
+      .first()
+      .getAttribute('data-testid'))!.replace('context-org-', '');
+
+    // Tweede team via de Admin SDK — nooit via de UI geopend, dus settings/
+    // roster zijn nooit lokaal gecachet. Geen settings/roster-document
+    // aangemaakt: dat is precies het "nooit gecacht" scenario.
+    const team2Ref = adminDb().collection('organizations').doc(orgId).collection('teams').doc();
+    await team2Ref.set({
+      name: 'Nooit Geopend Team',
+      orgName: 'Never Cached Club',
+      createdBy: 'test-admin-sdk',
+      createdAt: new Date(),
+    });
+
+    // Org expanderen (listTeams()) gebeurt hier bewust nog ONLINE, zodat het
+    // tweede team zichtbaar wordt vóór we offline gaan — anders zou deze
+    // stap zelf al offline-listTeams()-gedrag testen (niet het doel hier).
+    await page.getByTestId(`context-org-${orgId}`).click();
+    await page.waitForSelector(`[data-testid="context-team-${team2Ref.id}"]`, { timeout: 10_000 });
+
+    await context.setOffline(true);
+
+    await page.getByTestId(`context-team-${team2Ref.id}`).click();
+
+    // Nooit stilzwijgend een leeg team: expliciete "geen verbinding"-melding
+    // i.p.v. een lege of DEFAULT_SETTINGS-gevulde SettingsPanel/RosterPanel.
+    await expect(page.getByTestId('uncached-offline-body')).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByTestId('nav-settings')).toHaveCount(0);
+    await expect(page.getByTestId('settings-teamName')).toHaveCount(0);
+
+    await context.setOffline(false);
   });
 });

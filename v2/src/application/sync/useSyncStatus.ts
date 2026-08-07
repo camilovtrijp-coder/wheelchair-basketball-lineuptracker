@@ -1,11 +1,21 @@
-// Sync-status hook (PR 5.3c-2). Leest de SyncState die repositories.settings/
+// Sync-status hook (PR 5.3c-2, schrijfcontract herzien in PR 5.3d na
+// vervolgonderzoek). Leest de SyncState die repositories.settings/
 // .roster.subscribe() al meeleveren (via onSettingsSync/onRosterSync, door
 // App vanuit zijn bestaande 5.3c-1-subscribe-effect aangeroepen — geen tweede
-// listener nodig) en houdt zelf de laatst-geweigerde payload per repository
-// vast. write()-afwijzingen komen NIET via subscribe() binnen (Firestore
-// meldt een geweigerde write alleen synchroon aan de aanroeper van write()),
-// dus saveSettings/saveRoster hieronder wikkelen repositories.settings/
-// roster.write() in en registreren een afwijzing zelf.
+// listener nodig) voor de wacht-op-synchronisatie ↔ gesynchroniseerd-
+// overgangen (gebaseerd op onSnapshot's hasPendingWrites-metadata).
+//
+// write() zelf wacht NIET op de volledige serverbevestiging (zie
+// domain/syncState.ts — setDoc() resolvet pas na ack en blijft offline
+// onbeperkt pending) en retourneert dus vrijwel meteen `ok:true` zodra de
+// write lokaal is geaccepteerd. Metadata alléén kan een afgewezen write
+// echter niet van een succesvolle onderscheiden (bij afwijzing rolt
+// Firestore de lokale waarde terug en wordt hasPendingWrites ook gewoon
+// weer false) — daarom volgt saveSettings/saveRoster hieronder apart het
+// `settled`-Promise van elke write om een échte afwijzing alsnog als
+// actie-nodig te registreren, zonder de aanroeper daarop te laten wachten.
+// `settled` reject nooit, dus de `.then()` hieronder kan nooit een
+// unhandled rejection worden.
 //
 // De gecombineerde `status` toont het "ergste" van settings en roster
 // (actie-nodig wint van wacht-op-synchronisatie wint van lokaal-beschikbaar
@@ -65,8 +75,16 @@ export function useSyncStatus(repositories: {
   const saveSettings = useCallback(
     async (payload: Settings & Record<string, unknown>) => {
       const result = await repositories.settings.write(payload);
-      setPendingFor('settings', result.ok ? null : payload);
-      return result.ok;
+      if (!result.ok) {
+        setPendingFor('settings', payload);
+        return false;
+      }
+      // Niet awaiten: dat zou saveSettings() weer net zo lang laten
+      // blokkeren als vóór dit contract. `settled` reject nooit.
+      void result.settled.then((settled) => {
+        setPendingFor('settings', settled.ok ? null : payload);
+      });
+      return true;
     },
     [repositories.settings, setPendingFor],
   );
@@ -74,8 +92,14 @@ export function useSyncStatus(repositories: {
   const saveRoster = useCallback(
     async (payload: Roster) => {
       const result = await repositories.roster.write(payload);
-      setPendingFor('roster', result.ok ? null : payload);
-      return result.ok;
+      if (!result.ok) {
+        setPendingFor('roster', payload);
+        return false;
+      }
+      void result.settled.then((settled) => {
+        setPendingFor('roster', settled.ok ? null : payload);
+      });
+      return true;
     },
     [repositories.roster, setPendingFor],
   );

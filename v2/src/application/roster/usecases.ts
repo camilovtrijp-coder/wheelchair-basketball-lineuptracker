@@ -55,12 +55,19 @@ export async function migrateLocalStorageToCloud(
 ): Promise<CloudMigrationResult> {
   const players = local.read();
   const result = await cloud.write(players);
-  if (result.ok) {
+  if (!result.ok) {
+    return { ok: false, imported: false, errors: [`syncState: ${result.syncState.status}`] };
+  }
+  // Zie de uitgebreidere toelichting bij application/settings/usecases.ts:
+  // een eenmalige migratie moet op `settled` wachten, niet op het meteen-
+  // geaccepteerde write()-resultaat (PR 5.3d-schrijfcontract).
+  const settled = await result.settled;
+  if (settled.ok) {
     markCloudImported(storage, 'roster');
   }
   return {
-    ok: result.ok,
-    imported: result.ok,
-    errors: result.ok ? [] : [`syncState: ${result.syncState.status}`],
+    ok: settled.ok,
+    imported: settled.ok,
+    errors: settled.ok ? [] : [`settled: actie-nodig`],
   };
 }

@@ -5,11 +5,11 @@
 // Fase 7 beslist of normalisatie naar players/{playerId} nodig wordt.
 
 import type { Roster } from '../../domain/roster/types';
-import type { SyncState } from '../../domain/syncState';
+import type { SyncState, WriteResult } from '../../domain/syncState';
 
 export interface AsyncRosterRepository {
   read(): Promise<Roster>;
-  write(players: Roster): Promise<{ ok: boolean; syncState: SyncState; error?: unknown }>;
+  write(players: Roster): Promise<WriteResult>;
   subscribe(
     onNext: (players: Roster, sync: SyncState) => void,
     onError?: (error: unknown) => void,

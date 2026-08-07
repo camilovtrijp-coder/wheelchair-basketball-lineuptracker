@@ -22,15 +22,18 @@ describe('LocalAsyncRosterRepository (PR 5.3c-1)', () => {
     await expect(repo.read()).resolves.toEqual(onePlayer);
   });
 
-  it('write() roept de synchrone write() aan en meldt lokaal-beschikbaar bij succes', async () => {
+  it('write() roept de synchrone write() aan en meldt lokaal-beschikbaar bij succes (settled resolvet meteen)', async () => {
     const sync = fakeSync();
     const repo = new LocalAsyncRosterRepository(sync);
     const result = await repo.write(onePlayer);
     expect(sync.write).toHaveBeenCalledWith(onePlayer);
-    expect(result).toEqual({
-      ok: true,
-      syncState: { status: 'lokaal-beschikbaar', fromCache: false, hasPendingWrites: false },
+    expect(result.ok).toBe(true);
+    expect(result.syncState).toEqual({
+      status: 'lokaal-beschikbaar',
+      fromCache: false,
+      hasPendingWrites: false,
     });
+    await expect(result.settled).resolves.toEqual({ ok: true });
   });
 
   it('write() meldt actie-nodig wanneer de synchrone write false retourneert (bijv. quota)', async () => {
@@ -39,6 +42,7 @@ describe('LocalAsyncRosterRepository (PR 5.3c-1)', () => {
     const result = await repo.write(onePlayer);
     expect(result.ok).toBe(false);
     expect(result.syncState.status).toBe('actie-nodig');
+    await expect(result.settled).resolves.toEqual({ ok: false });
   });
 
   it('subscribe() emitteert direct één keer met de huidige waarde en levert een unsubscribe-functie', () => {

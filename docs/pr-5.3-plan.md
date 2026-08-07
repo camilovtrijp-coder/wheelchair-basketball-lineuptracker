@@ -151,6 +151,14 @@ Risico: nieuwe UI met eigen toetsenbord/a11y-eisen — bestaande `jsx-a11y` lint
 
 Doel: de vier acceptatiecriteria automatisch in de bestaande `v2-e2e`-CI-job bewijzen — **PR 5.3 is pas voltooid als deze groen zijn**.
 
+**Status (aug. 2026): test 3 faalt bewust en zichtbaar, gate blijft OPEN.**
+Zie `docs/pr-5.3d-onderzoeksrapport.md` voor het volledige onderzoek: een
+geverifieerde, herhaalbare hang van Firestore's `getDocFromCache()`/
+`onSnapshot` op een document met een openstaande offline-mutatie, los van het
+(inmiddels gecorrigeerde) schrijfcontract — inclusief het handmatige
+mobiele-apparaatprotocol dat nog moet worden uitgevoerd voordat deze gate
+gesloten kan worden.
+
 Achtergrond uit SPIKE_REPORT §8: de spike bewees offline-edit/reconnect/tweede-cliënt alleen binnen één paginasessie. Een volledige page-reload terwijl offline vereist een PWA-capabele testbuild — dat is precies wat `v2-e2e` al doet (`npm run build` + `npm run preview:e2e` met `injectManifest`-SW uit PR 3.2a). **Geen CI-wijziging nodig**; alleen nieuwe tests in de bestaande job.
 
 Werk: nieuwe `v2/tests/e2e-auth/offline-reload-cache-write-second-client.spec.ts` met vier tests (serieel, geen parallel — `playwright.auth.config.ts` staat al op `workers: 1`).

@@ -11,7 +11,7 @@
 // in lokale modus verborgen (App/AuthGate tonen 'm alleen bij mode==='cloud').
 
 import type { Settings } from '../../domain/settings/types';
-import type { SyncState } from '../../domain/syncState';
+import type { SyncState, WriteResult } from '../../domain/syncState';
 import type { AsyncSettingsRepository } from '../../application/settings/AsyncSettingsRepository';
 import type { SettingsRepository } from '../../application/settings/SettingsRepository';
 
@@ -29,11 +29,11 @@ export class LocalAsyncSettingsRepository implements AsyncSettingsRepository {
     return this.sync.read();
   }
 
-  async write(
-    settings: Settings & Record<string, unknown>,
-  ): Promise<{ ok: boolean; syncState: SyncState; error?: unknown }> {
+  async write(settings: Settings & Record<string, unknown>): Promise<WriteResult> {
     const ok = this.sync.write(settings);
-    return ok ? { ok: true, syncState: SYNCED } : { ok: false, syncState: FAILED };
+    return ok
+      ? { ok: true, syncState: SYNCED, settled: Promise.resolve({ ok: true }) }
+      : { ok: false, syncState: FAILED, settled: Promise.resolve({ ok: false }) };
   }
 
   async reset(): Promise<Settings & Record<string, unknown>> {

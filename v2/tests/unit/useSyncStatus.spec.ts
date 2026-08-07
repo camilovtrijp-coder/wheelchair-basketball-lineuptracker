@@ -1,4 +1,15 @@
 // @vitest-environment jsdom
+//
+// PR 5.3d-vervolgonderzoek: write() retourneert nu meteen `ok:true` zodra
+// een write lokaal geaccepteerd is (zie domain/syncState.ts — niet meer
+// wachten op setDoc()'s volledige serverbevestiging). Een échte afwijzing
+// (bijv. een Rules-weigering na reconnect) komt daarom NIET meer via het
+// eerste `write()`-resultaat binnen, maar via het los meelopende
+// `settled`-Promise. De meeste tests hieronder simuleren dat tweetraps-
+// gedrag: `write()` meldt eerst `ok:true`, en pas ná een microtask-tick
+// (wanneer `settled` alsnog `{ok:false}` oplevert) verschijnt het item in
+// `pending`. Eén test dekt de directe-weigering-variant (bijv. een lokale
+// opslagfout) waarbij `write()` zelf al `ok:false` meldt.
 import { describe, it, expect, vi } from 'vitest';
 import { renderHook, act } from '@testing-library/preact';
 import { useSyncStatus } from '../../src/application/sync/useSyncStatus';
@@ -16,8 +27,17 @@ const PENDING: SyncState = {
   hasPendingWrites: true,
 };
 
+/** settled resolvet altijd — nooit reject, zie domain/syncState.ts. */
+function settledOk(ok: boolean, error?: unknown) {
+  return Promise.resolve(ok ? { ok: true } : { ok: false, error });
+}
+
 function fakeSettingsRepo(
-  write: AsyncSettingsRepository['write'] = vi.fn(async () => ({ ok: true, syncState: SYNCED })),
+  write: AsyncSettingsRepository['write'] = vi.fn(async () => ({
+    ok: true,
+    syncState: SYNCED,
+    settled: settledOk(true),
+  })),
 ): AsyncSettingsRepository {
   return {
     read: vi.fn(async () => ({ ...DEFAULT_SETTINGS })),
@@ -28,7 +48,11 @@ function fakeSettingsRepo(
 }
 
 function fakeRosterRepo(
-  write: AsyncRosterRepository['write'] = vi.fn(async () => ({ ok: true, syncState: SYNCED })),
+  write: AsyncRosterRepository['write'] = vi.fn(async () => ({
+    ok: true,
+    syncState: SYNCED,
+    settled: settledOk(true),
+  })),
 ): AsyncRosterRepository {
   return {
     read: vi.fn(async () => [] as Roster),
@@ -37,7 +61,14 @@ function fakeRosterRepo(
   };
 }
 
-describe('useSyncStatus (PR 5.3c-2)', () => {
+/** Eén microtask-tick laten verlopen zodat een `void result.settled.then(...)`-callback kan draaien. */
+async function flushMicrotasks(): Promise<void> {
+  await act(async () => {
+    await Promise.resolve();
+  });
+}
+
+describe('useSyncStatus (PR 5.3c-2, schrijfcontract herzien in 5.3d)', () => {
   it('start op gesynchroniseerd zonder pending items', () => {
     const { result } = renderHook(() =>
       useSyncStatus({ settings: fakeSettingsRepo(), roster: fakeRosterRepo() }),
@@ -57,8 +88,13 @@ describe('useSyncStatus (PR 5.3c-2)', () => {
     expect(result.current.status).toBe('actie-nodig');
   });
 
-  it('saveSettings bij een geweigerde write voegt de payload toe aan pending en zet status op actie-nodig', async () => {
-    const write = vi.fn(async () => ({ ok: false, syncState: REJECTED, error: new Error('nope') }));
+  it('een DIRECT geweigerde write (write() zelf meldt ok:false) komt meteen in pending', async () => {
+    const write = vi.fn(async () => ({
+      ok: false,
+      syncState: REJECTED,
+      error: new Error('nope'),
+      settled: settledOk(false),
+    }));
     const { result } = renderHook(() =>
       useSyncStatus({ settings: fakeSettingsRepo(write), roster: fakeRosterRepo() }),
     );
@@ -72,11 +108,54 @@ describe('useSyncStatus (PR 5.3c-2)', () => {
     expect(result.current.pending).toEqual([{ kind: 'settings', payload }]);
   });
 
-  it('een geslaagde saveSettings na een eerdere weigering wist de pending-entry', async () => {
+  it('write() meldt meteen ok:true (lokaal geaccepteerd); pas als settled alsnog faalt komt het item in pending', async () => {
+    const write = vi.fn(async () => ({
+      ok: true,
+      syncState: PENDING,
+      settled: settledOk(false, new Error('permission-denied')),
+    }));
+    const { result } = renderHook(() =>
+      useSyncStatus({ settings: fakeSettingsRepo(write), roster: fakeRosterRepo() }),
+    );
+    const payload = { ...DEFAULT_SETTINGS, teamName: 'X' };
+    let ok = false;
+    await act(async () => {
+      ok = await result.current.saveSettings(payload);
+    });
+    // write() retourneerde ok:true — de aanroeper wordt niet geblokkeerd tot
+    // settled. (Met een al-resolved fake-Promise is het exacte moment waarop
+    // de settled-callback binnen dezelfde `act()` alsnog draait niet
+    // betrouwbaar te onderscheiden van "nog niet" — vandaar geen aparte
+    // tussentijdse assertie op `pending` hier; alleen het uiteindelijke,
+    // stabiele resultaat wordt gecontroleerd.)
+    expect(ok).toBe(true);
+
+    await flushMicrotasks();
+    expect(result.current.pending).toEqual([{ kind: 'settings', payload }]);
+    expect(result.current.status).toBe('actie-nodig');
+  });
+
+  it('wanneer settled alsnog ok:true oplevert, blijft pending leeg (geen valse actie-nodig)', async () => {
+    const write = vi.fn(async () => ({
+      ok: true,
+      syncState: PENDING,
+      settled: settledOk(true),
+    }));
+    const { result } = renderHook(() =>
+      useSyncStatus({ settings: fakeSettingsRepo(write), roster: fakeRosterRepo() }),
+    );
+    await act(async () => {
+      await result.current.saveSettings({ ...DEFAULT_SETTINGS });
+    });
+    await flushMicrotasks();
+    expect(result.current.pending).toEqual([]);
+  });
+
+  it('een geslaagde retry-save (settled ok:true) wist een eerdere pending-entry', async () => {
     const write = vi
       .fn()
-      .mockResolvedValueOnce({ ok: false, syncState: REJECTED, error: new Error('nope') })
-      .mockResolvedValueOnce({ ok: true, syncState: SYNCED });
+      .mockResolvedValueOnce({ ok: true, syncState: PENDING, settled: settledOk(false) })
+      .mockResolvedValueOnce({ ok: true, syncState: PENDING, settled: settledOk(true) });
     const { result } = renderHook(() =>
       useSyncStatus({ settings: fakeSettingsRepo(write), roster: fakeRosterRepo() }),
     );
@@ -84,19 +163,21 @@ describe('useSyncStatus (PR 5.3c-2)', () => {
     await act(async () => {
       await result.current.saveSettings(payload);
     });
+    await flushMicrotasks();
     expect(result.current.pending).toHaveLength(1);
 
     await act(async () => {
       await result.current.saveSettings(payload);
     });
+    await flushMicrotasks();
     expect(result.current.pending).toEqual([]);
   });
 
   it('retry() stuurt de opgeslagen pending-payload opnieuw en wist die bij succes', async () => {
     const write = vi
       .fn()
-      .mockResolvedValueOnce({ ok: false, syncState: REJECTED, error: new Error('nope') })
-      .mockResolvedValueOnce({ ok: true, syncState: SYNCED });
+      .mockResolvedValueOnce({ ok: true, syncState: PENDING, settled: settledOk(false) })
+      .mockResolvedValueOnce({ ok: true, syncState: PENDING, settled: settledOk(true) });
     const { result } = renderHook(() =>
       useSyncStatus({ settings: fakeSettingsRepo(write), roster: fakeRosterRepo() }),
     );
@@ -104,18 +185,24 @@ describe('useSyncStatus (PR 5.3c-2)', () => {
     await act(async () => {
       await result.current.saveSettings(payload);
     });
+    await flushMicrotasks();
     expect(result.current.pending).toHaveLength(1);
 
     await act(async () => {
       await result.current.retry('settings');
     });
+    await flushMicrotasks();
     expect(write).toHaveBeenCalledTimes(2);
     expect(write).toHaveBeenLastCalledWith(payload);
     expect(result.current.pending).toEqual([]);
   });
 
   it('dismiss() wist de pending-entry zonder write() opnieuw aan te roepen', async () => {
-    const write = vi.fn(async () => ({ ok: false, syncState: REJECTED, error: new Error('nope') }));
+    const write = vi.fn(async () => ({
+      ok: true,
+      syncState: PENDING,
+      settled: settledOk(false, new Error('nope')),
+    }));
     const { result } = renderHook(() =>
       useSyncStatus({ settings: fakeSettingsRepo(write), roster: fakeRosterRepo() }),
     );
@@ -123,6 +210,7 @@ describe('useSyncStatus (PR 5.3c-2)', () => {
     await act(async () => {
       await result.current.saveSettings(payload);
     });
+    await flushMicrotasks();
     expect(result.current.pending).toHaveLength(1);
     expect(write).toHaveBeenCalledTimes(1);
 
@@ -133,11 +221,15 @@ describe('useSyncStatus (PR 5.3c-2)', () => {
 
   it('settings en roster hebben onafhankelijke pending-items', async () => {
     const settingsWrite = vi.fn(async () => ({
-      ok: false,
-      syncState: REJECTED,
-      error: new Error('nope'),
+      ok: true,
+      syncState: PENDING,
+      settled: settledOk(false, new Error('nope')),
     }));
-    const rosterWrite = vi.fn(async () => ({ ok: true, syncState: SYNCED }));
+    const rosterWrite = vi.fn(async () => ({
+      ok: true,
+      syncState: PENDING,
+      settled: settledOk(true),
+    }));
     const { result } = renderHook(() =>
       useSyncStatus({
         settings: fakeSettingsRepo(settingsWrite),
@@ -148,6 +240,7 @@ describe('useSyncStatus (PR 5.3c-2)', () => {
       await result.current.saveSettings({ ...DEFAULT_SETTINGS });
       await result.current.saveRoster([]);
     });
+    await flushMicrotasks();
     expect(result.current.pending).toEqual([
       { kind: 'settings', payload: { ...DEFAULT_SETTINGS } },
     ]);

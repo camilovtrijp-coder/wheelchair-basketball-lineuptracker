@@ -77,34 +77,50 @@ describe('FirestoreSettingsRepository — read', () => {
   });
 });
 
-describe('FirestoreSettingsRepository — write (sync-status + setDoc-count)', () => {
-  it('resulteert in gesynchroniseerd bij geslaagde write', async () => {
+describe('FirestoreSettingsRepository — write (PR 5.3d-vervolgonderzoek: wacht niet op setDoc-ack)', () => {
+  it('resolvet meteen met ok:true/wacht-op-synchronisatie, zonder op setDoc() te wachten', async () => {
+    let resolveSetDoc!: () => void;
+    (setDoc as Mock).mockReturnValueOnce(
+      new Promise<void>((resolve) => {
+        resolveSetDoc = resolve;
+      }),
+    );
+    const repo = new FirestoreSettingsRepository(fakeDb, 'org-1', 'team-1');
+    // Als write() intern op setDoc() zou awaiten, zou deze await nooit
+    // resolven vóór resolveSetDoc() hieronder wordt aangeroepen — dat gebeurt
+    // hier bewust pas ná de assertions.
+    const result = await repo.write({ ...DEFAULT_SETTINGS, teamName: 'X' });
+    expect(result.ok).toBe(true);
+    expect(result.syncState.status).toBe('wacht-op-synchronisatie');
+    resolveSetDoc();
+    await result.settled;
+  });
+
+  it('settled resolvet {ok:true} zodra setDoc() de backend bevestigt', async () => {
     (setDoc as Mock).mockResolvedValueOnce(undefined);
     const repo = new FirestoreSettingsRepository(fakeDb, 'org-1', 'team-1');
     const result = await repo.write({ ...DEFAULT_SETTINGS, teamName: 'X' });
-    expect(result.ok).toBe(true);
-    expect(result.syncState.status).toBe('gesynchroniseerd');
+    await expect(result.settled).resolves.toEqual({ ok: true });
   });
 
   it(
-    'resulteert in actie-nodig bij geweigerde write (Rules-afwijzing na reconnect) ' +
-      '— geen stille val naar defaults, fout blijft beschikbaar voor het Actie-nodig-paneel',
+    'settled resolvet {ok:false, error} bij een afgewezen write (Rules-afwijzing na reconnect) ' +
+      '— reject zelf nooit, dus geen unhandled rejection voor een aanroeper die niet awaitet',
     async () => {
       const rejection = new Error('permission-denied');
       (setDoc as Mock).mockRejectedValueOnce(rejection);
       const repo = new FirestoreSettingsRepository(fakeDb, 'org-1', 'team-1');
       const result = await repo.write({ ...DEFAULT_SETTINGS, teamName: 'X' });
-      expect(result.ok).toBe(false);
-      expect(result.syncState.status).toBe('actie-nodig');
-      expect(result.error).toBe(rejection);
+      await expect(result.settled).resolves.toEqual({ ok: false, error: rejection });
     },
   );
 
   it('één save-actie veroorzaakt precies één setDoc-call (geen retry-duplicatie)', async () => {
     (setDoc as Mock).mockResolvedValue(undefined);
     const repo = new FirestoreSettingsRepository(fakeDb, 'org-1', 'team-1');
-    await repo.write({ ...DEFAULT_SETTINGS, teamName: 'Eén' });
-    await repo.write({ ...DEFAULT_SETTINGS, teamName: 'Twee' });
+    const r1 = await repo.write({ ...DEFAULT_SETTINGS, teamName: 'Eén' });
+    const r2 = await repo.write({ ...DEFAULT_SETTINGS, teamName: 'Twee' });
+    await Promise.all([r1.settled, r2.settled]);
     expect(setDoc).toHaveBeenCalledTimes(2);
   });
 });

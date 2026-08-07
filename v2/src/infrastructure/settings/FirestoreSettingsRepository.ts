@@ -9,9 +9,25 @@
 // nooit eerder is opgehaald. subscribe() gebruikt onSnapshot met
 // includeMetadataChanges zodat de UI de overgang wacht-op-synchronisatie →
 // gesynchroniseerd direct kan tonen. Een leeg document wordt NOOIT als defaults
-// geëmitteerd (gate uit ADR-002 §"Syncstatuscontract": een ongecachte context
+// geëmitteerd (gate uit ADR-002 §"Syncstatuscontract": een ongecachete context
 // toont offline expliciet dat internet nodig is, geen stille standaardwaarden).
-
+//
+// LET OP (PR 5.3d-vervolgonderzoek, aug. 2026): read()/getDocFromCache() en de
+// onSnapshot-listener hierboven blijven voor DIT document onbepaald hangen
+// zodra er een offline, nog niet aan de server bevestigde write op datzelfde
+// document in de mutatiequeue staat — geverifieerd met directe instrumentatie
+// (zie PR #36-onderzoekslog): een write() hier tijdens context.setOffline()
+// laat zowel latere getDocFromCache()-aanroepen als de onSnapshot-listener op
+// PRECIES dit document nooit meer reageren (getest tot 25s), terwijl een
+// read() op een ANDER document (roster) op hetzelfde Firestore-client-object
+// tegelijk gewoon normaal resolvet. Reproduceerbaar via zowel
+// context.setOffline() als een expliciete route.abort() op de emulatorpoort,
+// en onafhankelijk van persistentLocalCache vs. memoryLocalCache en van
+// experimentalForceLongPolling vs. auto-detect — dus geen Playwright/CDP-
+// artefact en geen Web-Locks/persistentie-kwestie. Dit is de kern van waarom
+// issue #27 een harde OPEN gate blijft; zie het PR 5.3d-onderzoeksrapport
+// voor de volledige triangulatie en de nog openstaande vraag of dit ook op
+// een echt apparaat/tegen productie-Firestore optreedt.
 import {
   doc,
   getDoc,
@@ -23,7 +39,7 @@ import {
 } from 'firebase/firestore';
 import { settingsConverter } from 'firebase-base/documents';
 import { DEFAULT_SETTINGS, type Settings } from '../../domain/settings/types';
-import { deriveSyncState, type SyncState } from '../../domain/syncState';
+import { deriveSyncState, type SyncState, type WriteResult } from '../../domain/syncState';
 import type { AsyncSettingsRepository } from '../../application/settings/AsyncSettingsRepository';
 
 export class FirestoreSettingsRepository implements AsyncSettingsRepository {
@@ -50,22 +66,22 @@ export class FirestoreSettingsRepository implements AsyncSettingsRepository {
     }
   }
 
-  async write(
-    settings: Settings & Record<string, unknown>,
-  ): Promise<{ ok: boolean; syncState: SyncState; error?: unknown }> {
-    try {
-      await setDoc(this.ref(), { ...settings, updatedAt: serverTimestamp() });
-      return {
-        ok: true,
-        syncState: { status: 'gesynchroniseerd', fromCache: false, hasPendingWrites: false },
-      };
-    } catch (error) {
-      return {
-        ok: false,
-        syncState: { status: 'actie-nodig', fromCache: false, hasPendingWrites: false },
-        error,
-      };
-    }
+  // Wacht bewust NIET op setDoc()'s eigen Promise: die resolvet pas na
+  // serverbevestiging en blijft offline onbeperkt pending, terwijl de write
+  // lokaal al via latency compensation is toegepast. write() retourneert
+  // daarom meteen het lokale resultaat; `settled` draagt de uiteindelijke
+  // serverbevestiging/-afwijzing en reject nooit (zie domain/syncState.ts).
+  async write(settings: Settings & Record<string, unknown>): Promise<WriteResult> {
+    const serverAck = setDoc(this.ref(), { ...settings, updatedAt: serverTimestamp() });
+    const settled = serverAck.then(
+      () => ({ ok: true }),
+      (error: unknown) => ({ ok: false, error }),
+    );
+    return {
+      ok: true,
+      syncState: { status: 'wacht-op-synchronisatie', fromCache: true, hasPendingWrites: true },
+      settled,
+    };
   }
 
   async reset(): Promise<Settings & Record<string, unknown>> {

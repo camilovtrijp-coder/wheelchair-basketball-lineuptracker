@@ -3,7 +3,7 @@
 // de rationale (docs/pr-5.3-plan.md §C/5.3c-1).
 
 import type { Roster } from '../../domain/roster/types';
-import type { SyncState } from '../../domain/syncState';
+import type { SyncState, WriteResult } from '../../domain/syncState';
 import type { AsyncRosterRepository } from '../../application/roster/AsyncRosterRepository';
 import type { RosterRepository } from '../../application/roster/RosterRepository';
 
@@ -21,9 +21,11 @@ export class LocalAsyncRosterRepository implements AsyncRosterRepository {
     return this.sync.read();
   }
 
-  async write(players: Roster): Promise<{ ok: boolean; syncState: SyncState; error?: unknown }> {
+  async write(players: Roster): Promise<WriteResult> {
     const ok = this.sync.write(players);
-    return ok ? { ok: true, syncState: SYNCED } : { ok: false, syncState: FAILED };
+    return ok
+      ? { ok: true, syncState: SYNCED, settled: Promise.resolve({ ok: true }) }
+      : { ok: false, syncState: FAILED, settled: Promise.resolve({ ok: false }) };
   }
 
   subscribe(onNext: (players: Roster, sync: SyncState) => void): () => void {

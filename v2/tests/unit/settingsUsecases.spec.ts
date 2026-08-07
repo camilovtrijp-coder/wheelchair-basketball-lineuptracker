@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { DEFAULT_SETTINGS, type Settings } from '../../src/domain/settings/types';
 import type { SettingsRepository } from '../../src/application/settings/SettingsRepository';
 import type { AsyncSettingsRepository } from '../../src/application/settings/AsyncSettingsRepository';
-import type { SyncState } from '../../src/domain/syncState';
+import type { WriteResult } from '../../src/domain/syncState';
 import type { KeyValueStorage } from '../../src/i18n/persistence';
 import { SETTINGS_STORAGE_KEY } from '../../src/domain/settings/types';
 import {
@@ -66,9 +66,10 @@ class TrackingStorage implements KeyValueStorage {
 
 class TrackingAsyncRepository implements AsyncSettingsRepository {
   public writeCalls: SettingsLike[] = [];
-  public nextWriteResult: { ok: boolean; syncState: SyncState } = {
+  public nextWriteResult: WriteResult = {
     ok: true,
-    syncState: { status: 'gesynchroniseerd', fromCache: false, hasPendingWrites: false },
+    syncState: { status: 'wacht-op-synchronisatie', fromCache: true, hasPendingWrites: true },
+    settled: Promise.resolve({ ok: true }),
   };
 
   async read(): Promise<SettingsLike> {
@@ -160,12 +161,13 @@ describe('migrateLocalStorageToCloud — settings (PR 5.3b)', () => {
     expect(isCloudImported(storage, 'settings')).toBe(true);
   });
 
-  it('cloud-write geweigerd → ok=false, geen vlag, errors[] gevuld', async () => {
+  it('cloud-write direct geweigerd (write() zelf ok:false) → ok=false, geen vlag, errors[] gevuld', async () => {
     const local = new TrackingRepository({ ...DEFAULT_SETTINGS, teamName: 'X' });
     const cloud = new TrackingAsyncRepository();
     cloud.nextWriteResult = {
       ok: false,
       syncState: { status: 'actie-nodig', fromCache: false, hasPendingWrites: false },
+      settled: Promise.resolve({ ok: false }),
     };
     const storage = new TrackingStorage();
 
@@ -177,4 +179,25 @@ describe('migrateLocalStorageToCloud — settings (PR 5.3b)', () => {
     expect(isCloudImported(storage, 'settings')).toBe(false);
     expect(storage.writtenKeys).not.toContain(SETTINGS_STORAGE_KEY);
   });
+
+  it(
+    'cloud-write lokaal geaccepteerd maar via settled alsnog afgewezen (PR 5.3d) → ' +
+      'geen importvlag, ok=false',
+    async () => {
+      const local = new TrackingRepository({ ...DEFAULT_SETTINGS, teamName: 'X' });
+      const cloud = new TrackingAsyncRepository();
+      cloud.nextWriteResult = {
+        ok: true,
+        syncState: { status: 'wacht-op-synchronisatie', fromCache: true, hasPendingWrites: true },
+        settled: Promise.resolve({ ok: false, error: new Error('permission-denied') }),
+      };
+      const storage = new TrackingStorage();
+
+      const result = await migrateLocalStorageToCloud(local, cloud, storage);
+
+      expect(result.ok).toBe(false);
+      expect(result.imported).toBe(false);
+      expect(isCloudImported(storage, 'settings')).toBe(false);
+    },
+  );
 });
