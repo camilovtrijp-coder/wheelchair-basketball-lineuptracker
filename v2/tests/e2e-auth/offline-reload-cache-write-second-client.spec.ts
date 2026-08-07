@@ -119,6 +119,20 @@ test.describe.serial('PR 5.3d — harde gate #27: offline reload, cache-write, t
   // Test blijft gemarkeerd i.p.v. verwijderd, zodat dit zichtbaar blijft
   // (zelfde conventie als P0-1 in PR 1.6/1.7 en de test.fail() in
   // tests/e2e/mobile.spec.ts).
+  //
+  // VERVOLGONDERZOEK (zelfde dag): persistentMultipleTabManager() i.p.v.
+  // persistentSingleTabManager() lost dit NIET betrouwbaar op — twee
+  // opeenvolgende testruns met alleen die wijziging gaven twee verschillende
+  // uitkomsten: (a) nog steeds onbeperkt hangen op LoadingScreen, en (b) wél
+  // resolven na herladen, maar dan met de OUDE servervaarde in plaats van de
+  // offline geschreven waarde (stille dataverlies van de pending write i.p.v.
+  // een hang). Geen van beide tabManager-varianten voldoet dus aan het
+  // acceptatiecriterium "offline wijziging blijft lokaal beschikbaar na
+  // reload". Wijst eerder op een fundamenteler probleem in hoe
+  // getDocFromCache()/de lokale mutatiequeue zich gedraagt over een harde
+  // page-reload heen met een nog niet-geackte write, dan op de tabManager-
+  // keuze zelf. firebaseClient.ts is NIET gewijzigd — dit was uitsluitend
+  // een lokaal experiment, niet gecommit.
   test('test 3 — offline write + reload + reconnect + tweede client ziet serverwaarde', async ({
     page,
     context,
