@@ -1,6 +1,7 @@
 import { useRef, useState } from 'preact/hooks';
 import { LOGO_MAX_BYTES, type Settings } from '../../domain/settings/types';
 import { translate, type Lang, type StringKey } from '../../i18n/strings';
+import type { KeyValueStorage } from '../../i18n/persistence';
 import {
   getSettings,
   resetSettings,
@@ -8,6 +9,7 @@ import {
   updateSetting,
 } from '../../application/settings/usecases';
 import type { SettingsRepository } from '../../application/settings/SettingsRepository';
+import { CloudImportBanner } from '../cloud/CloudImportBanner';
 
 const COLOR_PRESETS = [
   '#22c55e',
@@ -25,15 +27,28 @@ const COLOR_PRESETS = [
 export interface SettingsPanelProps {
   lang: Lang;
   repo: SettingsRepository;
+  storage: KeyValueStorage;
   settings: Settings & Record<string, unknown>;
   onSettingsChange: (next: Settings & Record<string, unknown>) => void;
+  /**
+   * Optionele cloud-import-handler. PR 5.3b laat deze undefined zodat de
+   * banner dormant is; PR 5.3c wired 'm zodra de UI async draait.
+   */
+  onCloudMigrate?: () => Promise<{ ok: boolean; errors: string[] }>;
 }
 
 function t(lang: Lang, key: StringKey): string {
   return translate(lang, key);
 }
 
-export function SettingsPanel({ lang, repo, settings, onSettingsChange }: SettingsPanelProps) {
+export function SettingsPanel({
+  lang,
+  repo,
+  storage,
+  settings,
+  onSettingsChange,
+  onCloudMigrate,
+}: SettingsPanelProps) {
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -81,6 +96,8 @@ export function SettingsPanel({ lang, repo, settings, onSettingsChange }: Settin
       <header className="settings-panel__header">
         <h2>{t(lang, 'settingsTitle')}</h2>
       </header>
+
+      <CloudImportBanner lang={lang} storage={storage} kind="settings" onMigrate={onCloudMigrate} />
 
       <fieldset className="settings-section">
         <legend>{t(lang, 'settingsSectionClub')}</legend>

@@ -219,6 +219,35 @@ button:focus-visible {
   color: var(--lt-color-danger);
 }
 
+.cloud-import-banner {
+  display: flex;
+  flex-direction: column;
+  gap: var(--lt-space-2);
+  padding: var(--lt-space-3);
+  margin: 0 0 var(--lt-space-3) 0;
+  border: var(--lt-border-thin);
+  border-radius: var(--lt-radius-md);
+  background: var(--lt-color-surface-alt, rgba(0, 0, 0, 0.03));
+}
+
+.cloud-import-banner__prompt {
+  margin: 0;
+  font-size: var(--lt-font-size-sm);
+  color: var(--lt-color-fg);
+}
+
+.cloud-import-banner__done {
+  margin: 0;
+  font-size: var(--lt-font-size-sm);
+  color: var(--lt-color-success, #166534);
+}
+
+.cloud-import-banner__error {
+  margin: 0;
+  font-size: var(--lt-font-size-sm);
+  color: var(--lt-color-danger);
+}
+
 .app-nav {
   display: flex;
   gap: var(--lt-space-2);

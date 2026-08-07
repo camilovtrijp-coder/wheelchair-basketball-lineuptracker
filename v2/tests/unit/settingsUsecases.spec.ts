@@ -1,12 +1,18 @@
 import { describe, it, expect } from 'vitest';
 import { DEFAULT_SETTINGS, type Settings } from '../../src/domain/settings/types';
 import type { SettingsRepository } from '../../src/application/settings/SettingsRepository';
+import type { AsyncSettingsRepository } from '../../src/application/settings/AsyncSettingsRepository';
+import type { SyncState } from '../../src/domain/syncState';
+import type { KeyValueStorage } from '../../src/i18n/persistence';
+import { SETTINGS_STORAGE_KEY } from '../../src/domain/settings/types';
 import {
   getSettings,
   resetSettings,
   saveSettings,
   updateSetting,
+  migrateLocalStorageToCloud,
 } from '../../src/application/settings/usecases';
+import { isCloudImported } from '../../src/infrastructure/cloudImportFlag';
 
 type SettingsLike = Settings & Record<string, unknown>;
 
@@ -33,6 +39,50 @@ class TrackingRepository implements SettingsRepository {
     this.current = { ...DEFAULT_SETTINGS };
     this.write(this.current);
     return this.current;
+  }
+}
+
+class TrackingStorage implements KeyValueStorage {
+  private store = new Map<string, string>();
+  public readonly writtenKeys: string[] = [];
+
+  getItem(key: string): string | null {
+    return this.store.get(key) ?? null;
+  }
+  setItem(key: string, value: string): void {
+    this.writtenKeys.push(key);
+    this.store.set(key, value);
+  }
+  removeItem(key: string): void {
+    this.store.delete(key);
+  }
+  seed(key: string, value: string): void {
+    this.store.set(key, value);
+  }
+  snapshot(): Record<string, string> {
+    return Object.fromEntries(this.store);
+  }
+}
+
+class TrackingAsyncRepository implements AsyncSettingsRepository {
+  public writeCalls: SettingsLike[] = [];
+  public nextWriteResult: { ok: boolean; syncState: SyncState } = {
+    ok: true,
+    syncState: { status: 'gesynchroniseerd', fromCache: false, hasPendingWrites: false },
+  };
+
+  async read(): Promise<SettingsLike> {
+    return { ...DEFAULT_SETTINGS };
+  }
+  async write(settings: SettingsLike) {
+    this.writeCalls.push(settings);
+    return this.nextWriteResult;
+  }
+  async reset(): Promise<SettingsLike> {
+    return { ...DEFAULT_SETTINGS };
+  }
+  subscribe(): () => void {
+    return () => undefined;
   }
 }
 
@@ -63,5 +113,68 @@ describe('application/settings/usecases', () => {
 
     const reset = resetSettings(repo);
     expect(reset).toEqual(DEFAULT_SETTINGS);
+  });
+});
+
+describe('migrateLocalStorageToCloud — settings (PR 5.3b)', () => {
+  it('kopieert v1-settings naar de cloud en zet de import-vlag', async () => {
+    const local = new TrackingRepository({ ...DEFAULT_SETTINGS, teamName: 'Cloud-klaar' });
+    const cloud = new TrackingAsyncRepository();
+    const storage = new TrackingStorage();
+    storage.seed(
+      SETTINGS_STORAGE_KEY,
+      JSON.stringify({ ...DEFAULT_SETTINGS, teamName: 'v1-origineel' }),
+    );
+
+    const result = await migrateLocalStorageToCloud(local, cloud, storage);
+
+    expect(result).toEqual({ ok: true, imported: true, errors: [] });
+    expect(cloud.writeCalls).toEqual([{ ...DEFAULT_SETTINGS, teamName: 'Cloud-klaar' }]);
+    expect(isCloudImported(storage, 'settings')).toBe(true);
+  });
+
+  it('RAakt de v1-key NIET: byte-equality van lineup-tracker-settings vóór en ná', async () => {
+    const v1Raw = JSON.stringify({ ...DEFAULT_SETTINGS, teamName: 'v1-origineel' });
+    const local = new TrackingRepository({ ...DEFAULT_SETTINGS, teamName: 'v1-origineel' });
+    const cloud = new TrackingAsyncRepository();
+    const storage = new TrackingStorage();
+    storage.seed(SETTINGS_STORAGE_KEY, v1Raw);
+
+    expect(storage.snapshot()[SETTINGS_STORAGE_KEY]).toBe(v1Raw);
+
+    await migrateLocalStorageToCloud(local, cloud, storage);
+
+    expect(storage.snapshot()[SETTINGS_STORAGE_KEY]).toBe(v1Raw);
+    expect(storage.writtenKeys).not.toContain(SETTINGS_STORAGE_KEY);
+  });
+
+  it('zonder v1-data: schrijft defaults naar de cloud en markeert imported', async () => {
+    const local = new TrackingRepository();
+    const cloud = new TrackingAsyncRepository();
+    const storage = new TrackingStorage();
+
+    const result = await migrateLocalStorageToCloud(local, cloud, storage);
+
+    expect(result.ok).toBe(true);
+    expect(cloud.writeCalls).toEqual([{ ...DEFAULT_SETTINGS }]);
+    expect(isCloudImported(storage, 'settings')).toBe(true);
+  });
+
+  it('cloud-write geweigerd → ok=false, geen vlag, errors[] gevuld', async () => {
+    const local = new TrackingRepository({ ...DEFAULT_SETTINGS, teamName: 'X' });
+    const cloud = new TrackingAsyncRepository();
+    cloud.nextWriteResult = {
+      ok: false,
+      syncState: { status: 'actie-nodig', fromCache: false, hasPendingWrites: false },
+    };
+    const storage = new TrackingStorage();
+
+    const result = await migrateLocalStorageToCloud(local, cloud, storage);
+
+    expect(result.ok).toBe(false);
+    expect(result.imported).toBe(false);
+    expect(result.errors.length).toBeGreaterThan(0);
+    expect(isCloudImported(storage, 'settings')).toBe(false);
+    expect(storage.writtenKeys).not.toContain(SETTINGS_STORAGE_KEY);
   });
 });

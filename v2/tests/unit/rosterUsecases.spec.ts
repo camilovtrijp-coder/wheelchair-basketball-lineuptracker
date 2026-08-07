@@ -1,7 +1,16 @@
 import { describe, it, expect } from 'vitest';
 import type { Roster } from '../../src/domain/roster/types';
+import { ROSTER_STORAGE_KEY } from '../../src/domain/roster/types';
 import type { RosterRepository } from '../../src/application/roster/RosterRepository';
-import { getRoster, saveRoster } from '../../src/application/roster/usecases';
+import type { AsyncRosterRepository } from '../../src/application/roster/AsyncRosterRepository';
+import type { SyncState } from '../../src/domain/syncState';
+import type { KeyValueStorage } from '../../src/i18n/persistence';
+import {
+  getRoster,
+  saveRoster,
+  migrateLocalStorageToCloud,
+} from '../../src/application/roster/usecases';
+import { isCloudImported } from '../../src/infrastructure/cloudImportFlag';
 
 class TrackingRepository implements RosterRepository {
   public writeCalls: Roster[] = [];
@@ -11,11 +20,9 @@ class TrackingRepository implements RosterRepository {
   constructor(initial: Roster = []) {
     this.current = initial;
   }
-
   read(): Roster {
     return this.current;
   }
-
   write(players: Roster): boolean {
     this.writeCalls.push(players);
     if (this.writeResult) this.current = players;
@@ -23,20 +30,125 @@ class TrackingRepository implements RosterRepository {
   }
 }
 
-const PLAYER = { id: 1, nr: '7', naam: 'Jan', kl: '3.0', vrouw: false, jeugd: false };
+class TrackingStorage implements KeyValueStorage {
+  private store = new Map<string, string>();
+  public readonly writtenKeys: string[] = [];
+
+  getItem(key: string): string | null {
+    return this.store.get(key) ?? null;
+  }
+  setItem(key: string, value: string): void {
+    this.writtenKeys.push(key);
+    this.store.set(key, value);
+  }
+  removeItem(key: string): void {
+    this.store.delete(key);
+  }
+  seed(key: string, value: string): void {
+    this.store.set(key, value);
+  }
+  snapshot(): Record<string, string> {
+    return Object.fromEntries(this.store);
+  }
+}
+
+class TrackingAsyncRepository implements AsyncRosterRepository {
+  public writeCalls: Roster[] = [];
+  public nextWriteResult: { ok: boolean; syncState: SyncState } = {
+    ok: true,
+    syncState: { status: 'gesynchroniseerd', fromCache: false, hasPendingWrites: false },
+  };
+  async read(): Promise<Roster> {
+    return [];
+  }
+  async write(players: Roster) {
+    this.writeCalls.push(players);
+    return this.nextWriteResult;
+  }
+  subscribe(): () => void {
+    return () => undefined;
+  }
+}
+
+const SAMPLE: Roster = [
+  { id: 1, nr: '7', naam: 'Speler A', kl: '3.0', vrouw: false, jeugd: false },
+];
 
 describe('application/roster/usecases', () => {
   it('getRoster delegeert naar de repository', () => {
-    const repo = new TrackingRepository([PLAYER]);
-    expect(getRoster(repo)).toEqual([PLAYER]);
+    const repo = new TrackingRepository(SAMPLE);
+    expect(getRoster(repo)).toEqual(SAMPLE);
   });
 
   it('saveRoster schrijft expliciet naar de repository en geeft het resultaat door', () => {
     const repo = new TrackingRepository();
-    expect(saveRoster(repo, [PLAYER])).toBe(true);
-    expect(repo.writeCalls).toEqual([[PLAYER]]);
+    expect(saveRoster(repo, SAMPLE)).toBe(true);
+    expect(repo.writeCalls).toEqual([SAMPLE]);
 
     repo.writeResult = false;
-    expect(saveRoster(repo, [PLAYER])).toBe(false);
+    expect(saveRoster(repo, SAMPLE)).toBe(false);
+  });
+});
+
+describe('migrateLocalStorageToCloud — roster (PR 5.3b)', () => {
+  it('kopieert v1-roster naar de cloud en zet de import-vlag', async () => {
+    const local = new TrackingRepository(SAMPLE);
+    const cloud = new TrackingAsyncRepository();
+    const storage = new TrackingStorage();
+
+    const result = await migrateLocalStorageToCloud(local, cloud, storage);
+
+    expect(result).toEqual({ ok: true, imported: true, errors: [] });
+    expect(cloud.writeCalls).toEqual([SAMPLE]);
+    expect(isCloudImported(storage, 'roster')).toBe(true);
+  });
+
+  it('RAakt de v1-key NIET: byte-equality van lineup-tracker-roster vóór en ná', async () => {
+    const v1Raw = JSON.stringify([
+      { id: 1, nr: '7', naam: 'Origineel', kl: '3.0', vrouw: false, jeugd: false },
+    ]);
+    const local = new TrackingRepository([
+      { id: 1, nr: '7', naam: 'Origineel', kl: '3.0', vrouw: false, jeugd: false },
+    ]);
+    const cloud = new TrackingAsyncRepository();
+    const storage = new TrackingStorage();
+    storage.seed(ROSTER_STORAGE_KEY, v1Raw);
+
+    expect(storage.snapshot()[ROSTER_STORAGE_KEY]).toBe(v1Raw);
+
+    await migrateLocalStorageToCloud(local, cloud, storage);
+
+    expect(storage.snapshot()[ROSTER_STORAGE_KEY]).toBe(v1Raw);
+    expect(storage.writtenKeys).not.toContain(ROSTER_STORAGE_KEY);
+  });
+
+  it('zonder v1-data: schrijft lege array naar de cloud en markeert imported', async () => {
+    const local = new TrackingRepository();
+    const cloud = new TrackingAsyncRepository();
+    const storage = new TrackingStorage();
+
+    const result = await migrateLocalStorageToCloud(local, cloud, storage);
+
+    expect(result.ok).toBe(true);
+    expect(cloud.writeCalls).toEqual([[]]);
+    expect(isCloudImported(storage, 'roster')).toBe(true);
+  });
+
+  it('cloud-write geweigerd → ok=false, geen vlag, errors[] gevuld', async () => {
+    const local = new TrackingRepository(SAMPLE);
+    const cloud = new TrackingAsyncRepository();
+    cloud.nextWriteResult = {
+      ok: false,
+      syncState: { status: 'actie-nodig', fromCache: false, hasPendingWrites: false },
+    };
+    const storage = new TrackingStorage();
+
+    const result = await migrateLocalStorageToCloud(local, cloud, storage);
+
+    expect(result.ok).toBe(false);
+    expect(result.imported).toBe(false);
+    expect(result.errors.length).toBeGreaterThan(0);
+    expect(isCloudImported(storage, 'roster')).toBe(false);
+    expect(storage.writtenKeys).not.toContain(ROSTER_STORAGE_KEY);
   });
 });
