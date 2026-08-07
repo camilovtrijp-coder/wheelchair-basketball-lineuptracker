@@ -1,4 +1,6 @@
 name: CI
+# no-op: force a fresh CI run after a GitHub Actions webhook-delivery incident
+# swallowed the event for 04e4c37 (githubstatus.com confirmed, 6 aug 2026)
 
 on:
   push:
