@@ -93,6 +93,7 @@ export function App() {
           <SettingsPanel
             lang={lang}
             repo={settingsRepo}
+            storage={browserStorage}
             settings={settings}
             onSettingsChange={setSettings}
           />
@@ -100,6 +101,7 @@ export function App() {
           <RosterPanel
             lang={lang}
             repo={rosterRepo}
+            storage={browserStorage}
             roster={roster}
             onRosterChange={setRoster}
             useClassLimit={settings.useClassLimit === true}

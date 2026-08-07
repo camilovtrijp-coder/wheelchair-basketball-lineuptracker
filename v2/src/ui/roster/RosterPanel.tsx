@@ -7,17 +7,25 @@ import {
   updatePlayerField,
 } from '../../domain/roster/normalize';
 import { translate, type Lang, type StringKey } from '../../i18n/strings';
+import type { KeyValueStorage } from '../../i18n/persistence';
 import { getRoster, saveRoster } from '../../application/roster/usecases';
 import type { RosterRepository } from '../../application/roster/RosterRepository';
+import { CloudImportBanner } from '../cloud/CloudImportBanner';
 
 export interface RosterPanelProps {
   lang: Lang;
   repo: RosterRepository;
+  storage: KeyValueStorage;
   roster: Roster;
   onRosterChange: (next: Roster) => void;
   useClassLimit: boolean;
   tag1Label: string;
   tag2Label: string;
+  /**
+   * Optionele cloud-import-handler. PR 5.3b laat deze undefined zodat de
+   * banner dormant is; PR 5.3c wired 'm zodra de UI async draait.
+   */
+  onCloudMigrate?: () => Promise<{ ok: boolean; errors: string[] }>;
 }
 
 function t(lang: Lang, key: StringKey): string {
@@ -27,11 +35,13 @@ function t(lang: Lang, key: StringKey): string {
 export function RosterPanel({
   lang,
   repo,
+  storage,
   roster,
   onRosterChange,
   useClassLimit,
   tag1Label,
   tag2Label,
+  onCloudMigrate,
 }: RosterPanelProps) {
   const [error, setError] = useState<string | null>(null);
   const dupNrs = findDuplicateNumbers(roster);
@@ -64,6 +74,7 @@ export function RosterPanel({
       <header className="settings-panel__header">
         <h2>{t(lang, 'rosterTitle')}</h2>
       </header>
+      <CloudImportBanner lang={lang} storage={storage} kind="roster" onMigrate={onCloudMigrate} />
       <p className="settings-explainer">{t(lang, 'rosterIntro')}</p>
 
       <ul className="roster-list">

@@ -56,6 +56,13 @@ const nl = {
   dupNumberWarningLabel: '⚠ Dubbel rugnummer:',
   rosterSaveError: 'Opslaan is mislukt. Controleer de opslagruimte van je browser.',
 
+  cloudImportPrompt:
+    'Kopieer je lokale gegevens eenmalig naar de cloud. De cloud-versie wordt dan leidend; je lokale kopie blijft bewaard.',
+  cloudImportButton: 'Eenmalig naar cloud kopiëren',
+  cloudImportSuccess: 'Kopiëren naar cloud gelukt.',
+  cloudImportError: 'Kopiëren naar cloud mislukt. Probeer het opnieuw.',
+  cloudImportAlreadyDone: 'Deze gegevens zijn al naar de cloud gekopieerd.',
+
   authLoadingTitle: 'Bezig met laden…',
   authEmailLabel: 'E-mailadres',
   authPasswordLabel: 'Wachtwoord',
@@ -175,6 +182,13 @@ const en = {
   confirmDeletePlayer: 'Permanently delete this player? This cannot be undone.',
   dupNumberWarningLabel: '⚠ Duplicate shirt number:',
   rosterSaveError: "Saving failed. Check your browser's storage space.",
+
+  cloudImportPrompt:
+    'Copy your local data to the cloud once. The cloud version becomes the source of truth; your local copy is kept as a fallback.',
+  cloudImportButton: 'Copy to cloud once',
+  cloudImportSuccess: 'Copy to cloud succeeded.',
+  cloudImportError: 'Copy to cloud failed. Please try again.',
+  cloudImportAlreadyDone: 'This data has already been copied to the cloud.',
 
   authLoadingTitle: 'Loading…',
   authEmailLabel: 'Email address',
