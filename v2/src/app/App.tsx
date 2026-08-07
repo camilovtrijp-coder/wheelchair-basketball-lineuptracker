@@ -8,7 +8,6 @@ import {
   getSettingsAsync,
   migrateLocalStorageToCloud as migrateSettingsToCloud,
   resetSettingsAsync,
-  saveSettingsAsync,
 } from '../application/settings/usecases';
 import type { Settings } from '../domain/settings/types';
 import { SettingsPanel } from '../ui/settings/SettingsPanel';
@@ -16,15 +15,23 @@ import { LocalStorageRosterRepository } from '../infrastructure/roster/LocalStor
 import {
   getRosterAsync,
   migrateLocalStorageToCloud as migrateRosterToCloud,
-  saveRosterAsync,
 } from '../application/roster/usecases';
 import type { Roster } from '../domain/roster/types';
 import { RosterPanel } from '../ui/roster/RosterPanel';
 import { LoadingScreen } from '../ui/status/LoadingScreen';
 import type { ResolvedAppRepositories } from '../infrastructure/repositories/resolveAppRepositories';
+import type { SyncStatusApi } from '../application/sync/useSyncStatus';
 
 export interface AppProps {
   repositories: ResolvedAppRepositories;
+  /**
+   * Sync-status/opslaan-laag (PR 5.3c-2), door AuthGate berekend en
+   * gedeeld met SessionBar/ActionNeededPanel. App gebruikt uitsluitend
+   * saveSettings/saveRoster (i.p.v. de kale usecases) en onSettingsSync/
+   * onRosterSync, zodat een geweigerde write in de pending-lijst van
+   * useSyncStatus belandt — zie application/sync/useSyncStatus.ts.
+   */
+  syncStatus: SyncStatusApi;
 }
 
 type Tab = 'settings' | 'roster';
@@ -48,7 +55,7 @@ function tFor(lang: Lang): (key: StringKey) => string {
 const v1SettingsRepo = new LocalStorageSettingsRepository(browserStorage);
 const v1RosterRepo = new LocalStorageRosterRepository(browserStorage);
 
-export function App({ repositories }: AppProps) {
+export function App({ repositories, syncStatus }: AppProps) {
   const [lang, setLang] = useState<Lang>(initialLang);
   const [tab, setTab] = useState<Tab>('settings');
   const [settings, setSettings] = useState<(Settings & Record<string, unknown>) | null>(null);
@@ -72,11 +79,17 @@ export function App({ repositories }: AppProps) {
       setRoster(r);
     });
 
-    const unsubSettings = repositories.settings.subscribe((s) => {
-      if (!cancelled) setSettings(s);
+    const unsubSettings = repositories.settings.subscribe((s, sync) => {
+      if (!cancelled) {
+        setSettings(s);
+        syncStatus.onSettingsSync(sync);
+      }
     });
-    const unsubRoster = repositories.roster.subscribe((r) => {
-      if (!cancelled) setRoster(r);
+    const unsubRoster = repositories.roster.subscribe((r, sync) => {
+      if (!cancelled) {
+        setRoster(r);
+        syncStatus.onRosterSync(sync);
+      }
     });
 
     return () => {
@@ -84,6 +97,7 @@ export function App({ repositories }: AppProps) {
       unsubSettings();
       unsubRoster();
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- syncStatus.onSettingsSync/onRosterSync zijn stabiele state-setter-wrappers uit useSyncStatus; alleen `repositories` mag dit effect laten her-abonneren (contextwissel).
   }, [repositories]);
 
   useEffect(() => {
@@ -156,7 +170,7 @@ export function App({ repositories }: AppProps) {
             storage={browserStorage}
             settings={settings}
             onSettingsChange={setSettings}
-            onSave={(next) => saveSettingsAsync(repositories.settings, next)}
+            onSave={syncStatus.saveSettings}
             onReset={() => resetSettingsAsync(repositories.settings)}
             onRefresh={() => getSettingsAsync(repositories.settings)}
             onCloudMigrate={repositories.mode === 'cloud' ? handleCloudMigrateSettings : undefined}
@@ -167,7 +181,7 @@ export function App({ repositories }: AppProps) {
             storage={browserStorage}
             roster={roster}
             onRosterChange={setRoster}
-            onSave={(next) => saveRosterAsync(repositories.roster, next)}
+            onSave={syncStatus.saveRoster}
             onRefresh={() => getRosterAsync(repositories.roster)}
             useClassLimit={settings.useClassLimit === true}
             tag1Label={tag1Label}

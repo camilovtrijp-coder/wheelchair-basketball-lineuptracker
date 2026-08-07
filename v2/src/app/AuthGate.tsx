@@ -29,6 +29,8 @@ import {
 import { FirestoreOrganizationGateway } from '../infrastructure/organizations/FirestoreOrganizationGateway';
 import { selectRepositories } from '../infrastructure/repositories/selectRepositories';
 import { resolveAppRepositories } from '../infrastructure/repositories/resolveAppRepositories';
+import { useSyncStatus } from '../application/sync/useSyncStatus';
+import { downloadPendingPayload } from '../infrastructure/sync/exportPendingPayload';
 import { LoginScreen } from '../ui/auth/LoginScreen';
 import { SignupScreen } from '../ui/auth/SignupScreen';
 import { TrustedDevicePrompt } from '../ui/auth/TrustedDevicePrompt';
@@ -38,6 +40,7 @@ import { ContextRevokedScreen } from '../ui/status/ContextRevokedScreen';
 import { NoOrganizationsScreen } from '../ui/onboarding/NoOrganizationsScreen';
 import { ContextSwitcher } from '../ui/context/ContextSwitcher';
 import { SessionBar } from '../ui/context/SessionBar';
+import { ActionNeededPanel } from '../ui/sync/ActionNeededPanel';
 import { AcceptInvitationScreen } from '../ui/invitations/AcceptInvitationScreen';
 import { translate } from '../i18n/strings';
 import { App } from './App';
@@ -254,6 +257,12 @@ export function AuthGate({ authGateway }: AuthGateProps) {
     );
   }, [authUser, trustedDeviceAnswered, selectedContext]);
 
+  // Hook, dus onvoorwaardelijk vóór elke early return (Rules of Hooks) — net
+  // als `repositories` hierboven. Zonder cloud-context blijft `pending` altijd
+  // leeg en `status` op 'gesynchroniseerd' staan; App/SessionBar tonen 'm dan
+  // toch niet (mode !== 'cloud'), zie hieronder.
+  const syncStatus = useSyncStatus(repositories);
+
   if (authLoading) {
     return <LoadingScreen lang={lang} />;
   }
@@ -346,8 +355,21 @@ export function AuthGate({ authGateway }: AuthGateProps) {
             lang={lang}
             onSignOut={handleSignOut}
             onSwitchContext={handleBackToSwitcher}
+            syncStatus={repositories.mode === 'cloud' ? syncStatus.status : undefined}
           />
-          <App repositories={repositories} />
+          {repositories.mode === 'cloud' && syncStatus.pending.length > 0 ? (
+            <ActionNeededPanel
+              lang={lang}
+              pending={syncStatus.pending}
+              onRetry={syncStatus.retry}
+              onDismiss={syncStatus.dismiss}
+              onExport={(kind) => {
+                const item = syncStatus.pending.find((p) => p.kind === kind);
+                if (item) downloadPendingPayload(item);
+              }}
+            />
+          ) : null}
+          <App repositories={repositories} syncStatus={syncStatus} />
         </>
       );
   }
