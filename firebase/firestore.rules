@@ -35,6 +35,21 @@ rules_version = '2';
 //     gebruiker had kunnen tonen (of de echte eigenaar het liet "verdwijnen" uit
 //     diens eigen contextwisselaar-query). Zie
 //     tests/rules/self-promotion.spec.ts voor de bewijzende negatieve tests.
+//
+// Nieuw in PR 5.2 — oplossing voor issue #31 (team-only leden onzichtbaar in de
+// contextwisselaar):
+//  6. teamMembers/{uid} draagt nu ook een `uid`-veld, exact hetzelfde patroon als
+//     organizationMembers/{uid} voor issue #28: verplicht bij create, onveranderlijk
+//     bij update, en een aparte recursieve-wildcard match onderaan voor de collection-
+//     group-LIST-query "alle teams waar ik lid van ben" — nodig voor gebruikers met
+//     uitsluitend een teamMembers-document (geen organizationMembers), die anders
+//     via geen enkele query hun eigen team-only toegang konden vinden.
+//  7. teams/{teamId} draagt nu ook een `orgName`-veld (denormalisatie van de
+//     organisatienaam). Een team-only lid mag `organizations/{orgId}` zelf niet lezen
+//     (die leesregel blijft bewust `isOrgMember(orgId)`, NIET verbreed naar alle
+//     ingelogde gebruikers) maar heeft via `canReadTeam` wél directe leestoegang tot
+//     het teamdocument — zonder deze denormalisatie zou de contextwisselaar voor
+//     zo'n gebruiker geen organisatienaam kunnen tonen.
 
 service cloud.firestore {
   match /databases/{database}/documents {
@@ -190,14 +205,31 @@ service cloud.firestore {
 
       // ---- teams/{teamId} ----
       match /teams/{teamId} {
+        // `orgName` verplicht als string (issue #31 — denormalisatie t.b.v. team-only leden,
+        // zie toelichting bovenaan); geen verdere correctheidscheck nodig, de aanmaker is al
+        // owner/admin van de organisatie zelf en heeft dus toch al volledige controle.
         allow create: if isOrgOwnerOrAdmin(orgId) &&
-          request.resource.data.createdBy == request.auth.uid;
+          request.resource.data.createdBy == request.auth.uid &&
+          request.resource.data.orgName is string;
         allow read:   if canReadTeam(orgId, teamId);
         allow update, delete: if isOrgOwnerOrAdmin(orgId);
 
         match /teamMembers/{uid} {
+          // Directe GET's: bestaand gedrag. Voor de collectionGroup-LIST-query (issue #31) is
+          // een aparte recursieve match verderop nodig — zie de toelichting bovenaan.
           allow read: if canReadTeam(orgId, teamId);
-          allow create, update, delete: if isOrgOwnerOrAdmin(orgId);
+
+          // `uid`-veld verplicht en moet matchen (issue #31 — betrouwbaar queryveld, zelfde
+          // patroon als organizationMembers/{uid} voor issue #28).
+          allow create: if isOrgOwnerOrAdmin(orgId) && request.resource.data.uid == uid;
+
+          // `uid` moet bij UPDATE ongewijzigd blijven — zonder deze eis kan owner/admin het
+          // querybepalende veld laten afwijken van de document-ID, met hetzelfde risico als
+          // bij organizationMembers hierboven (punt 5).
+          allow update: if isOrgOwnerOrAdmin(orgId) &&
+            request.resource.data.uid == uid && request.resource.data.uid == resource.data.uid;
+
+          allow delete: if isOrgOwnerOrAdmin(orgId);
         }
 
         // Één settings-document per team: settings/current.
@@ -226,6 +258,18 @@ service cloud.firestore {
     // dezelfde org lezen, create/update/delete) loopt via de geneste match
     // hierboven en is hier niet herhaald.
     match /{path=**}/organizationMembers/{uid} {
+      allow read: if signedIn() && resource.data.uid == request.auth.uid;
+    }
+
+    // ---- issue #31: querycontract "mijn teams zonder organisatiemembership" ----
+    // Analoog aan issue #28 hierboven, nu voor teamMembers: de enige toegestane
+    // collectionGroup-query is
+    //   collectionGroup('teamMembers').where('uid','==',eigenUid)
+    // Zelfde smalst mogelijke voorwaarde: geen get()/exists(), puur resource.data
+    // vergeleken met request.auth.uid. Governeert uitsluitend leestoegang tot het
+    // eigen teamMembers-document via een collectionGroup-query; alle overige
+    // toegang loopt via de geneste match hierboven en is hier niet herhaald.
+    match /{path=**}/teamMembers/{uid} {
       allow read: if signedIn() && resource.data.uid == request.auth.uid;
     }
   }

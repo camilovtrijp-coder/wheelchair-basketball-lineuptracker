@@ -50,6 +50,7 @@ beforeEach(async () => {
       .set({ role: 'viewer', email: USERS.erin.email, uid: USERS.erin.uid });
     await db.collection('organizations').doc(ORG_A).collection('teams').doc(TEAM_A1).set({
       name: 'Team A1',
+      orgName: 'Org A',
       createdBy: USERS.alice.uid,
     });
     await db
@@ -59,7 +60,7 @@ beforeEach(async () => {
       .doc(TEAM_A1)
       .collection('teamMembers')
       .doc(USERS.erin.uid)
-      .set({ role: 'viewer', email: USERS.erin.email });
+      .set({ role: 'viewer', email: USERS.erin.email, uid: USERS.erin.uid });
   });
 });
 

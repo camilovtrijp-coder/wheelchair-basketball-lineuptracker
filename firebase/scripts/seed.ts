@@ -156,14 +156,45 @@ async function seed(): Promise<void> {
   });
 
   console.log('[seed] Teams org A aanmaken...');
-  await teamRef(orgA, teamA1).set({ name: 'U23 (fictief)', createdBy: USERS.alice.uid, createdAt: now });
-  await teamRef(orgA, teamA2).set({ name: 'U17 (fictief)', createdBy: USERS.alice.uid, createdAt: now });
+  await teamRef(orgA, teamA1).set({
+    name: 'U23 (fictief)',
+    orgName: 'Rotterdam Basketball (fictief)',
+    createdBy: USERS.alice.uid,
+    createdAt: now,
+  });
+  await teamRef(orgA, teamA2).set({
+    name: 'U17 (fictief)',
+    orgName: 'Rotterdam Basketball (fictief)',
+    createdBy: USERS.alice.uid,
+    createdAt: now,
+  });
 
-  // Team-memberships U23:
-  await teamMemberRef(orgA, teamA1, USERS.carol.uid).set({ role: 'coach', email: USERS.carol.email, addedAt: now });
-  await teamMemberRef(orgA, teamA1, USERS.dave.uid).set({ role: 'scorer', email: USERS.dave.email, addedAt: now });
-  await teamMemberRef(orgA, teamA1, USERS.erin.uid).set({ role: 'viewer', email: USERS.erin.email, addedAt: now });
-  await teamMemberRef(orgA, teamA1, USERS.kevin.uid).set({ role: 'coach', email: USERS.kevin.email, addedAt: now });
+  // Team-memberships U23 — carol/dave/erin/kevin zijn bewust UITSLUITEND teamlid (geen
+  // organizationMembers-document): het team-only-scenario uit issue #31.
+  await teamMemberRef(orgA, teamA1, USERS.carol.uid).set({
+    role: 'coach',
+    email: USERS.carol.email,
+    uid: USERS.carol.uid,
+    addedAt: now,
+  });
+  await teamMemberRef(orgA, teamA1, USERS.dave.uid).set({
+    role: 'scorer',
+    email: USERS.dave.email,
+    uid: USERS.dave.uid,
+    addedAt: now,
+  });
+  await teamMemberRef(orgA, teamA1, USERS.erin.uid).set({
+    role: 'viewer',
+    email: USERS.erin.email,
+    uid: USERS.erin.uid,
+    addedAt: now,
+  });
+  await teamMemberRef(orgA, teamA1, USERS.kevin.uid).set({
+    role: 'coach',
+    email: USERS.kevin.email,
+    uid: USERS.kevin.uid,
+    addedAt: now,
+  });
 
   console.log('[seed] Settings/roster org A...');
   await settingsRef(orgA, teamA1).set({ ...SEED_SETTINGS_A, updatedAt: now });
@@ -238,9 +269,24 @@ async function seed(): Promise<void> {
     joinedAt: now,
   });
 
-  await teamRef(orgB, teamB1).set({ name: 'NBB Selectie (fictief)', createdBy: USERS.frank.uid, createdAt: now });
+  await teamRef(orgB, teamB1).set({
+    name: 'NBB Selectie (fictief)',
+    orgName: 'NBB (fictief)',
+    createdBy: USERS.frank.uid,
+    createdAt: now,
+  });
   await settingsRef(orgB, teamB1).set({ ...SEED_SETTINGS_B, updatedAt: now });
   await rosterRef(orgB, teamB1).set({ players: SEED_PLAYERS_B, updatedAt: now });
+
+  // Org-brede rollen (owner/admin uitgezonderd) geven sinds de PR 5.2-review geen impliciete
+  // teamtoegang meer — alice (org-viewer) heeft een expliciet teamMembers-document nodig om
+  // team-selectie te mogen zien/activeren in de contextwisselaar.
+  await teamMemberRef(orgB, teamB1, USERS.alice.uid).set({
+    role: 'viewer',
+    email: USERS.alice.email,
+    uid: USERS.alice.uid,
+    addedAt: now,
+  });
 
   console.log('[seed] Klaar. 2 organisaties, 3 teams, 10 gebruikers geseed.');
 }

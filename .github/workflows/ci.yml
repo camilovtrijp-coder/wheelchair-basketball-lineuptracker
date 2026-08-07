@@ -1,4 +1,6 @@
 name: CI
+# no-op: force a fresh CI run after a GitHub Actions webhook-delivery incident
+# swallowed the event for 04e4c37 (githubstatus.com confirmed, 6 aug 2026)
 
 on:
   push:
@@ -18,11 +20,9 @@ jobs:
         with:
           node-version: 24
           cache: npm
-          cache-dependency-path: |
-            package-lock.json
-            v2/package-lock.json
+          cache-dependency-path: package-lock.json
 
-      - name: Install dependencies
+      - name: "Install dependencies (workspaces: root, v2, firebase)"
         run: npm ci
 
       - name: Install Playwright Chromium browser
@@ -38,10 +38,6 @@ jobs:
           name: playwright-report
           path: playwright-report/
           retention-days: 7
-
-      - name: Install v2 dependencies
-        working-directory: v2
-        run: npm ci
 
       - name: Install v2 Playwright Chromium browser
         working-directory: v2
@@ -59,16 +55,63 @@ jobs:
         working-directory: v2
         run: npm run build
 
-      - name: Run v2 Playwright e2e tests
-        working-directory: v2
-        run: npm run test:e2e
+  v2-e2e:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
 
-      - name: Upload v2 Playwright report
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: package-lock.json
+
+      - name: Set up Java for Firebase Emulator Suite
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+
+      - name: "Install dependencies (workspaces: root, v2, firebase)"
+        run: npm ci
+
+      - name: Install v2 Playwright Chromium browser
+        working-directory: v2
+        run: npx playwright install --with-deps chromium
+
+      - name: Build v2
+        working-directory: v2
+        run: npm run build
+
+      # PR 5.2: App zit sinds deze PR achter AuthGate (login/vertrouwd-apparaat/
+      # contextwisselaar), dus de bestaande v2-e2e-suite (settings/roster/i18n/
+      # mobiel/pwa — voorheen in de `test`-job, emulator-vrij) heeft nu ook de
+      # Auth-/Firestore-emulator + seed-data nodig (tests/e2e/fixtures.ts logt
+      # automatisch in als bob uit firebase/scripts/seed.ts). Draait daarom hier,
+      # samen met de nieuwe auth-specifieke e2e-suite (tests/e2e-auth/), in
+      # dezelfde emulators:exec-wrapping als firebase-base's `verify`-script.
+      - name: Run v2 e2e suites against the Firebase emulator
+        working-directory: firebase
+        run: |
+          npx firebase emulators:exec --project demo-lineup-tracker-dev --only firestore,auth \
+            "npm run seed && npm --prefix ../v2 run test:e2e && npm --prefix ../v2 run test:e2e:auth"
+
+      - name: Upload v2 Playwright report (bestaande suite)
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: v2-playwright-report
           path: v2/playwright-report/
+          retention-days: 7
+
+      - name: Upload v2 Playwright report (auth-suite)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: v2-auth-playwright-report
+          path: v2/playwright-report-auth/
           retention-days: 7
 
   firebase-spike:
@@ -124,7 +167,7 @@ jobs:
         with:
           node-version: 24
           cache: npm
-          cache-dependency-path: firebase/package-lock.json
+          cache-dependency-path: package-lock.json
 
       - name: Set up Java for Firebase Emulator Suite
         uses: actions/setup-java@v4
@@ -132,7 +175,8 @@ jobs:
           distribution: temurin
           java-version: 21
 
-      - name: Install firebase-base dependencies
+      - name: "Install dependencies (workspaces: root, v2, firebase)"
+        working-directory: .
         run: npm ci
 
       - name: Verify firebase-base (type-check, converter unit tests, seed + Rules tests)

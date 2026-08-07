@@ -1,4 +1,5 @@
-import { test, expect, type Page } from '@playwright/test';
+import { expect, type Page } from '@playwright/test';
+import { test } from './fixtures';
 
 // Zelfde iPhone-14-viewport als de v1-mobiele-suite (tests/mobile-lang.spec.js),
 // voor consistentie tussen v1- en v2-mobiele tests.

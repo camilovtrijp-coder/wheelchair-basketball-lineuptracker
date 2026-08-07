@@ -1,32 +1,38 @@
-# Querycontract — closure-document voor issue #28
+# Querycontract — closure-document voor issue #28 en #31
 
-**Status:** opgelost in PR 5.1. Onderdeel van `docs/IMPLEMENTATION_PLAN.md` §9
-(PR 5.1) en ADR-003 §"Querycontracten".
+**Status:** issue #28 opgelost in PR 5.1; issue #31 opgelost in PR 5.2.
+Onderdeel van `docs/IMPLEMENTATION_PLAN.md` §9/§10 en ADR-003
+§"Querycontracten".
 
 ## Aanleiding
 
 De begrensde Firebase-spike (PR 4.4/#26) bewees directe-padtoegang
 (`getDoc` op een bekend `organizations/{orgId}/...`-pad) sluitend cross-org
 geïsoleerd is. Ze bewees dit **niet** voor een *echte query* — met name de
-toekomstige contextwisselaar-behoefte "alle organisaties waar ik lid van
-ben", die per definitie niet één bekend pad heeft. `collectionGroup`-queries
-bleven daarom verboden totdat dit document er was, samen met de
+contextwisselaar-behoefte "alle organisaties waar ik lid van ben", die per
+definitie niet één bekend pad heeft. `collectionGroup`-queries bleven
+daarom verboden totdat dit document er was, samen met de
 positieve/negatieve Emulator-tests die het bewijzen (issue #28, hard voor
-PR 5.1/5.2).
+PR 5.1/5.2). PR 5.2's contextwisselaar bracht een tweede, verwante behoefte
+aan het licht: een gebruiker met **uitsluitend** een `teamMembers`-document
+(geen `organizationMembers`) had via de eerste query geen enkele manier om
+zijn/haar eigen team-only toegang te vinden (issue #31) — vandaar het tweede
+contract hieronder, exact hetzelfde patroon toegepast op `teamMembers`.
 
 ## Het contract
 
-**De enige toegestane niet-directe query in de hele applicatie is:**
+**De enige twee toegestane niet-directe queries in de hele applicatie zijn:**
 
 ```ts
 collectionGroup(db, 'organizationMembers').where('uid', '==', eigenUid)
+collectionGroup(db, 'teamMembers').where('uid', '==', eigenUid)
 ```
 
 Elke andere vorm — zonder `where`-filter, met een `where`-waarde die niet
 gelijk is aan de eigen `request.auth.uid`, `orderBy` zonder gelijkheidsfilter
 op `uid`, of een `collectionGroup`-query op een andere collectienaam dan
-`organizationMembers` — blijft **verboden** totdat er een even expliciet
-contract + Rules-tests voor bestaat.
+`organizationMembers`/`teamMembers` — blijft **verboden** totdat er een even
+expliciet contract + Rules-tests voor bestaat.
 
 ## Waarom dit veilig is (en wat empirisch anders bleek dan aanvankelijk gedacht)
 
@@ -71,15 +77,37 @@ gebruiken). `firestore.rules` valideert bij elke `organizationMembers`-create
 dat `uid` gelijk is aan de document-ID/eigen `request.auth.uid`, zodat het
 veld altijd betrouwbaar is en nooit kan afwijken van de document-ID.
 
+Issue #31 past exact hetzelfde patroon toe op `teamMembers/{uid}` (zie
+`firebase/src/documents/teamMember.ts`): een `uid`-veld, verplicht en gelijk
+aan de document-ID bij create, onveranderlijk bij update, en een eigen
+recursieve-wildcard match (`match /{path=**}/teamMembers/{uid}`) — zie
+`firestore.rules`. Een team-only lid (uitsluitend een `teamMembers`-document,
+geen `organizationMembers`) kan via deze route nooit meer lezen dan zijn/haar
+eigen teamMembers-document, in welk team/welke organisatie dan ook.
+
+**Organisatienaam voor team-only leden.** `organizations/{orgId}` blijft
+bewust `allow read: if isOrgMember(orgId)` — dit contract verbreedt die regel
+NIET naar "alle ingelogde gebruikers" of "iedereen met een teamMembers-
+document ergens in deze org" (dat laatste is met Rules ook niet praktisch
+uit te drukken zonder een specifiek teamId te kennen). In plaats daarvan
+draagt `teams/{teamId}` nu een gedenormaliseerd `orgName`-veld (zie
+`firebase/src/documents/team.ts`), geschreven bij team-create door de
+org-owner/-admin die de organisatienaam toch al kent. Een team-only lid
+heeft via `canReadTeam` (ongewijzigd: `isOrgMember(orgId) ||
+isTeamMember(orgId, teamId)`) al directe leestoegang tot zijn/haar eigen
+teamdocument, en dus tot deze kopie van de naam — zonder dat de organisatie
+zelf ooit breder leesbaar wordt.
+
 ## Index
 
-`firestore.indexes.json` bevat een expliciete `fieldOverride` die
-`organizationMembers.uid` op `COLLECTION_GROUP`-scope indexeert — zonder deze
-override kan Firestore de toegestane query niet uitvoeren.
+`firestore.indexes.json` bevat expliciete `fieldOverride`s die
+`organizationMembers.uid` én `teamMembers.uid` op `COLLECTION_GROUP`-scope
+indexeren — zonder deze overrides kan Firestore de toegestane queries niet
+uitvoeren.
 
 ## Empirisch bewijs
 
-`tests/rules/context-switcher-query.spec.ts`:
+`tests/rules/context-switcher-query.spec.ts` (issue #28, `organizationMembers`):
 
 - **Positief:** een gebruiker met memberships in twee organisaties krijgt via
   het contract precies die twee documenten terug (`uid`-veld matcht,
@@ -106,11 +134,27 @@ resource.data.uid`. Bewezen in `tests/rules/self-promotion.spec.ts`
 (negatieve update-pogingen voor owner en admin, elk gevolgd door een
 outsider-contextquery die aantoont dat er niets lekt).
 
+`tests/rules/team-context-switcher-query.spec.ts` (issue #31, `teamMembers`):
+
+- **Positief:** een team-only lid (geen `organizationMembers`) met toegang
+  tot teams in twee verschillende organisaties krijgt via het contract
+  precies die twee teamMembers-documenten terug, mét een leesbare
+  organisatienaam via het gedenormaliseerde `orgName`-veld op het teamdocument.
+- **Negatief — crafted uid / ongefilterde query:** zelfde bewijslast als bij
+  `organizationMembers` hierboven, nu voor `teamMembers`.
+- **Negatief — zelf-promotie:** een create/update-poging met een afwijkend
+  `uid`-veld op `teamMembers` wordt geweigerd, met een outsider-contextquery
+  die aantoont dat er niets lekt (zelfde patroon als `self-promotion.spec.ts`).
+- **Regressie:** bestaande team-/rolisolatietests blijven ongewijzigd slagen.
+- **Organisatienaam-isolatie:** een team-only lid kan `organizations/{orgId}`
+  zelf nog steeds niet direct lezen (`isOrgMember(orgId)` blijft false) —
+  alleen de kopie op het eigen teamdocument is bereikbaar.
+
 ## Buiten scope van dit contract
 
-- De contextwisselaar-**UI** die deze query daadwerkelijk aanroept: PR 5.2.
 - Wedstrijd-/actiepaden (`games`, `actions`): default-deny tot Fase 7, geen
   querycontract nodig zolang die paden niet bestaan.
 - Elke toekomstige nieuwe query (bijv. voor wedstrijdhistorie of statistieken
   in Fase 6/7) vereist een eigen, even expliciet vastgelegd en beproefd
-  contract — dit document dekt uitsluitend de contextwisselaar-query.
+  contract — dit document dekt uitsluitend de twee contextwisselaar-queries
+  hierboven.

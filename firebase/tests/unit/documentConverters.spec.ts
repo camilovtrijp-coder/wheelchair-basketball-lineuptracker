@@ -67,16 +67,28 @@ describe('documentcontracten: round-trip via toFirestore/fromFirestore', () => {
     expect(invitationConverter.fromFirestore!(mockSnapshot(stored as Record<string, unknown>), {})).toEqual(doc);
   });
 
-  it('team', () => {
-    const doc: TeamDocument = { name: 'U23', createdBy: 'uid-alice', createdAt: Timestamp.now() };
+  it('team bevat het orgName-veld (issue #31 — leesbaar voor team-only leden zonder organizations/{orgId}-toegang)', () => {
+    const doc: TeamDocument = {
+      name: 'U23',
+      orgName: 'Rotterdam Basketball',
+      createdBy: 'uid-alice',
+      createdAt: Timestamp.now(),
+    };
     const stored = teamConverter.toFirestore(doc);
     expect(teamConverter.fromFirestore!(mockSnapshot(stored as Record<string, unknown>), {})).toEqual(doc);
   });
 
-  it('teamMember', () => {
-    const doc: TeamMemberDocument = { role: 'coach', email: 'carol@example.test', addedAt: Timestamp.now() };
+  it('teamMember bevat het uid-veld (issue #31-queryveld)', () => {
+    const doc: TeamMemberDocument = {
+      role: 'coach',
+      email: 'carol@example.test',
+      uid: 'uid-carol',
+      addedAt: Timestamp.now(),
+    };
     const stored = teamMemberConverter.toFirestore(doc);
-    expect(teamMemberConverter.fromFirestore!(mockSnapshot(stored as Record<string, unknown>), {})).toEqual(doc);
+    const roundtripped = teamMemberConverter.fromFirestore!(mockSnapshot(stored as Record<string, unknown>), {});
+    expect(roundtripped).toEqual(doc);
+    expect(roundtripped.uid).toBe('uid-carol');
   });
 
   it('settings', () => {
@@ -154,6 +166,7 @@ describe('documentcontracten: weigeren malformed serverdata', () => {
   const validTeamMember: Record<string, unknown> = {
     role: 'coach',
     email: 'carol@example.test',
+    uid: 'uid-carol',
     addedAt: Timestamp.now(),
   };
   const validOrganization: Record<string, unknown> = {
@@ -213,6 +226,25 @@ describe('documentcontracten: weigeren malformed serverdata', () => {
     expect(() =>
       teamMemberConverter.fromFirestore!(mockSnapshot({ ...validTeamMember, role: 'niet-bestaand' }), {}),
     ).toThrow(DocumentValidationError);
+  });
+
+  it('teamMember: niet-string uid wordt geweigerd (issue #31-queryveld)', () => {
+    expect(() =>
+      teamMemberConverter.fromFirestore!(mockSnapshot({ ...validTeamMember, uid: 12345 }), {}),
+    ).toThrow(DocumentValidationError);
+  });
+
+  it('team: ontbrekende orgName wordt geweigerd (issue #31)', () => {
+    const validTeam: Record<string, unknown> = {
+      name: 'U23',
+      orgName: 'Rotterdam Basketball',
+      createdBy: 'uid-alice',
+      createdAt: Timestamp.now(),
+    };
+    const { orgName: _orgName, ...withoutOrgName } = validTeam;
+    expect(() => teamConverter.fromFirestore!(mockSnapshot(withoutOrgName), {})).toThrow(
+      DocumentValidationError,
+    );
   });
 
   it('organization: ontbrekende createdAt-timestamp wordt geweigerd', () => {

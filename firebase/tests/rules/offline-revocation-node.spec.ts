@@ -36,6 +36,7 @@ beforeEach(async () => {
       .set({ role: 'organizationOwner', email: USERS.alice.email, uid: USERS.alice.uid });
     await db.collection('organizations').doc(ORG_A).collection('teams').doc(TEAM_A1).set({
       name: 'Team A1',
+      orgName: 'Org A',
       createdBy: USERS.alice.uid,
     });
     // Kevin heeft een teamMembers-doc → mag settings schrijven als coach.
@@ -46,7 +47,7 @@ beforeEach(async () => {
       .doc(TEAM_A1)
       .collection('teamMembers')
       .doc(USERS.kevin.uid)
-      .set({ role: 'coach', email: USERS.kevin.email });
+      .set({ role: 'coach', email: USERS.kevin.email, uid: USERS.kevin.uid });
     await db
       .collection('organizations')
       .doc(ORG_A)

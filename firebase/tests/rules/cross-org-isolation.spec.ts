@@ -32,6 +32,7 @@ beforeEach(async () => {
       .set({ role: 'organizationOwner', email: USERS.alice.email, uid: USERS.alice.uid });
     await db.collection('organizations').doc(ORG_A).collection('teams').doc(TEAM_A1).set({
       name: 'Team A1',
+      orgName: 'Org A',
       createdBy: USERS.alice.uid,
     });
     await db
@@ -41,7 +42,7 @@ beforeEach(async () => {
       .doc(TEAM_A1)
       .collection('teamMembers')
       .doc(USERS.dave.uid)
-      .set({ role: 'scorer', email: USERS.dave.email });
+      .set({ role: 'scorer', email: USERS.dave.email, uid: USERS.dave.uid });
     await db
       .collection('organizations')
       .doc(ORG_A)
@@ -61,6 +62,7 @@ beforeEach(async () => {
       .set({ role: 'organizationOwner', email: USERS.frank.email, uid: USERS.frank.uid });
     await db.collection('organizations').doc(ORG_B).collection('teams').doc(TEAM_B1).set({
       name: 'Team B1',
+      orgName: 'Org B',
       createdBy: USERS.frank.uid,
     });
     await db

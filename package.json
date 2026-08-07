@@ -1,8 +1,10 @@
 {
   "name": "roba-stats-tracker",
   "version": "1.0.0",
+  "private": true,
   "description": "Lineup Tracker PWA for basketball and sports teams",
   "main": "index.html",
+  "workspaces": ["v2", "firebase"],
   "scripts": {
     "test": "playwright test",
     "test:unit": "npm --prefix v2 run test:unit",
