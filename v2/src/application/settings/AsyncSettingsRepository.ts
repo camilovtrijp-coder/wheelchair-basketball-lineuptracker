@@ -11,7 +11,7 @@ export interface AsyncSettingsRepository {
   read(): Promise<Settings & Record<string, unknown>>;
   write(
     settings: Settings & Record<string, unknown>,
-  ): Promise<{ ok: boolean; syncState: SyncState }>;
+  ): Promise<{ ok: boolean; syncState: SyncState; error?: unknown }>;
   reset(): Promise<Settings & Record<string, unknown>>;
   subscribe(
     onNext: (settings: Settings & Record<string, unknown>, sync: SyncState) => void,

@@ -88,13 +88,15 @@ describe('FirestoreSettingsRepository — write (sync-status + setDoc-count)', (
 
   it(
     'resulteert in actie-nodig bij geweigerde write (Rules-afwijzing na reconnect) ' +
-      '— geen stille val naar defaults',
+      '— geen stille val naar defaults, fout blijft beschikbaar voor het Actie-nodig-paneel',
     async () => {
-      (setDoc as Mock).mockRejectedValueOnce(new Error('permission-denied'));
+      const rejection = new Error('permission-denied');
+      (setDoc as Mock).mockRejectedValueOnce(rejection);
       const repo = new FirestoreSettingsRepository(fakeDb, 'org-1', 'team-1');
       const result = await repo.write({ ...DEFAULT_SETTINGS, teamName: 'X' });
       expect(result.ok).toBe(false);
       expect(result.syncState.status).toBe('actie-nodig');
+      expect(result.error).toBe(rejection);
     },
   );
 

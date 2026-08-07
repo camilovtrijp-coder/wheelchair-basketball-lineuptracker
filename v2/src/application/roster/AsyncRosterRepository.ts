@@ -9,7 +9,7 @@ import type { SyncState } from '../../domain/syncState';
 
 export interface AsyncRosterRepository {
   read(): Promise<Roster>;
-  write(players: Roster): Promise<{ ok: boolean; syncState: SyncState }>;
+  write(players: Roster): Promise<{ ok: boolean; syncState: SyncState; error?: unknown }>;
   subscribe(
     onNext: (players: Roster, sync: SyncState) => void,
     onError?: (error: unknown) => void,

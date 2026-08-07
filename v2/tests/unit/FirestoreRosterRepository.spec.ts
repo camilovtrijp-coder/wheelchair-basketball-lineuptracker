@@ -80,12 +80,14 @@ describe('FirestoreRosterRepository — write', () => {
     expect(result.syncState.status).toBe('gesynchroniseerd');
   });
 
-  it('geweigerde write → actie-nodig', async () => {
-    (setDoc as Mock).mockRejectedValueOnce(new Error('permission-denied'));
+  it('geweigerde write → actie-nodig, met de onderliggende fout meegegeven', async () => {
+    const rejection = new Error('permission-denied');
+    (setDoc as Mock).mockRejectedValueOnce(rejection);
     const repo = new FirestoreRosterRepository(fakeDb, 'org-1', 'team-1');
     const result = await repo.write(SAMPLE_PLAYERS);
     expect(result.ok).toBe(false);
     expect(result.syncState.status).toBe('actie-nodig');
+    expect(result.error).toBe(rejection);
   });
 
   it('één save veroorzaakt precies één setDoc-call (idempotentie / geen retry-duplicatie)', async () => {
@@ -97,7 +99,10 @@ describe('FirestoreRosterRepository — write', () => {
 });
 
 describe('FirestoreRosterRepository — subscribe', () => {
-  it('emitteert lege array bij niet-bestaand document', () => {
+  it('emitteert niets bij niet-bestaand document (geen stille lege roster)', () => {
+    // Regressietest voor het asymmetrie-gat uit de PR-review: een ongecachete,
+    // offline context mag niet ononderscheidbaar zijn van een team met écht nul
+    // spelers. Spiegelt FirestoreSettingsRepository — zie ook SPIKE_REPORT.md §5.7.
     (onSnapshot as Mock).mockImplementationOnce(
       (
         _ref: unknown,
@@ -115,7 +120,7 @@ describe('FirestoreRosterRepository — subscribe', () => {
     const repo = new FirestoreRosterRepository(fakeDb, 'org-1', 'team-1');
     const seen: Roster[] = [];
     repo.subscribe((players) => seen.push(players));
-    expect(seen).toEqual([[]]);
+    expect(seen).toHaveLength(0);
   });
 
   it('emitteert roster + syncState bij bestaand document', () => {

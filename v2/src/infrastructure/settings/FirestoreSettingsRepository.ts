@@ -52,17 +52,18 @@ export class FirestoreSettingsRepository implements AsyncSettingsRepository {
 
   async write(
     settings: Settings & Record<string, unknown>,
-  ): Promise<{ ok: boolean; syncState: SyncState }> {
+  ): Promise<{ ok: boolean; syncState: SyncState; error?: unknown }> {
     try {
       await setDoc(this.ref(), { ...settings, updatedAt: serverTimestamp() });
       return {
         ok: true,
         syncState: { status: 'gesynchroniseerd', fromCache: false, hasPendingWrites: false },
       };
-    } catch {
+    } catch (error) {
       return {
         ok: false,
         syncState: { status: 'actie-nodig', fromCache: false, hasPendingWrites: false },
+        error,
       };
     }
   }

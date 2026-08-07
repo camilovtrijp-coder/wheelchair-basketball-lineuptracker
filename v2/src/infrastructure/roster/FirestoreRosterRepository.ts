@@ -5,8 +5,11 @@
 // één document met { players }, niet de per-speler subcollectie uit ADR-003).
 //
 // Zelfde cache/offline-strategie als FirestoreSettingsRepository: getDocFromCache
-// eerst, server-fallback, leeg document → lege array (geen stille defaults; het
-// team is dan echt leeg).
+// eerst, server-fallback. read() geeft een lege array voor een bevestigd
+// niet-bestaand document (cache of server heeft het genomen). subscribe()
+// emit NOOIT voor een niet-bestaand document (zelfde gate als bij Settings,
+// zie ADR-002 §"Syncstatuscontract") — anders is een ongecachete, offline
+// context niet te onderscheiden van een team met écht nul spelers.
 
 import {
   doc,
@@ -46,17 +49,18 @@ export class FirestoreRosterRepository implements AsyncRosterRepository {
     }
   }
 
-  async write(players: Roster): Promise<{ ok: boolean; syncState: SyncState }> {
+  async write(players: Roster): Promise<{ ok: boolean; syncState: SyncState; error?: unknown }> {
     try {
       await setDoc(this.ref(), { players, updatedAt: serverTimestamp() });
       return {
         ok: true,
         syncState: { status: 'gesynchroniseerd', fromCache: false, hasPendingWrites: false },
       };
-    } catch {
+    } catch (error) {
       return {
         ok: false,
         syncState: { status: 'actie-nodig', fromCache: false, hasPendingWrites: false },
+        error,
       };
     }
   }
@@ -69,8 +73,8 @@ export class FirestoreRosterRepository implements AsyncRosterRepository {
       this.ref().withConverter(rosterConverter),
       { includeMetadataChanges: true },
       (snap) => {
-        const players: Roster = snap.exists() ? (snap.data().players as Roster) : [];
-        onNext(players, deriveSyncState(snap.metadata));
+        if (!snap.exists()) return;
+        onNext(snap.data().players as Roster, deriveSyncState(snap.metadata));
       },
       (err) => {
         if (onError) onError(err);
