@@ -30,8 +30,7 @@ export interface RosterPanelProps {
   /**
    * PR 5.4a: of deze gebruiker teamdata mag bewerken. `false` disablet save/
    * add/remove/toggle-knoppen, maakt de speler-inputs readOnly, en toont
-   * een korte "Alleen-lezen"-indicator. In lokale modus wordt deze door
-   * `App` op `true` gezet.
+   * een korte "Alleen-lezen"-indicator.
    */
   canWrite: boolean;
 }

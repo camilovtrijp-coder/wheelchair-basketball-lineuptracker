@@ -37,9 +37,9 @@ export interface AppProps {
    * berekend uit dezelfde validateSelectedTeam()-call als `selectedContextTeamValid`
    * (geen extra Firestore-read), en doorgegeven aan SettingsPanel/RosterPanel om de
    * schrijfknoppen te hiden/disablen voor rollen die `canManageTeamData === false` hebben
-   * (spiegelt firestore.rules exact). In lokale modus wordt dit in AuthGate op `true`
-   * gezet; deze app rendert `App` momenteel alleen in cloud-modus, dus de prop is
-   * in de praktijk altijd de cloud-berekening.
+   * (spiegelt firestore.rules exact). AuthGate rendert `App` uitsluitend in de
+   * 'active'-state (een gevalideerde cloud-teamcontext), dus deze prop is in de
+   * praktijk altijd de cloud-berekening uit `selectedContextCanWrite`.
    */
   canWrite: boolean;
 }

@@ -7,8 +7,8 @@
 // mock-repositories in plaats van een e2e tegen de Firestore-emulator — het
 // forceren van een `onError` na de eerste emit is tegen de emulator moeilijk
 // betrouwbaar te reproduseren, terwijl de state-machine hier zuiver te testen is.
-import { describe, it, expect, vi } from 'vitest';
-import { render, waitFor, act } from '@testing-library/preact';
+import { describe, it, expect, vi, afterEach } from 'vitest';
+import { render, waitFor, act, cleanup } from '@testing-library/preact';
 import { App } from '../../src/app/App';
 import type { AsyncSettingsRepository } from '../../src/application/settings/AsyncSettingsRepository';
 import type { AsyncRosterRepository } from '../../src/application/roster/AsyncRosterRepository';
@@ -16,6 +16,12 @@ import type { SyncStatusApi } from '../../src/application/sync/useSyncStatus';
 import { DEFAULT_SETTINGS, type Settings } from '../../src/domain/settings/types';
 import type { Roster } from '../../src/domain/roster/types';
 import type { SyncState } from '../../src/domain/syncState';
+
+// Zonder expliciete cleanup blijft de DOM van een eerdere test in dit bestand
+// staan (zie ActionNeededPanel/CloudImportBanner/SyncStatusIndicator-specs
+// voor hetzelfde patroon) — cruciaal hier omdat beide tests dezelfde
+// data-testid (`listener-error-indicator`) gebruiken.
+afterEach(() => cleanup());
 
 const SYNCED: SyncState = { status: 'gesynchroniseerd', fromCache: false, hasPendingWrites: false };
 
@@ -34,6 +40,10 @@ class ControlledAsyncSettingsRepository implements AsyncSettingsRepository {
   }
 
   async write(): Promise<never> {
+    throw new Error('niet gebruikt in deze test');
+  }
+
+  async reset(): Promise<never> {
     throw new Error('niet gebruikt in deze test');
   }
 
@@ -74,6 +84,47 @@ class ControlledAsyncRosterRepository implements AsyncRosterRepository {
   }
 }
 
+/**
+ * Voor het pre-load-scenario: `read()` resolvet nooit en `subscribe()` emit
+ * NIETS automatisch (in tegenstelling tot ControlledAsyncSettingsRepository,
+ * die bewust altijd meteen een onNext geeft). Zo kan de test een `onError`
+ * afvuren terwijl `settingsLoadedRef.current` in App nog `false` is — het
+ * scenario dat de "gewone" mock niet kan simuleren, omdat die de eerste emit
+ * al synchroon in `subscribe()` doet, vóórdat de test iets kan aanroepen.
+ */
+class NeverLoadingSettingsRepository implements AsyncSettingsRepository {
+  private errorHandler: ((e: unknown) => void) | null = null;
+
+  read(): Promise<Settings & Record<string, unknown>> {
+    return new Promise(() => {
+      // Blijft voor altijd pending: er is voor dit scenario nooit een
+      // geslaagde load geweest.
+    });
+  }
+
+  async write(): Promise<never> {
+    throw new Error('niet gebruikt in deze test');
+  }
+
+  async reset(): Promise<never> {
+    throw new Error('niet gebruikt in deze test');
+  }
+
+  subscribe(
+    _onNext: (settings: Settings & Record<string, unknown>, sync: SyncState) => void,
+    onError?: (e: unknown) => void,
+  ): () => void {
+    this.errorHandler = onError ?? null;
+    return () => {
+      this.errorHandler = null;
+    };
+  }
+
+  emitError(error: unknown = new Error('listener failed vóór eerste load')): void {
+    this.errorHandler?.(error);
+  }
+}
+
 function fakeSyncStatusApi(): SyncStatusApi {
   return {
     status: 'gesynchroniseerd',
@@ -110,7 +161,7 @@ describe('app/App — listener-fout-detectie na initiële load (PR 5.4a)', () =>
       repositories.settings.emitError(new Error('cloud-verbinding weg'));
     });
     expect(queryByTestId('listener-error-indicator')).toBeTruthy();
-    expect(queryByTestId('listener-error-indicator')?.textContent).toContain('cloud');
+    expect(queryByTestId('listener-error-indicator')?.textContent).toMatch(/cloud/i);
 
     // Listener hervat: indicator verdwijnt.
     act(() => {
@@ -119,18 +170,34 @@ describe('app/App — listener-fout-detectie na initiële load (PR 5.4a)', () =>
     expect(queryByTestId('listener-error-indicator')).toBeNull();
   });
 
-  it('toont GEEN indicator wanneer een listener faalt vóór de eerste load (criterium 4 van #27)', async () => {
+  it('toont de OfflineUncachedScreen (niet de indicator) wanneer een listener faalt vóór de eerste load (criterium 4 van #27)', async () => {
     const syncStatus = fakeSyncStatusApi();
+    const settingsRepo = new NeverLoadingSettingsRepository();
+    const localRepositories = {
+      mode: 'cloud' as const,
+      settings: settingsRepo,
+      roster: new ControlledAsyncRosterRepository(),
+    };
     const { queryByTestId } = render(
-      <App repositories={repositories} syncStatus={syncStatus} canWrite={true} />,
+      <App repositories={localRepositories} syncStatus={syncStatus} canWrite={true} />,
     );
 
-    await waitFor(() => expect(queryByTestId('nav-settings')).toBeTruthy());
+    // Nog niets geladen: geen indicator (App toont nog niet eens de hoofd-UI).
     expect(queryByTestId('listener-error-indicator')).toBeNull();
-    // De pre-load fout van de listener wordt afgehandeld via uncachedOffline
-    // (OfflineUncachedScreen), niet via de niet-blokkerende indicator. Deze
-    // test bevestigt dat de indicator NIET getoond wordt — als hij wel
-    // verschijnt, betekent dat de pre-load/post-load-onderscheid in App
-    // kapot is gegaan.
+    expect(queryByTestId('nav-settings')).toBeNull();
+
+    // Listener faalt vóórdat er ooit een succesvolle load is geweest
+    // (settingsLoadedRef.current === false in App).
+    act(() => {
+      settingsRepo.emitError(new Error('cloud-verbinding weg vóór load'));
+    });
+
+    // De pre-load fout wordt afgehandeld via uncachedOffline (OfflineUncachedScreen),
+    // niet via de niet-blokkerende indicator. Als de niet-blokkerende indicator hier
+    // wél verschijnt (of de OfflineUncachedScreen wegblijft), is de
+    // pre-load/post-load-onderscheid in App kapot gegaan.
+    await waitFor(() => expect(queryByTestId('uncached-offline-body')).toBeTruthy());
+    expect(queryByTestId('listener-error-indicator')).toBeNull();
+    expect(queryByTestId('nav-settings')).toBeNull();
   });
 });
