@@ -88,6 +88,65 @@ describe('useSyncStatus (PR 5.3c-2, schrijfcontract herzien in 5.3d)', () => {
     expect(result.current.status).toBe('actie-nodig');
   });
 
+  // PR 5.3d-onderzoeksrapport §H ("label-gebrek"): zowel in de sandbox- als
+  // in de handmatige-apparaattest bleek de subscribe()-listener na een
+  // offline write geen (tijdige) nieuwe snapshot af te leveren, waardoor de
+  // indicator "bevroren" bleef op de waarde van vóór de write. De twee
+  // tests hieronder bewijzen dat de status nu rechtstreeks vanuit write()'s
+  // eigen resultaat overgaat — dus zonder ooit onSettingsSync/onRosterSync
+  // aan te roepen, wat een listener die niet (tijdig) vuurt simuleert.
+  it('saveSettings zet de status meteen op wacht-op-synchronisatie, zonder op een listener-event te wachten', async () => {
+    const write = vi.fn(async () => ({
+      ok: true,
+      syncState: PENDING,
+      settled: new Promise<{ ok: boolean }>(() => {}), // blijft bewust pending (offline)
+    }));
+    const { result } = renderHook(() =>
+      useSyncStatus({ settings: fakeSettingsRepo(write), roster: fakeRosterRepo() }),
+    );
+    await act(async () => {
+      await result.current.saveSettings({ ...DEFAULT_SETTINGS });
+    });
+    // Geen enkele onSettingsSync-aanroep hierboven — de status komt dus
+    // uitsluitend uit write()'s eigen `syncState`.
+    expect(result.current.status).toBe('wacht-op-synchronisatie');
+  });
+
+  it('saveSettings zet de status op gesynchroniseerd zodra settled ok:true oplevert, zonder listener-event', async () => {
+    const write = vi.fn(async () => ({
+      ok: true,
+      syncState: PENDING,
+      settled: settledOk(true),
+    }));
+    const { result } = renderHook(() =>
+      useSyncStatus({ settings: fakeSettingsRepo(write), roster: fakeRosterRepo() }),
+    );
+    await act(async () => {
+      await result.current.saveSettings({ ...DEFAULT_SETTINGS });
+    });
+    // Met een al-resolved fake `settled` is niet betrouwbaar te onderscheiden
+    // of de settled-callback al binnen dit `act()` draaide (zelfde microtask-
+    // ordening-kwestie als bij de bestaande "write() meldt meteen ok:true"-
+    // test hierboven) — vandaar alleen de uiteindelijke, stabiele status.
+    await flushMicrotasks();
+    expect(result.current.status).toBe('gesynchroniseerd');
+  });
+
+  it('saveRoster zet de status meteen op wacht-op-synchronisatie, zonder op een listener-event te wachten', async () => {
+    const write = vi.fn(async () => ({
+      ok: true,
+      syncState: PENDING,
+      settled: new Promise<{ ok: boolean }>(() => {}),
+    }));
+    const { result } = renderHook(() =>
+      useSyncStatus({ settings: fakeSettingsRepo(), roster: fakeRosterRepo(write) }),
+    );
+    await act(async () => {
+      await result.current.saveRoster([]);
+    });
+    expect(result.current.status).toBe('wacht-op-synchronisatie');
+  });
+
   it('een DIRECT geweigerde write (write() zelf meldt ok:false) komt meteen in pending', async () => {
     const write = vi.fn(async () => ({
       ok: false,

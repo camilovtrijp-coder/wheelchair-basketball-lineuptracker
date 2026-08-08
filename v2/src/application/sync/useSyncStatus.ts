@@ -1,9 +1,23 @@
 // Sync-status hook (PR 5.3c-2, schrijfcontract herzien in PR 5.3d na
-// vervolgonderzoek). Leest de SyncState die repositories.settings/
-// .roster.subscribe() al meeleveren (via onSettingsSync/onRosterSync, door
-// App vanuit zijn bestaande 5.3c-1-subscribe-effect aangeroepen — geen tweede
-// listener nodig) voor de wacht-op-synchronisatie ↔ gesynchroniseerd-
-// overgangen (gebaseerd op onSnapshot's hasPendingWrites-metadata).
+// vervolgonderzoek, indicator-update herzien na het PR 5.3d-onderzoeksrapport
+// §H "label-gebrek"). repositories.settings/.roster.subscribe() leveren een
+// SyncState mee (via onSettingsSync/onRosterSync, door App vanuit zijn
+// bestaande 5.3c-1-subscribe-effect aangeroepen) op basis van onSnapshot's
+// hasPendingWrites-metadata — dat blijft de bron voor externe wijzigingen
+// (een ander apparaat/tabblad dat hetzelfde document wijzigt).
+//
+// VOOR een eigen write() geldt dat NIET meer exclusief: zowel in de
+// PR 5.3d-sandboxdiagnostiek (zie domain/syncState.ts en het
+// onderzoeksrapport §A) als in een handmatige test op een echt apparaat
+// (rapport §H) bleek de onSnapshot-listener op het beschreven document na
+// een offline write geen (tijdige) nieuwe snapshot af te leveren — de
+// indicator bleef dan "bevroren" op de waarde van vóór de write, in plaats
+// van naar wacht-op-synchronisatie te springen. saveSettings/saveRoster
+// zetten de bg-status daarom voortaan zelf, direct vanuit write()'s eigen
+// `syncState` (meteen na de call) en vanuit `settled`'s uitkomst (zodra de
+// server bevestigt) — zonder daarbij op een listener-event te wachten. Komt
+// de listener alsnog (tijdig) met dezelfde waarde, dan is die update een
+// no-op (identieke state, geen extra render).
 //
 // write() zelf wacht NIET op de volledige serverbevestiging (zie
 // domain/syncState.ts — setDoc() resolvet pas na ack en blijft offline
@@ -79,10 +93,17 @@ export function useSyncStatus(repositories: {
         setPendingFor('settings', payload);
         return false;
       }
+      // Zie headercommentaar: niet louter op de subscribe()-listener
+      // vertrouwen voor de wacht-op-synchronisatie-overgang — die bleek na
+      // een offline write niet betrouwbaar (tijdig) te vuren.
+      setSettingsBgStatus(result.syncState.status);
       // Niet awaiten: dat zou saveSettings() weer net zo lang laten
       // blokkeren als vóór dit contract. `settled` reject nooit.
       void result.settled.then((settled) => {
         setPendingFor('settings', settled.ok ? null : payload);
+        if (settled.ok) {
+          setSettingsBgStatus('gesynchroniseerd');
+        }
       });
       return true;
     },
@@ -96,8 +117,12 @@ export function useSyncStatus(repositories: {
         setPendingFor('roster', payload);
         return false;
       }
+      setRosterBgStatus(result.syncState.status);
       void result.settled.then((settled) => {
         setPendingFor('roster', settled.ok ? null : payload);
+        if (settled.ok) {
+          setRosterBgStatus('gesynchroniseerd');
+        }
       });
       return true;
     },
