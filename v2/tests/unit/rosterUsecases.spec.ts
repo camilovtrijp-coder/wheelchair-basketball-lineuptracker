@@ -3,7 +3,7 @@ import type { Roster } from '../../src/domain/roster/types';
 import { ROSTER_STORAGE_KEY } from '../../src/domain/roster/types';
 import type { RosterRepository } from '../../src/application/roster/RosterRepository';
 import type { AsyncRosterRepository } from '../../src/application/roster/AsyncRosterRepository';
-import type { SyncState } from '../../src/domain/syncState';
+import type { WriteResult } from '../../src/domain/syncState';
 import type { KeyValueStorage } from '../../src/i18n/persistence';
 import {
   getRoster,
@@ -54,9 +54,10 @@ class TrackingStorage implements KeyValueStorage {
 
 class TrackingAsyncRepository implements AsyncRosterRepository {
   public writeCalls: Roster[] = [];
-  public nextWriteResult: { ok: boolean; syncState: SyncState } = {
+  public nextWriteResult: WriteResult = {
     ok: true,
-    syncState: { status: 'gesynchroniseerd', fromCache: false, hasPendingWrites: false },
+    syncState: { status: 'wacht-op-synchronisatie', fromCache: true, hasPendingWrites: true },
+    settled: Promise.resolve({ ok: true }),
   };
   async read(): Promise<Roster> {
     return [];
@@ -134,12 +135,13 @@ describe('migrateLocalStorageToCloud — roster (PR 5.3b)', () => {
     expect(isCloudImported(storage, 'roster')).toBe(true);
   });
 
-  it('cloud-write geweigerd → ok=false, geen vlag, errors[] gevuld', async () => {
+  it('cloud-write direct geweigerd (write() zelf ok:false) → ok=false, geen vlag, errors[] gevuld', async () => {
     const local = new TrackingRepository(SAMPLE);
     const cloud = new TrackingAsyncRepository();
     cloud.nextWriteResult = {
       ok: false,
       syncState: { status: 'actie-nodig', fromCache: false, hasPendingWrites: false },
+      settled: Promise.resolve({ ok: false }),
     };
     const storage = new TrackingStorage();
 
@@ -151,4 +153,25 @@ describe('migrateLocalStorageToCloud — roster (PR 5.3b)', () => {
     expect(isCloudImported(storage, 'roster')).toBe(false);
     expect(storage.writtenKeys).not.toContain(ROSTER_STORAGE_KEY);
   });
+
+  it(
+    'cloud-write lokaal geaccepteerd maar via settled alsnog afgewezen (PR 5.3d) → ' +
+      'geen importvlag, ok=false',
+    async () => {
+      const local = new TrackingRepository(SAMPLE);
+      const cloud = new TrackingAsyncRepository();
+      cloud.nextWriteResult = {
+        ok: true,
+        syncState: { status: 'wacht-op-synchronisatie', fromCache: true, hasPendingWrites: true },
+        settled: Promise.resolve({ ok: false, error: new Error('permission-denied') }),
+      };
+      const storage = new TrackingStorage();
+
+      const result = await migrateLocalStorageToCloud(local, cloud, storage);
+
+      expect(result.ok).toBe(false);
+      expect(result.imported).toBe(false);
+      expect(isCloudImported(storage, 'roster')).toBe(false);
+    },
+  );
 });

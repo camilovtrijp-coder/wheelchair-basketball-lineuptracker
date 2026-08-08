@@ -71,29 +71,42 @@ describe('FirestoreRosterRepository — read', () => {
   });
 });
 
-describe('FirestoreRosterRepository — write', () => {
-  it('geslaagde write → gesynchroniseerd', async () => {
-    (setDoc as Mock).mockResolvedValueOnce(undefined);
+describe('FirestoreRosterRepository — write (PR 5.3d-vervolgonderzoek: wacht niet op setDoc-ack)', () => {
+  it('resolvet meteen met ok:true/wacht-op-synchronisatie, zonder op setDoc() te wachten', async () => {
+    let resolveSetDoc!: () => void;
+    (setDoc as Mock).mockReturnValueOnce(
+      new Promise<void>((resolve) => {
+        resolveSetDoc = resolve;
+      }),
+    );
     const repo = new FirestoreRosterRepository(fakeDb, 'org-1', 'team-1');
     const result = await repo.write(SAMPLE_PLAYERS);
     expect(result.ok).toBe(true);
-    expect(result.syncState.status).toBe('gesynchroniseerd');
+    expect(result.syncState.status).toBe('wacht-op-synchronisatie');
+    resolveSetDoc();
+    await result.settled;
   });
 
-  it('geweigerde write → actie-nodig, met de onderliggende fout meegegeven', async () => {
+  it('settled resolvet {ok:true} zodra setDoc() de backend bevestigt', async () => {
+    (setDoc as Mock).mockResolvedValueOnce(undefined);
+    const repo = new FirestoreRosterRepository(fakeDb, 'org-1', 'team-1');
+    const result = await repo.write(SAMPLE_PLAYERS);
+    await expect(result.settled).resolves.toEqual({ ok: true });
+  });
+
+  it('settled resolvet {ok:false, error} bij een geweigerde write, reject zelf nooit', async () => {
     const rejection = new Error('permission-denied');
     (setDoc as Mock).mockRejectedValueOnce(rejection);
     const repo = new FirestoreRosterRepository(fakeDb, 'org-1', 'team-1');
     const result = await repo.write(SAMPLE_PLAYERS);
-    expect(result.ok).toBe(false);
-    expect(result.syncState.status).toBe('actie-nodig');
-    expect(result.error).toBe(rejection);
+    await expect(result.settled).resolves.toEqual({ ok: false, error: rejection });
   });
 
   it('één save veroorzaakt precies één setDoc-call (idempotentie / geen retry-duplicatie)', async () => {
     (setDoc as Mock).mockResolvedValue(undefined);
     const repo = new FirestoreRosterRepository(fakeDb, 'org-1', 'team-1');
-    await repo.write(SAMPLE_PLAYERS);
+    const result = await repo.write(SAMPLE_PLAYERS);
+    await result.settled;
     expect(setDoc).toHaveBeenCalledTimes(1);
   });
 });

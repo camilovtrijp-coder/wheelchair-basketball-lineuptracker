@@ -21,16 +21,19 @@ describe('LocalAsyncSettingsRepository (PR 5.3c-1)', () => {
     await expect(repo.read()).resolves.toEqual({ ...DEFAULT_SETTINGS, teamName: 'Lokaal' });
   });
 
-  it('write() roept de synchrone write() aan en meldt lokaal-beschikbaar bij succes', async () => {
+  it('write() roept de synchrone write() aan en meldt lokaal-beschikbaar bij succes (settled resolvet meteen)', async () => {
     const sync = fakeSync();
     const repo = new LocalAsyncSettingsRepository(sync);
     const payload: SettingsLike = { ...DEFAULT_SETTINGS, teamName: 'X' };
     const result = await repo.write(payload);
     expect(sync.write).toHaveBeenCalledWith(payload);
-    expect(result).toEqual({
-      ok: true,
-      syncState: { status: 'lokaal-beschikbaar', fromCache: false, hasPendingWrites: false },
+    expect(result.ok).toBe(true);
+    expect(result.syncState).toEqual({
+      status: 'lokaal-beschikbaar',
+      fromCache: false,
+      hasPendingWrites: false,
     });
+    await expect(result.settled).resolves.toEqual({ ok: true });
   });
 
   it('write() meldt actie-nodig wanneer de synchrone write false retourneert (bijv. quota)', async () => {
@@ -39,6 +42,7 @@ describe('LocalAsyncSettingsRepository (PR 5.3c-1)', () => {
     const result = await repo.write({ ...DEFAULT_SETTINGS });
     expect(result.ok).toBe(false);
     expect(result.syncState.status).toBe('actie-nodig');
+    await expect(result.settled).resolves.toEqual({ ok: false });
   });
 
   it('reset() delegeert naar de synchrone reset()', async () => {

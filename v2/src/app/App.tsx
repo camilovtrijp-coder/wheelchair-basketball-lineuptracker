@@ -7,7 +7,6 @@ import { LocalStorageSettingsRepository } from '../infrastructure/settings/Local
 import {
   getSettingsAsync,
   migrateLocalStorageToCloud as migrateSettingsToCloud,
-  resetSettingsAsync,
 } from '../application/settings/usecases';
 import type { Settings } from '../domain/settings/types';
 import { SettingsPanel } from '../ui/settings/SettingsPanel';
@@ -19,6 +18,7 @@ import {
 import type { Roster } from '../domain/roster/types';
 import { RosterPanel } from '../ui/roster/RosterPanel';
 import { LoadingScreen } from '../ui/status/LoadingScreen';
+import { OfflineUncachedScreen } from '../ui/status/OfflineUncachedScreen';
 import type { ResolvedAppRepositories } from '../infrastructure/repositories/resolveAppRepositories';
 import type { SyncStatusApi } from '../application/sync/useSyncStatus';
 
@@ -55,16 +55,56 @@ function tFor(lang: Lang): (key: StringKey) => string {
 const v1SettingsRepo = new LocalStorageSettingsRepository(browserStorage);
 const v1RosterRepo = new LocalStorageRosterRepository(browserStorage);
 
+// PR 5.3d-vervolgonderzoek: hoelang een van de vier onderstaande stappen
+// (settings-read, roster-read, settings-listener, roster-listener) mag
+// uitblijven voordat 'm als "stalled" gerapporteerd wordt op LoadingScreen.
+// Puur diagnostisch — er wordt niets afgebroken of vervangen na de
+// time-out, alleen zichtbaar gemaakt WELKE stap nog niet is afgerond, zodat
+// "LoadingScreen blijft staan" niet langer automatisch aan Promise.all()
+// wordt toegeschreven zonder onderscheid tussen de vier mogelijke oorzaken.
+const STEP_STALL_TIMEOUT_MS = 8000;
+
 export function App({ repositories, syncStatus }: AppProps) {
   const [lang, setLang] = useState<Lang>(initialLang);
   const [tab, setTab] = useState<Tab>('settings');
   const [settings, setSettings] = useState<(Settings & Record<string, unknown>) | null>(null);
   const [roster, setRoster] = useState<Roster | null>(null);
+  const [stalledSteps, setStalledSteps] = useState<string[]>([]);
+  // Criterium 4 (issue #27 / docs/pr-5.3-plan.md §C/5.3d): een werkelijk
+  // nooit-gecachete context mag offline nooit als een leeg team getoond
+  // worden. read() valt terug op getDoc() wanneer getDocFromCache() faalt
+  // (geen cache) — als getDoc() zelf óók faalt (offline, niets gecacht),
+  // reject de Promise; zonder deze state zou dat ofwel een onbeperkte
+  // LoadingScreen-hang zijn (nooit gevangen rejection) ofwel stilzwijgend
+  // een leeg team tonen. subscribe()'s onError-pad krijgt dezelfde
+  // afhandeling voor het geval de listener zelf faalt.
+  const [uncachedOffline, setUncachedOffline] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
     setSettings(null);
     setRoster(null);
+    setStalledSteps([]);
+    setUncachedOffline(false);
+
+    const timers = new Map<string, ReturnType<typeof setTimeout>>();
+    function armStallTimer(step: string) {
+      timers.set(
+        step,
+        setTimeout(() => {
+          if (cancelled) return;
+          setStalledSteps((prev) => (prev.includes(step) ? prev : [...prev, step]));
+        }, STEP_STALL_TIMEOUT_MS),
+      );
+    }
+    function disarmStallTimer(step: string) {
+      const timer = timers.get(step);
+      if (timer !== undefined) {
+        clearTimeout(timer);
+        timers.delete(step);
+      }
+      setStalledSteps((prev) => (prev.includes(step) ? prev.filter((s) => s !== step) : prev));
+    }
 
     // read() geeft altijd meteen een bruikbare eerste waarde (defaults/lege
     // roster voor een team zonder document); subscribe() levert daarna live
@@ -72,32 +112,66 @@ export function App({ repositories, syncStatus }: AppProps) {
     // Firestore-document nooit een eerste emissie krijgen (de adapters
     // emitten bewust niet voor een niet-bestaand document, zie
     // FirestoreSettingsRepository/FirestoreRosterRepository) en zou App
-    // eindeloos op LoadingScreen blijven staan.
-    Promise.all([repositories.settings.read(), repositories.roster.read()]).then(([s, r]) => {
+    // eindeloos op LoadingScreen blijven staan. read() en subscribe() lopen
+    // bewust onafhankelijk (geen Promise.all): één vastzittende stap mag de
+    // andere drie niet blokkeren, en elke stap draagt zijn eigen
+    // stall-timer, zodat een blijvende LoadingScreen precies aanwijst welke
+    // stap het is.
+    function markUncachedOffline(step: string) {
       if (cancelled) return;
-      setSettings(s);
-      setRoster(r);
-    });
+      disarmStallTimer(step);
+      setUncachedOffline(true);
+    }
 
-    const unsubSettings = repositories.settings.subscribe((s, sync) => {
-      if (!cancelled) {
+    armStallTimer('settings-read');
+    repositories.settings.read().then(
+      (s) => {
+        if (cancelled) return;
+        disarmStallTimer('settings-read');
+        setSettings(s);
+      },
+      () => markUncachedOffline('settings-read'),
+    );
+
+    armStallTimer('roster-read');
+    repositories.roster.read().then(
+      (r) => {
+        if (cancelled) return;
+        disarmStallTimer('roster-read');
+        setRoster(r);
+      },
+      () => markUncachedOffline('roster-read'),
+    );
+
+    armStallTimer('settings-listener');
+    const unsubSettings = repositories.settings.subscribe(
+      (s, sync) => {
+        if (cancelled) return;
+        disarmStallTimer('settings-listener');
         setSettings(s);
         syncStatus.onSettingsSync(sync);
-      }
-    });
-    const unsubRoster = repositories.roster.subscribe((r, sync) => {
-      if (!cancelled) {
+      },
+      () => markUncachedOffline('settings-listener'),
+    );
+
+    armStallTimer('roster-listener');
+    const unsubRoster = repositories.roster.subscribe(
+      (r, sync) => {
+        if (cancelled) return;
+        disarmStallTimer('roster-listener');
         setRoster(r);
         syncStatus.onRosterSync(sync);
-      }
-    });
+      },
+      () => markUncachedOffline('roster-listener'),
+    );
 
     return () => {
       cancelled = true;
+      for (const timer of timers.values()) clearTimeout(timer);
       unsubSettings();
       unsubRoster();
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- syncStatus.onSettingsSync/onRosterSync zijn stabiele state-setter-wrappers uit useSyncStatus; alleen `repositories` mag dit effect laten her-abonneren (contextwissel).
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- syncStatus.onSettingsSync/onRosterSync zijn met useCallback([]) gememoized in useSyncStatus, dus stabiel over renders; alleen `repositories` mag dit effect laten her-abonneren (contextwissel).
   }, [repositories]);
 
   useEffect(() => {
@@ -106,8 +180,12 @@ export function App({ repositories, syncStatus }: AppProps) {
     writeLang(browserStorage, lang);
   }, [lang, settings?.teamName]);
 
+  if (uncachedOffline && (settings === null || roster === null)) {
+    return <OfflineUncachedScreen lang={lang} />;
+  }
+
   if (settings === null || roster === null) {
-    return <LoadingScreen lang={lang} />;
+    return <LoadingScreen lang={lang} stalledSteps={stalledSteps} />;
   }
 
   const t = tFor(lang);
@@ -171,7 +249,7 @@ export function App({ repositories, syncStatus }: AppProps) {
             settings={settings}
             onSettingsChange={setSettings}
             onSave={syncStatus.saveSettings}
-            onReset={() => resetSettingsAsync(repositories.settings)}
+            onReset={syncStatus.resetSettings}
             onRefresh={() => getSettingsAsync(repositories.settings)}
             onCloudMigrate={repositories.mode === 'cloud' ? handleCloudMigrateSettings : undefined}
           />

@@ -5,13 +5,11 @@
 // De bestaande synchrone poort blijft ongewijzigd voor de localStorage-modus.
 
 import type { Settings } from '../../domain/settings/types';
-import type { SyncState } from '../../domain/syncState';
+import type { SyncState, WriteResult } from '../../domain/syncState';
 
 export interface AsyncSettingsRepository {
   read(): Promise<Settings & Record<string, unknown>>;
-  write(
-    settings: Settings & Record<string, unknown>,
-  ): Promise<{ ok: boolean; syncState: SyncState; error?: unknown }>;
+  write(settings: Settings & Record<string, unknown>): Promise<WriteResult>;
   reset(): Promise<Settings & Record<string, unknown>>;
   subscribe(
     onNext: (settings: Settings & Record<string, unknown>, sync: SyncState) => void,

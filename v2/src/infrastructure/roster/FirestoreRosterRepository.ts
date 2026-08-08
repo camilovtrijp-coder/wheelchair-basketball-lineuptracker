@@ -22,7 +22,7 @@ import {
 } from 'firebase/firestore';
 import { rosterConverter } from 'firebase-base/documents';
 import type { Roster } from '../../domain/roster/types';
-import { deriveSyncState, type SyncState } from '../../domain/syncState';
+import { deriveSyncState, type SyncState, type WriteResult } from '../../domain/syncState';
 import type { AsyncRosterRepository } from '../../application/roster/AsyncRosterRepository';
 
 export class FirestoreRosterRepository implements AsyncRosterRepository {
@@ -49,20 +49,21 @@ export class FirestoreRosterRepository implements AsyncRosterRepository {
     }
   }
 
-  async write(players: Roster): Promise<{ ok: boolean; syncState: SyncState; error?: unknown }> {
-    try {
-      await setDoc(this.ref(), { players, updatedAt: serverTimestamp() });
-      return {
-        ok: true,
-        syncState: { status: 'gesynchroniseerd', fromCache: false, hasPendingWrites: false },
-      };
-    } catch (error) {
-      return {
-        ok: false,
-        syncState: { status: 'actie-nodig', fromCache: false, hasPendingWrites: false },
-        error,
-      };
-    }
+  // Zie FirestoreSettingsRepository.write() voor de rationale: niet op de
+  // volledige backend-ack wachten (offline anders onbeperkt pending), meteen
+  // het lokale resultaat teruggeven, `settled` draagt de uiteindelijke
+  // serverbevestiging/-afwijzing en reject nooit.
+  async write(players: Roster): Promise<WriteResult> {
+    const serverAck = setDoc(this.ref(), { players, updatedAt: serverTimestamp() });
+    const settled = serverAck.then(
+      () => ({ ok: true }),
+      (error: unknown) => ({ ok: false, error }),
+    );
+    return {
+      ok: true,
+      syncState: { status: 'wacht-op-synchronisatie', fromCache: true, hasPendingWrites: true },
+      settled,
+    };
   }
 
   subscribe(

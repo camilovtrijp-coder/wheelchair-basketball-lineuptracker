@@ -86,12 +86,22 @@ export async function migrateLocalStorageToCloud(
 ): Promise<CloudMigrationResult> {
   const data = local.read();
   const result = await cloud.write(data);
-  if (result.ok) {
+  if (!result.ok) {
+    return { ok: false, imported: false, errors: [`syncState: ${result.syncState.status}`] };
+  }
+  // Een eenmalige, gebruiker-geïnitieerde migratie moet écht bevestigd zijn
+  // voordat de "al gekopieerd"-vlag wordt gezet — anders zou de banner
+  // verdwijnen terwijl de write (in het write()-contract van PR 5.3d) pas
+  // lokaal geaccepteerd, nog niet door de server bevestigd is. Daarom hier
+  // wél op `settled` wachten, in tegenstelling tot de routinematige
+  // save-knop-flow in useSyncStatus.ts.
+  const settled = await result.settled;
+  if (settled.ok) {
     markCloudImported(storage, 'settings');
   }
   return {
-    ok: result.ok,
-    imported: result.ok,
-    errors: result.ok ? [] : [`syncState: ${result.syncState.status}`],
+    ok: settled.ok,
+    imported: settled.ok,
+    errors: settled.ok ? [] : [`settled: actie-nodig`],
   };
 }
