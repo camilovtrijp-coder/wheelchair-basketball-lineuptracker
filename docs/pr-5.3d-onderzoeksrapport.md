@@ -1,10 +1,14 @@
 # PR 5.3d — onderzoeksrapport offline-write-hang (issue #27)
 
-Status: **issue #27 blijft een harde OPEN gate**. PR #36 is niet merge-ready en
-niet "ready for review" totdat dit rapport en de acties eronder zijn
-opgevolgd. Dit document vervangt geen testcode — het legt vast wat er
-empirisch is vastgesteld, zodat een volgende sessie/reviewer niet opnieuw
-vanaf nul hoeft te onderzoeken.
+Status: **issue #27 blijft een OPEN gate, maar met sterk verlaagde ernst na
+§H.** De ernstige reload-hang is NIET bevestigd op een echt apparaat (2/2
+schone runs) — het zware ADR/outbox-traject uit §G is daarmee van de baan.
+Wat overblijft is een kleiner, wél bevestigd label-gebrek (§H punt 2). PR #36
+is nog niet merge-ready totdat dat label-gebrek is opgelost of test 3
+daarop is aangepast. Dit document vervangt geen testcode — het legt vast wat
+er empirisch is vastgesteld, zodat een volgende sessie/reviewer niet opnieuw
+vanaf nul hoeft te onderzoeken. **Lees §H eerst** — dat bevat de meest
+recente en belangrijkste bevinding.
 
 Basis: exact head `fa0ccf9298072cab3dcee05a3bd8424fc2760461` (commit
 "docs(test): vervolgonderzoek multi-tab cache-manager lost offline-reload-hang
@@ -218,3 +222,74 @@ eigen offline-mutatiequeue voor de duur dat een document "in transit" is.
 Dat vereist een aparte ADR (niet stilzwijgend binnen deze PR
 geïmplementeerd) en een eigen ontwerpronde. Tot de uitkomst van §F bekend is,
 wordt dat traject NIET gestart.
+
+**Update (8 aug. 2026) — zie §H: op basis van de uitgevoerde handmatige
+apparaattest wordt dit traject NIET gestart.** De ernstige reload-hang
+reproduceert niet op een echt apparaat; alleen een kleiner, apart gebrek
+(indicator ververst niet live) is bevestigd. Dit voorwaardelijke vervolg
+blijft hier gedocumenteerd voor het geval een latere test (bijv. tegen een
+echte productie-Firestore-backend i.p.v. de emulator) alsnog de reload-hang
+laat terugkeren.
+
+## H. Resultaten handmatig apparaatprotocol (uitgevoerd, 8 aug. 2026)
+
+In tegenstelling tot §A/§C hierboven — die uitsluitend binnen de sandbox
+tegen de Firestore-emulator via Playwright/CDP-offline-simulatie zijn
+vastgesteld — is protocol §F nu wél uitgevoerd, door de PR-eigenaar zelf, op
+een **echt Windows-laptop-apparaat** (niet de sandbox), tegen dezelfde
+Firestore-emulator maar bereikt via het LAN-IP van de laptop, met een
+**genuine OS-niveau netwerkonderbreking** (Windows-vliegtuigmodus, wifi
+fysiek uit — expliciet gecontroleerd dat wifi niet stiekem aanbleef).
+Herhaald over 2 onafhankelijke runs, identiek resultaat:
+
+| Moment | Syncstatus-indicator | Reload-gedrag |
+|---|---|---|
+| Vóór offline (team net geladen) | Gesynchroniseerd | — |
+| Direct na offline write (opslaan terwijl in vliegtuigmodus) | Gesynchroniseerd (ongewijzigd) | — |
+| ~10s later, nog offline, niet geherload | Gesynchroniseerd (ongewijzigd) | — |
+| Pagina herladen, nog steeds offline | Gesynchroniseerd (ongewijzigd) | **Geen hang** — nieuwe teamnaam meteen zichtbaar |
+| ~10s na vliegtuigmodus weer uit | Gesynchroniseerd (ongewijzigd) | — |
+
+**Twee afzonderlijke conclusies volgen hieruit:**
+
+1. **De ernstige reload-hang (het kernprobleem van issue #27) reproduceert
+   NIET op een echt apparaat met een genuine netwerkonderbreking — 2/2
+   schone runs, geen enkele hang.** Dit is de belangrijkste bevinding van dit
+   hele onderzoek: het patroon uit §A (permanente hang van
+   `getDocFromCache()`/`onSnapshot` na een offline write op hetzelfde
+   document) lijkt specifiek voor te komen bij Playwright's manier van
+   offline simuleren tegen de Firestore-emulator (`context.setOffline()` /
+   `route.abort()`) — niet bij een reëel wegvallende OS-netwerkverbinding.
+   Daarmee vervalt de noodzaak voor het zware vervolgtraject uit §G (de
+   IndexedDB-outbox/ADR): dat traject wordt dus NIET gestart.
+
+2. **Een kleiner, wél bevestigd apart gebrek**: de syncstatus-indicator
+   ververst tijdens de hele offline-periode geen enkele keer — hij blijft
+   precies staan op de waarde van vóór het offline gaan (in dit geval
+   toevallig "Gesynchroniseerd", wat toevallig onschuldig oogt, maar het
+   label toont dus niet "Wacht op synchronisatie" terwijl de write wél
+   degelijk nog pending is). Dit wijst erop dat de `onSnapshot`-listener op
+   het beschreven document ook hier geen nieuwe snapshot aflevert na de
+   offline write — hetzelfde onderliggende mechanisme als in §A, alleen
+   zonder de reload-hang als zichtbaar gevolg. Waarschijnlijk nog steeds een
+   emulator-specifieke eigenaardigheid (deze test liep nog altijd tegen de
+   Firestore-emulator, niet tegen een productie-backend), maar wel een reëel,
+   gebruiker-zichtbaar (zij het onschuldig ogend) label-bugje: de coach krijgt
+   geen visuele bevestiging dat een offline wijziging nog niet is
+   gesynchroniseerd.
+
+**Beperkingen van deze test** (voor de volledigheid): nog steeds tegen de
+Firestore-emulator (niet productie-Firestore); geen tweede-cliënt-verificatie
+uitgevoerd (nog niet bevestigd dat de gewijzigde waarde na reconnect
+daadwerkelijk de server heeft bereikt — de indicator geeft dat door het
+label-gebrek niet betrouwbaar weer); slechts één toesteltype (Windows-laptop,
+niet een telefoon/tablet). Deze beperkingen wegen niet op tegen de
+kernbevinding (geen reload-hang), maar zijn het vermelden waard voor wie dit
+verder wil verifiëren.
+
+**Aanbevolen vervolg:** het label-gebrek (punt 2) apart onderzoeken en
+oplossen — vermoedelijk in `useSyncStatus`/de `subscribe()`-listener-wiring,
+niet in het schrijfcontract zelf — en test 3 herzien zodat deze niet langer
+op de (niet-reproduceerbare) CDP-specifieke reload-hang test, maar op het
+daadwerkelijk bevestigde label-gebrek. Zie de openstaande taken bij de
+PR-eigenaar.
