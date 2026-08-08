@@ -33,6 +33,13 @@ export interface SettingsPanelProps {
    * 'm gevuld (PR 5.3c-1).
    */
   onCloudMigrate?: () => Promise<{ ok: boolean; errors: string[] }>;
+  /**
+   * PR 5.4a: of deze gebruiker teamdata mag bewerken. `false` disablet de
+   * schrijfknoppen en toont een korte "Alleen-lezen"-indicator. De
+   * refresh-knop blijft enabled (read-only actie). In lokale modus wordt
+   * deze door `App` op `true` gezet.
+   */
+  canWrite: boolean;
 }
 
 function t(lang: Lang, key: StringKey): string {
@@ -48,6 +55,7 @@ export function SettingsPanel({
   onReset,
   onRefresh,
   onCloudMigrate,
+  canWrite,
 }: SettingsPanelProps) {
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -136,6 +144,7 @@ export function SettingsPanel({
             <button
               type="button"
               className="btn-outline"
+              disabled={!canWrite}
               onClick={() => fileInputRef.current?.click()}
             >
               {t(lang, 'logoChooseBtn')}
@@ -144,6 +153,7 @@ export function SettingsPanel({
               <button
                 type="button"
                 className="btn-outline"
+                disabled={!canWrite}
                 onClick={() => handleField('logoUri', '')}
                 data-testid="settings-logo-remove"
               >
@@ -325,11 +335,22 @@ export function SettingsPanel({
         </p>
       ) : null}
 
+      {canWrite ? null : (
+        <p
+          className="settings-read-only"
+          data-testid="settings-read-only"
+          role="status"
+        >
+          {t(lang, 'settingsReadOnly')}
+        </p>
+      )}
+
       <div className="settings-actions">
         <button
           type="button"
           className="btn-primary"
           data-testid="settings-save"
+          disabled={!canWrite}
           onClick={handleSave}
         >
           {t(lang, 'saveBtn')}
@@ -346,6 +367,7 @@ export function SettingsPanel({
           type="button"
           className="btn-outline"
           data-testid="settings-reset"
+          disabled={!canWrite}
           onClick={handleReset}
         >
           {t(lang, 'settingsResetBtn')}
