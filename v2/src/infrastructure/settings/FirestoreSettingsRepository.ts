@@ -77,6 +77,11 @@ export class FirestoreSettingsRepository implements AsyncSettingsRepository {
       () => ({ ok: true }),
       (error: unknown) => ({ ok: false, error }),
     );
+    // `ok` is hier altijd true: setDoc() past de write via latency
+    // compensation synchroon lokaal toe, en een eventuele afwijzing komt pas
+    // later, via `settled` — er is geen synchroon-lokaal faalpad zoals bij
+    // LocalAsyncSettingsRepository.write() (die daar wél `ok:false` kan
+    // teruggeven, bijv. bij een lokale opslagfout).
     return {
       ok: true,
       syncState: { status: 'wacht-op-synchronisatie', fromCache: true, hasPendingWrites: true },

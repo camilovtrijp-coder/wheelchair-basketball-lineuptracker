@@ -7,7 +7,6 @@ import { LocalStorageSettingsRepository } from '../infrastructure/settings/Local
 import {
   getSettingsAsync,
   migrateLocalStorageToCloud as migrateSettingsToCloud,
-  resetSettingsAsync,
 } from '../application/settings/usecases';
 import type { Settings } from '../domain/settings/types';
 import { SettingsPanel } from '../ui/settings/SettingsPanel';
@@ -172,7 +171,7 @@ export function App({ repositories, syncStatus }: AppProps) {
       unsubSettings();
       unsubRoster();
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- syncStatus.onSettingsSync/onRosterSync zijn stabiele state-setter-wrappers uit useSyncStatus; alleen `repositories` mag dit effect laten her-abonneren (contextwissel).
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- syncStatus.onSettingsSync/onRosterSync zijn met useCallback([]) gememoized in useSyncStatus, dus stabiel over renders; alleen `repositories` mag dit effect laten her-abonneren (contextwissel).
   }, [repositories]);
 
   useEffect(() => {
@@ -250,7 +249,7 @@ export function App({ repositories, syncStatus }: AppProps) {
             settings={settings}
             onSettingsChange={setSettings}
             onSave={syncStatus.saveSettings}
-            onReset={() => resetSettingsAsync(repositories.settings)}
+            onReset={syncStatus.resetSettings}
             onRefresh={() => getSettingsAsync(repositories.settings)}
             onCloudMigrate={repositories.mode === 'cloud' ? handleCloudMigrateSettings : undefined}
           />

@@ -339,3 +339,78 @@ onderzoeken.
 (4/4 en 4/4) en over de volledige v2-e2e- (33/33) en v2-e2e:auth-suites
 (24/24). Issue #27's vier acceptatiecriteria zijn hiermee automatisch
 bewezen in CI, met het bewuste, gedocumenteerde schaalpunt hierboven.
+
+## J. Onafhankelijke review vóór merge (Minimax, 8 aug. 2026) — bevindingen en opvolging
+
+Een onafhankelijke review van PR #36 (tegen head `95a5639`) bevestigde de
+scope-beslissing uit §I als verdedigbaar, maar vond een documentair gat
+(de PR-claim "vier criteria groen" zonder de scopeverkleining expliciet op
+plan-niveau vast te leggen) en enkele echte, geïsoleerde gedragsbugs in de
+write-/indicator-laag. Alle punten zijn beoordeeld tegen de daadwerkelijke
+code vóór actie; onderstaand de uitkomst.
+
+**Opgelost:**
+
+1. **Documentair gat (blocker).** `docs/pr-5.3-plan.md` §C/5.3d en
+   `docs/IMPLEMENTATION_PLAN.md` §17 zijn bijgewerkt met een expliciet
+   eigenaarsbesluit (camilovtrijp-coder, 8 aug. 2026) dat de scopeverkleining
+   benoemt: criterium 3 dekt "offline write → reconnect → tweede cliënt",
+   niet de reload-terwijl-offline-met-pending-write-combinatie, met de
+   beperkingen van de handmatige validatie (geen mobiel, geen
+   productie-Firestore) expliciet vermeld.
+2. **`dismiss()` liet de indicator "hangen".** `setPendingFor(kind, null)`
+   raakte de achtergrondstatus niet aan, waardoor de indicator na "Negeren"
+   op de laatst gezette waarde (typisch `wacht-op-synchronisatie`) bleef
+   staan. `dismiss()` zet de status nu expliciet terug naar
+   `gesynchroniseerd`.
+3. **`reset()` liep buiten `useSyncStatus` om.** `App.tsx`'s reset-knop ging
+   rechtstreeks naar `repo.reset()`, dus een server-afwijzing van de reset
+   (Rules-weigering, ingetrokken membership) gaf nooit een pending-entry of
+   `actie-nodig`. Nieuwe `SyncStatusApi.resetSettings()` loopt via dezelfde
+   `saveSettings`-tracking.
+4. **Geen bescherming tegen state-updates na unmount.** Een `settled` die
+   nog niet was opgelost op het moment van contextwissel/uitloggen kon
+   minuten later alsnog `setSettingsBgStatus`/`setPendingFor` aanroepen op
+   een ontkoppelde hook-instance. `isMountedRef` bewaakt dit nu.
+5. **Generatieteller per schrijfkind** — nieuw mechanisme dat zowel punt 2's
+   "late afwijzing na dismiss zet pending terug"-variant afvangt als de
+   situatie waarin een nieuwere save de late (afwijzende) uitkomst van een
+   oudere, ingehaalde save irrelevant maakt. Lost NIET het bredere
+   ontwerpvraagstuk van een expliciete merge-wachtrij voor meerdere
+   gelijktijdig-pending writes op (zie punt hieronder) — dat blijft bewust
+   een aparte afweging.
+6. **`onSettingsSync`/`onRosterSync` niet gememoized**, terwijl `App.tsx`'s
+   `eslint-disable`-commentaar ze als "stabiel" beschreef. Nu met
+   `useCallback([])` daadwerkelijk stabiel; commentaar klopt weer.
+7. **Kleinere documentatiepunten**: `domain/syncState.ts`'s "settled reject
+   nooit"-claim preciezer toegelicht (contract, niet SDK-garantie);
+   `FirestoreSettingsRepository.write()`'s hardcoded `ok:true` van
+   commentaar voorzien (het `ok:false`-pad is reëel voor
+   `LocalAsyncSettingsRepository`, niet voor de Firestore-adapter zelf).
+
+Zeven nieuwe unit tests dekken punt 2–5 direct (`tests/unit/useSyncStatus.spec.ts`);
+alle 217 unit tests (was 212) slagen.
+
+**Bewust NIET nu opgepakt, met reden:**
+
+- **Stale listener na initiële load** (reviewpunt 8): als de
+  `subscribe()`-listener na de eerste succesvolle load faalt, blijft de
+  gebruiker op verouderde data zonder foutmelding zitten — `App.tsx`'s
+  `uncachedOffline`-pad dekt dit niet (dat vereist `settings===null`, wat na
+  een geslaagde initiële load niet meer zo is). Pre-existing (niet door
+  deze PR geïntroduceerd, wel potentieel erger zichtbaar nu de indicator
+  vaker "gesynchroniseerd" toont dankzij punt 2/5 hierboven). Vereist een
+  eigen ontwerp (bijv. een losstaande "verbinding verloren"-indicator in
+  SessionBar) — follow-up vóór brede pilot-uitrol, niet vóór deze merge.
+- **Meerdere gelijktijdig-pending writes / retry-datarisico** (reviewpunt
+  9): de generatieteller (punt 5) maakt het gangbare geval veilig (een
+  latere volledige-documentwrite draagt de inhoud van een eerdere, nog niet
+  bevestigde write al mee, omdat de UI de payload uit de actuele
+  in-memory-staat opbouwt), maar lost het bredere ontwerpvraagstuk van een
+  expliciete merge-/wachtrijstrategie voor meerdere writes niet op. Vereist
+  een eigen productbeslissing (queue vs. laatste-wint-semantiek), geen
+  losse bugfix — follow-up, niet vóór deze merge.
+
+Beide bewust-niet-opgepakte punten zijn hiermee, in lijn met de vraag van de
+reviewer, expliciet en op één centrale plek vastgelegd in plaats van
+stilzwijgend te blijven liggen.

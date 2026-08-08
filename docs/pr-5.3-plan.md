@@ -151,13 +151,31 @@ Risico: nieuwe UI met eigen toetsenbord/a11y-eisen — bestaande `jsx-a11y` lint
 
 Doel: de vier acceptatiecriteria automatisch in de bestaande `v2-e2e`-CI-job bewijzen — **PR 5.3 is pas voltooid als deze groen zijn**.
 
-**Status (aug. 2026): test 3 faalt bewust en zichtbaar, gate blijft OPEN.**
-Zie `docs/pr-5.3d-onderzoeksrapport.md` voor het volledige onderzoek: een
-geverifieerde, herhaalbare hang van Firestore's `getDocFromCache()`/
-`onSnapshot` op een document met een openstaande offline-mutatie, los van het
-(inmiddels gecorrigeerde) schrijfcontract — inclusief het handmatige
-mobiele-apparaatprotocol dat nog moet worden uitgevoerd voordat deze gate
-gesloten kan worden.
+**Status (8 aug. 2026): gate gesloten op VERKLEINDE scope — eigenaarsbesluit
+door camilovtrijp-coder in PR #36.** Zie `docs/pr-5.3d-onderzoeksrapport.md`
+(met name §H/§I) voor het volledige onderzoek. Samengevat:
+
+- Criterium 3 uit issue #27 ("offline wijziging na reload blijft lokaal
+  beschikbaar en synchroniseert na reconnect exact eenmaal") is opgesplitst.
+  Automatisch bewezen in CI: **offline write → reconnect → tweede cliënt
+  ziet de servervaarde**. NIET meer automatisch getest: de specifieke
+  combinatie **"offline schrijven + herladen terwijl nog offline met die
+  write nog pending"** — die combinatie triggerde een geverifieerde,
+  herhaalbare hang van Firestore's `getDocFromCache()`/`onSnapshot` op een
+  document met een openstaande offline-mutatie (rapport §A).
+- Een handmatig protocol op een echt apparaat (Windows-laptop, genuine
+  OS-netwerkonderbreking via vliegtuigmodus, tegen de Firestore-emulator,
+  2/2 schone runs — rapport §H) toonde **geen enkele hang** bij exact die
+  combinatie. Dat wijst op een Playwright/CDP-specifiek testartefact, niet
+  op een reëel productrisico — vandaar het besluit om #27 op deze scope te
+  sluiten in plaats van het zwaardere ADR/IndexedDB-outbox-traject (rapport
+  §G) te starten.
+- **Expliciet NIET gevalideerd:** mobiele apparaatklasse (getest: laptop),
+  productie-Firestore (getest: emulator), en de reload-combinatie op een
+  ander platform dan Windows. Dat blijft een openstaande vervolgactie —
+  zie rapport §H "Beperkingen" — voordat #27 als volledig, zonder enige
+  restrictie, gesloten mag gelden. Test 1/2 blijven de "offline reload van
+  gecachte, niet-pending data werkt" garantie los daarvan dekken.
 
 Achtergrond uit SPIKE_REPORT §8: de spike bewees offline-edit/reconnect/tweede-cliënt alleen binnen één paginasessie. Een volledige page-reload terwijl offline vereist een PWA-capabele testbuild — dat is precies wat `v2-e2e` al doet (`npm run build` + `npm run preview:e2e` met `injectManifest`-SW uit PR 3.2a). **Geen CI-wijziging nodig**; alleen nieuwe tests in de bestaande job.
 

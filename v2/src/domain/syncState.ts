@@ -41,7 +41,11 @@ export function deriveSyncState(meta: {
 // FirestoreSettingsRepository.subscribe()). write() retourneert daarom
 // meteen het lokale resultaat (`ok`/`syncState`) plus een apart `settled`-
 // Promise voor wie de uiteindelijke serverbevestiging wél wil afwachten.
-// `settled` REJECT NOOIT — een afgewezen write wordt vertaald naar
+// `settled` is een `Promise<WriteSettled>` die NOOIT reject — dat is een
+// garantie van dít contract (elke adapter's write() moet setDoc()/
+// gelijkwaardige serverbevestiging zelf in een .then()-paar vangen, zie
+// FirestoreSettingsRepository.write()), niet iets dat de onderliggende
+// SDK-call uit zichzelf biedt. Een afwijzing wordt vertaald naar
 // `{ok:false, error}`, zodat een aanroeper 'm zonder eigen try/catch kan
 // negeren zonder een unhandled rejection te riskeren.
 export interface WriteSettled {

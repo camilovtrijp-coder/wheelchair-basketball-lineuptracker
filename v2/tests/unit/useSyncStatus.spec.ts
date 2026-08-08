@@ -278,6 +278,147 @@ describe('useSyncStatus (PR 5.3c-2, schrijfcontract herzien in 5.3d)', () => {
     expect(write).toHaveBeenCalledTimes(1);
   });
 
+  // Onafhankelijke review op PR #36 (8 aug. 2026), punt 2: dismiss() liet de
+  // bg-status voorheen ongemoeid, waardoor de indicator op
+  // 'wacht-op-synchronisatie' bleef staan nadat de gebruiker een geweigerde
+  // write had genegeerd — terwijl er niets meer openstond.
+  it('dismiss() zet de status terug naar gesynchroniseerd, niet blijven hangen op wacht-op-synchronisatie', async () => {
+    const write = vi.fn(async () => ({
+      ok: true,
+      syncState: PENDING,
+      settled: settledOk(false, new Error('nope')),
+    }));
+    const { result } = renderHook(() =>
+      useSyncStatus({ settings: fakeSettingsRepo(write), roster: fakeRosterRepo() }),
+    );
+    await act(async () => {
+      await result.current.saveSettings({ ...DEFAULT_SETTINGS, teamName: 'X' });
+    });
+    await flushMicrotasks();
+    expect(result.current.status).toBe('actie-nodig');
+
+    act(() => result.current.dismiss('settings'));
+    expect(result.current.status).toBe('gesynchroniseerd');
+  });
+
+  // Punt 7.6 uit dezelfde review: als settled pas ná dismiss() alsnog
+  // {ok:false} oplevert, mag dat de net opgeruimde pending-entry niet
+  // terugzetten (flicker/verrassing voor de gebruiker die net "Negeren"
+  // koos).
+  it('een late settled-afwijzing na dismiss() zet de pending-entry niet terug', async () => {
+    let resolveSettled!: (value: { ok: boolean; error?: unknown }) => void;
+    const settled = new Promise<{ ok: boolean; error?: unknown }>((resolve) => {
+      resolveSettled = resolve;
+    });
+    const write = vi.fn(async () => ({ ok: true, syncState: PENDING, settled }));
+    const { result } = renderHook(() =>
+      useSyncStatus({ settings: fakeSettingsRepo(write), roster: fakeRosterRepo() }),
+    );
+    await act(async () => {
+      await result.current.saveSettings({ ...DEFAULT_SETTINGS });
+    });
+    expect(result.current.status).toBe('wacht-op-synchronisatie');
+
+    act(() => result.current.dismiss('settings'));
+    expect(result.current.pending).toEqual([]);
+    expect(result.current.status).toBe('gesynchroniseerd');
+
+    await act(async () => {
+      resolveSettled({ ok: false, error: new Error('te laat') });
+      await Promise.resolve();
+    });
+    expect(result.current.pending).toEqual([]);
+    expect(result.current.status).toBe('gesynchroniseerd');
+  });
+
+  // Punt 4 uit dezelfde review: geen state-update meer op een reeds
+  // ontkoppelde hook-instance (bijv. na contextwissel/uitloggen terwijl
+  // settled nog niet is opgelost).
+  it('een settled die pas na unmount oplevert, veroorzaakt geen state-update meer', async () => {
+    let resolveSettled!: (value: { ok: boolean; error?: unknown }) => void;
+    const settled = new Promise<{ ok: boolean; error?: unknown }>((resolve) => {
+      resolveSettled = resolve;
+    });
+    const write = vi.fn(async () => ({ ok: true, syncState: PENDING, settled }));
+    const { result, unmount } = renderHook(() =>
+      useSyncStatus({ settings: fakeSettingsRepo(write), roster: fakeRosterRepo() }),
+    );
+    await act(async () => {
+      await result.current.saveSettings({ ...DEFAULT_SETTINGS });
+    });
+    expect(result.current.status).toBe('wacht-op-synchronisatie');
+
+    unmount();
+    // Mag niet gooien/waarschuwen door een setState op een ontkoppelde hook.
+    await act(async () => {
+      resolveSettled({ ok: false, error: new Error('na unmount') });
+      await Promise.resolve();
+    });
+  });
+
+  // Punt 7.4/9 uit dezelfde review: een nieuwere save voor hetzelfde kind
+  // "wint" — de late uitkomst van een oudere, inmiddels ingehaalde save
+  // wordt genegeerd (zie het headercommentaar in useSyncStatus.ts voor de
+  // volledige rationale).
+  it('een nieuwere save maakt de late (afwijzende) uitkomst van een oudere save irrelevant', async () => {
+    let resolveFirstSettled!: (value: { ok: boolean; error?: unknown }) => void;
+    const firstSettled = new Promise<{ ok: boolean; error?: unknown }>((resolve) => {
+      resolveFirstSettled = resolve;
+    });
+    const write = vi
+      .fn()
+      .mockResolvedValueOnce({ ok: true, syncState: PENDING, settled: firstSettled })
+      .mockResolvedValueOnce({ ok: true, syncState: PENDING, settled: settledOk(true) });
+    const { result } = renderHook(() =>
+      useSyncStatus({ settings: fakeSettingsRepo(write), roster: fakeRosterRepo() }),
+    );
+
+    await act(async () => {
+      await result.current.saveSettings({ ...DEFAULT_SETTINGS, teamName: 'A' });
+    });
+    // Tweede (nieuwere) save start vóórdat de eerste settled is.
+    await act(async () => {
+      await result.current.saveSettings({ ...DEFAULT_SETTINGS, teamName: 'B' });
+    });
+    await flushMicrotasks();
+    expect(result.current.status).toBe('gesynchroniseerd');
+    expect(result.current.pending).toEqual([]);
+
+    // De EERSTE save's settled levert alsnog een afwijzing op — mag de
+    // inmiddels succesvol bevestigde tweede save niet meer overschrijven.
+    await act(async () => {
+      resolveFirstSettled({ ok: false, error: new Error('te laat, ingehaald') });
+      await Promise.resolve();
+    });
+    expect(result.current.pending).toEqual([]);
+    expect(result.current.status).toBe('gesynchroniseerd');
+  });
+
+  // Punt 3 uit dezelfde review: reset() liep voorheen buiten useSyncStatus
+  // om (rechtstreeks repo.reset()), dus een server-afwijzing van de reset
+  // kreeg nooit een pending-entry/actie-nodig. resetSettings() loopt nu via
+  // saveSettings, dus dezelfde afhandeling geldt.
+  it('resetSettings() geeft de defaults terug en registreert een afwijzing net als saveSettings', async () => {
+    const write = vi.fn(async () => ({
+      ok: true,
+      syncState: PENDING,
+      settled: settledOk(false, new Error('reset geweigerd')),
+    }));
+    const { result } = renderHook(() =>
+      useSyncStatus({ settings: fakeSettingsRepo(write), roster: fakeRosterRepo() }),
+    );
+    let defaults!: typeof DEFAULT_SETTINGS;
+    await act(async () => {
+      defaults = await result.current.resetSettings();
+    });
+    expect(defaults).toEqual(DEFAULT_SETTINGS);
+    expect(write).toHaveBeenCalledWith(DEFAULT_SETTINGS);
+
+    await flushMicrotasks();
+    expect(result.current.status).toBe('actie-nodig');
+    expect(result.current.pending).toEqual([{ kind: 'settings', payload: DEFAULT_SETTINGS }]);
+  });
+
   it('settings en roster hebben onafhankelijke pending-items', async () => {
     const settingsWrite = vi.fn(async () => ({
       ok: true,
