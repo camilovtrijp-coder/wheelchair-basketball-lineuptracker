@@ -17,7 +17,10 @@ import type { OrganizationRole } from '../../src/domain/organizations/types';
 
 const PASSWORD = 'RoleMatrix123!';
 
-type UiRole = Extract<OrganizationRole, 'organizationOwner' | 'organizationAdmin' | 'coach' | 'scorer' | 'viewer'>;
+type UiRole = Extract<
+  OrganizationRole,
+  'organizationOwner' | 'organizationAdmin' | 'coach' | 'scorer' | 'viewer'
+>;
 const UI_ROLES: ReadonlyArray<UiRole> = [
   'organizationOwner',
   'organizationAdmin',
