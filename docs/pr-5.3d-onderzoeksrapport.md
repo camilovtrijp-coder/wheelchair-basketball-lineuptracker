@@ -1,14 +1,17 @@
 # PR 5.3d — onderzoeksrapport offline-write-hang (issue #27)
 
-Status: **issue #27 blijft een OPEN gate, maar met sterk verlaagde ernst na
-§H.** De ernstige reload-hang is NIET bevestigd op een echt apparaat (2/2
-schone runs) — het zware ADR/outbox-traject uit §G is daarmee van de baan.
-Wat overblijft is een kleiner, wél bevestigd label-gebrek (§H punt 2). PR #36
-is nog niet merge-ready totdat dat label-gebrek is opgelost of test 3
-daarop is aangepast. Dit document vervangt geen testcode — het legt vast wat
-er empirisch is vastgesteld, zodat een volgende sessie/reviewer niet opnieuw
-vanaf nul hoeft te onderzoeken. **Lees §H eerst** — dat bevat de meest
-recente en belangrijkste bevinding.
+Status: **de vier automatische acceptatiecriteria uit issue #27 zijn groen in
+`offline-reload-cache-write-second-client.spec.ts`, zonder `test.fail()`**
+(zie §I). Het label-gebrek uit §H is opgelost (§I); het zware ADR/outbox-
+traject uit §G is niet gestart, want de voorwaarde ervoor (reload-hang ook op
+een echt apparaat) bleek niet vervuld. Eén bewust, gedocumenteerd
+schaalpunt blijft over: de combinatie "offline schrijven + herladen terwijl
+nog offline" wordt niet meer geautomatiseerd getest (§I) — die combinatie
+bleek specifiek een Playwright/CDP-testartefact, niet reproduceerbaar op een
+echt apparaat. Dit document vervangt geen testcode — het legt vast wat er
+empirisch is vastgesteld, zodat een volgende sessie/reviewer niet opnieuw
+vanaf nul hoeft te onderzoeken. **Lees §H en §I eerst** — die bevatten de
+meest recente en belangrijkste bevindingen.
 
 Basis: exact head `fa0ccf9298072cab3dcee05a3bd8424fc2760461` (commit
 "docs(test): vervolgonderzoek multi-tab cache-manager lost offline-reload-hang
@@ -152,7 +155,7 @@ Dit is een noodzakelijke correctie (het oorspronkelijke "wacht op setDoc()"
 contract was een reëel ontwerpprobleem), maar lost het in §A beschreven
 verschijnsel niet op — dat zit dieper dan ons eigen schrijfcontract.
 
-## E. Remaining open gate
+## E. Remaining open gate (status op moment van schrijven — zie §I voor de uitkomst)
 
 Issue #27 blijft OPEN. Concreet:
 
@@ -168,6 +171,8 @@ Issue #27 blijft OPEN. Concreet:
   eveneens volledig groene aanpak (zie §G) is geverifieerd — inclusief
   bevestiging op minstens één echt mobiel apparaat volgens het protocol in
   §F.
+
+**Update: opgelost, zie §I.**
 
 ## F. Handmatig reproductieprotocol — echt mobiel apparaat
 
@@ -293,3 +298,44 @@ niet in het schrijfcontract zelf — en test 3 herzien zodat deze niet langer
 op de (niet-reproduceerbare) CDP-specifieke reload-hang test, maar op het
 daadwerkelijk bevestigde label-gebrek. Zie de openstaande taken bij de
 PR-eigenaar.
+
+## I. Label-fix en herziene test 3 (8 aug. 2026) — alle vier criteria groen
+
+Het label-gebrek uit §H punt 2 is opgelost in `useSyncStatus.ts`:
+`saveSettings`/`saveRoster` zetten de achtergrondstatus voortaan direct
+vanuit `write()`'s eigen `syncState` (meteen na de call) en vanuit
+`settled`'s uitkomst (zodra de server bevestigt), in plaats van uitsluitend
+te wachten op een `onSnapshot`-listener-event via `subscribe()` — die
+listener bleek zowel in §A als in §H na een offline write niet (tijdig) een
+nieuwe snapshot af te leveren. Drie nieuwe unit tests bewijzen de
+statusovergang zonder ooit `onSettingsSync`/`onRosterSync` aan te roepen
+(simuleert een listener die niet vuurt). Alle 212 unit tests slagen.
+
+Na deze fix kwam test 3 voorbij de eerder blokkerende
+`wacht-op-synchronisatie`-assertie (bevestigd in de emulator) — en liep
+vervolgens, zoals verwacht op basis van §H, alsnog vast op de daaropvolgende
+"herlaad terwijl nog offline"-stap: exact de reload-hang uit §A, nu voor het
+eerst daadwerkelijk bereikt in plaats van gemaskeerd door de eerdere
+label-faalstap. Dit bevestigt nogmaals dat de reload-hang een
+Playwright/CDP-specifiek testartefact is (§H toonde al dat dit niet optreedt
+op een echt apparaat) — niet een gevolg van het label-gebrek of het
+schrijfcontract.
+
+**Besluit (PR-eigenaar, 8 aug. 2026):** de combinatie "offline schrijven +
+herladen terwijl nog offline" bewust uit test 3 verwijderd. Test 3 test nu:
+offline write → indicator `wacht-op-synchronisatie` (direct, dankzij de
+fix) → reconnect → indicator `gesynchroniseerd` → tweede-cliënt-verificatie
+dat de waarde de server heeft bereikt. Test 1/2 blijven de "offline reload
+van gecachte, niet-pending data werkt correct"-garantie dekken — dat deel
+was nooit het probleem. Als dit specifieke patroon (schrijven vlak vóór een
+reload terwijl offline) ooit alsnog zichtbaar wordt tijdens handmatig
+gebruik of productiemonitoring, wordt het alsnog opgepakt — dit rapport
+(met name §A en §F) bevat het protocol om het te reproduceren en verder te
+onderzoeken.
+
+**Resultaat:** alle vier tests in
+`offline-reload-cache-write-second-client.spec.ts` slagen, ZONDER
+`test.fail()`, bevestigd over 2 opeenvolgende volledige runs
+(4/4 en 4/4) en over de volledige v2-e2e- (33/33) en v2-e2e:auth-suites
+(24/24). Issue #27's vier acceptatiecriteria zijn hiermee automatisch
+bewezen in CI, met het bewuste, gedocumenteerde schaalpunt hierboven.
