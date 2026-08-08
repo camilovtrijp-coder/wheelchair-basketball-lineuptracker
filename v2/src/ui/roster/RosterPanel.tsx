@@ -27,6 +27,12 @@ export interface RosterPanelProps {
    * 'm gevuld (PR 5.3c-1).
    */
   onCloudMigrate?: () => Promise<{ ok: boolean; errors: string[] }>;
+  /**
+   * PR 5.4a: of deze gebruiker teamdata mag bewerken. `false` disablet save/
+   * add/remove/toggle-knoppen, maakt de speler-inputs readOnly, en toont
+   * een korte "Alleen-lezen"-indicator.
+   */
+  canWrite: boolean;
 }
 
 function t(lang: Lang, key: StringKey): string {
@@ -44,6 +50,7 @@ export function RosterPanel({
   tag1Label,
   tag2Label,
   onCloudMigrate,
+  canWrite,
 }: RosterPanelProps) {
   const [error, setError] = useState<string | null>(null);
   const dupNrs = findDuplicateNumbers(roster);
@@ -92,6 +99,7 @@ export function RosterPanel({
                     inputMode="numeric"
                     className={dup ? 'roster-nr-input roster-nr-input--dup' : 'roster-nr-input'}
                     value={p.nr}
+                    readOnly={!canWrite}
                     data-testid={`roster-nr-${p.id}`}
                     onChange={(e) => handleField(p.id, 'nr', (e.target as HTMLInputElement).value)}
                   />
@@ -101,6 +109,7 @@ export function RosterPanel({
                   <input
                     type="text"
                     value={p.naam}
+                    readOnly={!canWrite}
                     data-testid={`roster-naam-${p.id}`}
                     onChange={(e) =>
                       handleField(p.id, 'naam', (e.target as HTMLInputElement).value)
@@ -112,6 +121,7 @@ export function RosterPanel({
                   className="btn-outline roster-remove-btn"
                   aria-label={t(lang, 'removePlayerBtn')}
                   data-testid={`roster-remove-${p.id}`}
+                  disabled={!canWrite}
                   onClick={() => handleRemove(p.id)}
                 >
                   ✕
@@ -127,6 +137,7 @@ export function RosterPanel({
                       inputMode="decimal"
                       className="roster-kl-input"
                       value={p.kl}
+                      readOnly={!canWrite}
                       data-testid={`roster-kl-${p.id}`}
                       onChange={(e) =>
                         handleField(p.id, 'kl', (e.target as HTMLInputElement).value)
@@ -138,6 +149,7 @@ export function RosterPanel({
                     className={`toggle-btn${p.vrouw ? ' toggle-btn--on' : ''}`}
                     aria-pressed={p.vrouw}
                     data-testid={`roster-vrouw-${p.id}`}
+                    disabled={!canWrite}
                     onClick={() => handleField(p.id, 'vrouw', !p.vrouw)}
                   >
                     {tag1Label}
@@ -147,6 +159,7 @@ export function RosterPanel({
                     className={`toggle-btn${p.jeugd ? ' toggle-btn--on' : ''}`}
                     aria-pressed={p.jeugd}
                     data-testid={`roster-jeugd-${p.id}`}
+                    disabled={!canWrite}
                     onClick={() => handleField(p.id, 'jeugd', !p.jeugd)}
                   >
                     {tag2Label}
@@ -168,6 +181,7 @@ export function RosterPanel({
         type="button"
         className="btn-outline roster-add-btn"
         data-testid="roster-add"
+        disabled={!canWrite}
         onClick={handleAdd}
       >
         {t(lang, 'addPlayerBtn')}
@@ -179,11 +193,18 @@ export function RosterPanel({
         </p>
       ) : null}
 
+      {canWrite ? null : (
+        <p className="settings-read-only" data-testid="roster-read-only" role="status">
+          {t(lang, 'rosterReadOnly')}
+        </p>
+      )}
+
       <div className="settings-actions">
         <button
           type="button"
           className="btn-primary"
           data-testid="roster-save"
+          disabled={!canWrite}
           onClick={handleSave}
         >
           {t(lang, 'saveBtn')}

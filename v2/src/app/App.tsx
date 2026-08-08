@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'preact/hooks';
+import { useEffect, useRef, useState } from 'preact/hooks';
 import { browserStorage } from '../i18n/browserStorage';
 import { readLang, writeLang } from '../i18n/persistence';
 import { resolveInitialLang } from '../i18n/detect';
@@ -32,6 +32,16 @@ export interface AppProps {
    * useSyncStatus belandt — zie application/sync/useSyncStatus.ts.
    */
   syncStatus: SyncStatusApi;
+  /**
+   * PR 5.4a: of deze gebruiker teamdata mag bewerken in de UI. Wordt door AuthGate
+   * berekend uit dezelfde validateSelectedTeam()-call als `selectedContextTeamValid`
+   * (geen extra Firestore-read), en doorgegeven aan SettingsPanel/RosterPanel om de
+   * schrijfknoppen te hiden/disablen voor rollen die `canManageTeamData === false` hebben
+   * (spiegelt firestore.rules exact). AuthGate rendert `App` uitsluitend in de
+   * 'active'-state (een gevalideerde cloud-teamcontext), dus deze prop is in de
+   * praktijk altijd de cloud-berekening uit `selectedContextCanWrite`.
+   */
+  canWrite: boolean;
 }
 
 type Tab = 'settings' | 'roster';
@@ -64,7 +74,7 @@ const v1RosterRepo = new LocalStorageRosterRepository(browserStorage);
 // wordt toegeschreven zonder onderscheid tussen de vier mogelijke oorzaken.
 const STEP_STALL_TIMEOUT_MS = 8000;
 
-export function App({ repositories, syncStatus }: AppProps) {
+export function App({ repositories, syncStatus, canWrite }: AppProps) {
   const [lang, setLang] = useState<Lang>(initialLang);
   const [tab, setTab] = useState<Tab>('settings');
   const [settings, setSettings] = useState<(Settings & Record<string, unknown>) | null>(null);
@@ -79,6 +89,20 @@ export function App({ repositories, syncStatus }: AppProps) {
   // een leeg team tonen. subscribe()'s onError-pad krijgt dezelfde
   // afhandeling voor het geval de listener zelf faalt.
   const [uncachedOffline, setUncachedOffline] = useState(false);
+  // PR 5.4a: een listener die NA de initiële load faalt (settings of roster niet
+  // meer null, dus markUncachedOffline slaat niet aan) wordt hier vastgelegd en
+  // levert een niet-blokkerende "Verbinding weggevallen"-indicator op. Wordt
+  // automatisch gereset door de volgende succesvolle onNext-emit (canonieke
+  // Firestore-SDK-gedraging: onError wordt één keer aangeroepen, daarna hervat
+  // de listener bij de volgende serververbinding).
+  const [listenerError, setListenerError] = useState<'settings' | 'roster' | null>(null);
+  // PR 5.4a: de onError-callbacks van subscribe() worden asynchroon aangeroepen,
+  // ver na het moment waarop dit effect zijn closure vastlegde. Om te beslissen
+  // of een fout "vóór of ná de eerste load" viel, vergelijken we niet met de
+  // gesloten-over `settings`/`roster` (stale), maar met refs die de actuele
+  // state spiegelen — bijgewerkt in elke onNext en in de read()-handlers.
+  const settingsLoadedRef = useRef(false);
+  const rosterLoadedRef = useRef(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -86,6 +110,9 @@ export function App({ repositories, syncStatus }: AppProps) {
     setRoster(null);
     setStalledSteps([]);
     setUncachedOffline(false);
+    setListenerError(null);
+    settingsLoadedRef.current = false;
+    rosterLoadedRef.current = false;
 
     const timers = new Map<string, ReturnType<typeof setTimeout>>();
     function armStallTimer(step: string) {
@@ -129,6 +156,7 @@ export function App({ repositories, syncStatus }: AppProps) {
         if (cancelled) return;
         disarmStallTimer('settings-read');
         setSettings(s);
+        settingsLoadedRef.current = true;
       },
       () => markUncachedOffline('settings-read'),
     );
@@ -139,6 +167,7 @@ export function App({ repositories, syncStatus }: AppProps) {
         if (cancelled) return;
         disarmStallTimer('roster-read');
         setRoster(r);
+        rosterLoadedRef.current = true;
       },
       () => markUncachedOffline('roster-read'),
     );
@@ -149,9 +178,28 @@ export function App({ repositories, syncStatus }: AppProps) {
         if (cancelled) return;
         disarmStallTimer('settings-listener');
         setSettings(s);
+        settingsLoadedRef.current = true;
         syncStatus.onSettingsSync(sync);
+        // PR 5.4a: een geslaagde listener-emit ruimt een eventuele eerdere
+        // listener-foutmelding op (canonieke Firestore-gedraging: onError
+        // wordt één keer aangeroepen, daarna hervat de listener).
+        setListenerError((prev) => (prev === 'settings' ? null : prev));
       },
-      () => markUncachedOffline('settings-listener'),
+      () => {
+        // PR 5.4a: onderscheid tussen pre-load en post-load fout. Tijdens de
+        // eerste load (settings nog niet geladen) gedragen we ons als voorheen
+        // (markUncachedOffline → OfflineUncachedScreen). Na een geslaagde
+        // eerste load toont een listener-fout alleen de niet-blokkerende
+        // indicator — de data op het scherm blijft de laatst geziene waarde.
+        // settingsLoadedRef ipv de gesloten-over `settings` (stale closure).
+        if (cancelled) return;
+        disarmStallTimer('settings-listener');
+        if (!settingsLoadedRef.current) {
+          setUncachedOffline(true);
+        } else {
+          setListenerError('settings');
+        }
+      },
     );
 
     armStallTimer('roster-listener');
@@ -160,9 +208,19 @@ export function App({ repositories, syncStatus }: AppProps) {
         if (cancelled) return;
         disarmStallTimer('roster-listener');
         setRoster(r);
+        rosterLoadedRef.current = true;
         syncStatus.onRosterSync(sync);
+        setListenerError((prev) => (prev === 'roster' ? null : prev));
       },
-      () => markUncachedOffline('roster-listener'),
+      () => {
+        if (cancelled) return;
+        disarmStallTimer('roster-listener');
+        if (!rosterLoadedRef.current) {
+          setUncachedOffline(true);
+        } else {
+          setListenerError('roster');
+        }
+      },
     );
 
     return () => {
@@ -242,6 +300,16 @@ export function App({ repositories, syncStatus }: AppProps) {
       </nav>
 
       <main className="app-main">
+        {repositories.mode === 'cloud' && listenerError !== null ? (
+          <p
+            className="listener-error-indicator"
+            data-testid="listener-error-indicator"
+            role="status"
+            aria-live="polite"
+          >
+            {t('listenerErrorIndicator')}
+          </p>
+        ) : null}
         {tab === 'settings' ? (
           <SettingsPanel
             lang={lang}
@@ -252,6 +320,7 @@ export function App({ repositories, syncStatus }: AppProps) {
             onReset={syncStatus.resetSettings}
             onRefresh={() => getSettingsAsync(repositories.settings)}
             onCloudMigrate={repositories.mode === 'cloud' ? handleCloudMigrateSettings : undefined}
+            canWrite={canWrite}
           />
         ) : (
           <RosterPanel
@@ -265,6 +334,7 @@ export function App({ repositories, syncStatus }: AppProps) {
             tag1Label={tag1Label}
             tag2Label={tag2Label}
             onCloudMigrate={repositories.mode === 'cloud' ? handleCloudMigrateRoster : undefined}
+            canWrite={canWrite}
           />
         )}
       </main>

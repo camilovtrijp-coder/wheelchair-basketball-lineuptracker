@@ -139,6 +139,16 @@ const nl = {
   actionNeededRetryBtn: 'Opnieuw proberen',
   actionNeededDismissBtn: 'Negeren',
   actionNeededExportBtn: 'Exporteren',
+
+  // PR 5.4a: rol-grens in de UI. Getoond door SettingsPanel/RosterPanel wanneer
+  // canWrite=false (scorer/viewer, of een cloud-fail-open default). Bewust kort:
+  // de disabled-knoppen + deze mededeling zijn het hele signaal.
+  settingsReadOnly: 'Alleen-lezen',
+  rosterReadOnly: 'Alleen-lezen',
+  // Niet-blokkerende indicator wanneer een settings-/roster-listener na de
+  // initiële load faalt. De data blijft de laatst geziene waarde; de
+  // gebruiker kan handmatig refreshen.
+  listenerErrorIndicator: 'Verbinding met cloud weggevallen',
 } as const;
 
 const en = {
@@ -272,6 +282,12 @@ const en = {
   actionNeededRetryBtn: 'Retry',
   actionNeededDismissBtn: 'Dismiss',
   actionNeededExportBtn: 'Export',
+
+  // PR 5.4a: role-gate read-only indicator and non-blocking cloud-connection-lost
+  // signal. See NL block for full rationale.
+  settingsReadOnly: 'Read-only',
+  rosterReadOnly: 'Read-only',
+  listenerErrorIndicator: 'Cloud connection lost',
 } as const;
 
 export const STRINGS = { nl, en } as const;

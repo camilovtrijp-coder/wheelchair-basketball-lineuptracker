@@ -14,6 +14,17 @@ export interface OperationResult<T = undefined> {
   value?: T;
 }
 
+/**
+ * Resultaat van `validateSelectedTeam()`. `valid` bepaalt of de geselecteerde
+ * context nog bruikbaar is (bestaat-team + aantoonbare toegang); `canManageTeamData`
+ * geeft aan of deze gebruiker in de UI schrijfknoppen te zien krijgt. Worden in
+ * dezelfde Firestore-read afgeleid (zie FirestoreOrganizationGateway.validateSelectedTeam).
+ */
+export interface TeamValidationResult {
+  valid: boolean;
+  canManageTeamData: boolean;
+}
+
 export interface OrganizationGateway {
   /** De enige toegestane query voor "al mijn organisatielidmaatschappen" (zie firebase/docs/QUERY_CONTRACT.md). */
   listMyMemberships(): Promise<Membership[]>;
@@ -42,12 +53,24 @@ export interface OrganizationGateway {
     teamId: string,
     orgRole: OrganizationRole | null,
   ): Promise<TeamAccess>;
-  /** Bestaat het team nog en heeft deze gebruiker er nog aantoonbaar toegang toe? */
+  /**
+   * Hervalideert een eerder gekozen (bijv. uit localStorage herstelde) context: bestaat het
+   * team nog, en heeft deze gebruiker er nog aantoonbaar toegang toe (owner/admin impliciet,
+   * anders een expliciet teamMembers-document)? `deriveAppState` gebruikt `valid` om ook
+   * team-niveau-intrekking te detecteren — puur organisatielidmaatschap alleen (het eerdere
+   * gedrag) miste een ingetrokken, verwijderd of via localStorage vervalst `teamId`.
+   *
+   * `canManageTeamData` wordt door AuthGate doorgegeven aan `App`/`SettingsPanel`/`RosterPanel`
+   * om de UI-schrijfknoppen te hiden/disablen voor rollen die geen teamdata mogen bewerken
+   * (spiegelt firestore.rules' canManageTeamData/teamRole exact — zie PR 5.4a). Wordt in
+   * dezelfde call afgeleid als `valid` (uit dezelfde getMyTeamAccess()-read), dus zonder
+   * extra Firestore-read.
+   */
   validateSelectedTeam(
     orgId: string,
     teamId: string,
     orgRole: OrganizationRole | null,
-  ): Promise<boolean>;
+  ): Promise<TeamValidationResult>;
   /** `null` als de uitnodiging niet bestaat, of niet leesbaar is voor de ingelogde gebruiker. */
   getInvitationByLink(orgId: string, invitationId: string): Promise<Invitation | null>;
   acceptInvitation(orgId: string, invitationId: string): Promise<OperationResult>;

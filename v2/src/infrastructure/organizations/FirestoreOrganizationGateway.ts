@@ -239,9 +239,14 @@ export class FirestoreOrganizationGateway implements OrganizationGateway {
   /**
    * Hervalideert een eerder gekozen (bijv. uit localStorage herstelde) context: bestaat het
    * team nog, en heeft deze gebruiker er nog aantoonbaar toegang toe (owner/admin impliciet,
-   * anders een expliciet teamMembers-document)? `deriveAppState` gebruikt dit om ook
+   * anders een expliciet teamMembers-document)? `deriveAppState` gebruikt `valid` om ook
    * team-niveau-intrekking te detecteren — puur organisatielidmaatschap alleen (het eerdere
    * gedrag) miste een ingetrokken, verwijderd of via localStorage vervalst `teamId`.
+   * `canManageTeamData` wordt door AuthGate doorgegeven aan `App`/`SettingsPanel`/`RosterPanel`
+   * om de UI-schrijfknoppen te hiden/disablen voor rollen die geen teamdata mogen bewerken
+   * (spiegelt firestore.rules' canManageTeamData/teamRole exact — zie PR 5.4a). Wordt in
+   * dezelfde call afgeleid als `valid` (uit dezelfde getMyTeamAccess()-read), dus zonder
+   * extra Firestore-read.
    *
    * Bij een genuine online controle gooien deze reads nooit een fout: zodra het
    * organisatiemembership al bevestigd is (voorwaarde om deze functie aan te roepen), staat
@@ -250,24 +255,26 @@ export class FirestoreOrganizationGateway implements OrganizationGateway {
    * exception. Een exception hier betekent dus specifiek "geen (cache-)antwoord beschikbaar"
    * (bijv. offline zonder gecachete respons voor dit specifieke document) — dat NIET als
    * "ingetrokken" behandelen zou een eerder geldige, gecachete context bij elke offline reload
-   * laten afketsen, in strijd met ADR-002's offline-first-uitgangspunt. Fail open (nog geldig
-   * totdat het tegendeel online bewezen is), net als `listMyMemberships()`'s netwerkfout-pad
-   * hierboven `memberships` op `null` laat i.p.v. op een lege lijst te zetten.
+   * laten afketsen, in strijd met ADR-002's offline-first-uitgangspunt. Fail open voor `valid`
+   * (nog geldig totdat het tegendeel online bewezen is), maar conservatief `false` voor
+   * `canManageTeamData` — we verlenen geen UI-schrijftoegang als we de rol niet kunnen
+   * bevestigen. De backend Rules handhaven de echte authorisatie sowieso; een eventuele
+   * write-poging via een onjuist-positieve UI-state zou als `actie-nodig` eindigen.
    */
   async validateSelectedTeam(
     orgId: string,
     teamId: string,
     orgRole: OrganizationRole | null,
-  ): Promise<boolean> {
+  ): Promise<{ valid: boolean; canManageTeamData: boolean }> {
     try {
       const teamSnapshot = await getDoc(
         teamRef(this.db, orgId, teamId).withConverter(teamConverter),
       );
-      if (!teamSnapshot.exists()) return false;
+      if (!teamSnapshot.exists()) return { valid: false, canManageTeamData: false };
       const access = await this.getMyTeamAccess(orgId, teamId, orgRole);
-      return access.isExplicitlyAuthorized;
+      return { valid: access.isExplicitlyAuthorized, canManageTeamData: access.canManageTeamData };
     } catch {
-      return true;
+      return { valid: true, canManageTeamData: false };
     }
   }
 

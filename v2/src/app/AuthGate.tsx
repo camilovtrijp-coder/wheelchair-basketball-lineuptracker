@@ -91,6 +91,11 @@ export function AuthGate({ authGateway }: AuthGateProps) {
     readSelectedContext(browserStorage),
   );
   const [selectedContextTeamValid, setSelectedContextTeamValid] = useState<boolean | null>(null);
+  // PR 5.4a: rol-grens in de UI. Wordt in hetzelfde effect als selectedContextTeamValid
+  // berekend (uit dezelfde validateSelectedTeam()-call), dus zonder extra Firestore-read.
+  // `null` = nog aan het evalueren; in de 'active'-state wordt dit doorgegeven aan
+  // <App canWrite=... /> zodat SettingsPanel/RosterPanel de schrijfknoppen hiden/disablen.
+  const [selectedContextCanWrite, setSelectedContextCanWrite] = useState<boolean | null>(null);
   const [pendingInvitationLink, setPendingInvitationLink] = useState<InvitationLinkParams | null>(
     initialInvitationLink,
   );
@@ -161,24 +166,31 @@ export function AuthGate({ authGateway }: AuthGateProps) {
 
   // Hervalideert de TEAM-kant van een geselecteerde context (zie deriveAppState's
   // selectedContextTeamValid): puur organisatielidmaatschap miste een ingetrokken,
-  // verwijderd of via localStorage vervalst teamId. Draait opnieuw zodra de context
-  // wisselt of memberships verversen (bijv. na een reload).
+  // verwijderd of via localStorage vervalst teamId. Levert daarnaast canManageTeamData
+  // (PR 5.4a) — dezelfde call, geen extra Firestore-read — die de UI gebruikt om
+  // schrijfknoppen te hiden/disablen voor rollen die geen teamdata mogen bewerken.
+  // Draait opnieuw zodra de context wisselt of memberships verversen (bijv. na een reload).
   useEffect(() => {
     if (!organizationGateway || !selectedContext || !memberships) {
       setSelectedContextTeamValid(null);
+      setSelectedContextCanWrite(null);
       return;
     }
     const membership = memberships.find((m) => m.orgId === selectedContext.orgId);
     if (!membership) {
       setSelectedContextTeamValid(null);
+      setSelectedContextCanWrite(null);
       return;
     }
     setSelectedContextTeamValid(null);
+    setSelectedContextCanWrite(null);
     let cancelled = false;
     organizationGateway
       .validateSelectedTeam(selectedContext.orgId, selectedContext.teamId, membership.role)
-      .then((valid) => {
-        if (!cancelled) setSelectedContextTeamValid(valid);
+      .then((result) => {
+        if (cancelled) return;
+        setSelectedContextTeamValid(result.valid);
+        setSelectedContextCanWrite(result.canManageTeamData);
       });
     return () => {
       cancelled = true;
@@ -369,7 +381,11 @@ export function AuthGate({ authGateway }: AuthGateProps) {
               }}
             />
           ) : null}
-          <App repositories={repositories} syncStatus={syncStatus} />
+          <App
+            repositories={repositories}
+            syncStatus={syncStatus}
+            canWrite={selectedContextCanWrite ?? false}
+          />
         </>
       );
   }
