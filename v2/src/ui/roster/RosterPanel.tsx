@@ -194,11 +194,7 @@ export function RosterPanel({
       ) : null}
 
       {canWrite ? null : (
-        <p
-          className="settings-read-only"
-          data-testid="roster-read-only"
-          role="status"
-        >
+        <p className="settings-read-only" data-testid="roster-read-only" role="status">
           {t(lang, 'rosterReadOnly')}
         </p>
       )}

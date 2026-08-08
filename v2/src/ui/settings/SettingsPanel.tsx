@@ -349,11 +349,7 @@ export function SettingsPanel({
       ) : null}
 
       {canWrite ? null : (
-        <p
-          className="settings-read-only"
-          data-testid="settings-read-only"
-          role="status"
-        >
+        <p className="settings-read-only" data-testid="settings-read-only" role="status">
           {t(lang, 'settingsReadOnly')}
         </p>
       )}
@@ -398,7 +394,13 @@ interface ColorPickerRowProps {
   canWrite: boolean;
 }
 
-function ColorPickerRow({ value, onChange, testIdPrefix, customLabel, canWrite }: ColorPickerRowProps) {
+function ColorPickerRow({
+  value,
+  onChange,
+  testIdPrefix,
+  customLabel,
+  canWrite,
+}: ColorPickerRowProps) {
   const ref = useRef<HTMLInputElement | null>(null);
   const current = String(value || '').toLowerCase();
   return (
