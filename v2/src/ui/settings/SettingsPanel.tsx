@@ -34,10 +34,10 @@ export interface SettingsPanelProps {
    */
   onCloudMigrate?: () => Promise<{ ok: boolean; errors: string[] }>;
   /**
-   * PR 5.4a: of deze gebruiker teamdata mag bewerken. `false` disablet de
-   * schrijfknoppen en toont een korte "Alleen-lezen"-indicator. De
-   * refresh-knop blijft enabled (read-only actie). In lokale modus wordt
-   * deze door `App` op `true` gezet.
+   * PR 5.4a: of deze gebruiker teamdata mag bewerken. `false` maakt alle
+   * invoervelden readOnly/disabled, disablet de schrijfknoppen en toont een
+   * korte "Alleen-lezen"-indicator. De refresh-knop blijft enabled
+   * (read-only actie).
    */
   canWrite: boolean;
 }
@@ -115,6 +115,7 @@ export function SettingsPanel({
           <input
             type="text"
             value={settings.teamName as string}
+            readOnly={!canWrite}
             data-testid="settings-teamName"
             onChange={(e) => handleField('teamName', (e.target as HTMLInputElement).value)}
           />
@@ -170,6 +171,7 @@ export function SettingsPanel({
             onChange={(c) => handleField('primaryColor', c)}
             testIdPrefix="primaryColor"
             customLabel={t(lang, 'customColorBtn')}
+            canWrite={canWrite}
           />
         </div>
 
@@ -180,6 +182,7 @@ export function SettingsPanel({
             onChange={(c) => handleField('accentColor', c)}
             testIdPrefix="accentColor"
             customLabel={t(lang, 'customColorBtn')}
+            canWrite={canWrite}
           />
         </div>
       </fieldset>
@@ -195,6 +198,7 @@ export function SettingsPanel({
             max={12}
             step={1}
             value={settings.quarterCount as number}
+            readOnly={!canWrite}
             data-testid="settings-quarterCount"
             onChange={(e) => {
               const raw = Number((e.target as HTMLInputElement).value);
@@ -209,6 +213,7 @@ export function SettingsPanel({
             type="text"
             placeholder={t(lang, 'quarterLabel')}
             value={settings.periodLabel as string}
+            readOnly={!canWrite}
             data-testid="settings-periodLabel"
             onChange={(e) => handleField('periodLabel', (e.target as HTMLInputElement).value)}
           />
@@ -222,6 +227,7 @@ export function SettingsPanel({
           <input
             type="checkbox"
             checked={settings.useClassLimit as boolean}
+            disabled={!canWrite}
             data-testid="settings-useClassLimit"
             onChange={(e) => handleField('useClassLimit', (e.target as HTMLInputElement).checked)}
           />
@@ -239,6 +245,7 @@ export function SettingsPanel({
                   type="text"
                   placeholder={t(lang, 'toggleTag1Default')}
                   value={settings.tag1Label as string}
+                  readOnly={!canWrite}
                   data-testid="settings-tag1Label"
                   onChange={(e) => handleField('tag1Label', (e.target as HTMLInputElement).value)}
                 />
@@ -251,6 +258,7 @@ export function SettingsPanel({
                   type="text"
                   placeholder={t(lang, 'toggleTag2Default')}
                   value={settings.tag2Label as string}
+                  readOnly={!canWrite}
                   data-testid="settings-tag2Label"
                   onChange={(e) => handleField('tag2Label', (e.target as HTMLInputElement).value)}
                 />
@@ -267,6 +275,7 @@ export function SettingsPanel({
                   type="number"
                   step={0.1}
                   value={settings.classBaseLimit as number}
+                  readOnly={!canWrite}
                   data-testid="settings-classBaseLimit"
                   onChange={(e) =>
                     handleField('classBaseLimit', Number((e.target as HTMLInputElement).value))
@@ -279,6 +288,7 @@ export function SettingsPanel({
                   type="number"
                   step={0.1}
                   value={settings.maxBonus as number}
+                  readOnly={!canWrite}
                   data-testid="settings-maxBonus"
                   onChange={(e) =>
                     handleField('maxBonus', Number((e.target as HTMLInputElement).value))
@@ -294,6 +304,7 @@ export function SettingsPanel({
                   type="number"
                   step={0.1}
                   value={settings.bonusTag1Only as number}
+                  readOnly={!canWrite}
                   data-testid="settings-bonusTag1Only"
                   onChange={(e) =>
                     handleField('bonusTag1Only', Number((e.target as HTMLInputElement).value))
@@ -306,6 +317,7 @@ export function SettingsPanel({
                   type="number"
                   step={0.1}
                   value={settings.bonusTag2Only as number}
+                  readOnly={!canWrite}
                   data-testid="settings-bonusTag2Only"
                   onChange={(e) =>
                     handleField('bonusTag2Only', Number((e.target as HTMLInputElement).value))
@@ -318,6 +330,7 @@ export function SettingsPanel({
                   type="number"
                   step={0.1}
                   value={settings.bonusBoth as number}
+                  readOnly={!canWrite}
                   data-testid="settings-bonusBoth"
                   onChange={(e) =>
                     handleField('bonusBoth', Number((e.target as HTMLInputElement).value))
@@ -382,9 +395,10 @@ interface ColorPickerRowProps {
   onChange: (value: string) => void;
   testIdPrefix: string;
   customLabel: string;
+  canWrite: boolean;
 }
 
-function ColorPickerRow({ value, onChange, testIdPrefix, customLabel }: ColorPickerRowProps) {
+function ColorPickerRow({ value, onChange, testIdPrefix, customLabel, canWrite }: ColorPickerRowProps) {
   const ref = useRef<HTMLInputElement | null>(null);
   const current = String(value || '').toLowerCase();
   return (
@@ -399,6 +413,7 @@ function ColorPickerRow({ value, onChange, testIdPrefix, customLabel }: ColorPic
             style={`background:${c}`}
             aria-label={c}
             aria-pressed={selected}
+            disabled={!canWrite}
             data-testid={`${testIdPrefix}-${c.slice(1)}`}
             onClick={() => onChange(c)}
           />
@@ -407,6 +422,7 @@ function ColorPickerRow({ value, onChange, testIdPrefix, customLabel }: ColorPic
       <button
         type="button"
         className="btn-outline"
+        disabled={!canWrite}
         data-testid={`${testIdPrefix}-custom`}
         onClick={() => ref.current?.click()}
       >
@@ -417,6 +433,7 @@ function ColorPickerRow({ value, onChange, testIdPrefix, customLabel }: ColorPic
         type="color"
         style="display:none"
         value={value}
+        disabled={!canWrite}
         data-testid={`${testIdPrefix}-native`}
         onChange={(e) => onChange((e.target as HTMLInputElement).value)}
       />
