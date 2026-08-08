@@ -414,3 +414,48 @@ alle 217 unit tests (was 212) slagen.
 Beide bewust-niet-opgepakte punten zijn hiermee, in lijn met de vraag van de
 reviewer, expliciet en op één centrale plek vastgelegd in plaats van
 stilzwijgend te blijven liggen.
+
+**Kleine, niet-blokkerende observatie bij punt 3 hierboven (reset via
+`useSyncStatus`):** `SettingsPanel.handleReset` past de UI direct naar
+defaults toe zodra `onReset()` resolvet, dus vóórdat de uiteindelijke
+serverbevestiging (`settled`) bekend is. Faalt de reset alsnog na reconnect,
+dan krijgt de gebruiker via `actie-nodig` een seintje, maar de UI toont tot
+die tijd de defaults terwijl de server nog de oude waarde heeft — bij een
+tussentijdse reload ziet de gebruiker dan de oude waarde terug. Dit is een
+bestaande eigenschap van het optimistic-UI-patroon (identiek aan hoe
+`saveSettings` zich al gedroeg vóór deze PR, niet nieuw geïntroduceerd) en
+geen aparte bug — puur genoteerd als contextueel gegeven voor wie de
+follow-ups hieronder oppakt.
+
+### Wanneer wordt dit opgepakt? (trigger-criteria, toegevoegd na vervolgreview 8 aug. 2026)
+
+Beide bewust-niet-opgepakte punten hierboven, plus de nog niet uitgevoerde
+volledige (mobiel + productie-Firestore) validatie uit §H, blijven zonder
+concreet moment een schuld zonder aflossingsdatum. Onderstaande
+trigger-criteria maken expliciet WANNEER — niet alleen DAT — dit wordt
+opgepakt:
+
+1. **Stale listener na initiële load.** Oppakken zodra één van deze zich
+   voordoet, wat eerder komt: (a) PR 5.4/de eerste multi-organisatie-pilot
+   met echte, niet-fictieve gebruikers start; (b) een pilotgebruiker meldt
+   "verouderde data" of "wijziging van een ander apparaat komt niet door"
+   zonder zelf te hebben ververst; (c) er wordt sowieso al aan
+   `SessionBar`/de syncstatus-UI gewerkt voor iets anders (dan in dezelfde
+   PR meenemen i.p.v. een aparte ronde).
+2. **Merge-/wachtrijstrategie voor meerdere gelijktijdig-pending writes.**
+   Oppakken zodra één van deze zich voordoet: (a) er wordt een
+   multi-tab-scenario (twee tabbladen van dezelfde gebruiker, zelfde team)
+   een expliciet ondersteund scenario i.p.v. toevallig-werkend; (b) een
+   toekomstige undo/redo- of concept-conflictfunctie in de UI wordt
+   gebouwd; (c) een pilotgebruiker meldt dataverlies na snel-achter-elkaar
+   opslaan. Bij normaal coach-gebruik (enkele saves per minuut, één
+   actief tabblad) is dit geen bekend risico — geen trigger nodig puur op
+   basis van tijdsverloop.
+3. **Volledige validatie (mobiele apparaatklasse + productie-Firestore) van
+   het in §H beschreven scenario.** Hard vereist vóór de eerste brede
+   platformpilot-uitrol (Fase 5, zie `docs/IMPLEMENTATION_PLAN.md` §17) met
+   échte coaches op échte telefoons tegen een echt Firebase-project — dat is
+   het natuurlijke moment waarop zowel "mobiel" als "productie-Firestore"
+   sowieso voor het eerst samenkomen. Tot die tijd blijft de
+   scope-verkleining uit §I/§J geldig op basis van de Windows/emulator-
+   validatie die wél is uitgevoerd.
