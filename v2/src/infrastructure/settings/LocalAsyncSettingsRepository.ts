@@ -10,7 +10,7 @@
 // hetzelfde faalpad als de cloud-adapter kan volgen; de indicator zelf blijft
 // in lokale modus verborgen (App/AuthGate tonen 'm alleen bij mode==='cloud').
 
-import type { Settings } from '../../domain/settings/types';
+import type { Settings, SettingsKey } from '../../domain/settings/types';
 import type { SyncState, WriteResult } from '../../domain/syncState';
 import type { AsyncSettingsRepository } from '../../application/settings/AsyncSettingsRepository';
 import type { SettingsRepository } from '../../application/settings/SettingsRepository';
@@ -29,7 +29,11 @@ export class LocalAsyncSettingsRepository implements AsyncSettingsRepository {
     return this.sync.read();
   }
 
-  async write(settings: Settings & Record<string, unknown>): Promise<WriteResult> {
+  async write(
+    settings: Settings & Record<string, unknown>,
+    _changedKeys?: readonly SettingsKey[],
+  ): Promise<WriteResult> {
+    void _changedKeys;
     const ok = this.sync.write(settings);
     return ok
       ? { ok: true, syncState: SYNCED, settled: Promise.resolve({ ok: true }) }

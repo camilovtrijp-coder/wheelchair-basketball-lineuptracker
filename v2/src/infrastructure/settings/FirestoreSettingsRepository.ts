@@ -38,11 +38,13 @@ import {
   type Firestore,
 } from 'firebase/firestore';
 import { settingsConverter } from 'firebase-base/documents';
-import { DEFAULT_SETTINGS, type Settings } from '../../domain/settings/types';
+import { DEFAULT_SETTINGS, type Settings, type SettingsKey } from '../../domain/settings/types';
 import { deriveSyncState, type SyncState, type WriteResult } from '../../domain/syncState';
 import type { AsyncSettingsRepository } from '../../application/settings/AsyncSettingsRepository';
 
 export class FirestoreSettingsRepository implements AsyncSettingsRepository {
+  private documentExists = false;
+
   constructor(
     private readonly db: Firestore,
     private readonly orgId: string,
@@ -58,10 +60,12 @@ export class FirestoreSettingsRepository implements AsyncSettingsRepository {
     try {
       const snap = await getDocFromCache(ref);
       if (!snap.exists()) return { ...DEFAULT_SETTINGS };
+      this.documentExists = true;
       return stripUpdatedAt(snap.data());
     } catch {
       const snap = await getDoc(ref);
       if (!snap.exists()) return { ...DEFAULT_SETTINGS };
+      this.documentExists = true;
       return stripUpdatedAt(snap.data());
     }
   }
@@ -71,11 +75,38 @@ export class FirestoreSettingsRepository implements AsyncSettingsRepository {
   // lokaal al via latency compensation is toegepast. write() retourneert
   // daarom meteen het lokale resultaat; `settled` draagt de uiteindelijke
   // serverbevestiging/-afwijzing en reject nooit (zie domain/syncState.ts).
-  async write(settings: Settings & Record<string, unknown>): Promise<WriteResult> {
-    const serverAck = setDoc(this.ref(), { ...settings, updatedAt: serverTimestamp() });
+  async write(
+    settings: Settings & Record<string, unknown>,
+    changedKeys?: readonly SettingsKey[],
+  ): Promise<WriteResult> {
+    if (this.documentExists && changedKeys?.length === 0) {
+      return {
+        ok: true,
+        syncState: {
+          status: 'gesynchroniseerd',
+          fromCache: false,
+          hasPendingWrites: false,
+        },
+        settled: Promise.resolve({ ok: true }),
+      };
+    }
+    const shouldPatch = this.documentExists && changedKeys !== undefined && changedKeys.length > 0;
+    const payload = shouldPatch
+      ? Object.fromEntries(changedKeys.map((key) => [key, settings[key]]))
+      : settings;
+    const serverAck = shouldPatch
+      ? setDoc(this.ref(), { ...payload, updatedAt: serverTimestamp() }, { merge: true })
+      : setDoc(this.ref(), { ...payload, updatedAt: serverTimestamp() });
+    this.documentExists = true;
     const settled = serverAck.then(
       () => ({ ok: true }),
-      (error: unknown) => ({ ok: false, error }),
+      (error: unknown) => {
+        // Een afgewezen create kan lokaal al een bestaand snapshot hebben
+        // opgeleverd. Forceer de volgende poging daarom terug naar een
+        // volledige schemawrite in plaats van een mogelijk ongeldige patch.
+        this.documentExists = false;
+        return { ok: false, error };
+      },
     );
     // `ok` is hier altijd true: setDoc() past de write via latency
     // compensation synchroon lokaal toe, en een eventuele afwijzing komt pas
@@ -96,21 +127,42 @@ export class FirestoreSettingsRepository implements AsyncSettingsRepository {
   }
 
   subscribe(
-    onNext: (settings: Settings & Record<string, unknown>, sync: SyncState) => void,
+    onNext: (
+      settings: Settings & Record<string, unknown>,
+      sync: SyncState,
+      updatedAt?: number,
+    ) => void,
     onError?: (error: unknown) => void,
   ): () => void {
     return onSnapshot(
       this.ref().withConverter(settingsConverter),
       { includeMetadataChanges: true },
       (snap) => {
-        if (!snap.exists()) return;
-        onNext(stripUpdatedAt(snap.data()), deriveSyncState(snap.metadata));
+        if (!snap.exists()) {
+          this.documentExists = false;
+          return;
+        }
+        this.documentExists = true;
+        const data = snap.data();
+        onNext(stripUpdatedAt(data), deriveSyncState(snap.metadata), toEpochMillis(data.updatedAt));
       },
       (err) => {
         if (onError) onError(err);
       },
     );
   }
+}
+
+function toEpochMillis(value: unknown): number | undefined {
+  if (
+    typeof value === 'object' &&
+    value !== null &&
+    'toMillis' in value &&
+    typeof value.toMillis === 'function'
+  ) {
+    return value.toMillis();
+  }
+  return undefined;
 }
 
 function stripUpdatedAt(doc: { updatedAt: unknown }): Settings & Record<string, unknown> {

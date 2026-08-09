@@ -128,6 +128,7 @@ class NeverLoadingSettingsRepository implements AsyncSettingsRepository {
 function fakeSyncStatusApi(): SyncStatusApi {
   return {
     status: 'gesynchroniseerd',
+    fromCache: false,
     pending: [],
     onSettingsSync: vi.fn(),
     onRosterSync: vi.fn(),

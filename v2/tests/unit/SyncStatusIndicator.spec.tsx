@@ -25,4 +25,14 @@ describe('ui/sync/SyncStatusIndicator (PR 5.3c-2)', () => {
       expect(el.getAttribute('data-status')).toBe(status);
     });
   }
+
+  it('toont de cachebron in beide talen wanneer fromCache waar is', () => {
+    const { getByTestId, rerender } = render(
+      <SyncStatusIndicator lang="nl" status="lokaal-beschikbaar" fromCache={true} />,
+    );
+    expect(getByTestId('sync-status-indicator').textContent).toBe('Lokaal beschikbaar · uit cache');
+
+    rerender(<SyncStatusIndicator lang="en" status="lokaal-beschikbaar" fromCache={true} />);
+    expect(getByTestId('sync-status-indicator').textContent).toBe('Available locally · from cache');
+  });
 });

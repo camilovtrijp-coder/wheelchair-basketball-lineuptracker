@@ -62,7 +62,7 @@ import { useCallback, useEffect, useRef, useState } from 'preact/hooks';
 import type { AsyncRosterRepository } from '../roster/AsyncRosterRepository';
 import type { AsyncSettingsRepository } from '../settings/AsyncSettingsRepository';
 import type { Roster } from '../../domain/roster/types';
-import { DEFAULT_SETTINGS, type Settings } from '../../domain/settings/types';
+import { DEFAULT_SETTINGS, type Settings, type SettingsKey } from '../../domain/settings/types';
 import type { SyncState, SyncStatus } from '../../domain/syncState';
 
 export type SyncKind = 'settings' | 'roster';
@@ -70,14 +70,19 @@ export type SyncKind = 'settings' | 'roster';
 export interface PendingAction {
   kind: SyncKind;
   payload: (Settings & Record<string, unknown>) | Roster;
+  settingsChangedKeys?: readonly SettingsKey[];
 }
 
 export interface SyncStatusApi {
   status: SyncStatus;
+  fromCache: boolean;
   pending: PendingAction[];
   onSettingsSync: (sync: SyncState) => void;
   onRosterSync: (sync: SyncState) => void;
-  saveSettings: (payload: Settings & Record<string, unknown>) => Promise<boolean>;
+  saveSettings: (
+    payload: Settings & Record<string, unknown>,
+    changedKeys?: readonly SettingsKey[],
+  ) => Promise<boolean>;
   saveRoster: (payload: Roster) => Promise<boolean>;
   resetSettings: () => Promise<Settings & Record<string, unknown>>;
   retry: (kind: SyncKind) => Promise<void>;
@@ -91,6 +96,21 @@ const STATUS_PRIORITY: Record<SyncStatus, number> = {
   gesynchroniseerd: 0,
 };
 
+const SYNCED_STATE: SyncState = {
+  status: 'gesynchroniseerd',
+  fromCache: false,
+  hasPendingWrites: false,
+};
+
+function settingsPendingAction(
+  payload: Settings & Record<string, unknown>,
+  changedKeys?: readonly SettingsKey[],
+): PendingAction {
+  return changedKeys === undefined
+    ? { kind: 'settings', payload }
+    : { kind: 'settings', payload, settingsChangedKeys: changedKeys };
+}
+
 function worstStatus(a: SyncStatus, b: SyncStatus): SyncStatus {
   return STATUS_PRIORITY[a] >= STATUS_PRIORITY[b] ? a : b;
 }
@@ -99,8 +119,8 @@ export function useSyncStatus(repositories: {
   settings: AsyncSettingsRepository;
   roster: AsyncRosterRepository;
 }): SyncStatusApi {
-  const [settingsBgStatus, setSettingsBgStatus] = useState<SyncStatus>('gesynchroniseerd');
-  const [rosterBgStatus, setRosterBgStatus] = useState<SyncStatus>('gesynchroniseerd');
+  const [settingsBgState, setSettingsBgState] = useState<SyncState>(SYNCED_STATE);
+  const [rosterBgState, setRosterBgState] = useState<SyncState>(SYNCED_STATE);
   const [pending, setPending] = useState<PendingAction[]>([]);
 
   const isMountedRef = useRef(true);
@@ -114,34 +134,37 @@ export function useSyncStatus(repositories: {
   const settingsGenerationRef = useRef(0);
   const rosterGenerationRef = useRef(0);
 
-  const setPendingFor = useCallback((kind: SyncKind, payload: PendingAction['payload'] | null) => {
+  const setPendingFor = useCallback((kind: SyncKind, item: PendingAction | null) => {
     setPending((prev) => {
       const withoutKind = prev.filter((p) => p.kind !== kind);
-      return payload === null ? withoutKind : [...withoutKind, { kind, payload }];
+      return item === null ? withoutKind : [...withoutKind, item];
     });
   }, []);
 
   const saveSettings = useCallback(
-    async (payload: Settings & Record<string, unknown>) => {
+    async (payload: Settings & Record<string, unknown>, changedKeys?: readonly SettingsKey[]) => {
       const generation = ++settingsGenerationRef.current;
       const isCurrent = () => isMountedRef.current && generation === settingsGenerationRef.current;
 
-      const result = await repositories.settings.write(payload);
+      const result =
+        changedKeys === undefined
+          ? await repositories.settings.write(payload)
+          : await repositories.settings.write(payload, changedKeys);
       if (!result.ok) {
-        if (isCurrent()) setPendingFor('settings', payload);
+        if (isCurrent()) setPendingFor('settings', settingsPendingAction(payload, changedKeys));
         return false;
       }
       // Zie headercommentaar: niet louter op de subscribe()-listener
       // vertrouwen voor de wacht-op-synchronisatie-overgang — die bleek na
       // een offline write niet betrouwbaar (tijdig) te vuren.
-      if (isCurrent()) setSettingsBgStatus(result.syncState.status);
+      if (isCurrent()) setSettingsBgState(result.syncState);
       // Niet awaiten: dat zou saveSettings() weer net zo lang laten
       // blokkeren als vóór dit contract. `settled` reject nooit.
       void result.settled.then((settled) => {
         if (!isCurrent()) return;
-        setPendingFor('settings', settled.ok ? null : payload);
+        setPendingFor('settings', settled.ok ? null : settingsPendingAction(payload, changedKeys));
         if (settled.ok) {
-          setSettingsBgStatus('gesynchroniseerd');
+          setSettingsBgState(SYNCED_STATE);
         }
       });
       return true;
@@ -156,15 +179,15 @@ export function useSyncStatus(repositories: {
 
       const result = await repositories.roster.write(payload);
       if (!result.ok) {
-        if (isCurrent()) setPendingFor('roster', payload);
+        if (isCurrent()) setPendingFor('roster', { kind: 'roster', payload });
         return false;
       }
-      if (isCurrent()) setRosterBgStatus(result.syncState.status);
+      if (isCurrent()) setRosterBgState(result.syncState);
       void result.settled.then((settled) => {
         if (!isCurrent()) return;
-        setPendingFor('roster', settled.ok ? null : payload);
+        setPendingFor('roster', settled.ok ? null : { kind: 'roster', payload });
         if (settled.ok) {
-          setRosterBgStatus('gesynchroniseerd');
+          setRosterBgState(SYNCED_STATE);
         }
       });
       return true;
@@ -187,7 +210,10 @@ export function useSyncStatus(repositories: {
       const item = pending.find((p) => p.kind === kind);
       if (!item) return;
       if (kind === 'settings') {
-        await saveSettings(item.payload as Settings & Record<string, unknown>);
+        await saveSettings(
+          item.payload as Settings & Record<string, unknown>,
+          item.settingsChangedKeys,
+        );
       } else {
         await saveRoster(item.payload as Roster);
       }
@@ -204,28 +230,30 @@ export function useSyncStatus(repositories: {
     (kind: SyncKind) => {
       if (kind === 'settings') {
         settingsGenerationRef.current += 1;
-        setSettingsBgStatus('gesynchroniseerd');
+        setSettingsBgState(SYNCED_STATE);
       } else {
         rosterGenerationRef.current += 1;
-        setRosterBgStatus('gesynchroniseerd');
+        setRosterBgState(SYNCED_STATE);
       }
       setPendingFor(kind, null);
     },
     [setPendingFor],
   );
 
-  const onSettingsSync = useCallback((sync: SyncState) => setSettingsBgStatus(sync.status), []);
-  const onRosterSync = useCallback((sync: SyncState) => setRosterBgStatus(sync.status), []);
+  const onSettingsSync = useCallback((sync: SyncState) => setSettingsBgState(sync), []);
+  const onRosterSync = useCallback((sync: SyncState) => setRosterBgState(sync), []);
 
   const settingsPending = pending.some((p) => p.kind === 'settings');
   const rosterPending = pending.some((p) => p.kind === 'roster');
   const status = worstStatus(
-    settingsPending ? 'actie-nodig' : settingsBgStatus,
-    rosterPending ? 'actie-nodig' : rosterBgStatus,
+    settingsPending ? 'actie-nodig' : settingsBgState.status,
+    rosterPending ? 'actie-nodig' : rosterBgState.status,
   );
+  const fromCache = settingsBgState.fromCache || rosterBgState.fromCache;
 
   return {
     status,
+    fromCache,
     pending,
     onSettingsSync,
     onRosterSync,
