@@ -156,4 +156,27 @@ describe('FirestoreRosterRepository — subscribe', () => {
     repo.subscribe((players, sync) => seen.push({ players, status: sync.status }));
     expect(seen).toEqual([{ players: SAMPLE_PLAYERS, status: 'gesynchroniseerd' }]);
   });
+
+  it('levert updatedAt als epoch-milliseconden door', () => {
+    (onSnapshot as Mock).mockImplementationOnce(
+      (
+        _ref: unknown,
+        _opts: unknown,
+        onNext: (snap: { exists: () => boolean; data: () => unknown; metadata: object }) => void,
+      ) => {
+        onNext({
+          exists: () => true,
+          data: () => ({ players: SAMPLE_PLAYERS, updatedAt: { toMillis: () => 1234 } }),
+          metadata: { fromCache: false, hasPendingWrites: false },
+        });
+        return () => undefined;
+      },
+    );
+    const repo = new FirestoreRosterRepository(fakeDb, 'org-1', 'team-1');
+    const seen: Array<number | undefined> = [];
+    repo.subscribe((_players, _sync, updatedAt) => {
+      seen.push(updatedAt);
+    });
+    expect(seen).toEqual([1234]);
+  });
 });

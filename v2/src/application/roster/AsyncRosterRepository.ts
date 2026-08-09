@@ -11,7 +11,7 @@ export interface AsyncRosterRepository {
   read(): Promise<Roster>;
   write(players: Roster): Promise<WriteResult>;
   subscribe(
-    onNext: (players: Roster, sync: SyncState) => void,
+    onNext: (players: Roster, sync: SyncState, updatedAt?: number) => void,
     onError?: (error: unknown) => void,
   ): () => void;
 }

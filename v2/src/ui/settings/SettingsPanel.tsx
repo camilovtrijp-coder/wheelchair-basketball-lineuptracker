@@ -1,9 +1,10 @@
 import { useRef, useState } from 'preact/hooks';
-import { LOGO_MAX_BYTES, type Settings } from '../../domain/settings/types';
+import { LOGO_MAX_BYTES, type Settings, type SettingsKey } from '../../domain/settings/types';
 import { translate, type Lang, type StringKey } from '../../i18n/strings';
 import type { KeyValueStorage } from '../../i18n/persistence';
 import { updateSetting } from '../../application/settings/usecases';
 import { CloudImportBanner } from '../cloud/CloudImportBanner';
+import { LastModified } from '../sync/LastModified';
 
 const COLOR_PRESETS = [
   '#22c55e',
@@ -24,7 +25,10 @@ export interface SettingsPanelProps {
   settings: Settings & Record<string, unknown>;
   onSettingsChange: (next: Settings & Record<string, unknown>) => void;
   /** Persisteert `settings` via de actieve repository (lokaal of cloud); zie App.tsx. */
-  onSave: (settings: Settings & Record<string, unknown>) => Promise<boolean>;
+  onSave: (
+    settings: Settings & Record<string, unknown>,
+    changedKeys?: readonly SettingsKey[],
+  ) => Promise<boolean>;
   onReset: () => Promise<Settings & Record<string, unknown>>;
   onRefresh: () => Promise<Settings & Record<string, unknown>>;
   /**
@@ -40,6 +44,7 @@ export interface SettingsPanelProps {
    * (read-only actie).
    */
   canWrite: boolean;
+  updatedAt?: number;
 }
 
 function t(lang: Lang, key: StringKey): string {
@@ -56,11 +61,14 @@ export function SettingsPanel({
   onRefresh,
   onCloudMigrate,
   canWrite,
+  updatedAt,
 }: SettingsPanelProps) {
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const changedKeysRef = useRef(new Set<SettingsKey>());
 
   function handleField<K extends keyof Settings>(field: K, value: Settings[K]) {
+    changedKeysRef.current.add(field);
     const next = updateSetting(settings, field, value);
     onSettingsChange(next);
   }
@@ -85,15 +93,19 @@ export function SettingsPanel({
     const defaults = await onReset();
     onSettingsChange(defaults);
     setError(null);
+    changedKeysRef.current.clear();
   }
 
   async function handleRefresh() {
     onSettingsChange(await onRefresh());
     setError(null);
+    changedKeysRef.current.clear();
   }
 
   async function handleSave() {
-    const ok = await onSave(settings);
+    const changedKeys = [...changedKeysRef.current];
+    const ok = await onSave(settings, changedKeys);
+    if (ok) changedKeysRef.current.clear();
     setError(ok ? null : t(lang, 'settingsSaveError'));
   }
 
@@ -104,6 +116,7 @@ export function SettingsPanel({
       <header className="settings-panel__header">
         <h2>{t(lang, 'settingsTitle')}</h2>
       </header>
+      <LastModified lang={lang} updatedAt={updatedAt} testId="settings-last-modified" />
 
       <CloudImportBanner lang={lang} storage={storage} kind="settings" onMigrate={onCloudMigrate} />
 

@@ -88,6 +88,23 @@ describe('useSyncStatus (PR 5.3c-2, schrijfcontract herzien in 5.3d)', () => {
     expect(result.current.status).toBe('actie-nodig');
   });
 
+  it('behoudt fromCache zolang minstens één gegevensbron uit cache komt', () => {
+    const { result } = renderHook(() =>
+      useSyncStatus({ settings: fakeSettingsRepo(), roster: fakeRosterRepo() }),
+    );
+    act(() =>
+      result.current.onSettingsSync({
+        status: 'lokaal-beschikbaar',
+        fromCache: true,
+        hasPendingWrites: false,
+      }),
+    );
+    expect(result.current.fromCache).toBe(true);
+
+    act(() => result.current.onSettingsSync(SYNCED));
+    expect(result.current.fromCache).toBe(false);
+  });
+
   // PR 5.3d-onderzoeksrapport §H ("label-gebrek"): zowel in de sandbox- als
   // in de handmatige-apparaattest bleek de subscribe()-listener na een
   // offline write geen (tijdige) nieuwe snapshot af te leveren, waardoor de

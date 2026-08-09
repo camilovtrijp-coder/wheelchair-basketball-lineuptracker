@@ -9,6 +9,7 @@ import type { SyncStatus } from '../../domain/syncState';
 export interface SyncStatusIndicatorProps {
   lang: Lang;
   status: SyncStatus;
+  fromCache?: boolean;
 }
 
 const KEY_BY_STATUS: Record<SyncStatus, StringKey> = {
@@ -18,7 +19,7 @@ const KEY_BY_STATUS: Record<SyncStatus, StringKey> = {
   'actie-nodig': 'syncStatusActionNeeded',
 };
 
-export function SyncStatusIndicator({ lang, status }: SyncStatusIndicatorProps) {
+export function SyncStatusIndicator({ lang, status, fromCache = false }: SyncStatusIndicatorProps) {
   return (
     <span
       className={`sync-status-indicator sync-status-indicator--${status}`}
@@ -26,6 +27,7 @@ export function SyncStatusIndicator({ lang, status }: SyncStatusIndicatorProps) 
       data-status={status}
     >
       {translate(lang, KEY_BY_STATUS[status])}
+      {fromCache ? ` · ${translate(lang, 'syncStatusFromCache')}` : null}
     </span>
   );
 }

@@ -101,6 +101,12 @@ button:focus-visible {
   font-weight: 600;
 }
 
+.last-modified {
+  margin: calc(-1 * var(--lt-space-4)) 0 0;
+  color: var(--lt-color-muted);
+  font-size: var(--lt-font-size-xs);
+}
+
 .settings-section {
   display: flex;
   flex-direction: column;

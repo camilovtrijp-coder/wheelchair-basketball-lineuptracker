@@ -4,15 +4,22 @@
 // voor Firestore (zie docs/SPIKE_REPORT.md §5.1 en docs/pr-5.3-plan.md §C/5.3a).
 // De bestaande synchrone poort blijft ongewijzigd voor de localStorage-modus.
 
-import type { Settings } from '../../domain/settings/types';
+import type { Settings, SettingsKey } from '../../domain/settings/types';
 import type { SyncState, WriteResult } from '../../domain/syncState';
 
 export interface AsyncSettingsRepository {
   read(): Promise<Settings & Record<string, unknown>>;
-  write(settings: Settings & Record<string, unknown>): Promise<WriteResult>;
+  write(
+    settings: Settings & Record<string, unknown>,
+    changedKeys?: readonly SettingsKey[],
+  ): Promise<WriteResult>;
   reset(): Promise<Settings & Record<string, unknown>>;
   subscribe(
-    onNext: (settings: Settings & Record<string, unknown>, sync: SyncState) => void,
+    onNext: (
+      settings: Settings & Record<string, unknown>,
+      sync: SyncState,
+      updatedAt?: number,
+    ) => void,
     onError?: (error: unknown) => void,
   ): () => void;
 }

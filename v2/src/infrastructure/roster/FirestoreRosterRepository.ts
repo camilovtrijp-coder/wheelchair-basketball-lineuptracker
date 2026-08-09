@@ -67,7 +67,7 @@ export class FirestoreRosterRepository implements AsyncRosterRepository {
   }
 
   subscribe(
-    onNext: (players: Roster, sync: SyncState) => void,
+    onNext: (players: Roster, sync: SyncState, updatedAt?: number) => void,
     onError?: (error: unknown) => void,
   ): () => void {
     return onSnapshot(
@@ -75,11 +75,28 @@ export class FirestoreRosterRepository implements AsyncRosterRepository {
       { includeMetadataChanges: true },
       (snap) => {
         if (!snap.exists()) return;
-        onNext(snap.data().players as Roster, deriveSyncState(snap.metadata));
+        const data = snap.data();
+        onNext(
+          data.players as Roster,
+          deriveSyncState(snap.metadata),
+          toEpochMillis(data.updatedAt),
+        );
       },
       (err) => {
         if (onError) onError(err);
       },
     );
   }
+}
+
+function toEpochMillis(value: unknown): number | undefined {
+  if (
+    typeof value === 'object' &&
+    value !== null &&
+    'toMillis' in value &&
+    typeof value.toMillis === 'function'
+  ) {
+    return value.toMillis();
+  }
+  return undefined;
 }

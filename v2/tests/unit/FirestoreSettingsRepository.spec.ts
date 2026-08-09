@@ -123,6 +123,78 @@ describe('FirestoreSettingsRepository — write (PR 5.3d-vervolgonderzoek: wacht
     await Promise.all([r1.settled, r2.settled]);
     expect(setDoc).toHaveBeenCalledTimes(2);
   });
+
+  it('patcht alleen gewijzigde velden zodra het document bestaat', async () => {
+    (getDocFromCache as Mock).mockResolvedValueOnce(
+      fakeSnap({ ...DEFAULT_SETTINGS, teamName: 'Basis', updatedAt: 'OLD' }),
+    );
+    (setDoc as Mock).mockResolvedValueOnce(undefined);
+    const repo = new FirestoreSettingsRepository(fakeDb, 'org-1', 'team-1');
+    await repo.read();
+
+    const result = await repo.write(
+      { ...DEFAULT_SETTINGS, teamName: 'Nieuw', tag1Label: 'Ongewijzigd lokaal' },
+      ['teamName'],
+    );
+    await result.settled;
+
+    expect(setDoc).toHaveBeenCalledWith(
+      fakeRef,
+      { teamName: 'Nieuw', updatedAt: 'SERVER_TIMESTAMP' },
+      { merge: true },
+    );
+  });
+
+  it('schrijft bij een nieuw document altijd een volledig geldig document', async () => {
+    (getDocFromCache as Mock).mockResolvedValueOnce(fakeSnap(null));
+    (setDoc as Mock).mockResolvedValueOnce(undefined);
+    const repo = new FirestoreSettingsRepository(fakeDb, 'org-1', 'team-1');
+    await repo.read();
+
+    const payload = { ...DEFAULT_SETTINGS, teamName: 'Nieuw team' };
+    const result = await repo.write(payload, ['teamName']);
+    await result.settled;
+
+    expect(setDoc).toHaveBeenCalledWith(fakeRef, {
+      ...payload,
+      updatedAt: 'SERVER_TIMESTAMP',
+    });
+  });
+
+  it('probeert na een afgewezen create opnieuw met een volledig document', async () => {
+    const rejection = new Error('permission-denied');
+    (getDocFromCache as Mock).mockResolvedValueOnce(fakeSnap(null));
+    (setDoc as Mock).mockRejectedValueOnce(rejection).mockResolvedValueOnce(undefined);
+    const repo = new FirestoreSettingsRepository(fakeDb, 'org-1', 'team-1');
+    await repo.read();
+
+    const firstPayload = { ...DEFAULT_SETTINGS, teamName: 'Eerste poging' };
+    const first = await repo.write(firstPayload, ['teamName']);
+    await expect(first.settled).resolves.toEqual({ ok: false, error: rejection });
+
+    const retryPayload = { ...DEFAULT_SETTINGS, teamName: 'Nieuwe poging' };
+    const retry = await repo.write(retryPayload, ['teamName']);
+    await retry.settled;
+
+    expect(setDoc).toHaveBeenLastCalledWith(fakeRef, {
+      ...retryPayload,
+      updatedAt: 'SERVER_TIMESTAMP',
+    });
+  });
+
+  it('slaat een lege patch op een bestaand document over', async () => {
+    (getDocFromCache as Mock).mockResolvedValueOnce(
+      fakeSnap({ ...DEFAULT_SETTINGS, updatedAt: 'OLD' }),
+    );
+    const repo = new FirestoreSettingsRepository(fakeDb, 'org-1', 'team-1');
+    await repo.read();
+
+    const result = await repo.write({ ...DEFAULT_SETTINGS }, []);
+
+    expect(result.syncState.status).toBe('gesynchroniseerd');
+    expect(setDoc).not.toHaveBeenCalled();
+    await expect(result.settled).resolves.toEqual({ ok: true });
+  });
 });
 
 describe('FirestoreSettingsRepository — subscribe', () => {
@@ -169,5 +241,25 @@ describe('FirestoreSettingsRepository — subscribe', () => {
       seen.push({ teamName: settings.teamName as string, status: sync.status }),
     );
     expect(seen).toEqual([{ teamName: 'Live', status: 'gesynchroniseerd' }]);
+  });
+
+  it('levert updatedAt als epoch-milliseconden door', () => {
+    (onSnapshot as Mock).mockImplementationOnce(
+      (_ref: unknown, _opts: unknown, onNext: (snap: ReturnType<typeof fakeSnap>) => void) => {
+        onNext(
+          fakeSnap({
+            ...DEFAULT_SETTINGS,
+            updatedAt: { toMillis: () => 1_786_278_840_000 },
+          }),
+        );
+        return () => undefined;
+      },
+    );
+    const repo = new FirestoreSettingsRepository(fakeDb, 'org-1', 'team-1');
+    const seen: Array<number | undefined> = [];
+    repo.subscribe((_settings, _sync, updatedAt) => {
+      seen.push(updatedAt);
+    });
+    expect(seen).toEqual([1_786_278_840_000]);
   });
 });

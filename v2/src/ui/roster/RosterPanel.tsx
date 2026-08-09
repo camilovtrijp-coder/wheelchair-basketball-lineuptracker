@@ -9,6 +9,7 @@ import {
 import { translate, type Lang, type StringKey } from '../../i18n/strings';
 import type { KeyValueStorage } from '../../i18n/persistence';
 import { CloudImportBanner } from '../cloud/CloudImportBanner';
+import { LastModified } from '../sync/LastModified';
 
 export interface RosterPanelProps {
   lang: Lang;
@@ -33,6 +34,7 @@ export interface RosterPanelProps {
    * een korte "Alleen-lezen"-indicator.
    */
   canWrite: boolean;
+  updatedAt?: number;
 }
 
 function t(lang: Lang, key: StringKey): string {
@@ -51,6 +53,7 @@ export function RosterPanel({
   tag2Label,
   onCloudMigrate,
   canWrite,
+  updatedAt,
 }: RosterPanelProps) {
   const [error, setError] = useState<string | null>(null);
   const dupNrs = findDuplicateNumbers(roster);
@@ -83,6 +86,7 @@ export function RosterPanel({
       <header className="settings-panel__header">
         <h2>{t(lang, 'rosterTitle')}</h2>
       </header>
+      <LastModified lang={lang} updatedAt={updatedAt} testId="roster-last-modified" />
       <CloudImportBanner lang={lang} storage={storage} kind="roster" onMigrate={onCloudMigrate} />
       <p className="settings-explainer">{t(lang, 'rosterIntro')}</p>
 

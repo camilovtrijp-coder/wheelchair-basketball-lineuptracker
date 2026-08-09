@@ -79,6 +79,8 @@ export function App({ repositories, syncStatus, canWrite }: AppProps) {
   const [tab, setTab] = useState<Tab>('settings');
   const [settings, setSettings] = useState<(Settings & Record<string, unknown>) | null>(null);
   const [roster, setRoster] = useState<Roster | null>(null);
+  const [settingsUpdatedAt, setSettingsUpdatedAt] = useState<number | undefined>(undefined);
+  const [rosterUpdatedAt, setRosterUpdatedAt] = useState<number | undefined>(undefined);
   const [stalledSteps, setStalledSteps] = useState<string[]>([]);
   // Criterium 4 (issue #27 / docs/pr-5.3-plan.md §C/5.3d): een werkelijk
   // nooit-gecachete context mag offline nooit als een leeg team getoond
@@ -108,6 +110,8 @@ export function App({ repositories, syncStatus, canWrite }: AppProps) {
     let cancelled = false;
     setSettings(null);
     setRoster(null);
+    setSettingsUpdatedAt(undefined);
+    setRosterUpdatedAt(undefined);
     setStalledSteps([]);
     setUncachedOffline(false);
     setListenerError(null);
@@ -174,10 +178,11 @@ export function App({ repositories, syncStatus, canWrite }: AppProps) {
 
     armStallTimer('settings-listener');
     const unsubSettings = repositories.settings.subscribe(
-      (s, sync) => {
+      (s, sync, updatedAt) => {
         if (cancelled) return;
         disarmStallTimer('settings-listener');
         setSettings(s);
+        setSettingsUpdatedAt(updatedAt);
         settingsLoadedRef.current = true;
         syncStatus.onSettingsSync(sync);
         // PR 5.4a: een geslaagde listener-emit ruimt een eventuele eerdere
@@ -204,10 +209,11 @@ export function App({ repositories, syncStatus, canWrite }: AppProps) {
 
     armStallTimer('roster-listener');
     const unsubRoster = repositories.roster.subscribe(
-      (r, sync) => {
+      (r, sync, updatedAt) => {
         if (cancelled) return;
         disarmStallTimer('roster-listener');
         setRoster(r);
+        setRosterUpdatedAt(updatedAt);
         rosterLoadedRef.current = true;
         syncStatus.onRosterSync(sync);
         setListenerError((prev) => (prev === 'roster' ? null : prev));
@@ -321,6 +327,7 @@ export function App({ repositories, syncStatus, canWrite }: AppProps) {
             onRefresh={() => getSettingsAsync(repositories.settings)}
             onCloudMigrate={repositories.mode === 'cloud' ? handleCloudMigrateSettings : undefined}
             canWrite={canWrite}
+            updatedAt={settingsUpdatedAt}
           />
         ) : (
           <RosterPanel
@@ -335,6 +342,7 @@ export function App({ repositories, syncStatus, canWrite }: AppProps) {
             tag2Label={tag2Label}
             onCloudMigrate={repositories.mode === 'cloud' ? handleCloudMigrateRoster : undefined}
             canWrite={canWrite}
+            updatedAt={rosterUpdatedAt}
           />
         )}
       </main>

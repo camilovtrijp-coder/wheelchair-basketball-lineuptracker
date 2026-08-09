@@ -12,6 +12,7 @@ export interface SessionBarProps {
    * ui/sync/SyncStatusIndicator.tsx.
    */
   syncStatus?: SyncStatus;
+  syncFromCache?: boolean;
 }
 
 /**
@@ -20,10 +21,18 @@ export interface SessionBarProps {
  * er een actieve sessie is. Vervangt ui/auth/SignOutBar.tsx uit stap 5: die
  * had alleen uitloggen, dit is dezelfde balk met de wisselknop erbij.
  */
-export function SessionBar({ lang, onSignOut, onSwitchContext, syncStatus }: SessionBarProps) {
+export function SessionBar({
+  lang,
+  onSignOut,
+  onSwitchContext,
+  syncStatus,
+  syncFromCache,
+}: SessionBarProps) {
   return (
     <div className="session-bar">
-      {syncStatus ? <SyncStatusIndicator lang={lang} status={syncStatus} /> : null}
+      {syncStatus ? (
+        <SyncStatusIndicator lang={lang} status={syncStatus} fromCache={syncFromCache} />
+      ) : null}
       <button type="button" data-testid="switch-context" onClick={onSwitchContext}>
         {translate(lang, 'contextSwitcherSwitchBtn')}
       </button>
