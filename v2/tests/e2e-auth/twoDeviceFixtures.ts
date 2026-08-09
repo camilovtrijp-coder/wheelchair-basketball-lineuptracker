@@ -17,6 +17,8 @@ export interface PilotTeam {
   teamName: string;
 }
 
+const PILOT_SEED_UPDATED_AT = new Date('2000-01-01T00:00:00.000Z');
+
 export async function registerPilotCoach(page: Page, label: string): Promise<PilotIdentity> {
   const email = uniqueTestEmail(label);
   await signUp(page, email, PILOT_PASSWORD);
@@ -57,11 +59,49 @@ export async function seedPilotTeam(identity: PilotIdentity, label: string): Pro
       useClassLimit: true,
       tag1Label: 'Categorie A',
       tag2Label: 'Categorie B',
-      updatedAt: new Date(),
+      updatedAt: PILOT_SEED_UPDATED_AT,
     });
-  await teamRef.collection('roster').doc('current').set({ players: [], updatedAt: new Date() });
+  await teamRef
+    .collection('roster')
+    .doc('current')
+    .set({ players: [], updatedAt: PILOT_SEED_UPDATED_AT });
 
   return { orgId: orgRef.id, teamId: teamRef.id, teamName };
+}
+
+export async function seedAdditionalPilotTeam(
+  identity: PilotIdentity,
+  organization: PilotTeam,
+  label: string,
+): Promise<PilotTeam> {
+  const db = adminDb();
+  const orgRef = db.collection('organizations').doc(organization.orgId);
+  const orgSnapshot = await orgRef.get();
+  const orgName = String(orgSnapshot.data()?.name ?? 'Pilotorganisatie');
+  const teamRef = orgRef.collection('teams').doc();
+  const teamName = `Pilotteam ${label}`;
+
+  await teamRef.set({ name: teamName, orgName, createdBy: 'pilot-seed', createdAt: new Date() });
+  await teamRef.collection('teamMembers').doc(identity.uid).set({
+    role: 'coach',
+    email: identity.email,
+    uid: identity.uid,
+    addedAt: new Date(),
+  });
+  await teamRef
+    .collection('settings')
+    .doc('current')
+    .set({
+      ...DEFAULT_SETTINGS,
+      teamName,
+      updatedAt: PILOT_SEED_UPDATED_AT,
+    });
+  await teamRef
+    .collection('roster')
+    .doc('current')
+    .set({ players: [], updatedAt: PILOT_SEED_UPDATED_AT });
+
+  return { orgId: organization.orgId, teamId: teamRef.id, teamName };
 }
 
 export async function openPilotTeam(page: Page, team: PilotTeam): Promise<void> {
