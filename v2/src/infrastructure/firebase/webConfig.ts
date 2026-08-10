@@ -43,6 +43,14 @@ function requireEnvValue(name: string, context: DeployContext, env: EnvSource): 
         `Zie v2/.env.${context}.example.`,
     );
   }
+  // Bewaakt tegen de meest waarschijnlijke operatorfout: het voorbeeldbestand
+  // 1-op-1 naar .env.${context} kopiëren zonder de placeholder in te vullen.
+  if (value.startsWith('vervang-')) {
+    throw new Error(
+      `Ongeldige Firebase-webconfig voor context "${context}": env-variabele ${name} bevat nog de ` +
+        `placeholderwaarde uit v2/.env.${context}.example ("${value}"). Vul de echte waarde in.`,
+    );
+  }
   return value;
 }
 
@@ -71,8 +79,20 @@ export function resolveEmulatorConfig(context: DeployContext): FirebaseEmulatorC
   return context === 'development' ? DEVELOPMENT_EMULATOR_CONFIG : null;
 }
 
-/** Onbekende of ontbrekende `VITE_DEPLOY_CONTEXT` valt terug op `development` — het huidige, ongewijzigde gedrag. */
+/**
+ * Ontbrekende `VITE_DEPLOY_CONTEXT` valt terug op `development` — het huidige,
+ * ongewijzigde gedrag voor lokale dev/CI zonder env-bestand. Een wél gezette
+ * maar onbekende waarde (bijv. een typo als "stagin") gooit een expliciete
+ * fout in plaats van stil naar de emulator te vallen — anders praat een
+ * verkeerd geconfigureerde staging/productie-build ongemerkt tegen
+ * 127.0.0.1 in plaats van het echte project.
+ */
 export function resolveDeployContext(env: EnvSource = import.meta.env): DeployContext {
   const raw = env.VITE_DEPLOY_CONTEXT;
-  return raw === 'staging' || raw === 'production' ? raw : 'development';
+  if (raw === undefined || raw === '') return 'development';
+  if (raw === 'development' || raw === 'staging' || raw === 'production') return raw;
+  throw new Error(
+    `Onbekende VITE_DEPLOY_CONTEXT: "${String(raw)}". Verwacht "development", "staging" of ` +
+      `"production" (of helemaal niet gezet, dan geldt "development").`,
+  );
 }

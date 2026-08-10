@@ -26,6 +26,9 @@ import {
 let app: FirebaseApp | undefined;
 let db: Firestore | undefined;
 let auth: Auth | undefined;
+// Gezet vóór ensureApp()/createFirestore() in initFirebase(), dus altijd al
+// bekend als die later alsnog gooien (bijv. ontbrekende staging-env-var) —
+// reinitFirestoreForTrustLevel() bewaakt zich in dat geval al via `!db`.
 let activeContext: DeployContext | undefined;
 
 /**

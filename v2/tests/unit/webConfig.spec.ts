@@ -52,6 +52,16 @@ describe('infrastructure/firebase/webConfig — resolveWebConfig', () => {
   it('gooit een expliciete fout bij een volledig lege env voor productie', () => {
     expect(() => resolveWebConfig('production', {})).toThrow(/VITE_FIREBASE_PROJECT_ID_PRODUCTION/);
   });
+
+  it('gooit een expliciete fout bij een niet-ingevulde placeholder uit het voorbeeldbestand', () => {
+    expect(() =>
+      resolveWebConfig('production', {
+        VITE_FIREBASE_PROJECT_ID_PRODUCTION: 'demo-lineup-tracker-prod',
+        VITE_FIREBASE_API_KEY_PRODUCTION: 'vervang-met-echte-productie-apikey',
+        VITE_FIREBASE_AUTH_DOMAIN_PRODUCTION: 'demo-lineup-tracker-prod.firebaseapp.com',
+      }),
+    ).toThrow(/placeholderwaarde/);
+  });
 });
 
 describe('infrastructure/firebase/webConfig — resolveEmulatorConfig', () => {
@@ -77,11 +87,18 @@ describe('infrastructure/firebase/webConfig — resolveDeployContext', () => {
     expect(resolveDeployContext({})).toBe('development');
   });
 
-  it('valt terug op development bij een onbekende waarde', () => {
-    expect(resolveDeployContext({ VITE_DEPLOY_CONTEXT: 'onzin' })).toBe('development');
+  it('valt terug op development bij een expliciet lege waarde', () => {
+    expect(resolveDeployContext({ VITE_DEPLOY_CONTEXT: '' })).toBe('development');
   });
 
-  it('herkent staging en production', () => {
+  it('gooit een expliciete fout bij een onbekende, wél gezette waarde (bijv. een typo)', () => {
+    expect(() => resolveDeployContext({ VITE_DEPLOY_CONTEXT: 'stagin' })).toThrow(
+      /Onbekende VITE_DEPLOY_CONTEXT/,
+    );
+  });
+
+  it('herkent development, staging en production expliciet', () => {
+    expect(resolveDeployContext({ VITE_DEPLOY_CONTEXT: 'development' })).toBe('development');
     expect(resolveDeployContext({ VITE_DEPLOY_CONTEXT: 'staging' })).toBe('staging');
     expect(resolveDeployContext({ VITE_DEPLOY_CONTEXT: 'production' })).toBe('production');
   });
