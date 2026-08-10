@@ -540,15 +540,24 @@ Acceptatiecriteria:
 
 ### PR 5.5 — Netlify staging en GitHub-flow
 
-Alleen na afzonderlijke expliciete hostingopdracht:
+**Mag zonder hostingopdracht (5.5a, eigenaarsbesluit 10 aug. 2026 — zie
+`docs/pr-5.5-plan.md`):** Firebase-webconfig per deploycontext structureren
+in de broncode (`resolveWebConfig()`, env-gestuurd, default blijft de
+huidige emulator-development-modus). Dit is een pure applicatielaag-refactor
+zonder Netlify-bestanden, zonder echte project-secrets en zonder gedragswijziging
+in CI/dev — geen "hostingwijziging" in de zin van AGENTS.md §"Veiligheidsgrenzen"
+regel 40.
 
-- leg base directory, `npm run build` en `v2/dist` vast;
+Alleen na afzonderlijke expliciete hostingopdracht (5.5b/5.5c):
+
+- leg base directory, `npm run build` en `v2/dist` vast in `netlify.toml`;
 - maak GitHub-gekoppelde Deploy Previews voor pull requests;
 - controleer of het bestaande Netlify-account een legacy- of credit-based plan
   gebruikt en leg quota/kosten vast; geen betaalde upgrade of auto-recharge;
 - wijs Deploy Previews uitsluitend naar development/staging Firebase, nooit
   productie;
-- beheer Firebase-webconfig per deploycontext buiten de broncode;
+- injecteer de Firebase-webconfig per deploycontext via Netlify
+  environment-variables (bouwt voort op de 5.5a-structuur);
 - controleer PWA-headers, directe assetroutes en offline reload;
 - publiceer nog niet naar het bestaande productieadres.
 
