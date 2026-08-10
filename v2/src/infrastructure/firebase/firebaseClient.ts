@@ -1,6 +1,8 @@
-// Firebase-clientbootstrap voor v2/. Draait in deze PR uitsluitend tegen de
-// Firebase Emulator Suite (zelfde project-ID/poorten als firebase/firebase.json)
-// — een echt GCP-/Firebase-project komt pas met PR 5.5 (Netlify-staging).
+// Firebase-clientbootstrap voor v2/. Zonder `VITE_DEPLOY_CONTEXT` (huidige CI/
+// dev-gedrag, ongewijzigd) draait dit uitsluitend tegen de Firebase Emulator
+// Suite (zelfde project-ID/poorten als firebase/firebase.json). Sinds PR 5.5a
+// bestaat er ook een code-pad voor staging/productie (zie webConfig.ts) — een
+// echt GCP-/Firebase-project en een echte deploy komen pas met PR 5.5b.
 import { initializeApp, type FirebaseApp } from 'firebase/app';
 import {
   clearIndexedDbPersistence,
@@ -14,15 +16,17 @@ import {
   type FirestoreLocalCache,
 } from 'firebase/firestore';
 import { connectAuthEmulator, getAuth, type Auth } from 'firebase/auth';
-
-const FIREBASE_PROJECT_ID = 'demo-lineup-tracker-dev';
-const EMULATOR_HOST = '127.0.0.1';
-const FIRESTORE_EMULATOR_PORT = 8080;
-const AUTH_EMULATOR_URL = 'http://127.0.0.1:9099';
+import {
+  resolveDeployContext,
+  resolveEmulatorConfig,
+  resolveWebConfig,
+  type DeployContext,
+} from './webConfig';
 
 let app: FirebaseApp | undefined;
 let db: Firestore | undefined;
 let auth: Auth | undefined;
+let activeContext: DeployContext | undefined;
 
 /**
  * Zuivere, los-testbare vertaling van de vertrouwd-apparaatkeuze naar een
@@ -36,38 +40,50 @@ export function resolveLocalCacheMode(trusted: boolean): FirestoreLocalCache {
     : memoryLocalCache();
 }
 
-function ensureApp(): FirebaseApp {
+function ensureApp(context: DeployContext): FirebaseApp {
   if (app) return app;
-  app = initializeApp({
-    projectId: FIREBASE_PROJECT_ID,
-    apiKey: 'demo-key',
-    authDomain: `${FIREBASE_PROJECT_ID}.firebaseapp.com`,
-  });
+  app = initializeApp(resolveWebConfig(context));
   return app;
 }
 
-function createFirestore(firebaseApp: FirebaseApp, trusted: boolean): Firestore {
+function createFirestore(
+  firebaseApp: FirebaseApp,
+  trusted: boolean,
+  context: DeployContext,
+): Firestore {
   const firestore = initializeFirestore(firebaseApp, {
     localCache: resolveLocalCacheMode(trusted),
     experimentalForceLongPolling: true,
   });
-  connectFirestoreEmulator(firestore, EMULATOR_HOST, FIRESTORE_EMULATOR_PORT);
+  const emulator = resolveEmulatorConfig(context);
+  if (emulator) {
+    connectFirestoreEmulator(firestore, emulator.host, emulator.firestorePort);
+  }
   return firestore;
 }
 
 /**
  * Idempotente eerste initialisatie. De cachemodus staat vast tot een
  * volgende `reinitFirestoreForTrustLevel()` — moet dus vóór de eerste
- * Firestore-read bekend zijn (zie de vertrouwd-apparaatprompt).
+ * Firestore-read bekend zijn (zie de vertrouwd-apparaatprompt). `context`
+ * bepaalt of er een emulator wordt aangesloten (alleen `development`, de
+ * default zonder `VITE_DEPLOY_CONTEXT`) en welke webconfig wordt gebruikt.
  */
-export function initFirebase(trusted: boolean): { db: Firestore; auth: Auth } {
+export function initFirebase(
+  trusted: boolean,
+  context: DeployContext = resolveDeployContext(),
+): { db: Firestore; auth: Auth } {
   if (db && auth) return { db, auth };
+  activeContext = context;
 
-  const firebaseApp = ensureApp();
-  db = createFirestore(firebaseApp, trusted);
+  const firebaseApp = ensureApp(context);
+  db = createFirestore(firebaseApp, trusted, context);
 
   auth = getAuth(firebaseApp);
-  connectAuthEmulator(auth, AUTH_EMULATOR_URL, { disableWarnings: true });
+  const emulator = resolveEmulatorConfig(context);
+  if (emulator) {
+    connectAuthEmulator(auth, emulator.authUrl, { disableWarnings: true });
+  }
 
   return { db, auth };
 }
@@ -88,9 +104,9 @@ export function getFirestoreDb(): Firestore {
 
 /** Herinitialiseert Firestore met een nieuwe cachemodus als de gebruiker later van keuze wisselt. */
 export async function reinitFirestoreForTrustLevel(trusted: boolean): Promise<void> {
-  if (!db || !app) return;
+  if (!db || !app || !activeContext) return;
   await terminate(db);
-  db = createFirestore(app, trusted);
+  db = createFirestore(app, trusted, activeContext);
 }
 
 /** Wist lokale Firestore-data; alleen aanroepen ná terminate() (bijv. bij uitloggen op een niet-vertrouwd apparaat). */

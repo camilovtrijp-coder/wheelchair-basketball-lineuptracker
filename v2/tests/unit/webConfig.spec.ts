@@ -1,0 +1,88 @@
+import { describe, it, expect } from 'vitest';
+import {
+  resolveDeployContext,
+  resolveEmulatorConfig,
+  resolveWebConfig,
+} from '../../src/infrastructure/firebase/webConfig';
+
+describe('infrastructure/firebase/webConfig — resolveWebConfig', () => {
+  it('geeft de development-defaults terug, ongeacht env', () => {
+    expect(resolveWebConfig('development', {})).toEqual({
+      projectId: 'demo-lineup-tracker-dev',
+      apiKey: 'demo-key',
+      authDomain: 'demo-lineup-tracker-dev.firebaseapp.com',
+    });
+  });
+
+  it('merget staging-webconfig uit de _STAGING-env-variabelen', () => {
+    const config = resolveWebConfig('staging', {
+      VITE_FIREBASE_PROJECT_ID_STAGING: 'lineup-tracker-staging',
+      VITE_FIREBASE_API_KEY_STAGING: 'staging-key',
+      VITE_FIREBASE_AUTH_DOMAIN_STAGING: 'lineup-tracker-staging.firebaseapp.com',
+    });
+    expect(config).toEqual({
+      projectId: 'lineup-tracker-staging',
+      apiKey: 'staging-key',
+      authDomain: 'lineup-tracker-staging.firebaseapp.com',
+    });
+  });
+
+  it('merget productie-webconfig uit de _PRODUCTION-env-variabelen', () => {
+    const config = resolveWebConfig('production', {
+      VITE_FIREBASE_PROJECT_ID_PRODUCTION: 'lineup-tracker-prod',
+      VITE_FIREBASE_API_KEY_PRODUCTION: 'prod-key',
+      VITE_FIREBASE_AUTH_DOMAIN_PRODUCTION: 'lineup-tracker-prod.firebaseapp.com',
+    });
+    expect(config).toEqual({
+      projectId: 'lineup-tracker-prod',
+      apiKey: 'prod-key',
+      authDomain: 'lineup-tracker-prod.firebaseapp.com',
+    });
+  });
+
+  it('gooit een expliciete fout bij een ontbrekende staging-env-variabele, geen lege webconfig', () => {
+    expect(() =>
+      resolveWebConfig('staging', {
+        VITE_FIREBASE_PROJECT_ID_STAGING: 'lineup-tracker-staging',
+        // apiKey en authDomain ontbreken bewust
+      }),
+    ).toThrow(/VITE_FIREBASE_API_KEY_STAGING/);
+  });
+
+  it('gooit een expliciete fout bij een volledig lege env voor productie', () => {
+    expect(() => resolveWebConfig('production', {})).toThrow(/VITE_FIREBASE_PROJECT_ID_PRODUCTION/);
+  });
+});
+
+describe('infrastructure/firebase/webConfig — resolveEmulatorConfig', () => {
+  it('geeft de emulatorconfig voor development', () => {
+    expect(resolveEmulatorConfig('development')).toEqual({
+      host: '127.0.0.1',
+      firestorePort: 8080,
+      authUrl: 'http://127.0.0.1:9099',
+    });
+  });
+
+  it('geeft null voor staging (geen emulator tegen een echt project)', () => {
+    expect(resolveEmulatorConfig('staging')).toBeNull();
+  });
+
+  it('geeft null voor productie (geen emulator tegen een echt project)', () => {
+    expect(resolveEmulatorConfig('production')).toBeNull();
+  });
+});
+
+describe('infrastructure/firebase/webConfig — resolveDeployContext', () => {
+  it('valt terug op development zonder VITE_DEPLOY_CONTEXT', () => {
+    expect(resolveDeployContext({})).toBe('development');
+  });
+
+  it('valt terug op development bij een onbekende waarde', () => {
+    expect(resolveDeployContext({ VITE_DEPLOY_CONTEXT: 'onzin' })).toBe('development');
+  });
+
+  it('herkent staging en production', () => {
+    expect(resolveDeployContext({ VITE_DEPLOY_CONTEXT: 'staging' })).toBe('staging');
+    expect(resolveDeployContext({ VITE_DEPLOY_CONTEXT: 'production' })).toBe('production');
+  });
+});
