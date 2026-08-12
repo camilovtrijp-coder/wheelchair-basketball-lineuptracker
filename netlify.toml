@@ -1,3 +1,9 @@
+# Dit bestand bedient uitsluitend v1 (root-app). v2 heeft een eigen
+# `v2/netlify.toml`, gelezen door een aparte Netlify-site met "Base
+# directory" = v2 zodra die site bestaat (PR 5.5b, eigenaarsbesluit bewust
+# uitgesteld — zie docs/pr-5.5-plan.md §E.6). Deze v1-site en -config blijven
+# ongewijzigd.
+
 [build]
   # index.html plus de PWA-bestanden (manifest, service worker, iconen) worden
   # gepubliceerd. docs/ en README bevatten geen gevoelige data meer, maar

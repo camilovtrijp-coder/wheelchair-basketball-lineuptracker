@@ -1,10 +1,10 @@
 # PR 5.5 — Plan Netlify-staging en Firebase-webconfig-externalisatie
 
-Status: goedgekeurd concept; sub-PR's mogen starten volgens §E hieronder.
+Status: 5.5a gemerged (#43). 5.5b-config gereed, site-koppeling bewust uitgesteld (eigenaarsbesluit 12 augustus 2026, §E.6).
 **Repo:** `camilovtrijp-coder/wheelchair-basketball-lineuptracker` (v2-/herbouwomgeving)
 **Geverifieerd tegen:** `main` op `ceb8dc0` (na merge van PR #40 / 5.4b); `feature/pr-5.4c-pilot-report-and-section-17` (PR #41, gemerged) raakt hier niet.
 **Voorganger:** PR 5.4 (#40, 5.4a #37, 5.4c #41) — pilot-bewijs geleverd, geen open punten meer in §17.
-**Eerste concept:** Minimax, 9 augustus 2026. **Herzien en vastgelegd:** 10 augustus 2026, na verificatie tegen de daadwerkelijke repo-inhoud en een eigenaarsbesluit over de §10/AGENTS-gate (§E hieronder).
+**Eerste concept:** Minimax, 9 augustus 2026. **Herzien en vastgelegd:** 10 augustus 2026, na verificatie tegen de daadwerkelijke repo-inhoud en een eigenaarsbesluit over de §10/AGENTS-gate (§E hieronder). **Bijgewerkt:** 12 augustus 2026, 5.5b gesplitst in config/site-koppeling (§E.6).
 
 ## A. Reality-check
 
@@ -52,16 +52,16 @@ Status: goedgekeurd concept; sub-PR's mogen starten volgens §E hieronder.
 
 **Risico's:** `import.meta.env.*` is build-time — geen contextwissel zonder rebuild (bewust, voorkomt dat een staging-build per ongeluk productie aanspreekt). `apiKey`-velden zijn publieke webconfig, geen geheimen (AGENTS.md regel 26-27); mogen buiten Git in `.env` en later via Netlify env-vars.
 
-### 5.5b — Netlify-config + Deploy Previews (wacht op expliciete hostingopdracht)
+### 5.5b — Netlify-config + Deploy Previews (config: gereed; site-koppeling: wacht op eigenaarsbesluit "nu aanzetten", zie §E.6)
 
-**Doel:** repo Netlify-klaar maken zodat een PR automatisch een Deploy Preview met `staging`-webconfig krijgt. Geen productie-deploy.
+**Doel:** repo Netlify-klaar maken zodat een PR automatisch een Deploy Preview met `staging`-webconfig krijgt, zodra de eigenaar de site daadwerkelijk koppelt. Geen productie-deploy.
 
 **Werk:**
 
-1. `netlify.toml` (root) — v1-blok **behouden** met een commentaarregel dat dit v1 is; nieuw v2-blok toevoegen: `[build] base = "v2"`, `command`, `publish = "v2/dist"`, `[build.environment]`/`[context.deploy-preview]`/`[context.production]` met `VITE_DEPLOY_CONTEXT`, PWA-headers (`X-Frame-Options`, `X-Content-Type-Options`, `Referrer-Policy`, cache-control voor `sw.js`), SPA-fallback-redirect met expliciete uitzonderingen voor `sw.js`/`assets/*`.
-2. Firebase-webconfig per context als Netlify environment variables (eigenaar zet deze in de Netlify UI — vereist accounttoegang, dus apart).
-3. Netlify-account/plan-controle (eenmalig, door eigenaar): legacy- of credit-based, quota, kosten; **geen betaalde upgrade, geen auto-recharge**. Vastleggen in `docs/pr-5.5-onderzoeksrapport.md` §B.1.
-4. GitHub-koppeling: één site, Deploy Previews aan, main = productie-context. **Pas na de hostingopdracht.**
+1. ~~`netlify.toml` (root) — v1-blok behouden, nieuw v2-blok toevoegen~~ **Technisch bijgesteld** (zie §E.6): één root-`netlify.toml` kan geen twee `[build]`-tabellen bevatten. In plaats daarvan: `v2/netlify.toml` als eigen bestand (`command`, `publish = "dist"`, `[context.production]`/`[context.deploy-preview]`/`[context.branch-deploy]` met `VITE_DEPLOY_CONTEXT`, PWA-headers, SPA-fallback-redirect zonder `force` — bestaande assets zoals `sw.js`/`assets/*` krijgen daardoor al voorrang boven de redirect). Root-`netlify.toml` kreeg alleen een verwijzende commentaarregel, geen functionele wijziging. **Voltooid, code-only, geen hostingeffect.**
+2. Firebase-webconfig per context als Netlify environment variables (eigenaar zet deze in de Netlify UI — vereist accounttoegang, dus apart, pas zodra de echte staging/productie-Firebase-projecten bestaan).
+3. Netlify-account/plan-controle (eenmalig, door eigenaar): legacy- of credit-based, quota, kosten; **geen betaalde upgrade, geen auto-recharge**. Vastleggen in `docs/pr-5.5-onderzoeksrapport.md` §B.1. (Bekend: het bestaande account staat op het Free-teamplan, met al één gekoppelde site voor v1.)
+4. GitHub-koppeling voor v2: nieuwe, aparte site met "Base directory" = `v2`. **Bewust uitgesteld tot de eigenaar dit expliciet aanzet** (§E.6) — niet automatisch bij het mergen van deze PR. Bij activatie: volg de activatiechecklist in §E.6 (Deploy Previews eerst uit, alleen production-branch).
 5. PWA-verificatie na eerste staging-deploy: preview laadt, `sw.js` zonder lange cache, directe route valt terug op `index.html`, offline reload werkt.
 
 **Buiten scope:** account-koppeling, eerste deploy, monitoring/alerts.
@@ -107,12 +107,17 @@ Status: goedgekeurd concept; sub-PR's mogen starten volgens §E hieronder.
 3. **v1 `netlify.toml`:** behouden zoals hij is, met een commentaarregel dat dit v1 is en v2 in 5.5b een eigen sectie krijgt.
 4. **Staging-Firebase-project:** structuur eerst in 5.5a (geen externe afhankelijkheid); het echte project aanmaken hoort bij 5.5b, na de hostingopdracht.
 5. **CI-workflow:** geen extra staging-rooktest-stap. Netlify's eigen build is de rooktest voor de staging-context; CI blijft development/emulator-only, snel en ongewijzigd.
+6. **5.5b gesplitst in config (nu) en site-koppeling (later), eigenaarsbesluit 12 augustus 2026.** Reden: bij het huidige PR-tempo zou een Deploy Preview per pull request het Netlify Free-planquotum snel opsouperen. Besluit:
+   - **Nu**: `v2/netlify.toml` (build/publish/context-envs/headers/SPA-redirect) mag in de repo staan zonder dat er een Netlify-site bestaat die het leest — dit is code zonder hostingeffect, net als 5.5a.
+   - **Later, op een moment dat de eigenaar kiest**: pas dan een nieuwe Netlify-site aanmaken, koppelen aan GitHub met "Base directory" = `v2`, en de Firebase-webconfig-omgevingsvariabelen invullen.
+   - **Activatiechecklist voor dat moment** (Site settings → Build & deploy → Deploy contexts): zet Deploy Previews aanvankelijk **uit**; laat alleen de production-branch (`main`) bouwen. Zet Deploy Previews pas aan wanneer het creditverbruik van alleen-production-builds bekend en acceptabel is. Dit is een bewuste afwijking van de oorspronkelijke 5.5b-acceptatiecriteria in §D ("nieuwe PR krijgt automatisch een Deploy Preview") — dat criterium wordt pas bewezen ná activatie, niet bij de code-only-oplevering.
+   - Er bestaat al een bestaande, gekoppelde Netlify-site voor v1 (`lineuptracker`, team-plan Free) die ongewijzigd blijft; de nieuwe v2-site is een tweede, aparte site op hetzelfde account.
 
 ## F. Voorgestelde volgorde
 
-1. **5.5a** op een nieuwe branch `feature/pr-5.5a-firebase-webconfig-externalization`, gebaseerd op `main` (huidige head, na PR #41). CI groen; PR open.
-2. **Eigenaar geeft de expliciete hostingopdracht** (voor 5.5b/5.5c) en maakt het staging-Firebase-project aan; bevestigt Netlify-plan/quota.
-3. **5.5b** op `feature/pr-5.5b-netlify-staging-deploy-previews`. Eerste Deploy Preview-URL in PR-tekst + onderzoeksrapport. CI groen.
-4. **5.5c** op `feature/pr-5.5c-handmatige-validatie-en-verbruik` zodra 5.5b live is. Geen code, alleen docs.
+1. **5.5a** op een nieuwe branch `feature/pr-5.5a-firebase-webconfig-externalization`, gebaseerd op `main` (huidige head, na PR #41). CI groen; PR open. **Voltooid (#43).**
+2. **5.5b-config** (dit besluit, 12 augustus 2026): `v2/netlify.toml` + verwijzing in root-`netlify.toml` mergen zonder Netlify-site-koppeling — code-only, geen hostingeffect, net als 5.5a. **Voltooid.**
+3. **5.5b-activatie** (later, op een moment dat de eigenaar kiest): staging-Firebase-project aanmaken, Netlify-account/plan bevestigen, nieuwe v2-Netlify-site aanmaken en koppelen met "Base directory" = `v2`, activatiechecklist uit §E.6 volgen (Deploy Previews eerst uit). Eerste Deploy Preview-URL dan in `docs/pr-5.5-onderzoeksrapport.md` §B.1.
+4. **5.5c** op `feature/pr-5.5c-handmatige-validatie-en-verbruik` zodra 5.5b-activatie live is. Geen code, alleen docs.
 
 **Buiten scope van 5.5:** PR 8.1 (Safari/iPadOS-module-SW), PR 8.3 (security/privacy/kosten review), PR 8.5 (productie-cutover). 5.5 stopt waar de eerste brede platformpilot-uitrol veilig kan beginnen, conform `pr-5.3d-onderzoeksrapport.md` §J trigger-criterium 3.

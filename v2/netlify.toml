@@ -1,0 +1,68 @@
+# Netlify-configuratie voor v2 (PR 5.5b). Losstaand van het root-`netlify.toml`
+# (dat blijft v1 bedienen en is door dit bestand niet aangeraakt).
+#
+# Waarom een apart bestand i.p.v. één gedeeld root-`netlify.toml` met twee
+# `[build]`-blokken: dat laatste is niet geldig — TOML staat geen twee
+# top-level `[build]`-tabellen in één bestand toe, en v1/v2 hebben elk hun
+# eigen build-command/publish-map nodig. Netlify's eigen mechanisme hiervoor
+# is een site-specifieke "Base directory": een site met base directory `v2`
+# leest dit bestand (`v2/netlify.toml`) in plaats van het root-bestand, en
+# alle paden hieronder (`publish`, redirects) zijn dan relatief aan `v2/`.
+#
+# Dit bestand doet op zichzelf niets — er bestaat nog geen Netlify-site die
+# hem leest. Eigenaarsbesluit 12 augustus 2026 (zie docs/pr-5.5-plan.md §E.6):
+# de v2-Netlify-site wordt bewust pas later aangemaakt en aan GitHub gekoppeld,
+# om het Free-plan-creditverbruik te sparen totdat dat gewenst is. Zie
+# docs/pr-5.5-plan.md §E.6 voor de activatiestappen (o.a. Deploy Previews
+# aanvankelijk uitgezet, alleen production-branch-builds).
+
+[build]
+  command = "npm run build"
+  publish = "dist"
+
+# VITE_DEPLOY_CONTEXT stuurt resolveWebConfig()/resolveDeployContext()
+# (v2/src/infrastructure/firebase/webConfig.ts, PR 5.5a). De daadwerkelijke
+# Firebase-webconfig-waarden (VITE_FIREBASE_*_STAGING/_PRODUCTION) horen hier
+# niet in Git — die zijn per context anders, bestaan pas zodra de echte
+# staging/productie-Firebase-projecten zijn aangemaakt, en worden dan als
+# Netlify-omgevingsvariabelen in de site-UI gezet (publieke projectidentificatie,
+# geen geheim — zie AGENTS.md regel 26-27 — maar toch niet hardcoded hier,
+# want nog niet bekend en per site-omgeving instelbaar zonder rebuild-diff).
+[context.production]
+  [context.production.environment]
+    VITE_DEPLOY_CONTEXT = "production"
+
+# Deploy Previews (per pull request) wijzen naar staging-Firebase, nooit naar
+# productie — dit blijft zo staan ook terwijl Deploy Previews in de Netlify-
+# site-instellingen voorlopig uitgeschakeld zijn; het schrijft alleen voor
+# wat er moet gebeuren zodra ze aangezet worden.
+[context.deploy-preview]
+  [context.deploy-preview.environment]
+    VITE_DEPLOY_CONTEXT = "staging"
+
+[context.branch-deploy]
+  [context.branch-deploy.environment]
+    VITE_DEPLOY_CONTEXT = "staging"
+
+[[headers]]
+  for = "/*"
+  [headers.values]
+    X-Frame-Options = "DENY"
+    X-Content-Type-Options = "nosniff"
+    Referrer-Policy = "strict-origin-when-cross-origin"
+
+# sw.js mag nooit lang gecachet worden door de browser/CDN, anders blijven
+# gebruikers na een update op een oude service worker hangen.
+[[headers]]
+  for = "/sw.js"
+  [headers.values]
+    Cache-Control = "no-cache"
+
+# SPA-fallback. Niet `force = true`: Netlify serveert een bestaand bestand op
+# schijf (sw.js, /assets/*, manifest.webmanifest, iconen) altijd vóór een
+# redirect wordt toegepast, dus die routes hebben geen aparte uitzondering
+# nodig — alleen een niet-bestaande route valt terug op index.html.
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 200
