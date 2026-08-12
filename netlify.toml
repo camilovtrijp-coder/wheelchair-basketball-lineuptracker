@@ -1,10 +1,21 @@
 # Dit bestand bedient uitsluitend v1 (root-app). v2 heeft een eigen
 # `v2/netlify.toml`, gelezen door een aparte Netlify-site met "Base
 # directory" = v2 zodra die site bestaat (PR 5.5b, eigenaarsbesluit bewust
-# uitgesteld — zie docs/pr-5.5-plan.md §E.6). Deze v1-site en -config blijven
-# ongewijzigd.
+# uitgesteld — zie docs/pr-5.5-plan.md §E.6). Het v1-build-command/publish
+# hieronder blijven ongewijzigd; alleen `ignore` is toegevoegd (eigenaarsbesluit
+# 12 augustus 2026, zie §E.7) om te voorkomen dat elke push naar `main` een
+# volledige v1-productiedeploy (15 Netlify-credits) verbruikt, ook wanneer
+# alleen v2- of docs-bestanden wijzigden.
 
 [build]
+  # ignore: git diff --quiet geeft exit 0 (= geen verschil binnen de
+  # opgegeven paden) → Netlify slaat de build over; exit 1 (= wel verschil) →
+  # build gaat door. $CACHED_COMMIT_REF/$COMMIT_REF zijn Netlify's eigen
+  # env-vars voor "laatst gebouwde commit" en "huidige commit". Alleen deze
+  # v1-relevante paden triggeren een rebuild; wijzigingen elders in de repo
+  # (v2/, docs/, firebase/, firebase-spike/) niet.
+  ignore = "git diff --quiet $CACHED_COMMIT_REF $COMMIT_REF -- index.html manifest.json icons fonts sw.js netlify.toml"
+
   # index.html plus de PWA-bestanden (manifest, service worker, iconen) worden
   # gepubliceerd. docs/ en README bevatten geen gevoelige data meer, maar
   # hoeven niet als losse bestanden mee de site in.
