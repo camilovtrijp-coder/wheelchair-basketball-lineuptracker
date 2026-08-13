@@ -32,6 +32,7 @@ import { V1MigrationPrompt } from '../ui/game/V1MigrationPrompt';
 import { HistoryPanel } from '../ui/game/HistoryPanel';
 import { StatsPanel } from '../ui/stats/StatsPanel';
 import { TrendsPanel } from '../ui/trends/TrendsPanel';
+import { BackupPanel } from '../ui/backup/BackupPanel';
 
 export interface AppProps {
   repositories: ResolvedAppRepositories;
@@ -334,6 +335,22 @@ export function App({
     setHistoryOpenId((prev) => (prev === id ? null : prev));
   }
 
+  /**
+   * PR 6.6: ververst alle vier live App-states nadat `BackupPanel` een
+   * import heeft afgerond — de coordinator schrijft rechtstreeks naar de
+   * repositories/localStorage, buiten React om, dus zonder deze herlezing
+   * zou de UI de oude waarden blijven tonen tot een volgende toevallige
+   * her-render.
+   */
+  async function handleBackupImported() {
+    setSettings(await getSettingsAsync(repositories.settings));
+    setRoster(await getRosterAsync(repositories.roster));
+    setGame(gameRepo.read());
+    setCompletedGames(completedGameRepo.list());
+    setHistoryOpenId(null);
+    setStatsGameIds(null);
+  }
+
   useEffect(() => {
     let cancelled = false;
     setSettings(null);
@@ -581,18 +598,44 @@ export function App({
           </p>
         ) : null}
         {tab === 'settings' ? (
-          <SettingsPanel
-            lang={lang}
-            storage={browserStorage}
-            settings={settings}
-            onSettingsChange={setSettings}
-            onSave={syncStatus.saveSettings}
-            onReset={syncStatus.resetSettings}
-            onRefresh={() => getSettingsAsync(repositories.settings)}
-            onCloudMigrate={repositories.mode === 'cloud' ? handleCloudMigrateSettings : undefined}
-            canWrite={canWrite}
-            updatedAt={settingsUpdatedAt}
-          />
+          <>
+            <SettingsPanel
+              lang={lang}
+              storage={browserStorage}
+              settings={settings}
+              onSettingsChange={setSettings}
+              onSave={syncStatus.saveSettings}
+              onReset={syncStatus.resetSettings}
+              onRefresh={() => getSettingsAsync(repositories.settings)}
+              onCloudMigrate={
+                repositories.mode === 'cloud' ? handleCloudMigrateSettings : undefined
+              }
+              canWrite={canWrite}
+              updatedAt={settingsUpdatedAt}
+            />
+            {/* PR 6.6: back-up-sectie, eigenaarsbesluit §E.4 — zelfde
+             * bevoegdheidsgrens als Settings/Roster (`canWrite` ==
+             * `canManageTeamData`), geen apart capabilitycontract nodig. */}
+            <BackupPanel
+              lang={lang}
+              canWrite={canWrite}
+              organizationId={organizationId}
+              teamId={teamId}
+              organizationName={organizationName || organizationId}
+              teamName={(settings.teamName as string) || teamId}
+              settings={settings}
+              roster={roster}
+              activeGame={game}
+              settingsRepo={repositories.settings}
+              rosterRepo={repositories.roster}
+              gameRepo={gameRepo}
+              completedGameRepo={completedGameRepo}
+              saveSettings={syncStatus.saveSettings}
+              saveRoster={syncStatus.saveRoster}
+              setLang={setLang}
+              onImported={() => void handleBackupImported()}
+            />
+          </>
         ) : tab === 'roster' ? (
           <RosterPanel
             lang={lang}

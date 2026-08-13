@@ -223,4 +223,13 @@ export class LocalStorageGameRepository implements GameRepository {
       return false;
     }
   }
+
+  clear(): boolean {
+    try {
+      this.storage.removeItem(this.key);
+      return true;
+    } catch {
+      return false;
+    }
+  }
 }

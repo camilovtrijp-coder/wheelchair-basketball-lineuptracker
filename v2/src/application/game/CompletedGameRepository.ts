@@ -40,4 +40,14 @@ export interface CompletedGameRepository {
    * al, dan is dit een no-op die `true` teruggeeft.
    */
   remove(id: string): boolean;
+  /**
+   * PR 6.6 §F 6.6b: vervangt de VOLLEDIGE historie voor deze organisatie/
+   * team in één keer — nodig voor het replace-per-onderdeel-importcontract
+   * (plan §D/§E.2). Een herhaalde import van dezelfde back-up levert zo
+   * identiek dezelfde eindtoestand op i.p.v. te stapelen (idempotent
+   * zonder aparte dedupe-/provenance-sleutel nodig te hebben). `false` als
+   * één van de meegegeven wedstrijden niet bij deze organisatie/team hoort,
+   * of als de opslag faalde — dan blijft de bestaande historie ongewijzigd.
+   */
+  replaceAll(games: CompletedGame[]): boolean;
 }

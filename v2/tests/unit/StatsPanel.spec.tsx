@@ -57,6 +57,7 @@ function fakeRead(
     safeList: () => ({ status, games }),
     add: () => true,
     remove: () => true,
+    replaceAll: () => true,
   };
   return { repo };
 }

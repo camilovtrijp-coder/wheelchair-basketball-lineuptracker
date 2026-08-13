@@ -92,6 +92,7 @@ function fakeRepo(games: CompletedGame[]): CompletedGameRepository {
     safeList: () => ({ status: 'ok', games }),
     add: () => true,
     remove: () => true,
+    replaceAll: () => true,
   };
 }
 
@@ -101,6 +102,7 @@ function fakeRepoWithRead(read: CompletedGamesReadResult): CompletedGameReposito
     safeList: () => read,
     add: () => true,
     remove: () => true,
+    replaceAll: () => true,
   };
 }
 
@@ -128,6 +130,7 @@ describe('application/stats/buildAnalysisScope — canonieke bron voor de analys
       list: () => [completedGame({ id: 'g1' })],
       add: () => true,
       remove: () => true,
+      replaceAll: () => true,
     };
     const scope = buildAnalysisScope(noSafeList, null);
     expect(scope.historyRead).toEqual({ status: 'ok', games: [completedGame({ id: 'g1' })] });

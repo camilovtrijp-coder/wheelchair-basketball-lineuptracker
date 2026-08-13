@@ -1161,6 +1161,40 @@ button:focus-visible {
   border: 0;
 }
 
+/* ---------- PR 6.6: back-up (backup-panel) ---------- */
+
+.backup-panel {
+  display: flex;
+  flex-direction: column;
+  gap: var(--lt-space-3);
+}
+
+.backup-preview {
+  display: flex;
+  flex-direction: column;
+  gap: var(--lt-space-2);
+  border: var(--lt-border-thin);
+  border-radius: var(--lt-radius-lg);
+  padding: var(--lt-space-3) var(--lt-space-4);
+  background: var(--lt-color-surface);
+}
+
+.backup-preview h3 {
+  margin: 0;
+  font-size: var(--lt-font-size-md);
+  font-weight: 600;
+}
+
+.backup-preview__list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--lt-space-1);
+  font-size: var(--lt-font-size-sm);
+}
+
 /* ---------- PR 6.3: historie (history-panel) ---------- */
 
 .history-panel {

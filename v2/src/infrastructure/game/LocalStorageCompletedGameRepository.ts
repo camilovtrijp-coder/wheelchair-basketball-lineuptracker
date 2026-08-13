@@ -123,6 +123,22 @@ export class LocalStorageCompletedGameRepository implements CompletedGameReposit
     return this.writeAll(current.games.filter((g) => g.id !== id));
   }
 
+  replaceAll(games: CompletedGame[]): boolean {
+    if (
+      games.some(
+        (g) =>
+          !matchesContext(
+            g as unknown as Record<string, unknown>,
+            this.organizationId,
+            this.teamId,
+          ),
+      )
+    ) {
+      return false;
+    }
+    return this.writeAll(games);
+  }
+
   private writeAll(games: CompletedGame[]): boolean {
     try {
       this.storage.setItem(this.key, JSON.stringify(games));

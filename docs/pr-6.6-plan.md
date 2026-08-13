@@ -89,6 +89,11 @@ De pipeline is zuiver en schrijft niets vóór stap 8:
 
 ## E. Eigenaarsbeslissingen vóór implementatie
 
+**Bevestigd door de eigenaar (camilovtrijp-coder, 13 aug. 2026):** alle vier
+onderstaande voorstellen zijn ongewijzigd geaccepteerd via expliciete
+vraag/antwoord vóór de start van de implementatie. Geen van de vier is
+aangepast t.o.v. het voorstel.
+
 Onderstaande voorstellen zijn bewust nog geen stilzwijgende architectuurkeuze:
 
 1. **Back-upformaat** — voorstel: introduceer `version: 2` met benoemde,
