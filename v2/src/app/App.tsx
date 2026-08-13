@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'preact/hooks';
+import { useEffect, useMemo, useRef, useState } from 'preact/hooks';
 import { browserStorage } from '../i18n/browserStorage';
 import { readLang, writeLang } from '../i18n/persistence';
 import { resolveInitialLang } from '../i18n/detect';
@@ -21,6 +21,10 @@ import { LoadingScreen } from '../ui/status/LoadingScreen';
 import { OfflineUncachedScreen } from '../ui/status/OfflineUncachedScreen';
 import type { ResolvedAppRepositories } from '../infrastructure/repositories/resolveAppRepositories';
 import type { SyncStatusApi } from '../application/sync/useSyncStatus';
+import { LocalStorageGameRepository } from '../infrastructure/game/LocalStorageGameRepository';
+import { createGameFromRoster } from '../domain/game/setup';
+import type { ActiveGame } from '../domain/game/types';
+import { GameSetupPanel } from '../ui/game/GameSetupPanel';
 
 export interface AppProps {
   repositories: ResolvedAppRepositories;
@@ -42,9 +46,19 @@ export interface AppProps {
    * praktijk altijd de cloud-berekening uit `selectedContextCanWrite`.
    */
   canWrite: boolean;
+  /**
+   * Actieve organisatie/teamcontext (PR 5.2, AuthGate's `selectedContext`),
+   * doorgegeven zodat een nieuwe wedstrijdopzet (PR 6.1) er verplicht mee
+   * getagd en onder een eigen sleutel opgeslagen kan worden — zie
+   * infrastructure/game/LocalStorageGameRepository.ts. Wedstrijddata is in
+   * PR 6.1 nog uitsluitend lokaal (geen Firestore-adapter); cloud-sync komt
+   * pas met PR 7.1.
+   */
+  organizationId: string;
+  teamId: string;
 }
 
-type Tab = 'settings' | 'roster';
+type Tab = 'settings' | 'roster' | 'game';
 
 function initialLang(): Lang {
   const stored = readLang(browserStorage);
@@ -74,7 +88,7 @@ const v1RosterRepo = new LocalStorageRosterRepository(browserStorage);
 // wordt toegeschreven zonder onderscheid tussen de vier mogelijke oorzaken.
 const STEP_STALL_TIMEOUT_MS = 8000;
 
-export function App({ repositories, syncStatus, canWrite }: AppProps) {
+export function App({ repositories, syncStatus, canWrite, organizationId, teamId }: AppProps) {
   const [lang, setLang] = useState<Lang>(initialLang);
   const [tab, setTab] = useState<Tab>('settings');
   const [settings, setSettings] = useState<(Settings & Record<string, unknown>) | null>(null);
@@ -105,6 +119,47 @@ export function App({ repositories, syncStatus, canWrite }: AppProps) {
   // state spiegelen — bijgewerkt in elke onNext en in de read()-handlers.
   const settingsLoadedRef = useRef(false);
   const rosterLoadedRef = useRef(false);
+
+  // PR 6.1: wedstrijdopzet. Lokaal-only (nog geen Firestore-adapter, zie
+  // GameRepository.ts) en per organisatie/team-context opgeslagen, zodat een
+  // contextwissel de opzet van een ander team niet overschrijft of verliest.
+  const gameRepo = useMemo(
+    () => new LocalStorageGameRepository(browserStorage, organizationId, teamId),
+    [organizationId, teamId],
+  );
+  const [game, setGame] = useState<ActiveGame | null>(null);
+  const [gameSaveError, setGameSaveError] = useState(false);
+
+  // Spiegelt v1's init() precies: een opgeslagen wedstrijd wordt alleen
+  // hervat wanneer ze al écht gestart is (`phase === 'tracking'`) — v1:
+  // "if (saved && saved.players && (saved.phase === 'tracking' ||
+  // (saved.segments && saved.segments.length > 0))) state =
+  // Object.assign(freshState(), saved)". Een nog-niet-gestarte opzet
+  // (`phase === 'setup'`) wordt bewust GENEGEERD bij het laden, ook al staat
+  // ze in de opslag — de opzet hieronder herderived 'm dan vers vanaf de
+  // actuele roster. Reden: tot "Start wedstrijd" is geklikt is een opzet
+  // laag-risico en mag een reload gewoon de huidige teamsamenstelling tonen;
+  // ná start (fase 'tracking') mag niets meer verloren gaan.
+  useEffect(() => {
+    const stored = gameRepo.read();
+    setGame(stored && stored.phase === 'tracking' ? stored : null);
+    setGameSaveError(false);
+  }, [gameRepo]);
+
+  // Spiegelt v1's freshState(): zodra er geen (te hervatten) wedstrijd is en
+  // team/instellingen geladen zijn, wordt een opzet vers vanaf de actuele
+  // roster afgeleid — ook zonder expliciete "nieuwe wedstrijd"-actie.
+  useEffect(() => {
+    if (game !== null || settings === null || roster === null) return;
+    const fresh = createGameFromRoster(roster, organizationId, teamId, settings.classBaseLimit);
+    setGame(fresh);
+    gameRepo.write(fresh);
+  }, [game, settings, roster, gameRepo, organizationId, teamId]);
+
+  function handleGameChange(next: ActiveGame) {
+    setGame(next);
+    setGameSaveError(!gameRepo.write(next));
+  }
 
   useEffect(() => {
     let cancelled = false;
@@ -303,6 +358,15 @@ export function App({ repositories, syncStatus, canWrite }: AppProps) {
         >
           {t('rosterTitle')}
         </button>
+        <button
+          type="button"
+          className={`app-nav__tab${tab === 'game' ? ' app-nav__tab--active' : ''}`}
+          aria-current={tab === 'game' ? 'page' : undefined}
+          data-testid="nav-game"
+          onClick={() => setTab('game')}
+        >
+          {t('gameTitle')}
+        </button>
       </nav>
 
       <main className="app-main">
@@ -329,7 +393,7 @@ export function App({ repositories, syncStatus, canWrite }: AppProps) {
             canWrite={canWrite}
             updatedAt={settingsUpdatedAt}
           />
-        ) : (
+        ) : tab === 'roster' ? (
           <RosterPanel
             lang={lang}
             storage={browserStorage}
@@ -343,6 +407,16 @@ export function App({ repositories, syncStatus, canWrite }: AppProps) {
             onCloudMigrate={repositories.mode === 'cloud' ? handleCloudMigrateRoster : undefined}
             canWrite={canWrite}
             updatedAt={rosterUpdatedAt}
+          />
+        ) : (
+          <GameSetupPanel
+            lang={lang}
+            game={game}
+            useClassLimit={settings.useClassLimit === true}
+            onGameChange={handleGameChange}
+            onGoToRoster={() => setTab('roster')}
+            canWrite={canWrite}
+            saveError={gameSaveError}
           />
         )}
       </main>
