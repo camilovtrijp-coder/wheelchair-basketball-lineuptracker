@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'preact/hooks';
-import { browserStorage } from '../i18n/browserStorage';
+import { browserStorage, strictReadBrowserStorage } from '../i18n/browserStorage';
 import { readLang, writeLang } from '../i18n/persistence';
 import { resolveInitialLang } from '../i18n/detect';
 import { SUPPORTED_LANGS, translate, type Lang, type StringKey } from '../i18n/strings';
@@ -174,8 +174,16 @@ export function App({
   // infrastructure/game/LocalStorageCompletedGameRepository.ts). Vóór de
   // resume-check hieronder gedeclareerd: die heeft `completedGameRepo` nodig
   // om te herkennen of een opgeslagen 'tracking'-wedstrijd al gearchiveerd is.
+  //
+  // Gebruikt bewust `strictReadBrowserStorage` i.p.v. de gedeelde
+  // `browserStorage` (externe PR-6.3-review, aug. 2026): `browserStorage`
+  // vertaalt élke `getItem()`-fout naar `null`, wat voor deze repository een
+  // echte readfout niet meer te onderscheiden zou maken van "nog geen
+  // historie" — en `add()`/`remove()` zouden zo'n readfout dan alsnog als
+  // lege lijst behandelen en de bestaande historie overschrijven. Zie
+  // `i18n/browserStorage.ts` voor het volledige contract.
   const completedGameRepo = useMemo(
-    () => new LocalStorageCompletedGameRepository(browserStorage, organizationId, teamId),
+    () => new LocalStorageCompletedGameRepository(strictReadBrowserStorage, organizationId, teamId),
     [organizationId, teamId],
   );
   const [completedGames, setCompletedGames] = useState<CompletedGame[]>([]);

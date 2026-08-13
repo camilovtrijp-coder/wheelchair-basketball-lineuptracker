@@ -3,6 +3,7 @@ import {
   completedGamesStorageKey,
   LocalStorageCompletedGameRepository,
 } from '../../src/infrastructure/game/LocalStorageCompletedGameRepository';
+import { createBrowserStorage } from '../../src/i18n/browserStorage';
 import type { KeyValueStorage } from '../../src/i18n/persistence';
 import type { CompletedGame } from '../../src/domain/game/types';
 
@@ -179,6 +180,43 @@ describe('LocalStorageCompletedGameRepository', () => {
     expect(repo.add(completedGame({ id: 'new' }))).toBe(false);
     // De corrupte raw data blijft ongewijzigd staan (quarantaine i.p.v. stil overschrijven).
     expect(storage.getItem(key)).toBe(JSON.stringify({ not: 'an array' }));
+  });
+
+  it('add() weigert te schrijven bij een echte getItem()-fout op het daadwerkelijke browserStorage-productiepad', () => {
+    // Herreview-regressietest (externe PR-6.3-review, aug. 2026): de vorige
+    // TrackingStorage-tests hierboven omzeilen `createBrowserStorage()` — die
+    // adapter vertaalt in de standaardmodus élke getItem()-fout naar `null`,
+    // waardoor readAll() dat ten onrechte als "leeg" zou lezen. Deze test
+    // gebruikt daarom de daadwerkelijke adapter met `swallowGetItemErrors:
+    // false` (zie App.tsx: `strictReadBrowserStorage`, exact hiervoor
+    // geïntroduceerd) en een backing Storage waarvan getItem() één keer
+    // gooit terwijl setItem() daarna gewoon slaagt.
+    const key = completedGamesStorageKey('org-1', 'team-1');
+    const backingStore = new Map<string, string>();
+    backingStore.set(key, JSON.stringify([completedGame({ id: 'old' })]));
+
+    let failNextRead = true;
+    const backing = {
+      getItem(k: string) {
+        if (failNextRead) {
+          failNextRead = false;
+          throw new Error('storage unavailable');
+        }
+        return backingStore.get(k) ?? null;
+      },
+      setItem(k: string, value: string) {
+        backingStore.set(k, value);
+      },
+      removeItem(k: string) {
+        backingStore.delete(k);
+      },
+    } as unknown as Storage;
+
+    const storage = createBrowserStorage(() => backing, { swallowGetItemErrors: false });
+    const repo = new LocalStorageCompletedGameRepository(storage, 'org-1', 'team-1');
+
+    expect(repo.add(completedGame({ id: 'new' }))).toBe(false);
+    expect(JSON.parse(backingStore.get(key)!).map((g: CompletedGame) => g.id)).toEqual(['old']);
   });
 
   it('houdt teams strikt gescheiden (zelfde isolatie als de actieve wedstrijd)', () => {
