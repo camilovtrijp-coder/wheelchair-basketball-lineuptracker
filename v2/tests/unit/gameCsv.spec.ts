@@ -146,6 +146,7 @@ describe('combinedCsvForGame / csvFilenameFor (CompletedGame)', () => {
       id: 'g1',
       organizationId: 'org-1',
       teamId: 'team-1',
+      sourceGameId: 'active-1',
       opponent: 'Team B',
       competition: '',
       date: '2026-03-05T12:00:00.000Z',

@@ -169,6 +169,23 @@ export function App({
   // nooit automatisch. Zie ui/game/V1MigrationPrompt.tsx.
   const [v1MigrationCandidate, setV1MigrationCandidate] = useState<ActiveGame | null>(null);
 
+  // PR 6.3: afgeronde wedstrijden. Lokaal-only en per organisatie/team-context
+  // opgeslagen, net als de actieve wedstrijd (zie
+  // infrastructure/game/LocalStorageCompletedGameRepository.ts). Vóór de
+  // resume-check hieronder gedeclareerd: die heeft `completedGameRepo` nodig
+  // om te herkennen of een opgeslagen 'tracking'-wedstrijd al gearchiveerd is.
+  const completedGameRepo = useMemo(
+    () => new LocalStorageCompletedGameRepository(browserStorage, organizationId, teamId),
+    [organizationId, teamId],
+  );
+  const [completedGames, setCompletedGames] = useState<CompletedGame[]>([]);
+  const [historyOpenId, setHistoryOpenId] = useState<string | null>(null);
+
+  useEffect(() => {
+    setCompletedGames(completedGameRepo.list());
+    setHistoryOpenId(null);
+  }, [completedGameRepo]);
+
   // Spiegelt v1's init() precies: een opgeslagen wedstrijd wordt alleen
   // hervat wanneer ze al écht gestart is (`phase === 'tracking'`) — v1:
   // "if (saved && saved.players && (saved.phase === 'tracking' ||
@@ -181,9 +198,22 @@ export function App({
   // ná start (fase 'tracking') mag niets meer verloren gaan. Zonder een eigen
   // v2-wedstrijd wordt daarnaast gekeken of er een niet-bevestigde
   // v1-migratie klaarstaat voor dit team (zie hierboven).
+  //
+  // Externe PR-6.3-review (aug. 2026): een `stored` wedstrijd die al eerder
+  // succesvol is afgerond (haar ID staat als `sourceGameId` op een
+  // `CompletedGame`) mag NOOIT als 'tracking' hervat worden, ook al staat ze
+  // nog onder de actieve-gamesleutel — dat kan gebeuren als de reset naar een
+  // verse opzet na het afronden (zie `handleFinishGame`) niet is gelukt of de
+  // app tussentijds crashte. Zonder deze check zou de gebruiker dezelfde
+  // wedstrijd een tweede keer kunnen afronden, met een dubbele `CompletedGame`
+  // als gevolg. In plaats daarvan wordt zo'n stale wedstrijd hier behandeld
+  // als "geen actieve wedstrijd" — het effect hieronder herderived dan alsnog
+  // een verse opzet.
   useEffect(() => {
     const stored = gameRepo.read();
-    if (stored && stored.phase === 'tracking') {
+    const alreadyArchived =
+      stored !== null && completedGameRepo.list().some((g) => g.sourceGameId === stored.id);
+    if (stored && stored.phase === 'tracking' && !alreadyArchived) {
       setGame(stored);
       setV1MigrationCandidate(null);
     } else {
@@ -191,7 +221,7 @@ export function App({
       setV1MigrationCandidate(gameRepo.detectV1Migration());
     }
     setGameSaveError(false);
-  }, [gameRepo]);
+  }, [gameRepo, completedGameRepo]);
 
   // Spiegelt v1's freshState(): zodra er geen (te hervatten) wedstrijd is,
   // geen onbevestigd v1-migratievoorstel openstaat, en team/instellingen
@@ -226,42 +256,51 @@ export function App({
     }
   }
 
-  // PR 6.3: afgeronde wedstrijden. Lokaal-only en per organisatie/team-context
-  // opgeslagen, net als de actieve wedstrijd hierboven (zie
-  // infrastructure/game/LocalStorageCompletedGameRepository.ts).
-  const completedGameRepo = useMemo(
-    () => new LocalStorageCompletedGameRepository(browserStorage, organizationId, teamId),
-    [organizationId, teamId],
-  );
-  const [completedGames, setCompletedGames] = useState<CompletedGame[]>([]);
-  const [historyOpenId, setHistoryOpenId] = useState<string | null>(null);
-
-  useEffect(() => {
-    setCompletedGames(completedGameRepo.list());
-    setHistoryOpenId(null);
-  }, [completedGameRepo]);
-
-  // v1: `finishGame()`. Bevriest de actieve wedstrijd tot een onveranderlijke
-  // `CompletedGame` met de op dit moment geldende instellingen (settings is
-  // hier altijd geladen — deze knop is alleen bereikbaar via LiveTrackingPanel,
-  // dat zelf al `settings !== null` vereist om gerenderd te worden). Reset
-  // daarna `game` naar `null`, zodat het effect hierboven (regel 205-212) een
-  // verse opzet vanaf de actuele roster aanmaakt — zelfde mechanisme als v1's
-  // `state = freshState()`.
+  /**
+   * v1: `finishGame()`. Bevriest de actieve wedstrijd tot een onveranderlijke
+   * `CompletedGame` met de op dit moment geldende instellingen (settings is
+   * hier altijd geladen — deze knop is alleen bereikbaar via
+   * LiveTrackingPanel, dat zelf al `settings`/`roster !== null` vereist om
+   * gerenderd te worden).
+   *
+   * Externe PR-6.3-review (aug. 2026), twee robuustheidsfixes t.o.v. de
+   * eerste versie:
+   * 1. Idempotent tegen een herhaalde poging: als deze `game.id` al eerder
+   *    gearchiveerd is (bijv. na een crash vóór de reset hieronder, gevolgd
+   *    door een tweede klik op "Afronden" — zie de resume-guard hierboven),
+   *    wordt er geen tweede `CompletedGame` aangemaakt; het bestaande
+   *    archiefitem wordt hergebruikt.
+   * 2. De reset naar een verse opzet gebeurt hier synchroon en gecontroleerd
+   *    (`gameRepo.write(fresh)`), niet meer impliciet via `setGame(null)` +
+   *    het herderive-effect hierboven — anders zou een crash tussen het
+   *    archiveren en die impliciete reset de zojuist afgeronde wedstrijd nog
+   *    als 'tracking' laten staan onder de actieve-gamesleutel.
+   */
   function handleFinishGame() {
-    if (game === null || settings === null) return;
-    const completed = finishGame(game, {
-      quarterCount: settings.quarterCount as number,
-      periodLabel: settings.periodLabel as string,
-      useClassLimit: settings.useClassLimit === true,
-    });
-    if (completed === null) return;
-    const ok = completedGameRepo.add(completed);
-    setGameSaveError(!ok);
-    if (!ok) return;
-    setCompletedGames((prev) => [completed, ...prev]);
-    setGame(null);
-    setHistoryOpenId(completed.id);
+    if (game === null || settings === null || roster === null) return;
+
+    const alreadyArchived = completedGames.find((g) => g.sourceGameId === game.id);
+    let archived = alreadyArchived ?? null;
+    if (archived === null) {
+      const completed = finishGame(game, {
+        quarterCount: settings.quarterCount as number,
+        periodLabel: settings.periodLabel as string,
+        useClassLimit: settings.useClassLimit === true,
+      });
+      if (completed === null) return;
+      if (!completedGameRepo.add(completed)) {
+        setGameSaveError(true);
+        return;
+      }
+      archived = completed;
+      setCompletedGames((prev) => [completed, ...prev]);
+    }
+
+    const fresh = createGameFromRoster(roster, organizationId, teamId, settings.classBaseLimit);
+    const resetOk = gameRepo.write(fresh);
+    setGameSaveError(!resetOk);
+    setGame(resetOk ? fresh : null);
+    setHistoryOpenId(archived.id);
     setTab('history');
   }
 
@@ -537,7 +576,12 @@ export function App({
             openId={historyOpenId}
             onOpenChange={setHistoryOpenId}
             onDeleteGame={handleDeleteCompletedGame}
-            canWrite={canWriteGame}
+            // Externe PR-6.3-review (aug. 2026): verwijderen van historie is een
+            // beheeractie (ADR-003: "wedstrijden beheren" is coach/owner/admin),
+            // geen live wedstrijdactie — dus `canWrite` (== canManageTeamData),
+            // niet de bredere `canWriteGame` (die ook 'scorer' toelaat).
+            canWrite={canWrite}
+            saveError={gameSaveError}
           />
         ) : v1MigrationCandidate !== null ? (
           <V1MigrationPrompt

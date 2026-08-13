@@ -92,6 +92,7 @@ describe('finishGame', () => {
     });
 
     expect(completed).not.toBeNull();
+    expect(completed?.sourceGameId).toBe(withSegment.id);
     expect(completed).toMatchObject({
       organizationId: 'org-1',
       teamId: 'team-1',

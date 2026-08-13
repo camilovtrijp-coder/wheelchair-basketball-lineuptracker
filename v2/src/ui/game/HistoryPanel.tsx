@@ -13,6 +13,11 @@ export interface HistoryPanelProps {
   onOpenChange: (id: string | null) => void;
   onDeleteGame: (id: string) => void;
   canWrite: boolean;
+  /** Externe PR-6.3-review (aug. 2026): een mislukte save/delete op deze tab
+   * bleef eerder onzichtbaar totdat de gebruiker naar een ander tabblad
+   * navigeerde (`gameSaveError` werd alleen door GameSetupPanel/
+   * LiveTrackingPanel getoond). */
+  saveError: boolean;
 }
 
 function t(lang: Lang, key: StringKey): string {
@@ -50,13 +55,21 @@ export function HistoryPanel({
   onOpenChange,
   onDeleteGame,
   canWrite,
+  saveError,
 }: HistoryPanelProps) {
   const open = openId != null ? games.find((g) => g.id === openId) : undefined;
+
+  const errorBanner = saveError ? (
+    <p className="settings-error" role="alert" data-testid="history-save-error">
+      {t(lang, 'gameSaveError')}
+    </p>
+  ) : null;
 
   if (open) {
     const byId = new Map(open.players.map((p) => [p.id, p]));
     return (
       <section className="history-panel" aria-label={t(lang, 'historyTitle')}>
+        {errorBanner}
         <div className="history-detail__actions">
           <button
             type="button"
@@ -124,6 +137,7 @@ export function HistoryPanel({
 
   return (
     <section className="history-panel" aria-label={t(lang, 'historyTitle')}>
+      {errorBanner}
       {games.length === 0 ? (
         <p className="history-empty" data-testid="history-empty">
           {t(lang, 'historyEmpty')}

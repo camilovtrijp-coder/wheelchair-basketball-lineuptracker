@@ -9,8 +9,13 @@ import type { CompletedGame } from '../../src/domain/game/types';
 class TrackingStorage implements KeyValueStorage {
   public readonly store = new Map<string, string>();
   public failNextWrite = false;
+  public failNextRead = false;
 
   getItem(key: string): string | null {
+    if (this.failNextRead) {
+      this.failNextRead = false;
+      throw new Error('storage unavailable');
+    }
     return this.store.get(key) ?? null;
   }
 
@@ -36,6 +41,7 @@ function completedGame(overrides: Partial<CompletedGame> = {}): CompletedGame {
     id: 'g1',
     organizationId: 'org-1',
     teamId: 'team-1',
+    sourceGameId: 'active-1',
     opponent: 'Tegenstander',
     competition: '',
     date: '2026-01-01T12:00:00.000Z',
@@ -138,6 +144,41 @@ describe('LocalStorageCompletedGameRepository', () => {
     repo.add(completedGame({ id: 'g1' }));
     storage.failNextWrite = true;
     expect(repo.remove('g1')).toBe(false);
+  });
+
+  it('add() weigert te schrijven als de voorafgaande read faalt, i.p.v. de bestaande historie te overschrijven', () => {
+    // Reproductie van de externe PR-6.3-review: een storage-readfout mag nooit als "leeg"
+    // behandeld worden, anders overschrijft add() de bestaande, wél nog aanwezige historie.
+    const storage = new TrackingStorage();
+    const repo = new LocalStorageCompletedGameRepository(storage, 'org-1', 'team-1');
+    repo.add(completedGame({ id: 'old' }));
+
+    storage.failNextRead = true;
+    expect(repo.add(completedGame({ id: 'new' }))).toBe(false);
+
+    expect(repo.list().map((g) => g.id)).toEqual(['old']);
+  });
+
+  it('remove() weigert te schrijven als de voorafgaande read faalt, i.p.v. alles te wissen', () => {
+    const storage = new TrackingStorage();
+    const repo = new LocalStorageCompletedGameRepository(storage, 'org-1', 'team-1');
+    repo.add(completedGame({ id: 'old' }));
+
+    storage.failNextRead = true;
+    expect(repo.remove('old')).toBe(false);
+
+    expect(repo.list().map((g) => g.id)).toEqual(['old']);
+  });
+
+  it('add() weigert te schrijven als de bestaande data corrupt (niet-array) is, i.p.v. die te vervangen', () => {
+    const storage = new TrackingStorage();
+    const key = completedGamesStorageKey('org-1', 'team-1');
+    storage.seed(key, JSON.stringify({ not: 'an array' }));
+    const repo = new LocalStorageCompletedGameRepository(storage, 'org-1', 'team-1');
+
+    expect(repo.add(completedGame({ id: 'new' }))).toBe(false);
+    // De corrupte raw data blijft ongewijzigd staan (quarantaine i.p.v. stil overschrijven).
+    expect(storage.getItem(key)).toBe(JSON.stringify({ not: 'an array' }));
   });
 
   it('houdt teams strikt gescheiden (zelfde isolatie als de actieve wedstrijd)', () => {

@@ -33,6 +33,7 @@ export function finishGame(game: ActiveGame, settings: FinishGameSettings): Comp
     id: newId(),
     organizationId: game.organizationId,
     teamId: game.teamId,
+    sourceGameId: game.id,
     opponent: game.opponent,
     competition: game.competition,
     date: new Date().toISOString(),

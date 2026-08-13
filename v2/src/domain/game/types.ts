@@ -143,6 +143,16 @@ export interface CompletedGame {
   id: string;
   organizationId: string;
   teamId: string;
+  /**
+   * `ActiveGame.id` waaruit deze snapshot is afgerond (externe PR-6.3-review,
+   * aug. 2026). Nodig om afronden crash-/fout-idempotent te maken: zonder dit
+   * veld kan dezelfde `ActiveGame` — als de reset naar een verse opzet na het
+   * archiveren niet lukt of de app tussentijds crasht — bij een volgende
+   * poging tot afronden een tweede, dubbele `CompletedGame` opleveren. Zie
+   * `app/App.tsx` (`handleFinishGame`, en de resume-check die een al
+   * gearchiveerde `ActiveGame` nooit opnieuw als 'tracking' hervat).
+   */
+  sourceGameId: string;
   opponent: string;
   competition: string;
   /** ISO-tijdstip van afronden (v1: `date`). */

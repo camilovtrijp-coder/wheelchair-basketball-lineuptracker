@@ -105,6 +105,46 @@ test.describe('v2 afronden, historie en export (PR 6.3)', () => {
     expect(download.suggestedFilename()).toMatch(/^.+-\d{8}-\d{4}\.csv$/);
   });
 
+  test('een al gearchiveerde wedstrijd die nog onder de actieve-gamesleutel staat (gesimuleerde crash vóór de reset) wordt niet hervat en niet dubbel gearchiveerd', async ({
+    page,
+  }) => {
+    await startTrackedGame(page);
+    await page.getByTestId('score-plus2-for').click();
+    await page.getByTestId('end-min').selectOption('5');
+    await page.getByTestId('save-segment-btn').click();
+
+    // De actieve wedstrijd vóór afronden bewaren, zodat we 'm hierna kunnen
+    // terugzetten alsof de reset-write na het archiveren nooit is gelukt.
+    const staleActiveGame = await readJson(page, ACTIVE_GAME_KEY);
+
+    page.once('dialog', (dialog) => dialog.accept());
+    await page.getByTestId('finish-game-btn').click();
+    await expect(page.getByTestId('history-back-btn')).toBeVisible();
+
+    const afterFinish = (await readJson(page, COMPLETED_GAMES_KEY)) as unknown[];
+    expect(afterFinish).toHaveLength(1);
+
+    // Simuleer de crash: de net gearchiveerde 'tracking'-wedstrijd staat weer
+    // (of nog) onder de actieve-gamesleutel, alsof de synchrone reset-write
+    // nooit is gelukt.
+    await page.evaluate(
+      ({ key, value }) => window.localStorage.setItem(key, JSON.stringify(value)),
+      { key: ACTIVE_GAME_KEY, value: staleActiveGame },
+    );
+    await page.reload();
+
+    // De resume-guard herkent dat deze wedstrijd al gearchiveerd is (via
+    // sourceGameId) en hervat 'm NIET als tracking — het live-scherm met het
+    // oude segment mag niet terugkomen.
+    await page.getByTestId('nav-game').click();
+    await expect(page.locator('[data-testid^="segment-item-"]')).toHaveCount(0);
+    await expect(page.getByTestId('finish-game-btn')).not.toBeVisible();
+
+    // En de historie bevat nog steeds precies één wedstrijd, geen dubbele.
+    const afterReload = (await readJson(page, COMPLETED_GAMES_KEY)) as unknown[];
+    expect(afterReload).toHaveLength(1);
+  });
+
   test('een afgeronde wedstrijd verwijderen haalt hem uit de lijst', async ({ page }) => {
     await startTrackedGame(page);
     await page.getByTestId('score-plus2-for').click();

@@ -47,40 +47,57 @@ export class LocalStorageCompletedGameRepository implements CompletedGameReposit
   }
 
   /**
-   * Filtert corrupte of verkeerd-getagde items uit de lijst i.p.v. bij het
-   * eerste ongeldige item de hele lijst als leeg te behandelen — een enkel
-   * beschadigd item mag niet de rest van de historie onzichtbaar maken.
+   * Onderscheidt "leeg/nog niet aangemaakt" (`ok: true`, `games: []`) van "kon
+   * niet gelezen worden" (`ok: false`) — een storage-readfout, corrupte JSON of
+   * een niet-array-payload is NIET hetzelfde als een lege historie. Zonder dit
+   * onderscheid zou `add()`/`remove()` bij een tijdelijke leesfout alsnog een
+   * volledige write doen op basis van een lege lijst, en zo de bestaande
+   * historie stilzwijgend wissen (externe PR-6.3-review, aug. 2026). Een
+   * individueel corrupt of verkeerd-getagd ITEM binnen een wél leesbare array
+   * blijft gewoon gefilterd (niet de hele lijst ongeldig) — dat is een ander
+   * risico (één beschadigd item verbergt de rest niet) dan een mislukte read.
    */
-  list(): CompletedGame[] {
+  private readAll(): { games: CompletedGame[]; ok: boolean } {
     let raw: string | null = null;
     try {
       raw = this.storage.getItem(this.key);
     } catch {
-      return [];
+      return { games: [], ok: false };
     }
-    if (raw === null || raw === '') return [];
+    if (raw === null || raw === '') return { games: [], ok: true };
 
     let parsed: unknown;
     try {
       parsed = JSON.parse(raw);
     } catch {
-      return [];
+      return { games: [], ok: false };
     }
-    if (!Array.isArray(parsed)) return [];
+    if (!Array.isArray(parsed)) return { games: [], ok: false };
 
-    return parsed.filter(
-      (item): item is CompletedGame =>
-        isCompletedGameShape(item) && matchesContext(item, this.organizationId, this.teamId),
-    );
+    return {
+      games: parsed.filter(
+        (item): item is CompletedGame =>
+          isCompletedGameShape(item) && matchesContext(item, this.organizationId, this.teamId),
+      ),
+      ok: true,
+    };
+  }
+
+  list(): CompletedGame[] {
+    return this.readAll().games;
   }
 
   add(game: CompletedGame): boolean {
     if (game.organizationId !== this.organizationId || game.teamId !== this.teamId) return false;
-    return this.writeAll([game, ...this.list()]);
+    const current = this.readAll();
+    if (!current.ok) return false;
+    return this.writeAll([game, ...current.games]);
   }
 
   remove(id: string): boolean {
-    return this.writeAll(this.list().filter((g) => g.id !== id));
+    const current = this.readAll();
+    if (!current.ok) return false;
+    return this.writeAll(current.games.filter((g) => g.id !== id));
   }
 
   private writeAll(games: CompletedGame[]): boolean {

@@ -133,7 +133,7 @@ v1-referentiegedrag (index.html) dat dit PR moet overnemen:
 | historie, detail en verwijderen volgens het vastgelegde beleid | 6.3c (`HistoryPanel`) + 6.3b (`remove()`, direct verwijderen zonder tombstone — lokaal v1-pariteitsgedrag, tombstones zijn PR 7.2) |
 | afgeronde wedstrijd standaard onveranderlijk | 6.3b: geen `update()`-methode op `CompletedGameRepository`, alleen `add`/`remove`; geen UI-pad om een opgeslagen `CompletedGame` te bewerken |
 | byte-exact gelijk Nederlands CSV-contract | 6.3a (`domain/game/csv.ts`) met golden-master-tests tegen `docs/product-compatibility-matrix.md` |
-| semantisch gelijk JSON-back-upcontract of expliciet gemigreerde versie | zie §E.2 — `CompletedGame` wijkt bewust af van v1's `Game`-schema (v2-natuurlijke vorm); een v1-compatibele exportprojectie of schemaversie-ophoging is uitgesteld tot een backup-export/-import voor afgeronde wedstrijden nodig is (PR 6.6-grens, zie §B) |
+| semantisch gelijk JSON-back-upcontract of expliciet gemigreerde versie | **PARTIAL/OPEN, bewust niet vervuld in deze PR** — zie §E.2. `CompletedGame` is een nieuw TypeScript-type met een eigen, nieuwe `localStorage`-sleutel; dat is op zichzelf geen JSON-back-up-export/-import-contract. v2 heeft ook voor settings/roster nog geen algemene back-up-export/-importflow (alleen de smalle `exportPendingPayload.ts` voor geweigerde syncacties) — een vergelijkbare flow voor afgeronde wedstrijden hoort bij PR 6.6 ("bestaande v1-back-up valideren en veilig migreren", IMPLEMENTATION_PLAN.md:645-651), samen met een expliciete schemaversie-beslissing voor `CompletedGame`. Externe review (aug. 2026) bevestigde dat dit criterium hier PARTIAL blijft totdat 6.6 het oppakt — geen eigenaarsbesluit om het criterium te laten vervallen. |
 
 ## E. Locked-in beslissingen (bevestigd door de eigenaar, 2026-08-13)
 
@@ -158,3 +158,38 @@ v1-referentiegedrag (index.html) dat dit PR moet overnemen:
 `CompletedGame`-type) → 6.3c (UI, afhankelijk van 6.3a+6.3b). Alle drie in één
 PR/branch (`claude/stap-6-3-q24m0p`), zoals PR 6.1 en 6.2 ook als één doorlopende
 commit zijn opgeleverd.
+
+## Appendix — fixes uit de externe PR-review (aug. 2026, PR #47)
+
+Een onafhankelijke review op de eerste versie van deze PR identificeerde drie
+merge-blocking bevindingen en één zichtbaarheidsprobleem, alle opgelost in een
+vervolgcommit:
+
+1. **Read-fout in `LocalStorageCompletedGameRepository` werd als "leeg"
+   behandeld**: `list()` vertaalde een storage-readfout, corrupte JSON of een
+   niet-array-payload naar `[]`, waarna `add()`/`remove()` die ambigue `[]`
+   als schrijfbasis gebruikten — een tijdelijke leesfout kon zo de bestaande
+   historie wissen. Opgelost door read-uitkomst en -fout expliciet te
+   onderscheiden (`readAll(): { games, ok }`); `add()`/`remove()` weigeren nu
+   te schrijven (`false`) zodra de voorafgaande read niet gelukt is.
+2. **Afronden was niet crash-/fout-idempotent**: de reset van de actieve
+   wedstrijd naar een verse opzet gebeurde impliciet via een later effect; bij
+   een crash of mislukte write tussen archiveren en resetten bleef de
+   zojuist afgeronde wedstrijd als 'tracking' hervatbaar, met een dubbele
+   `CompletedGame` als risico bij een tweede afrondpoging. Opgelost met een
+   nieuw `sourceGameId`-veld op `CompletedGame`, een synchrone/gecontroleerde
+   reset in `handleFinishGame()`, en een resume-guard die een `ActiveGame`
+   waarvan het ID al als `sourceGameId` in de historie staat nooit meer als
+   'tracking' hervat.
+3. **`scorer` kon afgeronde wedstrijden verwijderen**: `HistoryPanel` kreeg
+   `canWriteGameData` (owner/admin/coach/scorer) i.p.v. de smallere
+   `canManageTeamData`-grens (ADR-003: "wedstrijden beheren" is coach/owner/
+   admin). Opgelost door `App.tsx` `canWrite` (== `canManageTeamData`) door te
+   geven aan `HistoryPanel` voor de verwijderknop; lezen/exporteren blijft
+   ongated.
+4. **Opslag-/verwijderfouten waren op de Historie-tab onzichtbaar**:
+   `HistoryPanel` kreeg een eigen `saveError`-prop met zichtbare foutbanner op
+   zowel de lijst- als detailweergave.
+
+Het vijfde punt — het JSON-back-upcontract-criterium — is geen bugfix maar een
+statuscorrectie: zie de PARTIAL/OPEN-aantekening in §D.
