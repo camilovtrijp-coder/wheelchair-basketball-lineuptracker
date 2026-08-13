@@ -125,3 +125,43 @@ export interface ActiveGame {
   createdAt: string;
   startedAt: string | null;
 }
+
+/**
+ * Afgeronde, standaard onveranderlijke wedstrijd (v1: een entry in `games`,
+ * index.html `finishGame()`). PR 6.3 kiest bewust de v2-natuurlijke vorm
+ * (UUID, organisatie/teamcontext, volledige `GamePlayer`-snapshot) in plaats
+ * van v1's exacte vorm (`"g"+Date.now()`-string-ID, 6-veld-spelersnapshot,
+ * geen organisatie/teamcontext) — zie docs/pr-6.3-plan.md §E.2. `segments`/
+ * `scoreFor`/`scoreAgainst` zijn de bevroren uitkomst van
+ * `deriveGameHistory()` op het moment van afronden (`domain/game/finish.ts`);
+ * `quarterCount`/`periodLabel`/`useClassLimit` zijn op dat moment overgenomen
+ * uit de toen actuele instellingen, want `ActiveGame` bewaart die zelf niet
+ * (zie hierboven) — zo blijft een CSV/detailweergave van een oude wedstrijd
+ * ongewijzigd als de instellingen later veranderen (v1-pariteit).
+ */
+export interface CompletedGame {
+  id: string;
+  organizationId: string;
+  teamId: string;
+  /**
+   * `ActiveGame.id` waaruit deze snapshot is afgerond (externe PR-6.3-review,
+   * aug. 2026). Nodig om afronden crash-/fout-idempotent te maken: zonder dit
+   * veld kan dezelfde `ActiveGame` — als de reset naar een verse opzet na het
+   * archiveren niet lukt of de app tussentijds crasht — bij een volgende
+   * poging tot afronden een tweede, dubbele `CompletedGame` opleveren. Zie
+   * `app/App.tsx` (`handleFinishGame`, en de resume-check die een al
+   * gearchiveerde `ActiveGame` nooit opnieuw als 'tracking' hervat).
+   */
+  sourceGameId: string;
+  opponent: string;
+  competition: string;
+  /** ISO-tijdstip van afronden (v1: `date`). */
+  date: string;
+  players: GamePlayer[];
+  segments: Segment[];
+  scoreFor: number;
+  scoreAgainst: number;
+  quarterCount: number;
+  periodLabel: string;
+  useClassLimit: boolean;
+}

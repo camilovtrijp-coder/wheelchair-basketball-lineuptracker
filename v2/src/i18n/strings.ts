@@ -127,6 +127,14 @@ const nl = {
   segDurationPlainPrefix: 'Speeltijd:',
   lineupLabel: 'Lineup',
 
+  finishGameBtn: 'Wedstrijd afronden',
+  confirmFinishGame:
+    'Wedstrijd afronden? Dit kan niet ongedaan worden gemaakt: de wedstrijd komt onveranderlijk in de historie te staan.',
+  historyTitle: 'Historie',
+  historyEmpty: 'Nog geen afgeronde wedstrijden.',
+  confirmDeleteGame: 'Deze wedstrijd definitief verwijderen? Dit kan niet ongedaan worden gemaakt.',
+  exportShareBtn: 'Exporteren/Delen',
+
   cloudImportPrompt:
     'Kopieer je lokale gegevens eenmalig naar de cloud. De cloud-versie wordt dan leidend; je lokale kopie blijft bewaard.',
   cloudImportButton: 'Eenmalig naar cloud kopiëren',
@@ -345,6 +353,14 @@ const en = {
   pointsAgainstLabel: 'Points against',
   segDurationPlainPrefix: 'Playing time:',
   lineupLabel: 'Lineup',
+
+  finishGameBtn: 'Finish game',
+  confirmFinishGame:
+    'Finish this game? This cannot be undone: the game becomes an immutable history entry.',
+  historyTitle: 'History',
+  historyEmpty: 'No finished games yet.',
+  confirmDeleteGame: 'Permanently delete this game? This cannot be undone.',
+  exportShareBtn: 'Export/Share',
 
   cloudImportPrompt:
     'Copy your local data to the cloud once. The cloud version becomes the source of truth; your local copy is kept as a fallback.',
