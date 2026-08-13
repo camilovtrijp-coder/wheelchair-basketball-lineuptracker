@@ -1,5 +1,6 @@
 import { useState } from 'preact/hooks';
 import type { ActiveGame, GamePlayer, Segment } from '../../domain/game/types';
+import { canFinishGame } from '../../domain/game/finish';
 import {
   buildSegment,
   canSaveSegment,
@@ -27,6 +28,7 @@ export interface LiveTrackingPanelProps {
   tag1Label: string;
   tag2Label: string;
   onGameChange: (next: ActiveGame) => void;
+  onFinishGame: () => void;
   canWrite: boolean;
   saveError: boolean;
 }
@@ -159,6 +161,7 @@ export function LiveTrackingPanel({
   tag1Label,
   tag2Label,
   onGameChange,
+  onFinishGame,
   canWrite,
   saveError,
 }: LiveTrackingPanelProps) {
@@ -315,6 +318,14 @@ export function LiveTrackingPanel({
     if (!window.confirm(t(lang, 'confirmDeleteSegment'))) return;
     onGameChange({ ...game, actions: [...game.actions, segmentDeletedAction(editSegmentId)] });
     closeEditSegment();
+  }
+
+  const canFinish = canFinishGame(game);
+
+  function handleFinishClick() {
+    if (!canWrite || !canFinish) return;
+    if (!window.confirm(t(lang, 'confirmFinishGame'))) return;
+    onFinishGame();
   }
 
   const pmColor = (n: number) =>
@@ -643,6 +654,16 @@ export function LiveTrackingPanel({
           })}
         </div>
       ) : null}
+
+      <button
+        type="button"
+        className="btn-primary tracking-panel__finish"
+        disabled={!canWrite || !canFinish}
+        data-testid="finish-game-btn"
+        onClick={handleFinishClick}
+      >
+        {t(lang, 'finishGameBtn')}
+      </button>
 
       {swapConfirmEndSec != null ? (
         <div className="modal-overlay">

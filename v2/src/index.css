@@ -492,6 +492,10 @@ button:focus-visible {
   color: var(--lt-color-muted);
 }
 
+.tracking-panel__finish {
+  padding: var(--lt-space-3);
+}
+
 .tracking-warning {
   margin: 0;
   padding: var(--lt-space-2) var(--lt-space-3);
@@ -811,6 +815,79 @@ button:focus-visible {
   align-items: center;
   gap: var(--lt-space-2);
   flex: none;
+}
+
+/* ---------- PR 6.3: historie (history-panel) ---------- */
+
+.history-panel {
+  display: flex;
+  flex-direction: column;
+  gap: var(--lt-space-4);
+}
+
+.history-empty {
+  text-align: center;
+  margin-top: var(--lt-space-6);
+  color: var(--lt-color-muted);
+  font-size: var(--lt-font-size-sm);
+}
+
+.history-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--lt-space-2);
+}
+
+.history-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: var(--lt-space-2);
+  width: 100%;
+  padding: var(--lt-space-3);
+  border: var(--lt-border-thin);
+  border-radius: var(--lt-radius-md);
+  background: var(--lt-color-surface);
+  color: var(--lt-color-fg);
+  text-align: left;
+  font: inherit;
+  cursor: pointer;
+}
+
+.history-item__meta {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.history-item__opponent {
+  font-weight: 600;
+}
+
+.history-item__date {
+  font-size: var(--lt-font-size-xs);
+  color: var(--lt-color-muted);
+}
+
+.history-item__score {
+  flex: none;
+  font-weight: 700;
+}
+
+.history-detail__actions {
+  display: flex;
+  justify-content: space-between;
+}
+
+.history-detail__meta {
+  margin: 0;
+  color: var(--lt-color-muted);
+  font-size: var(--lt-font-size-sm);
+}
+
+.history-detail__export {
+  width: 100%;
+  padding: var(--lt-space-3);
 }
 
 .edit-lineup-header {

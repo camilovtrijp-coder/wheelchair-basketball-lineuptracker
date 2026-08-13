@@ -22,11 +22,14 @@ import { OfflineUncachedScreen } from '../ui/status/OfflineUncachedScreen';
 import type { ResolvedAppRepositories } from '../infrastructure/repositories/resolveAppRepositories';
 import type { SyncStatusApi } from '../application/sync/useSyncStatus';
 import { LocalStorageGameRepository } from '../infrastructure/game/LocalStorageGameRepository';
+import { LocalStorageCompletedGameRepository } from '../infrastructure/game/LocalStorageCompletedGameRepository';
 import { createGameFromRoster } from '../domain/game/setup';
-import type { ActiveGame } from '../domain/game/types';
+import { finishGame } from '../domain/game/finish';
+import type { ActiveGame, CompletedGame } from '../domain/game/types';
 import { GameSetupPanel } from '../ui/game/GameSetupPanel';
 import { LiveTrackingPanel } from '../ui/game/LiveTrackingPanel';
 import { V1MigrationPrompt } from '../ui/game/V1MigrationPrompt';
+import { HistoryPanel } from '../ui/game/HistoryPanel';
 
 export interface AppProps {
   repositories: ResolvedAppRepositories;
@@ -80,7 +83,7 @@ export interface AppProps {
   organizationName: string;
 }
 
-type Tab = 'settings' | 'roster' | 'game';
+type Tab = 'settings' | 'roster' | 'game' | 'history';
 
 function initialLang(): Lang {
   const stored = readLang(browserStorage);
@@ -221,6 +224,53 @@ export function App({
       setGame(v1MigrationCandidate);
       setV1MigrationCandidate(null);
     }
+  }
+
+  // PR 6.3: afgeronde wedstrijden. Lokaal-only en per organisatie/team-context
+  // opgeslagen, net als de actieve wedstrijd hierboven (zie
+  // infrastructure/game/LocalStorageCompletedGameRepository.ts).
+  const completedGameRepo = useMemo(
+    () => new LocalStorageCompletedGameRepository(browserStorage, organizationId, teamId),
+    [organizationId, teamId],
+  );
+  const [completedGames, setCompletedGames] = useState<CompletedGame[]>([]);
+  const [historyOpenId, setHistoryOpenId] = useState<string | null>(null);
+
+  useEffect(() => {
+    setCompletedGames(completedGameRepo.list());
+    setHistoryOpenId(null);
+  }, [completedGameRepo]);
+
+  // v1: `finishGame()`. Bevriest de actieve wedstrijd tot een onveranderlijke
+  // `CompletedGame` met de op dit moment geldende instellingen (settings is
+  // hier altijd geladen — deze knop is alleen bereikbaar via LiveTrackingPanel,
+  // dat zelf al `settings !== null` vereist om gerenderd te worden). Reset
+  // daarna `game` naar `null`, zodat het effect hierboven (regel 205-212) een
+  // verse opzet vanaf de actuele roster aanmaakt — zelfde mechanisme als v1's
+  // `state = freshState()`.
+  function handleFinishGame() {
+    if (game === null || settings === null) return;
+    const completed = finishGame(game, {
+      quarterCount: settings.quarterCount as number,
+      periodLabel: settings.periodLabel as string,
+      useClassLimit: settings.useClassLimit === true,
+    });
+    if (completed === null) return;
+    const ok = completedGameRepo.add(completed);
+    setGameSaveError(!ok);
+    if (!ok) return;
+    setCompletedGames((prev) => [completed, ...prev]);
+    setGame(null);
+    setHistoryOpenId(completed.id);
+    setTab('history');
+  }
+
+  function handleDeleteCompletedGame(id: string) {
+    const ok = completedGameRepo.remove(id);
+    setGameSaveError(!ok);
+    if (!ok) return;
+    setCompletedGames((prev) => prev.filter((g) => g.id !== id));
+    setHistoryOpenId((prev) => (prev === id ? null : prev));
   }
 
   useEffect(() => {
@@ -429,6 +479,15 @@ export function App({
         >
           {t('gameTitle')}
         </button>
+        <button
+          type="button"
+          className={`app-nav__tab${tab === 'history' ? ' app-nav__tab--active' : ''}`}
+          aria-current={tab === 'history' ? 'page' : undefined}
+          data-testid="nav-history"
+          onClick={() => setTab('history')}
+        >
+          {t('historyTitle')}
+        </button>
       </nav>
 
       <main className="app-main">
@@ -470,6 +529,16 @@ export function App({
             canWrite={canWrite}
             updatedAt={rosterUpdatedAt}
           />
+        ) : tab === 'history' ? (
+          <HistoryPanel
+            lang={lang}
+            games={completedGames}
+            teamName={(settings.teamName as string) || ''}
+            openId={historyOpenId}
+            onOpenChange={setHistoryOpenId}
+            onDeleteGame={handleDeleteCompletedGame}
+            canWrite={canWriteGame}
+          />
         ) : v1MigrationCandidate !== null ? (
           <V1MigrationPrompt
             lang={lang}
@@ -498,6 +567,7 @@ export function App({
             tag1Label={tag1Label}
             tag2Label={tag2Label}
             onGameChange={handleGameChange}
+            onFinishGame={handleFinishGame}
             canWrite={canWriteGame}
             saveError={gameSaveError}
           />
