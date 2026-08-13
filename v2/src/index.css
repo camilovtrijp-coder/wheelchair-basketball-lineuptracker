@@ -260,6 +260,7 @@ button:focus-visible {
   padding: var(--lt-space-2) var(--lt-space-4);
   border-bottom: var(--lt-border-thin);
   background: var(--lt-color-surface);
+  flex-wrap: wrap;
 }
 
 .app-nav__tab {
@@ -268,6 +269,7 @@ button:focus-visible {
   border: none;
   border-radius: var(--lt-radius-sm);
   padding: var(--lt-space-2) var(--lt-space-3);
+  white-space: nowrap;
 }
 
 .app-nav__tab--active {
@@ -815,6 +817,186 @@ button:focus-visible {
   align-items: center;
   gap: var(--lt-space-2);
   flex: none;
+}
+
+/* ---------- PR 6.4: statistieken (stats-panel) ---------- */
+
+.stats-panel {
+  display: flex;
+  flex-direction: column;
+  gap: var(--lt-space-4);
+}
+
+.stats-panel h2 {
+  margin: 0;
+  font-size: var(--lt-font-size-xl);
+  font-weight: 600;
+}
+
+.stats-controls {
+  display: flex;
+  flex-direction: column;
+  gap: var(--lt-space-2);
+}
+
+.stats-controls__row {
+  display: flex;
+  gap: var(--lt-space-2);
+  flex-wrap: wrap;
+}
+
+.stats-controls__row--wrap {
+  flex-wrap: wrap;
+}
+
+.stats-controls__row .quarter-btn {
+  flex: 1 1 0;
+  min-width: 0;
+}
+
+.stats-controls__row > button {
+  min-width: 0;
+}
+
+.stats-toggle--active {
+  background: var(--lt-color-surface);
+  color: var(--lt-color-accent);
+  border-color: var(--lt-color-accent);
+}
+
+.stats-empty {
+  text-align: center;
+  margin-top: var(--lt-space-6);
+  color: var(--lt-color-muted);
+  font-size: var(--lt-font-size-sm);
+}
+
+.stats-empty--error {
+  color: var(--lt-color-danger);
+}
+
+.stats-empty--partial {
+  color: var(--lt-color-muted);
+  font-style: italic;
+}
+
+.stats-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--lt-space-3);
+}
+
+.stats-card {
+  display: flex;
+  flex-direction: column;
+  gap: var(--lt-space-3);
+  border: var(--lt-border-thin);
+  border-radius: var(--lt-radius-lg);
+  padding: var(--lt-space-3) var(--lt-space-4);
+  background: var(--lt-color-surface);
+  min-width: 0;
+  overflow: hidden;
+}
+
+.stats-card__lineup {
+  display: flex;
+  flex-direction: column;
+  font-size: var(--lt-font-size-sm);
+  line-height: 1.5;
+  color: var(--lt-color-fg);
+}
+
+.statsgrid {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: var(--lt-space-2);
+  text-align: center;
+}
+
+.statsgrid > div {
+  min-width: 0;
+}
+
+.statsgrid .v {
+  font-weight: 800;
+  font-size: var(--lt-font-size-sm);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.statsgrid .v {
+  font-weight: 800;
+  font-size: var(--lt-font-size-sm);
+}
+
+.stats-stat__v--pos {
+  color: var(--lt-color-success, #166534);
+}
+
+.stats-stat__v--neg {
+  color: var(--lt-color-danger);
+}
+
+.stats-stat__v--flat {
+  color: var(--lt-color-muted);
+}
+
+.badge-pm {
+  display: inline-block;
+  padding: 0.15rem 0.45rem;
+  border-radius: 999px;
+  font-weight: 700;
+  font-size: var(--lt-font-size-sm);
+  border: var(--lt-border-thin);
+}
+
+.badge-pm.live-pm--pos {
+  color: var(--lt-color-success, #166534);
+  background: color-mix(in srgb, var(--lt-color-success, #166534) 12%, transparent);
+  border-color: color-mix(in srgb, var(--lt-color-success, #166534) 30%, transparent);
+}
+
+.badge-pm.live-pm--neg {
+  color: var(--lt-color-danger);
+  background: color-mix(in srgb, var(--lt-color-danger) 12%, transparent);
+  border-color: color-mix(in srgb, var(--lt-color-danger) 30%, transparent);
+}
+
+.badge-pm.live-pm--flat {
+  color: var(--lt-color-muted);
+  background: transparent;
+}
+
+.stats-modal-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: var(--lt-space-2) 0;
+  border-bottom: var(--lt-border-thin);
+  gap: var(--lt-space-2);
+}
+
+.stats-modal-row__label {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.stats-modal-row__label .mut2 {
+  color: var(--lt-color-muted);
+}
+
+.stats-toggle--on-st {
+  background: var(--lt-color-success, #166534);
+  color: white;
+  border-color: var(--lt-color-success, #166534);
+}
+
+.stats-toggle--on-v {
+  background: var(--lt-color-danger);
+  color: white;
+  border-color: var(--lt-color-danger);
 }
 
 /* ---------- PR 6.3: historie (history-panel) ---------- */

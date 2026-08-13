@@ -30,6 +30,7 @@ import { GameSetupPanel } from '../ui/game/GameSetupPanel';
 import { LiveTrackingPanel } from '../ui/game/LiveTrackingPanel';
 import { V1MigrationPrompt } from '../ui/game/V1MigrationPrompt';
 import { HistoryPanel } from '../ui/game/HistoryPanel';
+import { StatsPanel } from '../ui/stats/StatsPanel';
 
 export interface AppProps {
   repositories: ResolvedAppRepositories;
@@ -83,7 +84,7 @@ export interface AppProps {
   organizationName: string;
 }
 
-type Tab = 'settings' | 'roster' | 'game' | 'history';
+type Tab = 'settings' | 'roster' | 'game' | 'history' | 'stats';
 
 function initialLang(): Lang {
   const stored = readLang(browserStorage);
@@ -535,6 +536,15 @@ export function App({
         >
           {t('historyTitle')}
         </button>
+        <button
+          type="button"
+          className={`app-nav__tab${tab === 'stats' ? ' app-nav__tab--active' : ''}`}
+          aria-current={tab === 'stats' ? 'page' : undefined}
+          data-testid="nav-stats"
+          onClick={() => setTab('stats')}
+        >
+          {t('statsTitle')}
+        </button>
       </nav>
 
       <main className="app-main">
@@ -590,6 +600,18 @@ export function App({
             // niet de bredere `canWriteGame` (die ook 'scorer' toelaat).
             canWrite={canWrite}
             saveError={gameSaveError}
+          />
+        ) : tab === 'stats' ? (
+          // PR 6.4: Stats-tab. Lees-only — geen write-flow, geen extra
+          // Firestore-reads (zie docs/pr-6.4-plan.md §D.6.4b). Daarom
+          // bewust NIET onder de `canWrite`-poort: alle geautoriseerde
+          // teamlezers (inclusief 'viewer') mogen de statistieken
+          // bekijken.
+          <StatsPanel
+            lang={lang}
+            repository={completedGameRepo}
+            activeGame={game}
+            roster={roster}
           />
         ) : v1MigrationCandidate !== null ? (
           <V1MigrationPrompt

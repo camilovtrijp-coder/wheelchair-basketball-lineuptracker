@@ -268,3 +268,69 @@ describe('LocalStorageCompletedGameRepository', () => {
     expect(repoB.list().map((g) => g.id)).toEqual(['g2']);
   });
 });
+
+describe('LocalStorageCompletedGameRepository.safeList (PR 6.4 §A.2)', () => {
+  it('geeft "missing" terug bij een nog nooit aangemaakte sleutel (lege opslag)', () => {
+    const repo = new LocalStorageCompletedGameRepository(new TrackingStorage(), 'org-1', 'team-1');
+    expect(repo.safeList()).toEqual({ status: 'missing', games: [] });
+  });
+
+  it('geeft "ok" terug voor een leesbare, niet-lege lijst', () => {
+    const storage = new TrackingStorage();
+    const repo = new LocalStorageCompletedGameRepository(storage, 'org-1', 'team-1');
+    repo.add(completedGame({ id: 'g1' }));
+    expect(repo.safeList()).toEqual({ status: 'ok', games: [completedGame({ id: 'g1' })] });
+  });
+
+  it('geeft "error" terug bij een corrupte JSON-payload en levert NOOIT de "ok"-tak met games=[]', () => {
+    const storage = new TrackingStorage();
+    const key = completedGamesStorageKey('org-1', 'team-1');
+    storage.seed(key, 'not-json');
+    const repo = new LocalStorageCompletedGameRepository(storage, 'org-1', 'team-1');
+    expect(repo.safeList()).toEqual({ status: 'error', games: [] });
+  });
+
+  it('geeft "error" terug bij een niet-array JSON-payload', () => {
+    const storage = new TrackingStorage();
+    const key = completedGamesStorageKey('org-1', 'team-1');
+    storage.seed(key, JSON.stringify({ not: 'an array' }));
+    const repo = new LocalStorageCompletedGameRepository(storage, 'org-1', 'team-1');
+    expect(repo.safeList()).toEqual({ status: 'error', games: [] });
+  });
+
+  it('geeft "error" terug bij een gefaalde getItem() op het productie-strict browserStorage-pad', () => {
+    const key = completedGamesStorageKey('org-1', 'team-1');
+    const backingStore = new Map<string, string>();
+    backingStore.set(key, JSON.stringify([completedGame({ id: 'old' })]));
+    let failNextRead = true;
+    const backing = {
+      getItem: (k: string) => {
+        if (failNextRead) {
+          failNextRead = false;
+          throw new Error('storage unavailable');
+        }
+        return backingStore.get(k) ?? null;
+      },
+      setItem: (k: string, v: string) => backingStore.set(k, v),
+      removeItem: (k: string) => backingStore.delete(k),
+    } as unknown as Storage;
+    const storage = createBrowserStorage(() => backing, { swallowGetItemErrors: false });
+    const repo = new LocalStorageCompletedGameRepository(storage, 'org-1', 'team-1');
+    expect(repo.safeList()).toEqual({ status: 'error', games: [] });
+  });
+
+  it('geeft "error" terug bij een blijvend onbeschikbare storage-getter', () => {
+    const storage = createBrowserStorage(() => null, { swallowGetItemErrors: false });
+    const repo = new LocalStorageCompletedGameRepository(storage, 'org-1', 'team-1');
+    expect(repo.safeList()).toEqual({ status: 'error', games: [] });
+  });
+
+  it('filtert corrupte items uit een wél leesbare array zonder de hele lijst ongeldig te maken', () => {
+    const storage = new TrackingStorage();
+    const key = completedGamesStorageKey('org-1', 'team-1');
+    storage.seed(key, JSON.stringify([completedGame({ id: 'valid' }), { id: 'missing-fields' }]));
+    const repo = new LocalStorageCompletedGameRepository(storage, 'org-1', 'team-1');
+    expect(repo.safeList().status).toBe('ok');
+    expect(repo.safeList().games.map((g) => g.id)).toEqual(['valid']);
+  });
+});
