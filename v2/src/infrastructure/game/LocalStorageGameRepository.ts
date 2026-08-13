@@ -4,10 +4,14 @@ import type { KeyValueStorage } from '../../i18n/persistence';
 import type { GameRepository } from '../../application/game/GameRepository';
 
 /**
- * Markeert dat de v1-actieve-wedstrijd al eens is geadopteerd (zie
- * `LocalStorageGameRepository.tryAdoptV1Game`) — één vaste, niet per-team
- * sleutel, want v1 was single-team: zonder deze vlag zou een tweede team
- * dezelfde v1-wedstrijd ook nog eens claimen bij zijn eerste (lege) load.
+ * Markeert dat de v1-actieve-wedstrijd al eens (bevestigd) geadopteerd is —
+ * één vaste, niet per-team sleutel, want v1 was single-team: zonder deze
+ * vlag zou een tweede team dezelfde v1-wedstrijd ook nog eens kunnen claimen.
+ * De waarde is diagnostische JSON (wanneer/welk team bevestigde) i.p.v. een
+ * kale `'true'`, zodat een support-vraag ("waar is mijn oude wedstrijd
+ * gebleven?") te herleiden is; alleen *aanwezigheid* van de sleutel bepaalt
+ * of `detectV1Migration()` nog iets teruggeeft, de inhoud zelf wordt verder
+ * niet gelezen.
  */
 export const V1_GAME_MIGRATED_FLAG_KEY = 'lineup-tracker-v2-v1-game-migrated';
 
@@ -114,11 +118,7 @@ export class LocalStorageGameRepository implements GameRepository {
       return null;
     }
 
-    // Niets onder de v2-sleutel: eenmalig proberen te adopteren vanuit v1
-    // (zie tryAdoptV1Game) — een corrupte/mismatchende v2-waarde hieronder
-    // valt bewust NIET terug op v1, want dat zou een team dat al zijn eigen
-    // (weliswaar kapotte) v2-wedstrijd had, alsnog een andere wedstrijd geven.
-    if (raw === null || raw === '') return this.tryAdoptV1Game();
+    if (raw === null || raw === '') return null;
 
     let parsed: unknown;
     try {
@@ -135,23 +135,24 @@ export class LocalStorageGameRepository implements GameRepository {
   }
 
   /**
-   * Adopteert een nog actieve v1-wedstrijd (zie domain/game/v1Migration.ts)
-   * de eerste keer dat dit team een lege v2-opslag tegenkomt —
-   * docs/IMPLEMENTATION_PLAN.md §11 (PR 6.1) eist dat de v1-sleutel tijdens
-   * de compatibiliteitsperiode leesbaar blijft. `V1_GAME_MIGRATED_FLAG_KEY`
-   * voorkomt dat een tweede team dezelfde v1-wedstrijd nogmaals claimt (v1
-   * was single-team, dus er is maar één "eigenaar" mogelijk). De vlag wordt
-   * pas gezet ná een geslaagde write, zodat een opslagfout op dit exacte
-   * moment een volgende poging niet blijvend blokkeert.
+   * Detecteert (zonder te schrijven of te markeren) een nog niet bevestigd
+   * geadopteerde v1-actieve-wedstrijd (zie domain/game/v1Migration.ts),
+   * getagd met dit team als vóórgesteld doel. v1 kende geen organisatie/
+   * teamcontext, dus deze code kan zelf niet bewijzen dat dít het juiste
+   * team is — de aanroeper (App.tsx/V1MigrationPrompt) moet de gebruiker
+   * expliciet laten bevestigen (of eerst van team laten wisselen) vóórdat
+   * `confirmV1Migration()` iets vastlegt. Zonder deze stap zou willekeurig
+   * welk team het eerst met een lege opslag geladen wordt de wedstrijd
+   * stilzwijgend claimen (externe PR-6.1-review, aug. 2026).
    */
-  private tryAdoptV1Game(): ActiveGame | null {
+  detectV1Migration(): ActiveGame | null {
     let migratedFlag: string | null = null;
     try {
       migratedFlag = this.storage.getItem(V1_GAME_MIGRATED_FLAG_KEY);
     } catch {
       return null;
     }
-    if (migratedFlag === 'true') return null;
+    if (migratedFlag !== null) return null;
 
     let v1Raw: string | null = null;
     try {
@@ -168,17 +169,24 @@ export class LocalStorageGameRepository implements GameRepository {
       return null;
     }
 
-    const migrated = migrateV1ActiveGame(parsed, this.organizationId, this.teamId);
-    if (migrated === null) return null;
+    return migrateV1ActiveGame(parsed, this.organizationId, this.teamId);
+  }
 
-    if (this.write(migrated)) {
-      try {
-        this.storage.setItem(V1_GAME_MIGRATED_FLAG_KEY, 'true');
-      } catch {
-        /* best effort; een volgende read() probeert het dan gewoon opnieuw */
-      }
+  confirmV1Migration(game: ActiveGame): boolean {
+    if (!this.write(game)) return false;
+    try {
+      this.storage.setItem(
+        V1_GAME_MIGRATED_FLAG_KEY,
+        JSON.stringify({
+          migratedAt: new Date().toISOString(),
+          organizationId: this.organizationId,
+          teamId: this.teamId,
+        }),
+      );
+    } catch {
+      /* best effort; de wedstrijd staat al onder de v2-sleutel, dat telt als bevestigd */
     }
-    return migrated;
+    return true;
   }
 
   write(game: ActiveGame): boolean {

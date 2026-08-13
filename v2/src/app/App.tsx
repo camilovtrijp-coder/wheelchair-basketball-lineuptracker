@@ -26,6 +26,7 @@ import { createGameFromRoster } from '../domain/game/setup';
 import type { ActiveGame } from '../domain/game/types';
 import { GameSetupPanel } from '../ui/game/GameSetupPanel';
 import { LiveTrackingPanel } from '../ui/game/LiveTrackingPanel';
+import { V1MigrationPrompt } from '../ui/game/V1MigrationPrompt';
 
 export interface AppProps {
   repositories: ResolvedAppRepositories;
@@ -146,6 +147,12 @@ export function App({
   );
   const [game, setGame] = useState<ActiveGame | null>(null);
   const [gameSaveError, setGameSaveError] = useState(false);
+  // PR 6.1-review (aug. 2026): een gedetecteerde, nog niet bevestigde
+  // v1-actieve-wedstrijd (zie GameRepository.detectV1Migration()) — v1 kende
+  // geen organisatie/teamcontext, dus dit team wordt pas een echt v2-`game`
+  // ná expliciete bevestiging door de gebruiker (handleConfirmV1Migration),
+  // nooit automatisch. Zie ui/game/V1MigrationPrompt.tsx.
+  const [v1MigrationCandidate, setV1MigrationCandidate] = useState<ActiveGame | null>(null);
 
   // Spiegelt v1's init() precies: een opgeslagen wedstrijd wordt alleen
   // hervat wanneer ze al écht gestart is (`phase === 'tracking'`) — v1:
@@ -156,26 +163,52 @@ export function App({
   // ze in de opslag — de opzet hieronder herderived 'm dan vers vanaf de
   // actuele roster. Reden: tot "Start wedstrijd" is geklikt is een opzet
   // laag-risico en mag een reload gewoon de huidige teamsamenstelling tonen;
-  // ná start (fase 'tracking') mag niets meer verloren gaan.
+  // ná start (fase 'tracking') mag niets meer verloren gaan. Zonder een eigen
+  // v2-wedstrijd wordt daarnaast gekeken of er een niet-bevestigde
+  // v1-migratie klaarstaat voor dit team (zie hierboven).
   useEffect(() => {
     const stored = gameRepo.read();
-    setGame(stored && stored.phase === 'tracking' ? stored : null);
+    if (stored && stored.phase === 'tracking') {
+      setGame(stored);
+      setV1MigrationCandidate(null);
+    } else {
+      setGame(null);
+      setV1MigrationCandidate(gameRepo.detectV1Migration());
+    }
     setGameSaveError(false);
   }, [gameRepo]);
 
-  // Spiegelt v1's freshState(): zodra er geen (te hervatten) wedstrijd is en
-  // team/instellingen geladen zijn, wordt een opzet vers vanaf de actuele
-  // roster afgeleid — ook zonder expliciete "nieuwe wedstrijd"-actie.
+  // Spiegelt v1's freshState(): zodra er geen (te hervatten) wedstrijd is,
+  // geen onbevestigd v1-migratievoorstel openstaat, en team/instellingen
+  // geladen zijn, wordt een opzet vers vanaf de actuele roster afgeleid —
+  // ook zonder expliciete "nieuwe wedstrijd"-actie. Draait bewust NIET terwijl
+  // `v1MigrationCandidate` nog openstaat: anders zou deze een verse opzet
+  // aanmaken en opslaan onder de v2-sleutel, waarna een latere reload de
+  // v1-migratie niet meer als "nog te bevestigen" zou herkennen (de v2-sleutel
+  // is dan niet meer leeg) — het voorstel zou zo onherroepelijk verdwijnen
+  // zonder dat de gebruiker ooit iets bevestigd heeft.
   useEffect(() => {
-    if (game !== null || settings === null || roster === null) return;
+    if (game !== null || v1MigrationCandidate !== null || settings === null || roster === null) {
+      return;
+    }
     const fresh = createGameFromRoster(roster, organizationId, teamId, settings.classBaseLimit);
     setGame(fresh);
     gameRepo.write(fresh);
-  }, [game, settings, roster, gameRepo, organizationId, teamId]);
+  }, [game, v1MigrationCandidate, settings, roster, gameRepo, organizationId, teamId]);
 
   function handleGameChange(next: ActiveGame) {
     setGame(next);
     setGameSaveError(!gameRepo.write(next));
+  }
+
+  function handleConfirmV1Migration() {
+    if (v1MigrationCandidate === null) return;
+    const ok = gameRepo.confirmV1Migration(v1MigrationCandidate);
+    setGameSaveError(!ok);
+    if (ok) {
+      setGame(v1MigrationCandidate);
+      setV1MigrationCandidate(null);
+    }
   }
 
   useEffect(() => {
@@ -424,6 +457,15 @@ export function App({
             onCloudMigrate={repositories.mode === 'cloud' ? handleCloudMigrateRoster : undefined}
             canWrite={canWrite}
             updatedAt={rosterUpdatedAt}
+          />
+        ) : v1MigrationCandidate !== null ? (
+          <V1MigrationPrompt
+            lang={lang}
+            game={v1MigrationCandidate}
+            teamName={(settings.teamName as string) || t('teamFallbackLabel')}
+            canWrite={canWriteGame}
+            saveError={gameSaveError}
+            onConfirm={handleConfirmV1Migration}
           />
         ) : game?.phase === 'tracking' ? (
           <LiveTrackingPanel

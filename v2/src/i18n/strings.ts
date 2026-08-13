@@ -80,6 +80,14 @@ const nl = {
   startGameBtn: 'Start wedstrijd',
   gameSaveError: 'Opslaan is mislukt. Controleer de opslagruimte van je browser.',
   gameReadOnly: 'Alleen-lezen',
+  v1MigrationTitle: 'Oude actieve wedstrijd gevonden',
+  v1MigrationDesc:
+    'Deze wedstrijd stond nog klaar van vóór de update. Controleer of onderstaand team klopt voordat je hem overneemt.',
+  v1MigrationTargetLabel: 'Overnemen naar',
+  v1MigrationScoreLabel: 'Huidige stand',
+  v1MigrationSwitchHint:
+    'Niet het juiste team? Wissel eerst van team via de knop rechtsboven — bevestig hier pas als dit team klopt.',
+  v1MigrationConfirmBtn: 'Ja, dit is het juiste team — overnemen',
 
   teamFallbackLabel: 'Team',
   segmentDeltaLabel: 'segment:',
@@ -291,6 +299,14 @@ const en = {
   startGameBtn: 'Start match',
   gameSaveError: "Saving failed. Check your browser's storage space.",
   gameReadOnly: 'Read-only',
+  v1MigrationTitle: 'Old active game found',
+  v1MigrationDesc:
+    'This game was still in progress from before the update. Check that the team below is correct before taking it over.',
+  v1MigrationTargetLabel: 'Take over into',
+  v1MigrationScoreLabel: 'Current score',
+  v1MigrationSwitchHint:
+    'Wrong team? Switch teams using the button in the top right first — only confirm here once this team is correct.',
+  v1MigrationConfirmBtn: 'Yes, this is the right team — take over',
 
   teamFallbackLabel: 'Team',
   segmentDeltaLabel: 'segment:',

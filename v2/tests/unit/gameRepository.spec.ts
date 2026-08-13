@@ -247,36 +247,80 @@ describe('infrastructure/game/LocalStorageGameRepository', () => {
     expect(repo.read()).toBeNull();
   });
 
-  describe('v1-compatibiliteit (docs/IMPLEMENTATION_PLAN.md §11, PR 6.1)', () => {
-    it('adopteert een nog actieve v1-wedstrijd wanneer de v2-sleutel van dit team leeg is', () => {
+  describe('v1-compatibiliteit (docs/IMPLEMENTATION_PLAN.md §11, PR 6.1-review, aug. 2026)', () => {
+    // Twee stappen (detecteren/bevestigen) i.p.v. automatisch adopteren: v1
+    // kende geen organisatie/teamcontext, dus de code kan zelf niet bewijzen
+    // welk team het juiste doel is — willekeurig het eerst-geopende team laten
+    // "winnen" zou een echte kans op fout-toegewezen wedstrijddata zijn.
+
+    it('read() adopteert nooit automatisch — een v1-wedstrijd verschijnt pas na expliciete confirmV1Migration()', () => {
       const storage = new TrackingStorage();
       storage.seed(V1_ACTIVE_GAME_STORAGE_KEY, JSON.stringify(v1Blob()));
       const repo = new LocalStorageGameRepository(storage, 'org-1', 'team-1');
 
-      const result = repo.read();
-
-      expect(result).not.toBeNull();
-      expect(result?.phase).toBe('tracking');
-      expect(result?.organizationId).toBe('org-1');
-      expect(result?.teamId).toBe('team-1');
-      expect(result?.opponent).toBe('V1 tegenstander');
-      // Geadopteerde wedstrijd wordt meteen onder de v2-sleutel gepersisteerd,
-      // zodat een volgende read() niet opnieuw hoeft te migreren.
-      expect(storage.getItem(activeGameStorageKey('org-1', 'team-1'))).not.toBeNull();
-      expect(storage.getItem(V1_GAME_MIGRATED_FLAG_KEY)).toBe('true');
+      expect(repo.read()).toBeNull();
+      expect(storage.getItem(activeGameStorageKey('org-1', 'team-1'))).toBeNull();
     });
 
-    it('adopteert dezelfde v1-wedstrijd niet nogmaals voor een tweede team (v1 was single-team)', () => {
+    it('detectV1Migration() toont een voorstel getagd met de huidige context, zonder iets te schrijven', () => {
+      const storage = new TrackingStorage();
+      storage.seed(V1_ACTIVE_GAME_STORAGE_KEY, JSON.stringify(v1Blob()));
+      const repo = new LocalStorageGameRepository(storage, 'org-1', 'team-1');
+
+      const candidate = repo.detectV1Migration();
+
+      expect(candidate).not.toBeNull();
+      expect(candidate?.phase).toBe('tracking');
+      expect(candidate?.organizationId).toBe('org-1');
+      expect(candidate?.teamId).toBe('team-1');
+      expect(candidate?.opponent).toBe('V1 tegenstander');
+      expect(storage.getItem(activeGameStorageKey('org-1', 'team-1'))).toBeNull();
+      expect(storage.getItem(V1_GAME_MIGRATED_FLAG_KEY)).toBeNull();
+    });
+
+    it('detectV1Migration() blijft hetzelfde voorstel tonen voor een ander team, zolang niemand bevestigd heeft', () => {
       const storage = new TrackingStorage();
       storage.seed(V1_ACTIVE_GAME_STORAGE_KEY, JSON.stringify(v1Blob()));
       const repoA = new LocalStorageGameRepository(storage, 'org-1', 'team-a');
       const repoB = new LocalStorageGameRepository(storage, 'org-1', 'team-b');
 
-      expect(repoA.read()).not.toBeNull();
+      expect(repoA.detectV1Migration()?.teamId).toBe('team-a');
+      // team A opende eerst, maar bevestigde niet — team B moet het voorstel
+      // nog steeds kunnen zien en voor zichzelf claimen.
+      expect(repoB.detectV1Migration()?.teamId).toBe('team-b');
+    });
+
+    it('confirmV1Migration() persisteert de wedstrijd en blokkeert daarna adoptie door een ander team', () => {
+      const storage = new TrackingStorage();
+      storage.seed(V1_ACTIVE_GAME_STORAGE_KEY, JSON.stringify(v1Blob()));
+      const repoA = new LocalStorageGameRepository(storage, 'org-1', 'team-a');
+      const repoB = new LocalStorageGameRepository(storage, 'org-1', 'team-b');
+
+      const candidateA = repoA.detectV1Migration()!;
+      expect(repoA.confirmV1Migration(candidateA)).toBe(true);
+
+      expect(repoA.read()).toEqual(candidateA);
+      expect(storage.getItem(V1_GAME_MIGRATED_FLAG_KEY)).not.toBeNull();
+      // Team B kan de wedstrijd na bevestiging door team A niet meer claimen.
+      expect(repoB.detectV1Migration()).toBeNull();
       expect(repoB.read()).toBeNull();
     });
 
-    it('adopteert een niet-hervatbare v1-opzet niet (v1-pariteit: alleen phase tracking of segments > 0)', () => {
+    it('confirmV1Migration() zet geen markering als de opslag faalt — een volgende poging kan opnieuw', () => {
+      const failing: KeyValueStorage = {
+        getItem: (key) => (key === V1_ACTIVE_GAME_STORAGE_KEY ? JSON.stringify(v1Blob()) : null),
+        setItem: () => {
+          throw new Error('QuotaExceededError');
+        },
+        removeItem: () => {},
+      };
+      const repo = new LocalStorageGameRepository(failing, 'org-1', 'team-1');
+      const candidate = repo.detectV1Migration()!;
+
+      expect(repo.confirmV1Migration(candidate)).toBe(false);
+    });
+
+    it('detectV1Migration() levert niets voor een niet-hervatbare v1-opzet (v1-pariteit: alleen phase tracking of segments > 0)', () => {
       const storage = new TrackingStorage();
       storage.seed(
         V1_ACTIVE_GAME_STORAGE_KEY,
@@ -284,17 +328,7 @@ describe('infrastructure/game/LocalStorageGameRepository', () => {
       );
       const repo = new LocalStorageGameRepository(storage, 'org-1', 'team-1');
 
-      expect(repo.read()).toBeNull();
-      expect(storage.getItem(V1_GAME_MIGRATED_FLAG_KEY)).toBeNull();
-    });
-
-    it('valt niet terug op v1 wanneer de v2-sleutel al (zelfs ongeldige) data bevat', () => {
-      const storage = new TrackingStorage();
-      storage.seed(activeGameStorageKey('org-1', 'team-1'), JSON.stringify({ foo: 'bar' }));
-      storage.seed(V1_ACTIVE_GAME_STORAGE_KEY, JSON.stringify(v1Blob()));
-      const repo = new LocalStorageGameRepository(storage, 'org-1', 'team-1');
-
-      expect(repo.read()).toBeNull();
+      expect(repo.detectV1Migration()).toBeNull();
     });
   });
 });
