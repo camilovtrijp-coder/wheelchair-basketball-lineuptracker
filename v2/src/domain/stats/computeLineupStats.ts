@@ -100,11 +100,18 @@ export function computeLineupStats(games: AnalysisGame[], filter: StatsFilter): 
   const map = new Map<string, LineupCombinationStats>();
   for (const entry of filteredEntries) {
     for (const ids of combinationsOfSize(entry.lineupRosterIds, size)) {
-      const key = comboKey(ids);
+      // Eén numeriek gesorteerde canonicalIds wordt voor BEIDE het
+      // map-key en `rosterIds` gebruikt — anders zou de eerste
+      // schrijvers-volgorde (bv. een segment met omgekeerde lineup)
+      // bepalen hoe de combinatie wordt opgeslagen, en zou `rosterIds`
+      // niet aan het contract "gesorteerde rosterId-waarden" voldoen
+      // (docs/pr-6.4-plan.md §C.2). Zie ook de externe review.
+      const canonicalIds = ids.slice().sort((a, b) => a - b);
+      const key = canonicalIds.join(',');
       const existing = map.get(key);
       if (existing) continue;
       map.set(key, {
-        rosterIds: ids,
+        rosterIds: canonicalIds,
         onSec: 0,
         onPF: 0,
         onPA: 0,
@@ -194,20 +201,6 @@ function passesPlayerFilters(
    */
   if (lineupRosterIds.length < size) return false;
   return true;
-}
-
-/**
- * Canonieke combinatiesleutel, identiek aan v1 `comboKey()`:
- * `ids.slice().sort((a, b) => a - b).join(",")`. Zorgt ervoor dat
- * [1,2] en [2,1] dezelfde rij opleveren — anders zou een swap van twee
- * spelers in een segment een tweede, canoniek identieke combinatie
- * genereren.
- */
-function comboKey(ids: readonly number[]): string {
-  return ids
-    .slice()
-    .sort((a, b) => a - b)
-    .join(',');
 }
 
 function combinationsOfSize(arr: readonly number[], size: number): number[][] {

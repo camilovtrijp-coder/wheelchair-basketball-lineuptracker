@@ -583,6 +583,52 @@ describe('domain/stats/computeLineupStats — randgevallen', () => {
     expect(c12.onPA).toBe(9);
   });
 
+  it('canonieke opslag: rosterIds is ALTIJD numeriek gesorteerd, ook als het eerste segment de omgekeerde volgorde heeft (externe review)', () => {
+    // Regressiontest voor het externe reviewpunt: wanneer het eerste
+    // segment dat een canoniek-identieke combinatie genereert een
+    // omgekeerde lineup-volgorde heeft (bv. [p2,p1] ipv [p1,p2]), zou
+    // een naïeve implementatie `rosterIds: [2,1]` opslaan in plaats
+    // van `[1,2]`. Het contract uit plan §C.2 vereist dat `rosterIds`
+    // de gesorteerde rosterId-waarden bevat — onafhankelijk van de
+    // volgorde in het eerste segment. We bewijzen dat door alleen
+    // segmenten met omgekeerde volgorde aan te bieden.
+    const p1 = player('p1', 1, '1');
+    const p2 = player('p2', 2, '2');
+    const p3 = player('p3', 3, '3');
+    const p4 = player('p4', 4, '4');
+    const p5 = player('p5', 5, '5');
+    const game: AnalysisGame = {
+      id: 'A',
+      opponent: '',
+      competition: '',
+      date: '',
+      players: [p1, p2, p3, p4, p5],
+      segments: [
+        // Alleen segmenten met omgekeerde lineups — het eerste segment
+        // is "[5,4,3,2,1]", niet "[1,2,3,4,5]".
+        segment('A1', ['p5', 'p4', 'p3', 'p2', 'p1'], 100, 5, 3),
+        segment('A2', ['p5', 'p4', 'p3', 'p2', 'p1'], 200, 8, 6),
+      ],
+      scoreFor: 0,
+      scoreAgainst: 0,
+      isCurrent: false,
+    };
+    const result = computeLineupStats([game], baseFilter({ comboSize: 2 }));
+    expect(result.combinations.length).toBe(10);
+    // Elke rij MOET beginnen met het KLEINSTE rosterId — geen willekeurige
+    // volgorde van het eerste segment dat de combinatie genereerde.
+    for (const combo of result.combinations) {
+      expect(combo.rosterIds[0]).toBeLessThan(combo.rosterIds[1]!);
+    }
+    // Specifiek: [1,2] bestaat en is gesorteerd opgeslagen.
+    const c12 = result.combinations.find((x) => x.rosterIds.join(',') === '1,2')!;
+    expect(c12).toBeDefined();
+    expect(c12.rosterIds).toEqual([1, 2]);
+    expect(c12.onSec).toBe(300);
+    expect(c12.onPF).toBe(13);
+    expect(c12.onPA).toBe(9);
+  });
+
   it('per10-toggle verandert de sortering: een lage pm in korte tijd komt vóór een hoge pm in lange tijd', () => {
     // Regressiontest voor de externe review: sortering moet de GETOONDE
     // waarde gebruiken. Zonder per10 wint de hogere pm (10 in 600s); met
