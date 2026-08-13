@@ -254,10 +254,12 @@ test.describe('v2 Trends-tab (PR 6.5)', () => {
     await page.reload();
     await page.getByTestId('nav-trends').click();
     await page.getByTestId('trends-toggle-games-1').click();
-    // De laatste rij (chronologisch laatst) hoort bij de actieve wedstrijd
-    // en draagt het "Voorlopig"-label.
+    // De lijst toont nieuwste-eerst (TrendsPanel keert de chronologische
+    // old->new-punten om voor weergave), dus de EERSTE rij hoort bij de
+    // chronologisch laatste — de actieve — wedstrijd en draagt het
+    // "Voorlopig"-label.
     const rows = page.getByTestId('trends-games-list-1').locator('li');
-    await expect(rows.last()).toContainText('Voorlopig');
+    await expect(rows.first()).toContainText('Voorlopig');
   });
 
   test('Trends-tab op een 320px-viewport toont geen horizontale overflow', async ({ page }) => {
