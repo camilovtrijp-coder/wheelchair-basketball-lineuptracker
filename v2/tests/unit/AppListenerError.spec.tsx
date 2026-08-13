@@ -150,7 +150,13 @@ describe('app/App — listener-fout-detectie na initiële load (PR 5.4a)', () =>
   it('toont de indicator zodra een listener faalt ná de eerste load, en ruimt hem bij de volgende succesvolle emit', async () => {
     const syncStatus = fakeSyncStatusApi();
     const { queryByTestId } = render(
-      <App repositories={repositories} syncStatus={syncStatus} canWrite={true} />,
+      <App
+        repositories={repositories}
+        syncStatus={syncStatus}
+        canWrite={true}
+        organizationId="org-test"
+        teamId="team-test"
+      />,
     );
 
     // Initiële load: data op scherm, geen indicator.
@@ -180,7 +186,13 @@ describe('app/App — listener-fout-detectie na initiële load (PR 5.4a)', () =>
       roster: new ControlledAsyncRosterRepository(),
     };
     const { queryByTestId } = render(
-      <App repositories={localRepositories} syncStatus={syncStatus} canWrite={true} />,
+      <App
+        repositories={localRepositories}
+        syncStatus={syncStatus}
+        canWrite={true}
+        organizationId="org-test"
+        teamId="team-test"
+      />,
     );
 
     // Nog niets geladen: geen indicator (App toont nog niet eens de hoofd-UI).

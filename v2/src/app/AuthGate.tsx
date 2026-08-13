@@ -386,6 +386,8 @@ export function AuthGate({ authGateway }: AuthGateProps) {
             repositories={repositories}
             syncStatus={syncStatus}
             canWrite={selectedContextCanWrite ?? false}
+            organizationId={selectedContext?.orgId ?? ''}
+            teamId={selectedContext?.teamId ?? ''}
           />
         </>
       );
