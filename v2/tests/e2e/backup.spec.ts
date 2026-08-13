@@ -226,9 +226,13 @@ test.describe('v2 Back-up-sectie (PR 6.6)', () => {
         },
       ],
     });
-    const path = await writeTempJson(backup);
+    // Twee afzonderlijke bestanden met identieke inhoud i.p.v. hetzelfde pad
+    // tweemaal selecteren: `setInputFiles` op exact dezelfde file triggert
+    // niet betrouwbaar een nieuwe change/preview-cyclus in elke browser.
+    const pathA = await writeTempJson(backup);
+    const pathB = await writeTempJson(backup);
 
-    for (let i = 0; i < 2; i += 1) {
+    for (const path of [pathA, pathB]) {
       await page.getByTestId('backup-file-input').setInputFiles(path);
       await expect(page.getByTestId('backup-preview')).toBeVisible();
       await Promise.all([
@@ -236,6 +240,7 @@ test.describe('v2 Back-up-sectie (PR 6.6)', () => {
         page.getByTestId('backup-confirm-btn').click(),
       ]);
       await expect(page.getByTestId('backup-success')).toBeVisible();
+      await page.getByRole('button', { name: 'OK' }).click();
     }
 
     await page.getByTestId('nav-history').click();
