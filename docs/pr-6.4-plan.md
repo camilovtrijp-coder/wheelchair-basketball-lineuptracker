@@ -22,6 +22,22 @@ Start de implementatie pas wanneer:
    `computeCombos()`) en Voorbeeld 4 uit de compatibiliteitsmatrix opnieuw zijn
    vergeleken met dit plan.
 
+**Reality-check na merge PR 6.3 (`main` `3e09b69`, 2026-08-13): OPEN
+prerequisite voor 6.4.** `CompletedGameRepository.list()` retourneert nog alleen
+`CompletedGame[]`; `LocalStorageCompletedGameRepository.list()` reduceert een
+read-/parsefout daardoor voor de aanroeper tot `[]`. Daarnaast behandelt
+`strictReadBrowserStorage` een falende of niet-beschikbare storage-getter nog als
+`null`/no-op, ook al worden fouten van een verkregen `Storage.getItem()` wel
+doorgegeven. Vóór de Stats-UI moet een expliciet leesresultaat worden ingevoerd
+dat minimaal `ok`, `missing` en `error` onderscheidt, en mutaties mogen bij
+`error` of unavailable nooit schrijven of succes melden. Voeg adaptertests toe
+voor zowel een tijdelijk falende getter (volgende getter-call werkt) als blijvend
+unavailable. Dit is een begrensde ingangsfix voor 6.4, geen toestemming om
+andere PR-6.3-functionaliteit opnieuw te ontwerpen.
+De technische follow-up staat inmiddels in draft-PR #49; deze poort blijft OPEN
+totdat die PR onafhankelijk is herreviewd, exact-head-CI groen is en de fix naar
+`main` is gemerged.
+
 ## B. Scope
 
 | In scope | Niet in scope |
