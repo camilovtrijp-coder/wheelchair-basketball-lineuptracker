@@ -163,6 +163,20 @@ const nl = {
   statsClearBtn: 'Wis filter',
   statsDoneBtn: 'Klaar',
 
+  // PR 6.5: Trends-tab. Strings gespiegeld van v1 (index.html
+  // `trends[A-Z]*`-vertalingen). NL = primary, EN = secondary.
+  trendsTitle: 'Trends',
+  trendsMinLabel: 'MIN',
+  trendsPmLabel: '+/-',
+  trendsPmChartLabel: '+/- per wedstrijd',
+  trendsMinChartLabel: 'Minuten per wedstrijd',
+  trendsNoData: 'Nog geen wedstrijddata. Speel en rond een wedstrijd af om hier trends te zien.',
+  trendsSortLabel: 'Sorteer',
+  trendsSortNr: 'Nr',
+  trendsShowGames: 'Toon {n} wedstrijden',
+  trendsHideGames: 'Verberg wedstrijden',
+  trendsProvisional: 'Voorlopig',
+
   cloudImportPrompt:
     'Kopieer je lokale gegevens eenmalig naar de cloud. De cloud-versie wordt dan leidend; je lokale kopie blijft bewaard.',
   cloudImportButton: 'Eenmalig naar cloud kopiëren',
@@ -414,6 +428,19 @@ const en = {
   statsColOff: 'Without them',
   statsClearBtn: 'Clear filter',
   statsDoneBtn: 'Done',
+
+  // PR 6.5: Trends tab. See NL block for rationale; v1 parity.
+  trendsTitle: 'Trends',
+  trendsMinLabel: 'MIN',
+  trendsPmLabel: '+/-',
+  trendsPmChartLabel: '+/- per game',
+  trendsMinChartLabel: 'Minutes per game',
+  trendsNoData: 'No match data yet. Play and finish a match to see trends here.',
+  trendsSortLabel: 'Sort',
+  trendsSortNr: 'No.',
+  trendsShowGames: 'Show {n} games',
+  trendsHideGames: 'Hide games',
+  trendsProvisional: 'Provisional',
 
   cloudImportPrompt:
     'Copy your local data to the cloud once. The cloud version becomes the source of truth; your local copy is kept as a fallback.',

@@ -93,7 +93,14 @@ describe('ui/stats/StatsPanel', () => {
   it('toont "Geen data"-melding bij een lege historie (status="missing")', () => {
     const { repo } = fakeRead('missing', []);
     const { getByTestId } = render(
-      <StatsPanel lang="nl" repository={repo} activeGame={null} roster={roster} />,
+      <StatsPanel
+        lang="nl"
+        repository={repo}
+        activeGame={null}
+        roster={roster}
+        gameIds={null}
+        onGameIdsChange={() => {}}
+      />,
     );
     expect(getByTestId('stats-no-data')).toBeTruthy();
   });
@@ -101,7 +108,14 @@ describe('ui/stats/StatsPanel', () => {
   it('toont een foutmelding bij read-status="error" en NOOIT de "geen data"-banner', () => {
     const { repo } = fakeRead('error', []);
     const { getByTestId, queryByTestId } = render(
-      <StatsPanel lang="nl" repository={repo} activeGame={null} roster={roster} />,
+      <StatsPanel
+        lang="nl"
+        repository={repo}
+        activeGame={null}
+        roster={roster}
+        gameIds={null}
+        onGameIdsChange={() => {}}
+      />,
     );
     expect(getByTestId('stats-read-error')).toBeTruthy();
     expect(queryByTestId('stats-no-data')).toBeNull();
@@ -121,7 +135,14 @@ describe('ui/stats/StatsPanel', () => {
     });
     const { repo } = fakeRead('ok', [completed]);
     const { getByTestId, queryByTestId } = render(
-      <StatsPanel lang="nl" repository={repo} activeGame={null} roster={roster} />,
+      <StatsPanel
+        lang="nl"
+        repository={repo}
+        activeGame={null}
+        roster={roster}
+        gameIds={null}
+        onGameIdsChange={() => {}}
+      />,
     );
     expect(getByTestId('stats-list')).toBeTruthy();
     expect(queryByTestId('stats-no-data')).toBeNull();
@@ -145,7 +166,14 @@ describe('ui/stats/StatsPanel', () => {
     });
     const { repo } = fakeRead('ok', [completed]);
     const { getByTestId, queryByTestId } = render(
-      <StatsPanel lang="nl" repository={repo} activeGame={null} roster={roster} />,
+      <StatsPanel
+        lang="nl"
+        repository={repo}
+        activeGame={null}
+        roster={roster}
+        gameIds={null}
+        onGameIdsChange={() => {}}
+      />,
     );
     // Default size=5 → één rij met rosterIds [1,2,3,4,5]
     expect(queryByTestId('stats-combo-1-2-3-4-5')).toBeTruthy();
@@ -169,7 +197,14 @@ describe('ui/stats/StatsPanel', () => {
     });
     const { repo } = fakeRead('ok', [completed]);
     const { getByTestId } = render(
-      <StatsPanel lang="nl" repository={repo} activeGame={null} roster={roster} />,
+      <StatsPanel
+        lang="nl"
+        repository={repo}
+        activeGame={null}
+        roster={roster}
+        gameIds={null}
+        onGameIdsChange={() => {}}
+      />,
     );
     const card = getByTestId('stats-combo-1-2-3-4-5');
     // Initieel: +6.0 (per10=false, kale pm)
@@ -196,7 +231,14 @@ describe('ui/stats/StatsPanel', () => {
     });
     const { repo } = fakeRead('ok', [completed]);
     const { getByTestId } = render(
-      <StatsPanel lang="nl" repository={repo} activeGame={null} roster={roster} />,
+      <StatsPanel
+        lang="nl"
+        repository={repo}
+        activeGame={null}
+        roster={roster}
+        gameIds={null}
+        onGameIdsChange={() => {}}
+      />,
     );
     expect(getByTestId('stats-sort-toggle').textContent).toContain('↓');
     fireEvent.click(getByTestId('stats-sort-toggle'));
@@ -220,7 +262,14 @@ describe('ui/stats/StatsPanel', () => {
     });
     const { repo } = fakeRead('ok', [completed]);
     const { getByTestId, queryByTestId } = render(
-      <StatsPanel lang="nl" repository={repo} activeGame={null} roster={roster} />,
+      <StatsPanel
+        lang="nl"
+        repository={repo}
+        activeGame={null}
+        roster={roster}
+        gameIds={null}
+        onGameIdsChange={() => {}}
+      />,
     );
     // Default size=5, geen filter → toont de [1,2,3,4,5] rij (s2 levert
     // <5 spelers en valt buiten de filter voor size=5).
@@ -272,7 +321,14 @@ describe('ui/stats/StatsPanel', () => {
     };
     const { repo } = fakeRead('ok', [completed]);
     const { queryByTestId, getByTestId } = render(
-      <StatsPanel lang="nl" repository={repo} activeGame={active} roster={roster} />,
+      <StatsPanel
+        lang="nl"
+        repository={repo}
+        activeGame={active}
+        roster={roster}
+        gameIds={null}
+        onGameIdsChange={() => {}}
+      />,
     );
     // Geen 'live-1'-combo omdat de actieve wedstrijd geen segmenten heeft.
     expect(queryByTestId('stats-combo-1-2-3-4-5')).toBeTruthy();
@@ -285,11 +341,25 @@ describe('ui/stats/StatsPanel', () => {
   it('NL/EN: alle zichtbare tekst komt uit het juiste strings-object', () => {
     const { repo } = fakeRead('ok', []);
     const { getByText: nl } = render(
-      <StatsPanel lang="nl" repository={repo} activeGame={null} roster={roster} />,
+      <StatsPanel
+        lang="nl"
+        repository={repo}
+        activeGame={null}
+        roster={roster}
+        gameIds={null}
+        onGameIdsChange={() => {}}
+      />,
     );
     expect(nl('Statistieken')).toBeTruthy();
     const { getByText: en } = render(
-      <StatsPanel lang="en" repository={repo} activeGame={null} roster={roster} />,
+      <StatsPanel
+        lang="en"
+        repository={repo}
+        activeGame={null}
+        roster={roster}
+        gameIds={null}
+        onGameIdsChange={() => {}}
+      />,
     );
     expect(en('Stats')).toBeTruthy();
   });
@@ -300,7 +370,16 @@ describe('ui/stats/StatsPanel', () => {
     const { repo } = fakeRead('ok', []);
     const fn = vi.fn();
     expect(() =>
-      render(<StatsPanel lang="nl" repository={repo} activeGame={null} roster={roster} />),
+      render(
+        <StatsPanel
+          lang="nl"
+          repository={repo}
+          activeGame={null}
+          roster={roster}
+          gameIds={null}
+          onGameIdsChange={() => {}}
+        />,
+      ),
     ).not.toThrow();
     fn();
   });

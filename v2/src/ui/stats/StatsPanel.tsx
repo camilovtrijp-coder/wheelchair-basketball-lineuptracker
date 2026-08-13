@@ -13,6 +13,8 @@ import type {
   StatsFilter,
 } from '../../domain/stats/types';
 import { translate, type Lang, type StringKey } from '../../i18n/strings';
+import { GamesFilterModal, toggleGameIdInSet } from '../shared/GamesFilterModal';
+import { ModalDialog } from '../shared/ModalDialog';
 
 export interface StatsPanelProps {
   lang: Lang;
@@ -24,24 +26,19 @@ export interface StatsPanelProps {
   /** Huidige roster (PR 6.3-revisie, aug. 2026: labels voor nog-bestaande
    * spelers komen hiervandaan, niet uit de historische snapshots). */
   roster: RosterPlayer[];
+  /**
+   * PR 6.5 §C.2/§F: het wedstrijdfilter is gedeeld met Trends — de `Set`-state
+   * zelf leeft boven beide tabs in `app/App.tsx`, zodat een wijziging op één
+   * tab onmiddellijk op de andere geldt (v1-pariteit).
+   */
+  gameIds: Set<string> | null;
+  onGameIdsChange: (next: Set<string> | null) => void;
 }
 
 const COMBO_SIZES = [1, 2, 3, 4, 5] as const;
 
 function t(lang: Lang, key: StringKey): string {
   return translate(lang, key);
-}
-
-function localeCode(lang: Lang): string {
-  return lang === 'en' ? 'en-GB' : 'nl-NL';
-}
-
-function formatDate(iso: string, lang: Lang): string {
-  try {
-    return new Date(iso).toLocaleDateString(localeCode(lang));
-  } catch {
-    return '';
-  }
 }
 
 /** V1: `playerById()`-vervanging — actuele rosterId → label. Voor
@@ -60,12 +57,18 @@ function labelFor(rosterId: number, games: AnalysisGame[], currentRoster: Roster
   return '#?';
 }
 
-export function StatsPanel({ lang, repository, activeGame, roster }: StatsPanelProps) {
+export function StatsPanel({
+  lang,
+  repository,
+  activeGame,
+  roster,
+  gameIds,
+  onGameIdsChange,
+}: StatsPanelProps) {
   const scope = useMemo(() => buildAnalysisScope(repository, activeGame), [repository, activeGame]);
   const [comboSize, setComboSize] = useState<1 | 2 | 3 | 4 | 5>(5);
   const [per10, setPer10] = useState(false);
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('desc');
-  const [gameIds, setGameIds] = useState<Set<string> | null>(null);
   const [playerFilters, setPlayerFilters] = useState<PlayerFilterEntry[]>([]);
   const [gamesModalOpen, setGamesModalOpen] = useState(false);
   const [filterModalOpen, setFilterModalOpen] = useState(false);
@@ -185,21 +188,21 @@ export function StatsPanel({ lang, repository, activeGame, roster }: StatsPanelP
       )}
 
       {gamesModalOpen ? (
-        <GamesModal
+        <GamesFilterModal
           lang={lang}
           scope={scope.games}
           selected={gameIds}
           onClose={() => setGamesModalOpen(false)}
           onToggle={(id) => {
-            setGameIds((prev) =>
-              toggleIdInSet(
-                prev,
+            onGameIdsChange(
+              toggleGameIdInSet(
+                gameIds,
                 id,
                 scope.games.map((g) => g.id),
               ),
             );
           }}
-          onClear={() => setGameIds(new Set())}
+          onClear={() => onGameIdsChange(new Set())}
         />
       ) : null}
 
@@ -218,18 +221,6 @@ export function StatsPanel({ lang, repository, activeGame, roster }: StatsPanelP
       ) : null}
     </section>
   );
-}
-
-function toggleIdInSet(prev: Set<string> | null, id: string, allIds: string[]): Set<string> | null {
-  // null = "alles aanwezig" (v1: `statsGameIds == null`). Bij de eerste
-  // toggle materialiseren we een Set die álles bevat; daarna gedraagt
-  // de Set zich als de canonieke selectie. Wanneer alle id's opnieuw
-  // geselecteerd zijn, normaliseren we terug naar null zodat de UI
-  // consistent blijft met v1.
-  const next = prev === null ? new Set(allIds) : new Set(prev);
-  if (next.has(id)) next.delete(id);
-  else next.add(id);
-  return next.size === allIds.length ? null : next;
 }
 
 function cyclePlayerFilter(prev: PlayerFilterEntry[], rosterId: number): PlayerFilterEntry[] {
@@ -325,65 +316,6 @@ function Stat({
   );
 }
 
-/** PR 6.4: modale filter. v1 gebruikte een inline-`onclick`-attribuut op
- * een `<div>` voor de backdrop-stop-propagation. Hier vangen we de
- * backdrop-click op het dialoog-element zelf op en laten we de binnenste
- * `.modal` de propagation stoppen — patroon dat eslint-plugin-jsx-a11y
- * toestaat zolang het dialoog-element `role="dialog"` + `aria-modal`
- * draagt en keyboard-afhandeling heeft (Escape om te sluiten). */
-function GamesModal({
-  lang,
-  scope,
-  selected,
-  onClose,
-  onToggle,
-  onClear,
-}: {
-  lang: Lang;
-  scope: AnalysisGame[];
-  selected: Set<string> | null;
-  onClose: () => void;
-  onToggle: (id: string) => void;
-  onClear: () => void;
-}) {
-  return (
-    <ModalDialog
-      title={t(lang, 'statsGamesTitle')}
-      onClose={onClose}
-      testId="stats-games-modal"
-      clearLabel={t(lang, 'statsClearBtn')}
-      doneLabel={t(lang, 'statsDoneBtn')}
-      onClear={onClear}
-    >
-      {scope.length === 0 ? (
-        <p className="modal__desc">{t(lang, 'statsNoData')}</p>
-      ) : (
-        scope.map((g) => {
-          const on = selected === null || selected.has(g.id);
-          return (
-            <label key={g.id} className="stats-modal-row" data-testid={`stats-game-row-${g.id}`}>
-              <span className="stats-modal-row__label">
-                {g.isCurrent ? t(lang, 'statsCurrentGame') : g.opponent || t(lang, 'teamOpponent')}
-                <span className="mut2 xs">
-                  {formatDate(g.date, lang)}
-                  {g.competition ? ` · ${g.competition}` : ''}
-                </span>
-              </span>
-              <input
-                type="checkbox"
-                checked={on}
-                data-testid={`stats-game-check-${g.id}`}
-                onChange={() => onToggle(g.id)}
-                style={{ width: '1.1rem', height: '1.1rem', flex: 'none' }}
-              />
-            </label>
-          );
-        })
-      )}
-    </ModalDialog>
-  );
-}
-
 function PlayerFilterModal({
   lang,
   scope,
@@ -460,78 +392,5 @@ function PlayerFilterModal({
         })
       )}
     </ModalDialog>
-  );
-}
-
-/**
- * Modal-dialoogpatroon dat voldoet aan jsx-a11y: de backdrop-click sluit
- * het venal (`role="dialog"` met `aria-modal` en keyboard handler), terwijl
- * de binnenste `.modal` de click-propagation stopt zodat interacties
- * binnen het venal de backdrop niet sluiten. De click-stop op de inner
- * div is geaccepteerd omdat hij uitsluitend dient om de
- * backdrop-click-stop-propagation van de buitenste div te isoleren — geen
- * eigen interactie of functionaliteit.
- */
-function ModalDialog({
-  title,
-  description,
-  onClose,
-  onClear,
-  clearLabel,
-  doneLabel,
-  testId,
-  children,
-}: {
-  title: string;
-  description?: string;
-  onClose: () => void;
-  onClear?: () => void;
-  clearLabel: string;
-  doneLabel: string;
-  testId: string;
-  children: preact.ComponentChildren;
-}) {
-  return (
-    // eslint-disable-next-line jsx-a11y/no-noninteractive-element-interactions
-    <div
-      className="modal-overlay"
-      role="dialog"
-      aria-label={title}
-      aria-modal="true"
-      data-testid={testId}
-      onClick={onClose}
-      onKeyDown={(e) => {
-        if (e.key === 'Escape') onClose();
-      }}
-    >
-      {/* eslint-disable-next-line jsx-a11y/click-events-have-key-events, jsx-a11y/no-noninteractive-element-interactions */}
-      <div className="modal" role="document" onClick={(e) => e.stopPropagation()}>
-        <div className="modal__title-row">
-          {onClear ? (
-            <button
-              type="button"
-              className="btn-outline"
-              data-testid={`${testId}-clear`}
-              onClick={onClear}
-            >
-              {clearLabel}
-            </button>
-          ) : (
-            <span />
-          )}
-          <h2>{title}</h2>
-          <button
-            type="button"
-            className="btn-outline"
-            data-testid={`${testId}-done`}
-            onClick={onClose}
-          >
-            {doneLabel}
-          </button>
-        </div>
-        {description ? <p className="modal__desc">{description}</p> : null}
-        {children}
-      </div>
-    </div>
   );
 }
