@@ -79,6 +79,7 @@ const nl = {
   startChooseFive: 'Kies precies 5 starters (of 0 voor automatisch)',
   startGameBtn: 'Start wedstrijd',
   gameSaveError: 'Opslaan is mislukt. Controleer de opslagruimte van je browser.',
+  gameReadOnly: 'Alleen-lezen',
 
   teamFallbackLabel: 'Team',
   segmentDeltaLabel: 'segment:',
@@ -289,6 +290,7 @@ const en = {
   startChooseFive: 'Choose exactly 5 starters (or 0 for automatic)',
   startGameBtn: 'Start match',
   gameSaveError: "Saving failed. Check your browser's storage space.",
+  gameReadOnly: 'Read-only',
 
   teamFallbackLabel: 'Team',
   segmentDeltaLabel: 'segment:',

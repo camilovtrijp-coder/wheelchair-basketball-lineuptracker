@@ -1,6 +1,15 @@
 import { MAX_CLOCK_SECONDS, type ActiveGame } from '../../domain/game/types';
+import { V1_ACTIVE_GAME_STORAGE_KEY, migrateV1ActiveGame } from '../../domain/game/v1Migration';
 import type { KeyValueStorage } from '../../i18n/persistence';
 import type { GameRepository } from '../../application/game/GameRepository';
+
+/**
+ * Markeert dat de v1-actieve-wedstrijd al eens is geadopteerd (zie
+ * `LocalStorageGameRepository.tryAdoptV1Game`) — één vaste, niet per-team
+ * sleutel, want v1 was single-team: zonder deze vlag zou een tweede team
+ * dezelfde v1-wedstrijd ook nog eens claimen bij zijn eerste (lege) load.
+ */
+export const V1_GAME_MIGRATED_FLAG_KEY = 'lineup-tracker-v2-v1-game-migrated';
 
 /**
  * Per-organisatie/team-sleutel (i.p.v. één vaste key) — zo blijft de
@@ -34,6 +43,24 @@ function isActiveGameShape(value: unknown): value is Record<string, unknown> {
     Array.isArray(v.players) &&
     Array.isArray(v.onCourt)
   );
+}
+
+/**
+ * Controleert dat de opgeslagen wedstrijd ook daadwerkelijk bij de sleutel
+ * hoort waaronder ze werd gelezen. Zonder deze check zou een payload die
+ * (door een toekomstige bug, handmatige localStorage-bewerking of een
+ * sleutelbotsing) onder de verkeerde organisatie/team-sleutel terecht is
+ * gekomen, alsnog stilzwijgend voor dat andere team gelezen worden — de
+ * per-team-sleutel (zie `activeGameStorageKey`) is dan geen betrouwbare
+ * isolatiegrens meer. Een mismatch wordt hier hetzelfde behandeld als
+ * ongeldige/corrupte data: `read()` geeft `null`.
+ */
+function matchesContext(
+  value: Record<string, unknown>,
+  organizationId: string,
+  teamId: string,
+): boolean {
+  return value.organizationId === organizationId && value.teamId === teamId;
 }
 
 /**
@@ -73,8 +100,8 @@ export class LocalStorageGameRepository implements GameRepository {
 
   constructor(
     private readonly storage: KeyValueStorage,
-    organizationId: string,
-    teamId: string,
+    private readonly organizationId: string,
+    private readonly teamId: string,
   ) {
     this.key = activeGameStorageKey(organizationId, teamId);
   }
@@ -87,7 +114,11 @@ export class LocalStorageGameRepository implements GameRepository {
       return null;
     }
 
-    if (raw === null || raw === '') return null;
+    // Niets onder de v2-sleutel: eenmalig proberen te adopteren vanuit v1
+    // (zie tryAdoptV1Game) — een corrupte/mismatchende v2-waarde hieronder
+    // valt bewust NIET terug op v1, want dat zou een team dat al zijn eigen
+    // (weliswaar kapotte) v2-wedstrijd had, alsnog een andere wedstrijd geven.
+    if (raw === null || raw === '') return this.tryAdoptV1Game();
 
     let parsed: unknown;
     try {
@@ -96,7 +127,58 @@ export class LocalStorageGameRepository implements GameRepository {
       return null;
     }
 
-    return isActiveGameShape(parsed) ? normalizeActiveGame(parsed) : null;
+    if (!isActiveGameShape(parsed) || !matchesContext(parsed, this.organizationId, this.teamId)) {
+      return null;
+    }
+
+    return normalizeActiveGame(parsed);
+  }
+
+  /**
+   * Adopteert een nog actieve v1-wedstrijd (zie domain/game/v1Migration.ts)
+   * de eerste keer dat dit team een lege v2-opslag tegenkomt —
+   * docs/IMPLEMENTATION_PLAN.md §11 (PR 6.1) eist dat de v1-sleutel tijdens
+   * de compatibiliteitsperiode leesbaar blijft. `V1_GAME_MIGRATED_FLAG_KEY`
+   * voorkomt dat een tweede team dezelfde v1-wedstrijd nogmaals claimt (v1
+   * was single-team, dus er is maar één "eigenaar" mogelijk). De vlag wordt
+   * pas gezet ná een geslaagde write, zodat een opslagfout op dit exacte
+   * moment een volgende poging niet blijvend blokkeert.
+   */
+  private tryAdoptV1Game(): ActiveGame | null {
+    let migratedFlag: string | null = null;
+    try {
+      migratedFlag = this.storage.getItem(V1_GAME_MIGRATED_FLAG_KEY);
+    } catch {
+      return null;
+    }
+    if (migratedFlag === 'true') return null;
+
+    let v1Raw: string | null = null;
+    try {
+      v1Raw = this.storage.getItem(V1_ACTIVE_GAME_STORAGE_KEY);
+    } catch {
+      return null;
+    }
+    if (v1Raw === null || v1Raw === '') return null;
+
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(v1Raw);
+    } catch {
+      return null;
+    }
+
+    const migrated = migrateV1ActiveGame(parsed, this.organizationId, this.teamId);
+    if (migrated === null) return null;
+
+    if (this.write(migrated)) {
+      try {
+        this.storage.setItem(V1_GAME_MIGRATED_FLAG_KEY, 'true');
+      } catch {
+        /* best effort; een volgende read() probeert het dan gewoon opnieuw */
+      }
+    }
+    return migrated;
   }
 
   write(game: ActiveGame): boolean {

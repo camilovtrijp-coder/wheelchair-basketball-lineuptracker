@@ -193,6 +193,12 @@ export function GameSetupPanel({
         </p>
       ) : null}
 
+      {canWrite ? null : (
+        <p className="settings-read-only" data-testid="game-read-only" role="status">
+          {t(lang, 'gameReadOnly')}
+        </p>
+      )}
+
       <div className="settings-actions">
         <button
           type="button"

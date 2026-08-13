@@ -48,6 +48,15 @@ export interface AppProps {
    */
   canWrite: boolean;
   /**
+   * PR 6.1-review (aug. 2026): aparte, ruimere bevoegdheid voor de wedstrijd-UI
+   * (owner/admin/coach/scorer — zie domain/organizations/teamAccess.ts,
+   * `canWriteGameData`). Vóór deze toevoeging deelde `GameSetupPanel`/
+   * `LiveTrackingPanel` dezelfde `canWrite` als Settings/Roster, waardoor een
+   * scorer nergens kon scoren. Door AuthGate berekend uit dezelfde
+   * validateSelectedTeam()-call als `canWrite` (geen extra Firestore-read).
+   */
+  canWriteGame: boolean;
+  /**
    * Actieve organisatie/teamcontext (PR 5.2, AuthGate's `selectedContext`),
    * doorgegeven zodat een nieuwe wedstrijdopzet (PR 6.1) er verplicht mee
    * getagd en onder een eigen sleutel opgeslagen kan worden — zie
@@ -89,7 +98,14 @@ const v1RosterRepo = new LocalStorageRosterRepository(browserStorage);
 // wordt toegeschreven zonder onderscheid tussen de vier mogelijke oorzaken.
 const STEP_STALL_TIMEOUT_MS = 8000;
 
-export function App({ repositories, syncStatus, canWrite, organizationId, teamId }: AppProps) {
+export function App({
+  repositories,
+  syncStatus,
+  canWrite,
+  canWriteGame,
+  organizationId,
+  teamId,
+}: AppProps) {
   const [lang, setLang] = useState<Lang>(initialLang);
   const [tab, setTab] = useState<Tab>('settings');
   const [settings, setSettings] = useState<(Settings & Record<string, unknown>) | null>(null);
@@ -427,7 +443,7 @@ export function App({ repositories, syncStatus, canWrite, organizationId, teamId
             tag1Label={tag1Label}
             tag2Label={tag2Label}
             onGameChange={handleGameChange}
-            canWrite={canWrite}
+            canWrite={canWriteGame}
             saveError={gameSaveError}
           />
         ) : (
@@ -437,7 +453,7 @@ export function App({ repositories, syncStatus, canWrite, organizationId, teamId
             useClassLimit={settings.useClassLimit === true}
             onGameChange={handleGameChange}
             onGoToRoster={() => setTab('roster')}
-            canWrite={canWrite}
+            canWrite={canWriteGame}
             saveError={gameSaveError}
           />
         )}

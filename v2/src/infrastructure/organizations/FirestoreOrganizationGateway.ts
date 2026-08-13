@@ -244,9 +244,11 @@ export class FirestoreOrganizationGateway implements OrganizationGateway {
    * gedrag) miste een ingetrokken, verwijderd of via localStorage vervalst `teamId`.
    * `canManageTeamData` wordt door AuthGate doorgegeven aan `App`/`SettingsPanel`/`RosterPanel`
    * om de UI-schrijfknoppen te hiden/disablen voor rollen die geen teamdata mogen bewerken
-   * (spiegelt firestore.rules' canManageTeamData/teamRole exact — zie PR 5.4a). Wordt in
-   * dezelfde call afgeleid als `valid` (uit dezelfde getMyTeamAccess()-read), dus zonder
-   * extra Firestore-read.
+   * (spiegelt firestore.rules' canManageTeamData/teamRole exact — zie PR 5.4a).
+   * `canWriteGameData` doet hetzelfde voor `GameSetupPanel`/`LiveTrackingPanel` (PR
+   * 6.1-review, aug. 2026) — een `scorer` mag wél wedstrijdacties uitvoeren zonder
+   * roster/instellingen te mogen bewerken. Beide worden in dezelfde call afgeleid als `valid`
+   * (uit dezelfde getMyTeamAccess()-read), dus zonder extra Firestore-read.
    *
    * Bij een genuine online controle gooien deze reads nooit een fout: zodra het
    * organisatiemembership al bevestigd is (voorwaarde om deze functie aan te roepen), staat
@@ -257,24 +259,30 @@ export class FirestoreOrganizationGateway implements OrganizationGateway {
    * "ingetrokken" behandelen zou een eerder geldige, gecachete context bij elke offline reload
    * laten afketsen, in strijd met ADR-002's offline-first-uitgangspunt. Fail open voor `valid`
    * (nog geldig totdat het tegendeel online bewezen is), maar conservatief `false` voor
-   * `canManageTeamData` — we verlenen geen UI-schrijftoegang als we de rol niet kunnen
-   * bevestigen. De backend Rules handhaven de echte authorisatie sowieso; een eventuele
-   * write-poging via een onjuist-positieve UI-state zou als `actie-nodig` eindigen.
+   * `canManageTeamData`/`canWriteGameData` — we verlenen geen UI-schrijftoegang als we de rol
+   * niet kunnen bevestigen. De backend Rules handhaven de echte authorisatie sowieso; een
+   * eventuele write-poging via een onjuist-positieve UI-state zou als `actie-nodig` eindigen.
    */
   async validateSelectedTeam(
     orgId: string,
     teamId: string,
     orgRole: OrganizationRole | null,
-  ): Promise<{ valid: boolean; canManageTeamData: boolean }> {
+  ): Promise<{ valid: boolean; canManageTeamData: boolean; canWriteGameData: boolean }> {
     try {
       const teamSnapshot = await getDoc(
         teamRef(this.db, orgId, teamId).withConverter(teamConverter),
       );
-      if (!teamSnapshot.exists()) return { valid: false, canManageTeamData: false };
+      if (!teamSnapshot.exists()) {
+        return { valid: false, canManageTeamData: false, canWriteGameData: false };
+      }
       const access = await this.getMyTeamAccess(orgId, teamId, orgRole);
-      return { valid: access.isExplicitlyAuthorized, canManageTeamData: access.canManageTeamData };
+      return {
+        valid: access.isExplicitlyAuthorized,
+        canManageTeamData: access.canManageTeamData,
+        canWriteGameData: access.canWriteGameData,
+      };
     } catch {
-      return { valid: true, canManageTeamData: false };
+      return { valid: true, canManageTeamData: false, canWriteGameData: false };
     }
   }
 

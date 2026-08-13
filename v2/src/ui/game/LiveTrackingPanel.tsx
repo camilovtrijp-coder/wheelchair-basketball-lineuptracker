@@ -407,6 +407,12 @@ export function LiveTrackingPanel({
         </p>
       ) : null}
 
+      {canWrite ? null : (
+        <p className="settings-read-only" data-testid="game-read-only" role="status">
+          {t(lang, 'gameReadOnly')}
+        </p>
+      )}
+
       <div className="score-card">
         {scoreRow('for')}
         {scoreRow('against')}

@@ -34,6 +34,7 @@ class DeferredTeamsGateway implements OrganizationGateway {
     return {
       effectiveRole: 'organizationOwner',
       canManageTeamData: true,
+      canWriteGameData: true,
       isExplicitlyAuthorized: true,
     };
   }

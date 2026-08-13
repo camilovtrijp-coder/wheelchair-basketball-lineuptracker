@@ -2,9 +2,86 @@ import { describe, it, expect } from 'vitest';
 import {
   activeGameStorageKey,
   LocalStorageGameRepository,
+  V1_GAME_MIGRATED_FLAG_KEY,
 } from '../../src/infrastructure/game/LocalStorageGameRepository';
+import { V1_ACTIVE_GAME_STORAGE_KEY } from '../../src/domain/game/v1Migration';
 import type { KeyValueStorage } from '../../src/i18n/persistence';
 import { MAX_CLOCK_SECONDS, type ActiveGame } from '../../src/domain/game/types';
+
+function v1Blob(overrides: Record<string, unknown> = {}): Record<string, unknown> {
+  return {
+    phase: 'tracking',
+    players: [
+      {
+        id: 1,
+        nr: '4',
+        naam: 'Anna',
+        kl: '3.0',
+        vrouw: false,
+        jeugd: false,
+        participate: true,
+        start: true,
+      },
+      {
+        id: 2,
+        nr: '7',
+        naam: 'Bo',
+        kl: '1.5',
+        vrouw: false,
+        jeugd: false,
+        participate: true,
+        start: true,
+      },
+      {
+        id: 3,
+        nr: '9',
+        naam: 'Cas',
+        kl: '4.5',
+        vrouw: false,
+        jeugd: false,
+        participate: true,
+        start: true,
+      },
+      {
+        id: 4,
+        nr: '11',
+        naam: 'Dee',
+        kl: '2.0',
+        vrouw: false,
+        jeugd: false,
+        participate: true,
+        start: true,
+      },
+      {
+        id: 5,
+        nr: '15',
+        naam: 'Eef',
+        kl: '3.5',
+        vrouw: false,
+        jeugd: false,
+        participate: true,
+        start: true,
+      },
+    ],
+    onCourt: [1, 2, 3, 4, 5],
+    curQuarter: 1,
+    opponent: 'V1 tegenstander',
+    competition: '',
+    clockDown: true,
+    limitStr: '14.5',
+    beginMin: 10,
+    beginSec: 0,
+    endMin: 10,
+    endSec: 0,
+    segments: [],
+    scoreFor: 4,
+    scoreAgainst: 2,
+    segStartFor: 0,
+    segStartAgainst: 0,
+    savedAt: 1700000000000,
+    ...overrides,
+  };
+}
 
 class TrackingStorage implements KeyValueStorage {
   public readonly store = new Map<string, string>();
@@ -155,5 +232,69 @@ describe('infrastructure/game/LocalStorageGameRepository', () => {
     };
     const repo = new LocalStorageGameRepository(storage, 'org-1', 'team-1');
     expect(repo.write(activeGame())).toBe(false);
+  });
+
+  it('retourneert null wanneer de opgeslagen organizationId/teamId niet overeenkomt met de sleutel-context', () => {
+    // Reproduceert de externe PR-6.1-review (aug. 2026): een payload die (door
+    // een toekomstige bug of handmatige bewerking) onder de verkeerde
+    // organisatie/team-sleutel terecht is gekomen, mag niet stilzwijgend voor
+    // dát team gelezen worden.
+    const storage = new TrackingStorage();
+    const mismatched = activeGame({ organizationId: 'org-ANDER', teamId: 'team-ANDER' });
+    storage.seed(activeGameStorageKey('org-1', 'team-1'), JSON.stringify(mismatched));
+    const repo = new LocalStorageGameRepository(storage, 'org-1', 'team-1');
+
+    expect(repo.read()).toBeNull();
+  });
+
+  describe('v1-compatibiliteit (docs/IMPLEMENTATION_PLAN.md §11, PR 6.1)', () => {
+    it('adopteert een nog actieve v1-wedstrijd wanneer de v2-sleutel van dit team leeg is', () => {
+      const storage = new TrackingStorage();
+      storage.seed(V1_ACTIVE_GAME_STORAGE_KEY, JSON.stringify(v1Blob()));
+      const repo = new LocalStorageGameRepository(storage, 'org-1', 'team-1');
+
+      const result = repo.read();
+
+      expect(result).not.toBeNull();
+      expect(result?.phase).toBe('tracking');
+      expect(result?.organizationId).toBe('org-1');
+      expect(result?.teamId).toBe('team-1');
+      expect(result?.opponent).toBe('V1 tegenstander');
+      // Geadopteerde wedstrijd wordt meteen onder de v2-sleutel gepersisteerd,
+      // zodat een volgende read() niet opnieuw hoeft te migreren.
+      expect(storage.getItem(activeGameStorageKey('org-1', 'team-1'))).not.toBeNull();
+      expect(storage.getItem(V1_GAME_MIGRATED_FLAG_KEY)).toBe('true');
+    });
+
+    it('adopteert dezelfde v1-wedstrijd niet nogmaals voor een tweede team (v1 was single-team)', () => {
+      const storage = new TrackingStorage();
+      storage.seed(V1_ACTIVE_GAME_STORAGE_KEY, JSON.stringify(v1Blob()));
+      const repoA = new LocalStorageGameRepository(storage, 'org-1', 'team-a');
+      const repoB = new LocalStorageGameRepository(storage, 'org-1', 'team-b');
+
+      expect(repoA.read()).not.toBeNull();
+      expect(repoB.read()).toBeNull();
+    });
+
+    it('adopteert een niet-hervatbare v1-opzet niet (v1-pariteit: alleen phase tracking of segments > 0)', () => {
+      const storage = new TrackingStorage();
+      storage.seed(
+        V1_ACTIVE_GAME_STORAGE_KEY,
+        JSON.stringify(v1Blob({ phase: 'setup', segments: [] })),
+      );
+      const repo = new LocalStorageGameRepository(storage, 'org-1', 'team-1');
+
+      expect(repo.read()).toBeNull();
+      expect(storage.getItem(V1_GAME_MIGRATED_FLAG_KEY)).toBeNull();
+    });
+
+    it('valt niet terug op v1 wanneer de v2-sleutel al (zelfs ongeldige) data bevat', () => {
+      const storage = new TrackingStorage();
+      storage.seed(activeGameStorageKey('org-1', 'team-1'), JSON.stringify({ foo: 'bar' }));
+      storage.seed(V1_ACTIVE_GAME_STORAGE_KEY, JSON.stringify(v1Blob()));
+      const repo = new LocalStorageGameRepository(storage, 'org-1', 'team-1');
+
+      expect(repo.read()).toBeNull();
+    });
   });
 });
