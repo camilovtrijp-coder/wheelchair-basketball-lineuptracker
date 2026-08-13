@@ -16,7 +16,9 @@ import type {
  *     bevatten; `'off'`: geen enkele segment-lineup mag de speler bevatten);
  *  3. genereer alléén combinaties die in minstens één gefilterd segment
  *     samen op het veld stonden (v1: `combosOfSize(seg.lineup, size)` →
- *     `comboKey()`);
+ *     `comboKey()`). De combinatiesleutel wordt canoniek gesorteerd
+ *     opgeleverd zodat [1,2] en [2,1] als dezelfde combinatie gelden
+ *     (zie `comboKey()`);
  *  4. voor iedere combinatie: tel ON wanneer alle leden op het veld staan
  *     en OFF wanneer dat niet zo is, maar uitsluitend in wedstrijden
  *     waarin álle leden in de wedstrijdspelerssnapshot aanwezig zijn (v1:
@@ -29,15 +31,15 @@ import type {
  * Combinaties, filters en sleutels gebruiken vervolgens de gesorteerde
  * `rosterId`-waarden.
  *
- * Onbekende segmentreferenties: een `Segment.lineup`-ID dat niet in de
- * bijbehorende `players`-snapshot zit, wordt uit die segment-lineup
- * verwijderd. Daardoor kan zo'n segment resulteren in een lineup met
- * minder dan 5 spelers, wat op zijn beurt betekent dat geen enkele
- * combinatie met de ontbrekende speler in dát segment ON-aggregatie krijgt
- * — exact conform §C.2 ("mag niet stil als een andere speler worden
- * meegeteld"). De `rosterIds`-check in stap 4 zorgt daarnaast dat OFF- en
- * ON-aggregatie per combinatie alleen in wedstrijden meetellen waar álle
- * leden in de snapshot zaten.
+ * PARTIAL-segmenten (§C.2 / §C.3): een `Segment.lineup`-ID dat niet in de
+ * bijbehorende `players`-snapshot zit, markeert het segment als PARTIAL.
+ * PARTIAL-segmenten worden in hun geheel uitgesloten van generatie én
+ * aggregatie — niet "stillen" verder gebruikt, ook niet voor combinaties
+ * waarvan alle bekende leden wel op het veld stonden. Het aantal
+ * PARTIAL-segmenten wordt apart teruggegeven zodat de UI ze zichtbaar kan
+ * maken. Een leesfout of niet-beschikbare storage-getter voor de hele
+ * historie wordt via `safeList()` op het repository-niveau onderscheiden
+ * van een lege, wél leesbare lijst (zie `application/stats/buildAnalysisScope.ts`).
  *
  * Filter-passing wordt één keer bepaald en voor zowel generatie als
  * aggregatie hergebruikt (zelfde aanpak als v1 `statsFilteredEntries()` →
@@ -65,7 +67,8 @@ export function computeLineupStats(games: AnalysisGame[], filter: StatsFilter): 
    * Eerste pass: per spelerssnapshot en segment de gefilterde lijst van
    * segmenten opbouwen waaruit zowel combinaties worden gegenereerd als
    * geaggereerd. v1 doet hetzelfde via `statsFilteredEntries()` → één keer
-   * filteren, twee keer hergebruiken.
+   * filteren, twee keer hergebruiken. PARTIAL-segmenten worden overgeslagen
+   * en apart geteld.
    */
   type FilteredEntry = {
     game: AnalysisGame;
@@ -73,24 +76,31 @@ export function computeLineupStats(games: AnalysisGame[], filter: StatsFilter): 
     lineupRosterIds: number[];
   };
   const filteredEntries: FilteredEntry[] = [];
+  let partialSegments = 0;
   for (const game of allowedGames) {
     const playersById = new Map(game.players.map((p) => [p.id, p]));
     for (const segment of game.segments) {
-      const lineupRosterIds = normalizeSegmentLineup(segment, playersById);
-      if (!passesPlayerFilters(lineupRosterIds, requiredOn, requiredOff, size)) continue;
-      filteredEntries.push({ game, segment, lineupRosterIds });
+      const normalized = normalizeSegmentLineup(segment, playersById);
+      if (normalized.hasUnknown) {
+        partialSegments += 1;
+        continue;
+      }
+      if (!passesPlayerFilters(normalized.rosterIds, requiredOn, requiredOff, size)) continue;
+      filteredEntries.push({ game, segment, lineupRosterIds: normalized.rosterIds });
     }
   }
 
   /**
-   * Map<key, LineupCombinationStats>, waarbij `key` de gesorteerde komma-
-   * gescheiden `rosterId`-string is. Zelfde aanpak als v1's `comboKey`,
-   * alleen op `rosterId` ipv `GamePlayer.id` (zie §C.2).
+   * Map<key, LineupCombinationStats>, waarbij `key` de canoniek gesorteerde
+   * komma-gescheiden `rosterId`-string is. Identiek aan v1's `comboKey`
+   * (`ids.slice().sort(...).join(",")`) — alleen op `rosterId` ipv
+   * `GamePlayer.id` (zie §C.2). De sortering gebeurt hier, niet in de
+   * generator, zodat [1,2] en [2,1] als dezelfde combinatie gelden.
    */
   const map = new Map<string, LineupCombinationStats>();
   for (const entry of filteredEntries) {
     for (const ids of combinationsOfSize(entry.lineupRosterIds, size)) {
-      const key = ids.join(',');
+      const key = comboKey(ids);
       const existing = map.get(key);
       if (existing) continue;
       map.set(key, {
@@ -130,21 +140,36 @@ export function computeLineupStats(games: AnalysisGame[], filter: StatsFilter): 
   }
 
   const totalRawCombinations = map.size;
-  const combinations = stableSort(map.values(), filter.sortDirection);
-  return { combinations, consideredSegments: filteredEntries.length, totalRawCombinations };
+  const combinations = stableSort(map.values(), filter.sortDirection, filter.per10);
+  return {
+    combinations,
+    consideredSegments: filteredEntries.length,
+    totalRawCombinations,
+    partialSegments,
+  };
 }
 
+/**
+ * Normaliseert een segment-lineup naar `rosterId`'s via de spelerssnapshot
+ * van dezelfde wedstrijd. Geeft ook terug of er onbekende referenties
+ * gevonden zijn — die markeren het als PARTIAL (zie plan §C.2), en het
+ * segment wordt door de aanroeper volledig overgeslagen.
+ */
 function normalizeSegmentLineup(
   segment: { lineup: string[] },
   playersById: ReadonlyMap<string, { rosterId: number }>,
-): number[] {
+): { rosterIds: number[]; hasUnknown: boolean } {
   const ids: number[] = [];
+  let hasUnknown = false;
   for (const id of segment.lineup) {
     const player = playersById.get(id);
-    if (!player) continue;
+    if (!player) {
+      hasUnknown = true;
+      continue;
+    }
     ids.push(player.rosterId);
   }
-  return ids;
+  return { rosterIds: ids, hasUnknown };
 }
 
 function passesPlayerFilters(
@@ -161,15 +186,28 @@ function passesPlayerFilters(
     if (set.has(id)) return false;
   }
   /**
-   * Een segment-lineup die door onbekende referenties onder `size` spelers
-   * zakt, kan geen enkele combinatie van grootte `size` opleveren die er
-   * "samen op het veld" staat — die aggregaties zouden geen zinvolle ON/OF
-   * bijdrage leveren. Buiten beschouwing laten, conform v1: een segment
-   * met een onvolledige lineup kan geen combinatie van 5 (of N) spelers
-   * "samen op het veld" hebben.
+   * Een segment-lineup die onder `size` unieke spelers zit (bv. door
+   * dubbele IDs, hoewel dat contractueel uitgesloten is) kan geen
+   * combinatie van grootte `size` opleveren die er "samen op het veld"
+   * staat — buiten beschouwing laten. PARTIAL-segmenten zijn al
+   * uitgesloten door `normalizeSegmentLineup().hasUnknown` in de aanroeper.
    */
   if (lineupRosterIds.length < size) return false;
   return true;
+}
+
+/**
+ * Canonieke combinatiesleutel, identiek aan v1 `comboKey()`:
+ * `ids.slice().sort((a, b) => a - b).join(",")`. Zorgt ervoor dat
+ * [1,2] en [2,1] dezelfde rij opleveren — anders zou een swap van twee
+ * spelers in een segment een tweede, canoniek identieke combinatie
+ * genereren.
+ */
+function comboKey(ids: readonly number[]): string {
+  return ids
+    .slice()
+    .sort((a, b) => a - b)
+    .join(',');
 }
 
 function combinationsOfSize(arr: readonly number[], size: number): number[][] {
@@ -219,22 +257,36 @@ function comboRosterIdsAllOnCourt(
 }
 
 /**
- * Stabiele sortering (PR 6.4 §C.3.7): primaire sleutel is de getoonde
- * ON-plus/min. Geen expliciete tweede sleutel — `Array.prototype.sort` is
- * sinds ES2019 stabiel en de combinaties worden gegenereerd in oplopende
- * `rosterId`-volgorde (zie `combinationsOfSize`), dus bij gelijke plus/min
- * blijft die volgorde behouden in beide richtingen. Dat is exact v1's
- * gedrag (`combos.sort((a, b) => statsSortDesc ? bv - av : av - bv)`).
+ * Stabiele sortering (PR 6.4 §C.3.7):
+ * - Primaire sleutel: de getoonde ON-plus/min (`onShownValue(combo, per10)`).
+ *   Bij `per10` wordt genormaliseerd; anders de kale `pm` — exact v1-gedrag
+ *   en het gespiegelde plan §C.3.6.
+ * - Tweede sleutel: de canonieke combinatiekey (gesorteerde komma-string
+ *   van `rosterId`'s). Vóór ES2019-stable-sort was dit impliciet via
+ *   generatie-volgorde; §C.3.7 vereist een EXPLICIETE tweede sleutel om
+ *   flikkerende volgorde bij gelijke waarden te voorkomen. We kiezen
+ *   bewust voor "altijd oplopend" ongeacht de primaire richting — een
+ *   stabiele natuurlijke ordening van combinaties is intuïtiever dan
+ *   het spiegelen van de primaire richting (en voorkomt dat asc/desc
+ *   elk een andere volgorde bij gelijke waarden produceren).
  */
 function stableSort(
   combos: Iterable<LineupCombinationStats>,
   direction: 'asc' | 'desc',
+  per10: boolean,
 ): LineupCombinationStats[] {
   const arr = Array.from(combos);
   arr.sort((a, b) => {
-    const av = onShownValue(a, false);
-    const bv = onShownValue(b, false);
-    return direction === 'desc' ? bv - av : av - bv;
+    const av = onShownValue(a, per10);
+    const bv = onShownValue(b, per10);
+    if (av !== bv) {
+      return direction === 'desc' ? bv - av : av - bv;
+    }
+    const aKey = a.rosterIds.join(',');
+    const bKey = b.rosterIds.join(',');
+    if (aKey < bKey) return -1;
+    if (aKey > bKey) return 1;
+    return 0;
   });
   return arr;
 }

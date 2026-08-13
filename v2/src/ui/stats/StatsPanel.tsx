@@ -81,6 +81,12 @@ export function StatsPanel({ lang, repository, activeGame, roster }: StatsPanelP
   const showError = status === 'error';
   const showNoData = !showError && scope.games.length === 0;
   const showNoCombos = !showError && scope.games.length > 0 && result.combinations.length === 0;
+  const partialMessage =
+    result.partialSegments === 1
+      ? t(lang, 'statsPartialSingular')
+      : result.partialSegments > 1
+        ? t(lang, 'statsPartialPlural').replace('{count}', String(result.partialSegments))
+        : null;
 
   return (
     <section className="stats-panel" aria-label={t(lang, 'statsTitle')}>
@@ -88,6 +94,11 @@ export function StatsPanel({ lang, repository, activeGame, roster }: StatsPanelP
       {showError ? (
         <p className="stats-empty stats-empty--error" data-testid="stats-read-error" role="alert">
           {t(lang, 'statsReadError')}
+        </p>
+      ) : null}
+      {partialMessage !== null ? (
+        <p className="stats-empty stats-empty--partial" data-testid="stats-partial" role="status">
+          {partialMessage}
         </p>
       ) : null}
 

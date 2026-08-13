@@ -134,7 +134,6 @@ const nl = {
   historyEmpty: 'Nog geen afgeronde wedstrijden.',
   confirmDeleteGame: 'Deze wedstrijd definitief verwijderen? Dit kan niet ongedaan worden gemaakt.',
   exportShareBtn: 'Exporteren/Delen',
-
   // PR 6.4: Stats-tab. Strings gespiegeld van v1 (index.html
   // `stats[A-Z]*`-verten) zodat een vertaler beide talen tegelijk kan
   // beoordelen. NL = primary, EN = secondary.
@@ -143,6 +142,9 @@ const nl = {
   statsNoCombos: 'Geen combinaties gevonden met dit filter.',
   statsReadError:
     'Kon de wedstrijdhistorie niet lezen. Probeer het later opnieuw of herlaad het tabblad.',
+  statsPartialSingular: '1 segment bevat onbekende spelersreferenties en is overgeslagen.',
+  statsPartialPlural:
+    '{count} segmenten bevatten onbekende spelersreferenties en zijn overgeslagen.',
   statsCurrentGame: 'Huidige wedstrijd',
   statsPer10: 'Per 10 min',
   statsGamesBtn: 'Wedstrijden',
@@ -393,6 +395,8 @@ const en = {
   statsNoData: 'No match data yet. Play and finish a match to see stats here.',
   statsNoCombos: 'No combinations found with this filter.',
   statsReadError: "Couldn't read the match history. Try again later or reload the tab.",
+  statsPartialSingular: '1 segment contains unknown player references and was skipped.',
+  statsPartialPlural: '{count} segments contain unknown player references and were skipped.',
   statsCurrentGame: 'Current match',
   statsPer10: 'Per 10 min',
   statsGamesBtn: 'Games',

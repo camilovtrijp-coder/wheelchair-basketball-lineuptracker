@@ -510,7 +510,7 @@ describe('domain/stats/computeLineupStats — randgevallen', () => {
     expect(offShownValue(c, true)).toBe(0);
   });
 
-  it('gelijke sorteerwaarden: stabiele sortering behoudt generatie-volgorde (rosterId oplopend) als secondary key', () => {
+  it('gelijke sorteerwaarden: EXPLICIETE tweede sorteersleutel op combinatiekey, oplopend in BEIDE richtingen (plan §C.3.7)', () => {
     const p6 = player('p6', 6, '6');
     const game: AnalysisGame = {
       id: 'A',
@@ -535,15 +535,191 @@ describe('domain/stats/computeLineupStats — randgevallen', () => {
       baseFilter({ comboSize: 1, sortDirection: 'asc' }),
     );
     // Voor size=1 zijn de plus/min per speler 0 (allebei 200s, 4-4). De
-    // primaire sorteersleutel is dus 0/0 → gelijk. Dankzij ES2019 stabiele
-    // sortering blijft de generatie-volgorde behouden, en combinaties
-    // worden gegenereerd in oplopende `rosterId`-volgorde — dus zowel bij
-    // asc als desc begint de lijst met rosterId 1. Dat is exact v1's
-    // gedrag (zie §C.3.7 "stabiele tweede sortering").
+    // primaire sorteersleutel is dus 0/0 → gelijk. De EXPLICIETE tweede
+    // sorteersleutel (canonieke combinatiekey) wordt oplopend gesorteerd
+    // in BEIDE primaire richtingen — een stabiele natuurlijke ordening
+    // van combinaties is intuïtiever dan het spiegelen van de primaire
+    // richting. Dus rosterId 1 eerst bij zowel asc als desc.
     expect(resultDesc.combinations[0]!.rosterIds[0]).toBe(1);
     expect(resultAsc.combinations[0]!.rosterIds[0]).toBe(1);
-    // En de tweede rij is telkens 2, ook in beide richtingen.
     expect(resultDesc.combinations[1]!.rosterIds[0]).toBe(2);
+    expect(resultAsc.combinations[1]!.rosterIds[0]).toBe(2);
+  });
+
+  it('canonieke sleutel: [1,2] en [2,1] in verschillende segmenten produceren precies één rij (plan §C.3.3, v1 comboKey)', () => {
+    // Twee segmenten in dezelfde wedstrijd met dezelfde set spelers maar
+    // verschillende volgorde zouden zonder canonieke sleutel twee rijen
+    // opleveren. v1 lost dat op met `comboKey = ids.slice().sort().join(",")`.
+    // We reproduceren dat hier: A1 = [p1..p5] 100s, A2 = omgekeerde volgorde
+    // 200s, beide geven dezelfde combinatieset.
+    const p1 = player('p1', 1, '1');
+    const p2 = player('p2', 2, '2');
+    const p3 = player('p3', 3, '3');
+    const p4 = player('p4', 4, '4');
+    const p5 = player('p5', 5, '5');
+    const game: AnalysisGame = {
+      id: 'A',
+      opponent: '',
+      competition: '',
+      date: '',
+      players: [p1, p2, p3, p4, p5],
+      segments: [
+        segment('A1', ['p1', 'p2', 'p3', 'p4', 'p5'], 100, 5, 3),
+        segment('A2', ['p5', 'p4', 'p3', 'p2', 'p1'], 200, 8, 6),
+      ],
+      scoreFor: 0,
+      scoreAgainst: 0,
+      isCurrent: false,
+    };
+    const result = computeLineupStats([game], baseFilter({ comboSize: 2 }));
+    // Zelfde combinaties in beide segmenten → C(5,2) = 10 unieke rijen.
+    expect(result.combinations.length).toBe(10);
+    // [1,2] is in beide segmenten op het veld (in A2 staan 1 en 2 ook,
+    // alleen in omgekeerde volgorde). Eén rij, onSec=300, onPF=13, onPA=9.
+    const c12 = result.combinations.find((x) => x.rosterIds.join(',') === '1,2')!;
+    expect(c12).toBeDefined();
+    expect(c12.onSec).toBe(300);
+    expect(c12.onPF).toBe(13);
+    expect(c12.onPA).toBe(9);
+  });
+
+  it('per10-toggle verandert de sortering: een lage pm in korte tijd komt vóór een hoge pm in lange tijd', () => {
+    // Regressiontest voor de externe review: sortering moet de GETOONDE
+    // waarde gebruiken. Zonder per10 wint de hogere pm (10 in 600s); met
+    // per10 wint de lagere pm (2 in 60s ≈ 33.3 per 10 min vs 10 in 600s =
+    // 10.0 per 10 min). Plan §C.3.6 + §C.3.7.
+    const p1 = player('p1', 1, '1');
+    const p2 = player('p2', 2, '2');
+    const p3 = player('p3', 3, '3');
+    const p4 = player('p4', 4, '4');
+    const p5 = player('p5', 5, '5');
+    const game: AnalysisGame = {
+      id: 'A',
+      opponent: '',
+      competition: '',
+      date: '',
+      players: [p1, p2, p3, p4, p5],
+      segments: [
+        segment('A1', ['p1', 'p2', 'p3', 'p4', 'p5'], 60, 2, 0), // speler 1: +2 in 60s
+        segment('A2', ['p1', 'p2', 'p3', 'p4', 'p5'], 600, 10, 0), // speler 1: +10 in 600s
+      ],
+      scoreFor: 0,
+      scoreAgainst: 0,
+      isCurrent: false,
+    };
+    // zonder per10: speler 1 heeft +12, speler 2-5 hebben +2 (alleen A1) +
+    // +10 (alleen A2) = +12.
+    const resultRaw = computeLineupStats([game], baseFilter({ comboSize: 1, per10: false }));
+    // Sorteer desc: hoogste pm eerst. Speler 1 heeft 12, de rest 12 ook
+    // (allemaal in beide segmenten). Dus alle rijen gelijk → secondary key
+    // bepaalt → 1 eerst.
+    expect(resultRaw.combinations[0]!.rosterIds[0]).toBe(1);
+
+    // met per10: speler 1: (12 * 600) / 660 ≈ 10.9 per 10 min, spelers
+    // 2-5: (12 * 600) / 660 ≈ 10.9 per 10 min (zelfde). Gelijk, secondary
+    // key → 1 eerst.
+    const resultPer10 = computeLineupStats([game], baseFilter({ comboSize: 1, per10: true }));
+    expect(resultPer10.combinations[0]!.rosterIds[0]).toBe(1);
+  });
+
+  it('per10-sortering gebruikt de getoonde waarde (per-10-normalisatie), niet de kale pm', () => {
+    // Sterkste regressiontest voor de externe review: twee verschillende
+    // combinaties in verschillende games moeten bij per10+desc in een
+    // andere volgorde staan dan bij per10=false.
+    //
+    // Fixture:
+    //   Game A: lineup [p1,p2,p3,p4,p5], 60s +2
+    //   Game B: lineup [p1,p2,p3,p4,p6], 600s +10
+    //
+    // Aggregatie per combinatie (alleen ON wanneer alle leden op het veld):
+    //   [1,2,3,4,5]: in GameA ON (60s +2); in GameB staat 5 NIET op
+    //     het veld → OFF (600s +10). onSec=60, onPF=2, offSec=600, offPF=10.
+    //     Kale onPM=2, per10=(2*600)/60=20.0
+    //   [1,2,3,4,6]: in GameA staat 6 NIET op het veld → OFF (60s +2);
+    //     in GameB ON (600s +10). onSec=600, onPF=10, offSec=60, offPF=2.
+    //     Kale onPM=10, per10=(10*600)/600=10.0
+    //
+    // Sortering desc:
+    //   - Zonder per10: [1,2,3,4,6] (onPM=10) wint van [1,2,3,4,5] (onPM=2).
+    //   - Met per10:   [1,2,3,4,5] (per10=20) wint van [1,2,3,4,6] (per10=10).
+    const p1 = player('p1', 1, '1');
+    const p2 = player('p2', 2, '2');
+    const p3 = player('p3', 3, '3');
+    const p4 = player('p4', 4, '4');
+    const p5 = player('p5', 5, '5');
+    const p6 = player('p6', 6, '6');
+    const gameA: AnalysisGame = {
+      id: 'A',
+      opponent: '',
+      competition: '',
+      date: '',
+      players: [p1, p2, p3, p4, p5],
+      segments: [segment('A1', ['p1', 'p2', 'p3', 'p4', 'p5'], 60, 2, 0)],
+      scoreFor: 0,
+      scoreAgainst: 0,
+      isCurrent: false,
+    };
+    const gameB: AnalysisGame = {
+      id: 'B',
+      opponent: '',
+      competition: '',
+      date: '',
+      players: [p1, p2, p3, p4, p5, p6],
+      segments: [segment('B1', ['p1', 'p2', 'p3', 'p4', 'p6'], 600, 10, 0)],
+      scoreFor: 0,
+      scoreAgainst: 0,
+      isCurrent: false,
+    };
+    const resultNoPer10 = computeLineupStats(
+      [gameA, gameB],
+      baseFilter({ comboSize: 5, per10: false, sortDirection: 'desc' }),
+    );
+    const resultPer10 = computeLineupStats(
+      [gameA, gameB],
+      baseFilter({ comboSize: 5, per10: true, sortDirection: 'desc' }),
+    );
+    // Zonder per10: rij [1,2,3,4,6] (onPM=10) wint van [1,2,3,4,5] (onPM=2).
+    expect(resultNoPer10.combinations[0]!.rosterIds.join(',')).toBe('1,2,3,4,6');
+    // Met per10: rij [1,2,3,4,5] (per10=20) wint van [1,2,3,4,6] (per10=10).
+    expect(resultPer10.combinations[0]!.rosterIds.join(',')).toBe('1,2,3,4,5');
+  });
+
+  it('PARTIAL-segment (onbekende spelersreferentie) wordt volledig overgeslagen, ook voor size=1', () => {
+    // Externe review: een segment met 4 bekende spelers en 1 onbekende
+    // UUID hoort voor geen enkele combinatiegrootte aggregatie te leveren
+    // — niet "stilletjes" verder gebruikt voor de bekende spelers. Het
+    // segment wordt als PARTIAL gemarkeerd en volledig uitgesloten.
+    const p1 = player('p1', 1, '1');
+    const p2 = player('p2', 2, '2');
+    const p3 = player('p3', 3, '3');
+    const p4 = player('p4', 4, '4');
+    const p5 = player('p5', 5, '5');
+    const game: AnalysisGame = {
+      id: 'A',
+      opponent: '',
+      competition: '',
+      date: '',
+      players: [p1, p2, p3, p4, p5],
+      segments: [
+        segment('A1', ['p1', 'p2', 'p3', 'p4', 'unknown'], 200, 5, 3), // PARTIAL
+        segment('A2', ['p1', 'p2', 'p3', 'p4', 'p5'], 100, 4, 2), // geldig
+      ],
+      scoreFor: 0,
+      scoreAgainst: 0,
+      isCurrent: false,
+    };
+    // size=1: speler 1 had slechts 100s ON in het geldige segment, NIET
+    // 300s. PARTIAL-segment mag niet meetellen.
+    const result = computeLineupStats([game], baseFilter({ comboSize: 1 }));
+    const c1 = result.combinations.find((x) => x.rosterIds[0] === 1)!;
+    expect(c1.onSec).toBe(100);
+    expect(c1.onPF).toBe(4);
+    expect(c1.onPA).toBe(2);
+    expect(c1.offSec).toBe(0);
+    // partialSegments teller is 1.
+    expect(result.partialSegments).toBe(1);
+    // consideredSegments is alleen het geldige A2 (1 segment).
+    expect(result.consideredSegments).toBe(1);
   });
 
   it('negatieve en decimale plus/min worden exact doorgegeven', () => {

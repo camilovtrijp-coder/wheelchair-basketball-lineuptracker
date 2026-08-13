@@ -394,4 +394,127 @@ test.describe('v2 Stats-tab (PR 6.4)', () => {
     // (plan §C.1: [] mag nooit zonder status als bewijs voor "geen wedstrijden").
     await expect(page.getByTestId('stats-no-data')).toHaveCount(0);
   });
+
+  test('Stats-tab toont een PARTIAL-melding wanneer een segment onbekende spelersreferenties bevat', async ({
+    page,
+  }) => {
+    await page.addInitScript(() => window.localStorage.setItem('lineup-tracker-lang', 'nl'));
+    await page.goto('/');
+    // Eén geldig segment (100s) + één PARTIAL-segment (200s) met onbekende UUID.
+    const completedGames = [
+      {
+        id: 'partial-A',
+        organizationId: 'org-rotterdam',
+        teamId: 'team-u23',
+        sourceGameId: 'src-A',
+        opponent: 'Tegenstander A',
+        competition: '',
+        date: '2026-01-01T10:00:00.000Z',
+        players: [
+          {
+            id: 'p1',
+            rosterId: 1,
+            nr: '1',
+            naam: 'Anna',
+            kl: '3.0',
+            vrouw: false,
+            jeugd: false,
+            participate: true,
+            start: true,
+          },
+          {
+            id: 'p2',
+            rosterId: 2,
+            nr: '2',
+            naam: 'Bob',
+            kl: '2.0',
+            vrouw: false,
+            jeugd: false,
+            participate: true,
+            start: true,
+          },
+          {
+            id: 'p3',
+            rosterId: 3,
+            nr: '3',
+            naam: 'Cees',
+            kl: '3.5',
+            vrouw: false,
+            jeugd: false,
+            participate: true,
+            start: true,
+          },
+          {
+            id: 'p4',
+            rosterId: 4,
+            nr: '4',
+            naam: 'Dien',
+            kl: '2.5',
+            vrouw: false,
+            jeugd: false,
+            participate: true,
+            start: true,
+          },
+          {
+            id: 'p5',
+            rosterId: 5,
+            nr: '5',
+            naam: 'Eve',
+            kl: '3.0',
+            vrouw: false,
+            jeugd: false,
+            participate: true,
+            start: true,
+          },
+        ],
+        segments: [
+          {
+            id: 's-valid',
+            quarter: 1,
+            beginSec: 0,
+            endSec: 100,
+            durSec: 100,
+            lineup: ['p1', 'p2', 'p3', 'p4', 'p5'],
+            pf: 4,
+            pa: 2,
+            classSum: 0,
+            allowed: 0,
+            over: false,
+          },
+          {
+            id: 's-partial',
+            quarter: 1,
+            beginSec: 0,
+            endSec: 200,
+            durSec: 200,
+            lineup: ['p1', 'p2', 'p3', 'p4', 'unknown-player-uuid'],
+            pf: 5,
+            pa: 3,
+            classSum: 0,
+            allowed: 0,
+            over: false,
+          },
+        ],
+        scoreFor: 0,
+        scoreAgainst: 0,
+        quarterCount: 4,
+        periodLabel: '',
+        useClassLimit: false,
+      },
+    ];
+    await page.evaluate(
+      ({ key, value }: { key: string; value: string }) => window.localStorage.setItem(key, value),
+      { key: COMPLETED_GAMES_KEY, value: JSON.stringify(completedGames) },
+    );
+    await page.reload();
+    await page.getByTestId('nav-stats').click();
+    // PARTIAL-banner is zichtbaar en noemt het aantal overgeslagen segmenten.
+    await expect(page.getByTestId('stats-partial')).toBeVisible();
+    await expect(page.getByTestId('stats-partial')).toContainText('1 segment');
+    // De [1,2,3,4,5]-combo toont alleen 100s (van het geldige segment),
+    // NIET 300s — het PARTIAL-segment levert geen aggregatie.
+    const card = page.getByTestId('stats-combo-1-2-3-4-5');
+    await expect(card).toBeVisible();
+    await expect(card).toContainText('1:40');
+  });
 });

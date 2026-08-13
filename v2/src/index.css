@@ -875,6 +875,11 @@ button:focus-visible {
   color: var(--lt-color-danger);
 }
 
+.stats-empty--partial {
+  color: var(--lt-color-muted);
+  font-style: italic;
+}
+
 .stats-list {
   display: flex;
   flex-direction: column;

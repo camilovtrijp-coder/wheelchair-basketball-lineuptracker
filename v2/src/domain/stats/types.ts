@@ -109,4 +109,12 @@ export interface LineupStatsResult {
   consideredSegments: number;
   /** Aantal unieke combinaties vóór de sortering werd toegepast. */
   totalRawCombinations: number;
+  /**
+   * Aantal PARTIAL-segmenten — segmenten waarvan de `lineup` een
+   * `GamePlayer.id` bevatte die niet in de bijbehorende spelerssnapshot
+   * voorkwam (plan §C.2). Deze segmenten zijn volledig uitgesloten van
+   * generatie én aggregatie; het getal wordt apart teruggegeven zodat
+   * de UI ze zichtbaar kan maken.
+   */
+  partialSegments: number;
 }
