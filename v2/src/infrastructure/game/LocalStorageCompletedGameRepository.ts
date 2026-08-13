@@ -1,6 +1,10 @@
 import type { CompletedGame } from '../../domain/game/types';
 import type { KeyValueStorage } from '../../i18n/persistence';
-import type { CompletedGameRepository } from '../../application/game/CompletedGameRepository';
+import type {
+  CompletedGameRepository,
+  CompletedGamesReadResult,
+  CompletedGamesReadStatus,
+} from '../../application/game/CompletedGameRepository';
 
 /**
  * Eigen sleutel per organisatie/team (i.p.v. v1's ene globale
@@ -57,22 +61,22 @@ export class LocalStorageCompletedGameRepository implements CompletedGameReposit
    * blijft gewoon gefilterd (niet de hele lijst ongeldig) — dat is een ander
    * risico (één beschadigd item verbergt de rest niet) dan een mislukte read.
    */
-  private readAll(): { games: CompletedGame[]; ok: boolean } {
+  private readAll(): { games: CompletedGame[]; ok: boolean; missing: boolean } {
     let raw: string | null = null;
     try {
       raw = this.storage.getItem(this.key);
     } catch {
-      return { games: [], ok: false };
+      return { games: [], ok: false, missing: false };
     }
-    if (raw === null || raw === '') return { games: [], ok: true };
+    if (raw === null || raw === '') return { games: [], ok: true, missing: true };
 
     let parsed: unknown;
     try {
       parsed = JSON.parse(raw);
     } catch {
-      return { games: [], ok: false };
+      return { games: [], ok: false, missing: false };
     }
-    if (!Array.isArray(parsed)) return { games: [], ok: false };
+    if (!Array.isArray(parsed)) return { games: [], ok: false, missing: false };
 
     return {
       games: parsed.filter(
@@ -80,11 +84,30 @@ export class LocalStorageCompletedGameRepository implements CompletedGameReposit
           isCompletedGameShape(item) && matchesContext(item, this.organizationId, this.teamId),
       ),
       ok: true,
+      missing: false,
     };
   }
 
   list(): CompletedGame[] {
     return this.readAll().games;
+  }
+
+  /**
+   * PR 6.4 §A.2: publieke versie van `readAll()` met expliciet onderscheid
+   * tussen `ok`, `missing` en `error`. `missing` (lege sleutel) en `ok` met
+   * een lege array worden in de UI hetzelfde behandeld; `error` triggert
+   * een foutmelding i.p.v. de "geen wedstrijden"-banner. Default
+   * `safeList` op de interface geeft `ok` terug voor callers die het
+   * onderscheid niet nodig hebben (bestand tegen PR-6.3-scope-uitbreiding).
+   */
+  safeList(): CompletedGamesReadResult {
+    const r = this.readAll();
+    const resolved: CompletedGamesReadStatus = !r.ok
+      ? 'error'
+      : r.missing && r.games.length === 0
+        ? 'missing'
+        : 'ok';
+    return { status: resolved, games: r.games };
   }
 
   add(game: CompletedGame): boolean {

@@ -135,6 +135,32 @@ const nl = {
   confirmDeleteGame: 'Deze wedstrijd definitief verwijderen? Dit kan niet ongedaan worden gemaakt.',
   exportShareBtn: 'Exporteren/Delen',
 
+  // PR 6.4: Stats-tab. Strings gespiegeld van v1 (index.html
+  // `stats[A-Z]*`-verten) zodat een vertaler beide talen tegelijk kan
+  // beoordelen. NL = primary, EN = secondary.
+  statsTitle: 'Statistieken',
+  statsNoData: 'Nog geen wedstrijddata. Speel en rond een wedstrijd af om hier stats te zien.',
+  statsNoCombos: 'Geen combinaties gevonden met dit filter.',
+  statsReadError:
+    'Kon de wedstrijdhistorie niet lezen. Probeer het later opnieuw of herlaad het tabblad.',
+  statsCurrentGame: 'Huidige wedstrijd',
+  statsPer10: 'Per 10 min',
+  statsGamesBtn: 'Wedstrijden',
+  statsFilterBtn: 'Filter spelers',
+  statsGamesTitle: 'Filter op wedstrijd',
+  statsFilterTitle: 'Filter spelers',
+  statsFilterHint: '✓ = moet op de vloer staan · ✗ = moet op de bank staan · — = geen filter',
+  statsComboSizeLabel: 'Aantal spelers in combinatie',
+  statsSortToggleAsc: 'Sorteer +/- ↑',
+  statsSortToggleDesc: 'Sorteer +/- ↓',
+  statsColTime: 'Tijd',
+  statsColPts: 'Pnt',
+  statsColOpp: 'Teg',
+  statsColOn: 'Met hen',
+  statsColOff: 'Zonder hen',
+  statsClearBtn: 'Wis filter',
+  statsDoneBtn: 'Klaar',
+
   cloudImportPrompt:
     'Kopieer je lokale gegevens eenmalig naar de cloud. De cloud-versie wordt dan leidend; je lokale kopie blijft bewaard.',
   cloudImportButton: 'Eenmalig naar cloud kopiëren',
@@ -361,6 +387,29 @@ const en = {
   historyEmpty: 'No finished games yet.',
   confirmDeleteGame: 'Permanently delete this game? This cannot be undone.',
   exportShareBtn: 'Export/Share',
+
+  // PR 6.4: Stats-tab. See NL block for rationale; v1 parity.
+  statsTitle: 'Stats',
+  statsNoData: 'No match data yet. Play and finish a match to see stats here.',
+  statsNoCombos: 'No combinations found with this filter.',
+  statsReadError: "Couldn't read the match history. Try again later or reload the tab.",
+  statsCurrentGame: 'Current match',
+  statsPer10: 'Per 10 min',
+  statsGamesBtn: 'Games',
+  statsFilterBtn: 'Filter players',
+  statsGamesTitle: 'Filter by game',
+  statsFilterTitle: 'Filter players',
+  statsFilterHint: '✓ = must be on court · ✗ = must be on bench · — = no filter',
+  statsComboSizeLabel: 'Players in combination',
+  statsSortToggleAsc: 'Sort +/- ↑',
+  statsSortToggleDesc: 'Sort +/- ↓',
+  statsColTime: 'Time',
+  statsColPts: 'Pts',
+  statsColOpp: 'Opp',
+  statsColOn: 'With them',
+  statsColOff: 'Without them',
+  statsClearBtn: 'Clear filter',
+  statsDoneBtn: 'Done',
 
   cloudImportPrompt:
     'Copy your local data to the cloud once. The cloud version becomes the source of truth; your local copy is kept as a fallback.',
