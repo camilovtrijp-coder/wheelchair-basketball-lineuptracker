@@ -82,7 +82,9 @@ test.describe('v2 Back-up-sectie (PR 6.6)', () => {
     await page.getByTestId('nav-settings').click();
     await expect(page.getByTestId('settings-teamName')).toHaveValue('Geïmporteerd Team');
     await page.getByTestId('nav-roster').click();
-    await expect(page.getByText('Geïmporteerde Speler')).toBeVisible();
+    // De rosterplayer-ID uit de back-up (1) blijft het canonieke ID na
+    // import — geen nieuwe ID's gegenereerd voor rosterentries.
+    await expect(page.getByTestId('roster-naam-1')).toHaveValue('Geïmporteerde Speler');
   });
 
   test('annuleren op het previewscherm schrijft niets', async ({ page }) => {
