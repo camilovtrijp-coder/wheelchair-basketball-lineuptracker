@@ -24,7 +24,9 @@ function isActiveGame(value: unknown): value is ActiveGame {
     typeof v.organizationId === 'string' &&
     typeof v.teamId === 'string' &&
     (v.phase === 'setup' || v.phase === 'tracking') &&
-    Array.isArray(v.players)
+    Array.isArray(v.players) &&
+    Array.isArray(v.onCourt) &&
+    Array.isArray(v.actions)
   );
 }
 

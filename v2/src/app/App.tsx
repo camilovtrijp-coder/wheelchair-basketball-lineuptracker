@@ -25,6 +25,7 @@ import { LocalStorageGameRepository } from '../infrastructure/game/LocalStorageG
 import { createGameFromRoster } from '../domain/game/setup';
 import type { ActiveGame } from '../domain/game/types';
 import { GameSetupPanel } from '../ui/game/GameSetupPanel';
+import { LiveTrackingPanel } from '../ui/game/LiveTrackingPanel';
 
 export interface AppProps {
   repositories: ResolvedAppRepositories;
@@ -407,6 +408,26 @@ export function App({ repositories, syncStatus, canWrite, organizationId, teamId
             onCloudMigrate={repositories.mode === 'cloud' ? handleCloudMigrateRoster : undefined}
             canWrite={canWrite}
             updatedAt={rosterUpdatedAt}
+          />
+        ) : game?.phase === 'tracking' ? (
+          <LiveTrackingPanel
+            lang={lang}
+            game={game}
+            quarterCount={settings.quarterCount as number}
+            periodLabel={settings.periodLabel as string}
+            classification={{
+              useClassLimit: settings.useClassLimit === true,
+              classBaseLimit: settings.classBaseLimit as number,
+              maxBonus: settings.maxBonus as number,
+              bonusTag1Only: settings.bonusTag1Only as number,
+              bonusTag2Only: settings.bonusTag2Only as number,
+              bonusBoth: settings.bonusBoth as number,
+            }}
+            teamName={(settings.teamName as string) || ''}
+            tag1Label={tag1Label}
+            tag2Label={tag2Label}
+            onGameChange={handleGameChange}
+            canWrite={canWrite}
           />
         ) : (
           <GameSetupPanel

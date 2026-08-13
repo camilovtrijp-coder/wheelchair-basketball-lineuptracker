@@ -1,6 +1,6 @@
 import { sortRoster } from '../roster/normalize';
 import type { Roster } from '../roster/types';
-import type { ActiveGame, GamePlayer } from './types';
+import { MAX_CLOCK_SECONDS, type ActiveGame, type GamePlayer } from './types';
 
 function newId(): string {
   return crypto.randomUUID();
@@ -42,6 +42,12 @@ export function createGameFromRoster(
     clockDown: true,
     limitStr: String(classBaseLimit),
     onCourt: [],
+    // Ongebruikt tijdens 'setup'; startGame() zet ze naar echte waarden
+    // zodra clockDown definitief vastligt (kan tot dat moment nog wijzigen).
+    curQuarter: 1,
+    beginSec: 0,
+    endSec: 0,
+    actions: [],
     createdAt: now,
     startedAt: null,
   };
@@ -153,9 +159,14 @@ export function startGame(game: ActiveGame): ActiveGame | null {
           .slice(0, 5)
           .map((p) => p.id);
 
+  const begin = game.clockDown ? MAX_CLOCK_SECONDS : 0;
+
   return {
     ...game,
     onCourt,
+    curQuarter: 1,
+    beginSec: begin,
+    endSec: begin,
     phase: 'tracking',
     startedAt: new Date().toISOString(),
   };

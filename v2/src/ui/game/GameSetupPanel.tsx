@@ -53,18 +53,7 @@ export function GameSetupPanel({
   canWrite,
   saveError,
 }: GameSetupPanelProps) {
-  if (game === null) return null;
-
-  if (game.phase === 'tracking') {
-    return (
-      <section className="settings-panel" aria-label={t(lang, 'gameTitle')}>
-        <header className="settings-panel__header">
-          <h2>{t(lang, 'gameTitle')}</h2>
-        </header>
-        <p data-testid="game-tracking-placeholder">{t(lang, 'gameTrackingPlaceholder')}</p>
-      </section>
-    );
-  }
+  if (game === null || game.phase === 'tracking') return null;
 
   const vp = validPlayers(game);
   const dupNrs = duplicateStartNumbers(game);
