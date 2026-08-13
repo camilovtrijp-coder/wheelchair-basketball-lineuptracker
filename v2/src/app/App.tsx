@@ -67,6 +67,17 @@ export interface AppProps {
    */
   organizationId: string;
   teamId: string;
+  /**
+   * PR 6.1-review (aug. 2026): weergavenaam van de actieve organisatie —
+   * uitsluitend gebruikt door `V1MigrationPrompt` om een ondubbelzinnig doel
+   * te tonen (organisatie + team, niet alleen teamnaam). Zonder de
+   * organisatienaam zou een bevestigingsvraag bij gelijknamige teams in twee
+   * verschillende organisaties niet te onderscheiden zijn — precies de
+   * situatie waarin deze prompt de gebruiker moet kunnen vertrouwen. Valt in
+   * AuthGate terug op `organizationId` als er (nog) geen membershipnaam
+   * bekend is.
+   */
+  organizationName: string;
 }
 
 type Tab = 'settings' | 'roster' | 'game';
@@ -106,6 +117,7 @@ export function App({
   canWriteGame,
   organizationId,
   teamId,
+  organizationName,
 }: AppProps) {
   const [lang, setLang] = useState<Lang>(initialLang);
   const [tab, setTab] = useState<Tab>('settings');
@@ -462,7 +474,8 @@ export function App({
           <V1MigrationPrompt
             lang={lang}
             game={v1MigrationCandidate}
-            teamName={(settings.teamName as string) || t('teamFallbackLabel')}
+            organizationName={organizationName || organizationId}
+            teamName={(settings.teamName as string) || teamId}
             canWrite={canWriteGame}
             saveError={gameSaveError}
             onConfirm={handleConfirmV1Migration}

@@ -172,7 +172,27 @@ export class LocalStorageGameRepository implements GameRepository {
     return migrateV1ActiveGame(parsed, this.organizationId, this.teamId);
   }
 
+  /**
+   * `game` moet aantoonbaar bij DIT team horen — zonder deze check zou een
+   * verouderd of verkeerd getagd voorstel (bijv. na een contextwissel tussen
+   * `detectV1Migration()` en de klik op "bevestigen") alsnog onder de huidige
+   * teamsleutel geschreven kunnen worden, precies de fout die deze hele
+   * bevestigingsstap moet voorkomen.
+   *
+   * De wedstrijdwrite en de globale claimvlag zijn twee losse localStorage-
+   * writes (geen transacties mogelijk) — als de tweede faalt nadat de eerste
+   * al slaagde, draaien we de eerste terug i.p.v. `true` te retourneren.
+   * Zonder die rollback zou dit team de wedstrijd lokaal lijken te hebben
+   * terwijl de globale claim ontbreekt, waardoor `detectV1Migration()`
+   * dezelfde v1-wedstrijd alsnog aan een ander team aanbiedt: twee teams die
+   * beide denken de wedstrijd te bezitten. Met de rollback is een mislukte
+   * bevestiging altijd volledig ongedaan gemaakt, dus veilig om (door dit of
+   * een ander team) opnieuw te proberen.
+   */
   confirmV1Migration(game: ActiveGame): boolean {
+    if (game.organizationId !== this.organizationId || game.teamId !== this.teamId) {
+      return false;
+    }
     if (!this.write(game)) return false;
     try {
       this.storage.setItem(
@@ -184,7 +204,12 @@ export class LocalStorageGameRepository implements GameRepository {
         }),
       );
     } catch {
-      /* best effort; de wedstrijd staat al onder de v2-sleutel, dat telt als bevestigd */
+      try {
+        this.storage.removeItem(this.key);
+      } catch {
+        /* best effort rollback; de opslag lijkt sowieso kapot op dit punt */
+      }
+      return false;
     }
     return true;
   }

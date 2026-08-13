@@ -306,7 +306,7 @@ describe('infrastructure/game/LocalStorageGameRepository', () => {
       expect(repoB.read()).toBeNull();
     });
 
-    it('confirmV1Migration() zet geen markering als de opslag faalt — een volgende poging kan opnieuw', () => {
+    it('confirmV1Migration() faalt als zowel de wedstrijd- als de markeer-write mislukken', () => {
       const failing: KeyValueStorage = {
         getItem: (key) => (key === V1_ACTIVE_GAME_STORAGE_KEY ? JSON.stringify(v1Blob()) : null),
         setItem: () => {
@@ -318,6 +318,79 @@ describe('infrastructure/game/LocalStorageGameRepository', () => {
       const candidate = repo.detectV1Migration()!;
 
       expect(repo.confirmV1Migration(candidate)).toBe(false);
+    });
+
+    it('confirmV1Migration() draait de al geslaagde wedstrijd-write terug als de globale claim-write daarna faalt', () => {
+      // Reproduceert de derde herreview (aug. 2026): de wedstrijdwrite gebeurt
+      // vóór de markeer-write. Als alleen de tweede faalt, mag dit team niet
+      // alsnog lijken de wedstrijd te hebben zonder de bijbehorende globale
+      // claim — anders zou detectV1Migration() dezelfde v1-wedstrijd ook nog
+      // aan een ander team aanbieden terwijl dit team 'm al lokaal "heeft".
+      const storage = new TrackingStorage();
+      storage.seed(V1_ACTIVE_GAME_STORAGE_KEY, JSON.stringify(v1Blob()));
+      const selectivelyFailing: KeyValueStorage = {
+        getItem: (key) => storage.getItem(key),
+        setItem: (key, value) => {
+          if (key === V1_GAME_MIGRATED_FLAG_KEY) {
+            throw new Error('QuotaExceededError');
+          }
+          storage.setItem(key, value);
+        },
+        removeItem: (key) => storage.removeItem(key),
+      };
+      const repo = new LocalStorageGameRepository(selectivelyFailing, 'org-1', 'team-1');
+      const candidate = repo.detectV1Migration()!;
+
+      expect(repo.confirmV1Migration(candidate)).toBe(false);
+
+      // De net gedane wedstrijd-write is teruggedraaid: dit team heeft géén
+      // half-bevestigde wedstrijd liggen, en de globale claim is ook nooit gezet.
+      expect(storage.getItem(activeGameStorageKey('org-1', 'team-1'))).toBeNull();
+      expect(storage.getItem(V1_GAME_MIGRATED_FLAG_KEY)).toBeNull();
+      expect(repo.read()).toBeNull();
+    });
+
+    it('na een mislukte bevestiging (claim-write faalt) is een latere, geslaagde poging veilig — geen duplicatie of dataverlies', () => {
+      const storage = new TrackingStorage();
+      storage.seed(V1_ACTIVE_GAME_STORAGE_KEY, JSON.stringify(v1Blob()));
+      let failMarkerWrite = true;
+      const flakyThenWorking: KeyValueStorage = {
+        getItem: (key) => storage.getItem(key),
+        setItem: (key, value) => {
+          if (key === V1_GAME_MIGRATED_FLAG_KEY && failMarkerWrite) {
+            throw new Error('QuotaExceededError');
+          }
+          storage.setItem(key, value);
+        },
+        removeItem: (key) => storage.removeItem(key),
+      };
+      const repo = new LocalStorageGameRepository(flakyThenWorking, 'org-1', 'team-1');
+      const candidate = repo.detectV1Migration()!;
+
+      expect(repo.confirmV1Migration(candidate)).toBe(false);
+      expect(repo.detectV1Migration()).not.toBeNull(); // nog steeds te retrying, geen dataverlies
+
+      failMarkerWrite = false;
+      expect(repo.confirmV1Migration(candidate)).toBe(true);
+
+      expect(repo.read()).toEqual(candidate);
+      expect(storage.getItem(V1_GAME_MIGRATED_FLAG_KEY)).not.toBeNull();
+      // Geen duplicatie: nog altijd precies één opgeslagen wedstrijd voor dit team.
+      expect(repo.detectV1Migration()).toBeNull();
+    });
+
+    it('confirmV1Migration() weigert een voorstel dat niet bij dit team hoort (integriteitscheck)', () => {
+      const storage = new TrackingStorage();
+      const repo = new LocalStorageGameRepository(storage, 'org-1', 'team-1');
+      const staleCandidate = activeGame({
+        phase: 'tracking',
+        organizationId: 'org-ANDER',
+        teamId: 'team-ANDER',
+      });
+
+      expect(repo.confirmV1Migration(staleCandidate)).toBe(false);
+      expect(storage.getItem(activeGameStorageKey('org-1', 'team-1'))).toBeNull();
+      expect(storage.getItem(V1_GAME_MIGRATED_FLAG_KEY)).toBeNull();
     });
 
     it('detectV1Migration() levert niets voor een niet-hervatbare v1-opzet (v1-pariteit: alleen phase tracking of segments > 0)', () => {

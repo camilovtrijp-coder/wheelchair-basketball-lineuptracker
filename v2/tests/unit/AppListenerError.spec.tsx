@@ -157,6 +157,7 @@ describe('app/App — listener-fout-detectie na initiële load (PR 5.4a)', () =>
         canWriteGame={true}
         organizationId="org-test"
         teamId="team-test"
+        organizationName="Org Test"
       />,
     );
 
@@ -194,6 +195,7 @@ describe('app/App — listener-fout-detectie na initiële load (PR 5.4a)', () =>
         canWriteGame={true}
         organizationId="org-test"
         teamId="team-test"
+        organizationName="Org Test"
       />,
     );
 

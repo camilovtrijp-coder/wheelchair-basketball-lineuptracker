@@ -6,6 +6,9 @@ export interface V1MigrationPromptProps {
   lang: Lang;
   /** Voorstel uit `GameRepository.detectV1Migration()` — nog niet opgeslagen. */
   game: ActiveGame;
+  /** Weergavenaam van de organisatie, met organizationId als fallback (zie App.tsx). */
+  organizationName: string;
+  /** Weergavenaam van het team, met teamId als fallback (zie App.tsx). */
   teamName: string;
   canWrite: boolean;
   saveError: boolean;
@@ -24,10 +27,16 @@ function t(lang: Lang, key: StringKey): string {
  * organisatie/teamcontext, dus alleen de gebruiker kan dat bevestigen (zie
  * de externe PR-6.1-review, aug. 2026). Vervangt `GameSetupPanel` op het
  * Wedstrijd-tabblad zolang dit voorstel openstaat.
+ *
+ * Toont zowel organisatie- als teamnaam (niet alleen teamnaam): bij
+ * gelijknamige teams in twee verschillende organisaties zou de teamnaam
+ * alleen geen ondubbelzinnig doel zijn — precies de tweede blokkerende
+ * bevinding van de derde herreview (aug. 2026).
  */
 export function V1MigrationPrompt({
   lang,
   game,
+  organizationName,
   teamName,
   canWrite,
   saveError,
@@ -49,7 +58,9 @@ export function V1MigrationPrompt({
         </li>
         <li className="roster-player-card">
           <span className="settings-field__label">{t(lang, 'v1MigrationTargetLabel')}</span>{' '}
-          <strong data-testid="v1-migration-target">{teamName}</strong>
+          <strong data-testid="v1-migration-target">
+            {organizationName} / {teamName}
+          </strong>
         </li>
         <li className="roster-player-card">
           <span className="settings-field__label">{t(lang, 'v1MigrationScoreLabel')}</span>{' '}

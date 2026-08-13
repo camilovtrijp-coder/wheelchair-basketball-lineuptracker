@@ -400,6 +400,11 @@ export function AuthGate({ authGateway }: AuthGateProps) {
             canWriteGame={selectedContextCanWriteGame ?? false}
             organizationId={selectedContext?.orgId ?? ''}
             teamId={selectedContext?.teamId ?? ''}
+            organizationName={
+              memberships?.find((m) => m.orgId === selectedContext?.orgId)?.orgName ??
+              selectedContext?.orgId ??
+              ''
+            }
           />
         </>
       );
