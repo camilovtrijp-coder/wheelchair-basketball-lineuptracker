@@ -3,6 +3,20 @@ import { test } from './fixtures';
 
 const ACTIVE_GAME_KEY = 'lineup-tracker-v2-active-game:org-rotterdam:team-u23';
 const COMPLETED_GAMES_KEY = 'lineup-tracker-v2-completed-games:org-rotterdam:team-u23';
+// v1-compatibele roster-sleutel (`lineup-tracker-roster`, zie
+// `domain/roster/types.ts` ROSTER_STORAGE_KEY) — deze e2e-suite draait in
+// lokale modus (onvertrouwd apparaat, zie `fixtures.ts`), dus de "huidige
+// roster" komt hieruit, niet uit de Firestore-seeddata. Trends toont per
+// plan §C.1 alleen kaarten voor spelers die in DEZE roster voorkomen, dus
+// moet expliciet gezet worden (Stats had deze afhankelijkheid niet: combo's
+// komen daar rechtstreeks uit de segment-spelerssnapshots).
+const CURRENT_ROSTER = [
+  { id: 1, nr: '1', naam: 'Anna', kl: '3.0', vrouw: false, jeugd: false },
+  { id: 2, nr: '2', naam: 'Bob', kl: '2.0', vrouw: false, jeugd: false },
+  { id: 3, nr: '3', naam: 'Cees', kl: '3.5', vrouw: false, jeugd: false },
+  { id: 4, nr: '4', naam: 'Dien', kl: '2.5', vrouw: false, jeugd: false },
+  { id: 5, nr: '5', naam: 'Eve', kl: '3.0', vrouw: false, jeugd: false },
+];
 
 function player(id: string, rosterId: number, nr: string, naam: string) {
   return {
@@ -38,6 +52,10 @@ const FIVE_PLAYERS_B = [
 
 async function setupTwoGames(page: Page): Promise<void> {
   await page.addInitScript(() => window.localStorage.setItem('lineup-tracker-lang', 'nl'));
+  await page.addInitScript(
+    (roster) => window.localStorage.setItem('lineup-tracker-roster', JSON.stringify(roster)),
+    CURRENT_ROSTER,
+  );
   await page.goto('/');
 
   const completedGames = [
