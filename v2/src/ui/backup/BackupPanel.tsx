@@ -69,7 +69,7 @@ type PanelState =
   | { step: 'error'; message: string }
   | { step: 'preview'; data: BackupV2Data; preview: ImportPreview; target: PreviewTarget }
   | { step: 'running' }
-  | { step: 'done'; ok: true }
+  | { step: 'done'; ok: true; journal: ImportJournalEntry[] }
   | { step: 'done'; ok: false; journal: ImportJournalEntry[] };
 
 const SECTION_LABEL_KEY: Record<ImportJournalEntry['section'], StringKey> = {
@@ -252,7 +252,7 @@ export function BackupPanel({
 
     const result = await runImport(d, importData, target, snapshot);
     if (result.ok) {
-      setState({ step: 'done', ok: true });
+      setState({ step: 'done', ok: true, journal: result.journal });
       onImported();
     } else {
       setState({ step: 'done', ok: false, journal: result.journal });
@@ -330,12 +330,13 @@ export function BackupPanel({
       ) : null}
 
       {state.step === 'done' && state.ok ? (
-        <p className="settings-explainer" role="status" data-testid="backup-success">
-          {t(lang, 'backupImportSuccess')}{' '}
+        <div className="settings-explainer" role="status" data-testid="backup-success">
+          <p>{t(lang, 'backupImportSuccess')}</p>
+          <JournalList journal={state.journal} lang={lang} />
           <button type="button" className="btn-outline" onClick={handleDismissResult}>
             OK
           </button>
-        </p>
+        </div>
       ) : null}
 
       {state.step === 'done' && !state.ok ? (
@@ -346,14 +347,7 @@ export function BackupPanel({
               t(lang, SECTION_LABEL_KEY[failedSection(state.journal)]),
             )}
           </p>
-          <ul className="backup-preview__list" data-testid="backup-journal">
-            {state.journal.map((entry, i) => (
-              <li key={i} data-testid={`backup-journal-${entry.section}-${entry.outcome}`}>
-                {OUTCOME_LABEL[entry.outcome]} {t(lang, SECTION_LABEL_KEY[entry.section])}:{' '}
-                {entry.outcome}
-              </li>
-            ))}
-          </ul>
+          <JournalList journal={state.journal} lang={lang} />
           <button type="button" className="btn-outline" onClick={handleDismissResult}>
             OK
           </button>
@@ -365,6 +359,23 @@ export function BackupPanel({
 
 function failedSection(journal: ImportJournalEntry[]): ImportJournalEntry['section'] {
   return journal.find((e) => e.outcome === 'failed')?.section ?? journal[0]!.section;
+}
+
+/** Toont het hersteljournaal zowel bij succes als bij falen (externe
+ * PR-6.6-review, aug. 2026: het journal was alleen bij falen zichtbaar,
+ * terwijl §G ook bij een geslaagde import inzicht in de per-sectie-uitkomst
+ * vereist). */
+function JournalList({ journal, lang }: { journal: ImportJournalEntry[]; lang: Lang }) {
+  return (
+    <ul className="backup-preview__list" data-testid="backup-journal">
+      {journal.map((entry, i) => (
+        <li key={i} data-testid={`backup-journal-${entry.section}-${entry.outcome}`}>
+          {OUTCOME_LABEL[entry.outcome]} {t(lang, SECTION_LABEL_KEY[entry.section])}:{' '}
+          {entry.outcome}
+        </li>
+      ))}
+    </ul>
+  );
 }
 
 function BackupPreviewCard({

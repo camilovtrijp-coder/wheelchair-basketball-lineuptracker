@@ -206,7 +206,17 @@ test.describe('v2 Back-up-sectie (PR 6.6)', () => {
           opponent: 'Herhaalde Tegenstander',
           competition: '',
           date: '2026-01-01T10:00:00.000Z',
-          players: [],
+          players: [1, 2, 3, 4, 5].map((n) => ({
+            id: `p${n}`,
+            rosterId: n,
+            nr: String(n),
+            naam: `Speler ${n}`,
+            kl: '3.0',
+            vrouw: false,
+            jeugd: false,
+            participate: true,
+            start: true,
+          })),
           segments: [],
           scoreFor: 0,
           scoreAgainst: 0,
@@ -241,26 +251,24 @@ test.describe('v2 Back-up-sectie — bevoegdheid per rol (eigenaarsbesluit §E.4
   // team-u23) en zijn nodig om te bewijzen dat de back-upknoppen ook
   // daadwerkelijk uitgeschakeld zijn onder de canManageTeamData-grens, niet
   // alleen bij de organizationAdmin die de rest van deze suite gebruikt.
+  async function waitVisible(page: Page, testId: string, timeout: number): Promise<boolean> {
+    return page
+      .getByTestId(testId)
+      .waitFor({ state: 'visible', timeout })
+      .then(() => true)
+      .catch(() => false);
+  }
+
   async function loginAndOpenSettings(page: Page, email: string, password: string): Promise<void> {
     await page.addInitScript(() => window.localStorage.setItem('lineup-tracker-lang', 'nl'));
     await page.goto('/');
     await page.getByTestId('auth-email').fill(email);
     await page.getByTestId('auth-password').fill(password);
     await page.getByTestId('auth-submit').click();
-    if (
-      await page
-        .getByTestId('trusted-device-no')
-        .isVisible({ timeout: 10_000 })
-        .catch(() => false)
-    ) {
+    if (await waitVisible(page, 'trusted-device-no', 10_000)) {
       await page.getByTestId('trusted-device-no').click();
     }
-    if (
-      await page
-        .getByTestId('context-org-org-rotterdam')
-        .isVisible({ timeout: 10_000 })
-        .catch(() => false)
-    ) {
+    if (await waitVisible(page, 'context-org-org-rotterdam', 10_000)) {
       await page.getByTestId('context-org-org-rotterdam').click();
       await page.waitForSelector('[data-testid="context-team-team-u23"]', { timeout: 10_000 });
       await page.getByTestId('context-team-team-u23').click();
