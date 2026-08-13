@@ -16,13 +16,17 @@ export interface OperationResult<T = undefined> {
 
 /**
  * Resultaat van `validateSelectedTeam()`. `valid` bepaalt of de geselecteerde
- * context nog bruikbaar is (bestaat-team + aantoonbare toegang); `canManageTeamData`
- * geeft aan of deze gebruiker in de UI schrijfknoppen te zien krijgt. Worden in
+ * context nog bruikbaar is (bestaat-team + aantoonbare toegang);
+ * `canManageTeamData` geeft aan of deze gebruiker in de UI de
+ * roster/instellingen-schrijfknoppen te zien krijgt; `canWriteGameData` is de
+ * aparte, ruimere bevoegdheid (owner/admin/coach/scorer) voor de
+ * wedstrijd-UI (zie domain/organizations/teamAccess.ts). Alle drie worden in
  * dezelfde Firestore-read afgeleid (zie FirestoreOrganizationGateway.validateSelectedTeam).
  */
 export interface TeamValidationResult {
   valid: boolean;
   canManageTeamData: boolean;
+  canWriteGameData: boolean;
 }
 
 export interface OrganizationGateway {
@@ -62,9 +66,11 @@ export interface OrganizationGateway {
    *
    * `canManageTeamData` wordt door AuthGate doorgegeven aan `App`/`SettingsPanel`/`RosterPanel`
    * om de UI-schrijfknoppen te hiden/disablen voor rollen die geen teamdata mogen bewerken
-   * (spiegelt firestore.rules' canManageTeamData/teamRole exact — zie PR 5.4a). Wordt in
-   * dezelfde call afgeleid als `valid` (uit dezelfde getMyTeamAccess()-read), dus zonder
-   * extra Firestore-read.
+   * (spiegelt firestore.rules' canManageTeamData/teamRole exact — zie PR 5.4a).
+   * `canWriteGameData` doet hetzelfde voor `GameSetupPanel`/`LiveTrackingPanel` (PR 6.1-review,
+   * aug. 2026): een aparte, ruimere bevoegdheid zodat een `scorer` wél wedstrijdacties mag
+   * uitvoeren zonder roster/instellingen te mogen bewerken. Beide worden in dezelfde call
+   * afgeleid als `valid` (uit dezelfde getMyTeamAccess()-read), dus zonder extra Firestore-read.
    */
   validateSelectedTeam(
     orgId: string,

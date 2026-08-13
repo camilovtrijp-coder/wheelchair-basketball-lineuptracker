@@ -96,6 +96,13 @@ export function AuthGate({ authGateway }: AuthGateProps) {
   // `null` = nog aan het evalueren; in de 'active'-state wordt dit doorgegeven aan
   // <App canWrite=... /> zodat SettingsPanel/RosterPanel de schrijfknoppen hiden/disablen.
   const [selectedContextCanWrite, setSelectedContextCanWrite] = useState<boolean | null>(null);
+  // PR 6.1-review (aug. 2026): aparte, ruimere bevoegdheid voor de wedstrijd-UI
+  // (owner/admin/coach/scorer) — zie domain/organizations/teamAccess.ts,
+  // `canWriteGameData`. Berekend in hetzelfde effect/dezelfde call als
+  // selectedContextCanWrite hierboven, dus zonder extra Firestore-read.
+  const [selectedContextCanWriteGame, setSelectedContextCanWriteGame] = useState<boolean | null>(
+    null,
+  );
   const [pendingInvitationLink, setPendingInvitationLink] = useState<InvitationLinkParams | null>(
     initialInvitationLink,
   );
@@ -174,16 +181,19 @@ export function AuthGate({ authGateway }: AuthGateProps) {
     if (!organizationGateway || !selectedContext || !memberships) {
       setSelectedContextTeamValid(null);
       setSelectedContextCanWrite(null);
+      setSelectedContextCanWriteGame(null);
       return;
     }
     const membership = memberships.find((m) => m.orgId === selectedContext.orgId);
     if (!membership) {
       setSelectedContextTeamValid(null);
       setSelectedContextCanWrite(null);
+      setSelectedContextCanWriteGame(null);
       return;
     }
     setSelectedContextTeamValid(null);
     setSelectedContextCanWrite(null);
+    setSelectedContextCanWriteGame(null);
     let cancelled = false;
     organizationGateway
       .validateSelectedTeam(selectedContext.orgId, selectedContext.teamId, membership.role)
@@ -191,6 +201,7 @@ export function AuthGate({ authGateway }: AuthGateProps) {
         if (cancelled) return;
         setSelectedContextTeamValid(result.valid);
         setSelectedContextCanWrite(result.canManageTeamData);
+        setSelectedContextCanWriteGame(result.canWriteGameData);
       });
     return () => {
       cancelled = true;
@@ -386,8 +397,14 @@ export function AuthGate({ authGateway }: AuthGateProps) {
             repositories={repositories}
             syncStatus={syncStatus}
             canWrite={selectedContextCanWrite ?? false}
+            canWriteGame={selectedContextCanWriteGame ?? false}
             organizationId={selectedContext?.orgId ?? ''}
             teamId={selectedContext?.teamId ?? ''}
+            organizationName={
+              memberships?.find((m) => m.orgId === selectedContext?.orgId)?.orgName ??
+              selectedContext?.orgId ??
+              ''
+            }
           />
         </>
       );

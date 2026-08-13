@@ -72,11 +72,60 @@ describe('createBrowserStorage', () => {
     expect(() => storage.removeItem('x')).not.toThrow();
   });
 
-  it('geeft null terug en werpt niet wanneer de storage-methoden zelf throwen', () => {
+  it('geeft null terug en werpt niet wanneer getItem() op een verkregen storage zelf throwt', () => {
     const storage = createBrowserStorage(() => throwingStorage());
 
     expect(storage.getItem('x')).toBeNull();
-    expect(() => storage.setItem('x', 'y')).not.toThrow();
-    expect(() => storage.removeItem('x')).not.toThrow();
+  });
+
+  it('laat een echte schrijffout (bv. quota overschreden) van een verkregen storage doorwerpen', () => {
+    const backing = new FakeStorage();
+    const quotaExceeded = () => {
+      throw new Error('QuotaExceededError');
+    };
+    const failingWrites = {
+      ...backing,
+      setItem: quotaExceeded,
+      removeItem: quotaExceeded,
+    } as unknown as Storage;
+    const storage = createBrowserStorage(() => failingWrites);
+
+    expect(() => storage.setItem('x', 'y')).toThrow();
+    expect(() => storage.removeItem('x')).toThrow();
+  });
+
+  describe('{ swallowGetItemErrors: false } (externe PR-6.3-review, aug. 2026)', () => {
+    it('laat een echte getItem()-fout van een verkregen storage doorwerpen i.p.v. naar null te vertalen', () => {
+      const storage = createBrowserStorage(() => throwingStorage(), {
+        swallowGetItemErrors: false,
+      });
+
+      expect(() => storage.getItem('x')).toThrow();
+    });
+
+    it('geeft nog steeds null terug (werpt niet) wanneer de storage-getter zelf faalt of null teruggeeft', () => {
+      const storageFromThrowingGetter = createBrowserStorage(
+        () => {
+          throw new Error('SecurityError: storage disabled');
+        },
+        { swallowGetItemErrors: false },
+      );
+      expect(storageFromThrowingGetter.getItem('x')).toBeNull();
+
+      const storageFromNullGetter = createBrowserStorage(() => null, {
+        swallowGetItemErrors: false,
+      });
+      expect(storageFromNullGetter.getItem('x')).toBeNull();
+    });
+
+    it('rondt get/set/remove nog steeds normaal af via een werkende storage', () => {
+      const backing = new FakeStorage();
+      const storage = createBrowserStorage(() => backing, { swallowGetItemErrors: false });
+
+      storage.setItem('a', '1');
+      expect(storage.getItem('a')).toBe('1');
+      storage.removeItem('a');
+      expect(storage.getItem('a')).toBeNull();
+    });
   });
 });

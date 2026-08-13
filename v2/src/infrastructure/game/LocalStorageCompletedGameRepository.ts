@@ -1,0 +1,112 @@
+import type { CompletedGame } from '../../domain/game/types';
+import type { KeyValueStorage } from '../../i18n/persistence';
+import type { CompletedGameRepository } from '../../application/game/CompletedGameRepository';
+
+/**
+ * Eigen sleutel per organisatie/team (i.p.v. v1's ene globale
+ * `lineup-tracker-games`-array) — consistent met hoe
+ * `activeGameStorageKey()` de actieve wedstrijd al per org/team scoped, zie
+ * docs/pr-6.3-plan.md §E.3.
+ */
+export function completedGamesStorageKey(organizationId: string, teamId: string): string {
+  return `lineup-tracker-v2-completed-games:${organizationId}:${teamId}`;
+}
+
+function isCompletedGameShape(value: unknown): value is Record<string, unknown> {
+  if (typeof value !== 'object' || value === null) return false;
+  const v = value as Record<string, unknown>;
+  return (
+    typeof v.id === 'string' &&
+    typeof v.organizationId === 'string' &&
+    typeof v.teamId === 'string' &&
+    typeof v.date === 'string' &&
+    Array.isArray(v.players) &&
+    Array.isArray(v.segments) &&
+    typeof v.scoreFor === 'number' &&
+    typeof v.scoreAgainst === 'number'
+  );
+}
+
+function matchesContext(
+  value: Record<string, unknown>,
+  organizationId: string,
+  teamId: string,
+): boolean {
+  return value.organizationId === organizationId && value.teamId === teamId;
+}
+
+export class LocalStorageCompletedGameRepository implements CompletedGameRepository {
+  private readonly key: string;
+
+  constructor(
+    private readonly storage: KeyValueStorage,
+    private readonly organizationId: string,
+    private readonly teamId: string,
+  ) {
+    this.key = completedGamesStorageKey(organizationId, teamId);
+  }
+
+  /**
+   * Onderscheidt "leeg/nog niet aangemaakt" (`ok: true`, `games: []`) van "kon
+   * niet gelezen worden" (`ok: false`) — een storage-readfout, corrupte JSON of
+   * een niet-array-payload is NIET hetzelfde als een lege historie. Zonder dit
+   * onderscheid zou `add()`/`remove()` bij een tijdelijke leesfout alsnog een
+   * volledige write doen op basis van een lege lijst, en zo de bestaande
+   * historie stilzwijgend wissen (externe PR-6.3-review, aug. 2026). Een
+   * individueel corrupt of verkeerd-getagd ITEM binnen een wél leesbare array
+   * blijft gewoon gefilterd (niet de hele lijst ongeldig) — dat is een ander
+   * risico (één beschadigd item verbergt de rest niet) dan een mislukte read.
+   */
+  private readAll(): { games: CompletedGame[]; ok: boolean } {
+    let raw: string | null = null;
+    try {
+      raw = this.storage.getItem(this.key);
+    } catch {
+      return { games: [], ok: false };
+    }
+    if (raw === null || raw === '') return { games: [], ok: true };
+
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(raw);
+    } catch {
+      return { games: [], ok: false };
+    }
+    if (!Array.isArray(parsed)) return { games: [], ok: false };
+
+    return {
+      games: parsed.filter(
+        (item): item is CompletedGame =>
+          isCompletedGameShape(item) && matchesContext(item, this.organizationId, this.teamId),
+      ),
+      ok: true,
+    };
+  }
+
+  list(): CompletedGame[] {
+    return this.readAll().games;
+  }
+
+  add(game: CompletedGame): boolean {
+    if (game.organizationId !== this.organizationId || game.teamId !== this.teamId) return false;
+    const current = this.readAll();
+    if (!current.ok) return false;
+    return this.writeAll([game, ...current.games]);
+  }
+
+  remove(id: string): boolean {
+    const current = this.readAll();
+    if (!current.ok) return false;
+    return this.writeAll(current.games.filter((g) => g.id !== id));
+  }
+
+  private writeAll(games: CompletedGame[]): boolean {
+    try {
+      this.storage.setItem(this.key, JSON.stringify(games));
+      return true;
+    } catch {
+      /* opslag kan falen (quota overschreden, uitgeschakeld); laat caller het weten */
+      return false;
+    }
+  }
+}
