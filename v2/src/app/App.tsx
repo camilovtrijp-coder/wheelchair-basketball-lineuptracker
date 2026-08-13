@@ -31,6 +31,7 @@ import { LiveTrackingPanel } from '../ui/game/LiveTrackingPanel';
 import { V1MigrationPrompt } from '../ui/game/V1MigrationPrompt';
 import { HistoryPanel } from '../ui/game/HistoryPanel';
 import { StatsPanel } from '../ui/stats/StatsPanel';
+import { TrendsPanel } from '../ui/trends/TrendsPanel';
 
 export interface AppProps {
   repositories: ResolvedAppRepositories;
@@ -84,7 +85,7 @@ export interface AppProps {
   organizationName: string;
 }
 
-type Tab = 'settings' | 'roster' | 'game' | 'history' | 'stats';
+type Tab = 'settings' | 'roster' | 'game' | 'history' | 'stats' | 'trends';
 
 function initialLang(): Lang {
   const stored = readLang(browserStorage);
@@ -189,6 +190,11 @@ export function App({
   );
   const [completedGames, setCompletedGames] = useState<CompletedGame[]>([]);
   const [historyOpenId, setHistoryOpenId] = useState<string | null>(null);
+  // PR 6.5 §C.2/§F: het wedstrijdfilter is gedeeld tussen Stats en Trends —
+  // één "welke wedstrijden tellen mee"-instelling voor de hele app, i.p.v.
+  // twee aparte filters die uit de pas kunnen lopen (v1-pariteit). `null` =
+  // "alles" (zie `domain/stats/types.ts` `StatsFilter.gameIds`).
+  const [statsGameIds, setStatsGameIds] = useState<Set<string> | null>(null);
 
   useEffect(() => {
     setCompletedGames(completedGameRepo.list());
@@ -545,6 +551,15 @@ export function App({
         >
           {t('statsTitle')}
         </button>
+        <button
+          type="button"
+          className={`app-nav__tab${tab === 'trends' ? ' app-nav__tab--active' : ''}`}
+          aria-current={tab === 'trends' ? 'page' : undefined}
+          data-testid="nav-trends"
+          onClick={() => setTab('trends')}
+        >
+          {t('trendsTitle')}
+        </button>
       </nav>
 
       <main className="app-main">
@@ -612,6 +627,20 @@ export function App({
             repository={completedGameRepo}
             activeGame={game}
             roster={roster}
+            gameIds={statsGameIds}
+            onGameIdsChange={setStatsGameIds}
+          />
+        ) : tab === 'trends' ? (
+          // PR 6.5: Trends-tab. Zelfde lees-only redenering als Stats
+          // (docs/pr-6.5-plan.md §D 6.5c) — geen `canWrite`-poort, en deelt
+          // het wedstrijdfilter (`statsGameIds`) met Stats.
+          <TrendsPanel
+            lang={lang}
+            repository={completedGameRepo}
+            activeGame={game}
+            roster={roster}
+            gameIds={statsGameIds}
+            onGameIdsChange={setStatsGameIds}
           />
         ) : v1MigrationCandidate !== null ? (
           <V1MigrationPrompt
