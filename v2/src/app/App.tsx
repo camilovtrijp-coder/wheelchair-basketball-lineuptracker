@@ -199,6 +199,13 @@ export function App({
   useEffect(() => {
     setCompletedGames(completedGameRepo.list());
     setHistoryOpenId(null);
+    // Externe PR-6.5-review (aug. 2026): zonder deze reset bleef een
+    // wedstrijdselectie uit team A's `AnalysisGame.id`-verzameling actief na
+    // een contextwissel naar team B (dezelfde `App`-instance krijgt alleen
+    // nieuwe props, geen remount). Team B's wedstrijd-ID's komen daar niet in
+    // voor, dus Stats/Trends toonden dan ten onrechte "0 wedstrijden" i.p.v.
+    // het v1-standaardgedrag "alles geselecteerd" (`null`).
+    setStatsGameIds(null);
   }, [completedGameRepo]);
 
   // Spiegelt v1's init() precies: een opgeslagen wedstrijd wordt alleen

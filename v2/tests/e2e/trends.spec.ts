@@ -142,9 +142,19 @@ test.describe('v2 Trends-tab (PR 6.5)', () => {
     await expect(page.getByTestId('trends-avgmin-1')).toHaveText('3.5');
     // pm: (8-6) + (5-4) = 3, /2 wedstrijden = +1.5
     await expect(page.getByTestId('trends-avgpm-1')).toHaveText('+1.5');
-    // grafieken hebben een tekstalternatief (toegankelijke naam)
+    // grafieken hebben een toegankelijke naam...
     await expect(page.getByTestId('trends-line-chart-1')).toHaveAttribute('role', 'img');
+    await expect(page.getByTestId('trends-line-chart-1')).toHaveAccessibleName(/Anna/);
     await expect(page.getByTestId('trends-bar-chart-1')).toHaveAttribute('role', 'img');
+    await expect(page.getByTestId('trends-bar-chart-1')).toHaveAccessibleName(/Anna/);
+    // ...en de exacte per-punt waarden zijn al beschikbaar (aria-describedby)
+    // ZONDER de wedstrijdlijst eerst uit te klappen — vóór de externe
+    // PR-6.5-review stonden die waarden alleen in de conditioneel
+    // gerenderde uitklaplijst.
+    await expect(page.getByTestId('trends-line-points-1')).toContainText('+2.0');
+    await expect(page.getByTestId('trends-line-points-1')).toContainText('+1.0');
+    await expect(page.getByTestId('trends-bar-points-1')).toContainText('3.0 MIN');
+    await expect(page.getByTestId('trends-bar-points-1')).toContainText('4.0 MIN');
   });
 
   test('per10-toggle herberekent het gemiddelde plus/min per speler', async ({ page }) => {

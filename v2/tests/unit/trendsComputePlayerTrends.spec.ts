@@ -47,8 +47,8 @@ function baseFilter(overrides: Partial<TrendsFilter> = {}): TrendsFilter {
   return { per10: false, sortBy: 'nr', gameIds: null, ...overrides };
 }
 
-describe('domain/trends/computePlayerTrends — Voorbeeld 4 (plan §E.1)', () => {
-  it('9:00 totaal, gemiddeld 4:30, gemiddeld +1,5 over twee wedstrijden; per-10 apart genormaliseerd', () => {
+describe('domain/trends/computePlayerTrends — Voorbeeld 4 (docs/product-compatibility-matrix.md, plan §E.1)', () => {
+  it('9:00 totaal, gemiddeld 4:30, gemiddeld +3,0 over twee wedstrijden; per-10 apart genormaliseerd naar +7,5 (NIET de 6,7-Stats-aggregatie)', () => {
     const p1 = gamePlayer('p1', 1, '1');
     const others = [
       gamePlayer('p2', 2, '2'),
@@ -56,26 +56,38 @@ describe('domain/trends/computePlayerTrends — Voorbeeld 4 (plan §E.1)', () =>
       gamePlayer('p4', 4, '4'),
       gamePlayer('p5', 5, '5'),
     ];
+    const other1 = gamePlayer('p6', 6, '6');
+    // Voorbeeld 4, letterlijk uit docs/product-compatibility-matrix.md:
+    // Wedstrijd A: seg1 #1 speelt 3:00 pf=8 pa=6 (pm=+2); seg2 #1 speelt
+    // 2:00 pf=6 pa=8 (pm=-2); seg3 #1 speelt NIET.
     const gameA: AnalysisGame = {
       id: 'A',
       opponent: 'A',
       competition: '',
       date: '2026-01-01T10:00:00.000Z',
-      players: [p1, ...others],
-      segments: [segment('A1', ['p1', 'p2', 'p3', 'p4', 'p5'], 300, 8, 6)],
-      scoreFor: 8,
-      scoreAgainst: 6,
+      players: [p1, ...others, other1],
+      segments: [
+        segment('A1', ['p1', 'p2', 'p3', 'p4', 'p5'], 180, 8, 6),
+        segment('A2', ['p1', 'p2', 'p3', 'p4', 'p5'], 120, 6, 8),
+        segment('A3', ['p6', 'p2', 'p3', 'p4', 'p5'], 100, 4, 2), // #1 speelt niet
+      ],
+      scoreFor: 0,
+      scoreAgainst: 0,
       isCurrent: false,
     };
+    // Wedstrijd B: seg1 #1 speelt 4:00 pf=10 pa=4 (pm=+6); seg2 #1 speelt NIET.
     const gameB: AnalysisGame = {
       id: 'B',
       opponent: 'B',
       competition: '',
       date: '2026-01-08T10:00:00.000Z',
-      players: [p1, ...others],
-      segments: [segment('B1', ['p1', 'p2', 'p3', 'p4', 'p5'], 240, 5, 4)],
-      scoreFor: 5,
-      scoreAgainst: 4,
+      players: [p1, ...others, other1],
+      segments: [
+        segment('B1', ['p1', 'p2', 'p3', 'p4', 'p5'], 240, 10, 4),
+        segment('B2', ['p6', 'p2', 'p3', 'p4', 'p5'], 90, 3, 1), // #1 speelt niet
+      ],
+      scoreFor: 0,
+      scoreAgainst: 0,
       isCurrent: false,
     };
     const roster = [rosterPlayer(1, '1')];
@@ -84,10 +96,15 @@ describe('domain/trends/computePlayerTrends — Voorbeeld 4 (plan §E.1)', () =>
     expect(result.players).toHaveLength(1);
     const trend = result.players[0]!;
     expect(trend.points.map((p) => p.gameId)).toEqual(['A', 'B']);
+    // Wedstrijd A: sec = 180+120 = 300, pm = 2 + (-2) = 0.
+    expect(trend.points[0]).toMatchObject({ gameId: 'A', sec: 300, pm: 0 });
+    // Wedstrijd B: sec = 240, pm = 6.
+    expect(trend.points[1]).toMatchObject({ gameId: 'B', sec: 240, pm: 6 });
     const totalSec = trend.points.reduce((a, p) => a + p.sec, 0);
     expect(totalSec).toBe(540); // 9:00
     expect(trend.avgMinutes).toBeCloseTo(4.5, 6);
-    expect(trend.avgPlusMinus).toBeCloseTo(1.5, 6);
+    // Raw gemiddelde pm: (0 + 6) / 2 = +3,0 (matrix §Voorbeeld 4).
+    expect(trend.avgPlusMinus).toBeCloseTo(3.0, 6);
 
     const per10Result = computePlayerTrends(
       [gameB, gameA],
@@ -96,10 +113,15 @@ describe('domain/trends/computePlayerTrends — Voorbeeld 4 (plan §E.1)', () =>
       'ok',
     );
     const per10Trend = per10Result.players[0]!;
-    // per punt genormaliseerd (v1: pm*600/sec), NIET één normalisatie over de opgetelde seconden.
-    const expectedPer10 = ((2 * 600) / 300 + (1 * 600) / 240) / 2;
+    // v1-per-punt-per-10-contract (plan §C.2): elk wedstrijdpunt eerst apart
+    // genormaliseerd (pm*600/sec), pas daarna gemiddeld — (0*600/300 +
+    // 6*600/240) / 2 = 7,5. Bewust NIET de 6,7 uit de Stats-matrix, die één
+    // keer over de opgetelde seconden normaliseert (6*600/540); dat getal
+    // hoort bij Stats' lineup-aggregatie, niet bij het Trends-per-punt-contract.
+    const expectedPer10 = ((0 * 600) / 300 + (6 * 600) / 240) / 2;
+    expect(expectedPer10).toBeCloseTo(7.5, 6);
     expect(per10Trend.avgPlusMinus).toBeCloseTo(expectedPer10, 6);
-    expect(expectedPer10).not.toBeCloseTo((3 * 600) / 540, 3);
+    expect(per10Trend.avgPlusMinus).not.toBeCloseTo((6 * 600) / 540, 3);
   });
 });
 

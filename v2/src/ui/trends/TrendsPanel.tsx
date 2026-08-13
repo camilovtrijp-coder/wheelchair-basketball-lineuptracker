@@ -280,73 +280,121 @@ function pmClassOf(n: number): 'pos' | 'neg' | 'flat' {
 }
 
 /**
- * Toegankelijke SVG-lijngrafiek (plan §C.3): een `<title>`/`<desc>` geven de
- * grafiek een naam; de exacte waarden staan daarnaast altijd in de
- * uitklaplijst (`trends-games-list-*`), zodat kleur nooit het enige
- * onderscheid is.
+ * Toegankelijke SVG-lijngrafiek (plan §C.3): een `<title>` geeft de grafiek
+ * een naam, en een altijd-aanwezige (niet van de uitklapstaat afhankelijke)
+ * screenreader-only lijst met per-punt datum/tegenstander/waarde/voorlopig
+ * (`aria-describedby`) is de vereiste tekstalternatief per punt — vóór PR
+ * 6.5-review stonden die exacte waarden alleen in de conditioneel
+ * gerenderde uitklaplijst, dus niet bereikbaar zonder eerst uit te klappen.
+ * Kleur (rood/groen) is zo nooit het enige onderscheid.
  */
+function pointSummaryText(
+  lang: Lang,
+  opponent: string,
+  date: string,
+  provisional: boolean,
+  valueText: string,
+): string {
+  const oppLabel = provisional ? t(lang, 'statsCurrentGame') : opponent || t(lang, 'teamOpponent');
+  const dateLabel = formatDate(date, lang);
+  const suffix = provisional ? `, ${t(lang, 'trendsProvisional')}` : '';
+  return `${dateLabel} ${oppLabel}: ${valueText}${suffix}`;
+}
+
 function PlusMinusLineChart({ player, lang }: { player: TrendPlayerViewModel; lang: Lang }) {
   const { width, height, zeroY, points } = player.lineChart;
   const polyline = points.map((c) => `${c.x.toFixed(1)},${c.y.toFixed(1)}`).join(' ');
   const titleId = `trends-line-title-${player.rosterId}`;
+  const pointsId = `trends-line-points-${player.rosterId}`;
   return (
-    <svg
-      viewBox={`0 0 ${width} ${height}`}
-      role="img"
-      aria-labelledby={titleId}
-      style={{ width: '100%', height: '4.75rem', display: 'block' }}
-      preserveAspectRatio="none"
-      data-testid={`trends-line-chart-${player.rosterId}`}
-    >
-      <title id={titleId}>
-        {t(lang, 'trendsPmChartLabel')} — #{player.nr} {player.naam}
-      </title>
-      <line
-        x1={0}
-        y1={zeroY}
-        x2={width}
-        y2={zeroY}
-        stroke="var(--line-bright)"
-        strokeWidth={1}
-        strokeDasharray="3,3"
-      />
-      {points.length > 1 ? (
-        <polyline
-          points={polyline}
-          fill="none"
-          stroke="var(--primary)"
-          strokeWidth={2.5}
-          strokeLinecap="round"
-          strokeLinejoin="round"
+    <>
+      <svg
+        viewBox={`0 0 ${width} ${height}`}
+        role="img"
+        aria-labelledby={titleId}
+        aria-describedby={pointsId}
+        style={{ width: '100%', height: '4.75rem', display: 'block' }}
+        preserveAspectRatio="none"
+        data-testid={`trends-line-chart-${player.rosterId}`}
+      >
+        <title id={titleId}>
+          {t(lang, 'trendsPmChartLabel')} — #{player.nr} {player.naam}
+        </title>
+        <line
+          x1={0}
+          y1={zeroY}
+          x2={width}
+          y2={zeroY}
+          stroke="var(--line-bright)"
+          strokeWidth={1}
+          strokeDasharray="3,3"
         />
-      ) : null}
-      {points.map((c, i) => (
-        <circle
-          key={i}
-          cx={c.x}
-          cy={c.y}
-          r={c.provisional ? 4.5 : 3.5}
-          fill={c.value >= 0 ? 'var(--emerald)' : 'var(--rose)'}
-          stroke="var(--card)"
-          strokeWidth={c.provisional ? 2 : 1.5}
-        />
-      ))}
-    </svg>
+        {points.length > 1 ? (
+          <polyline
+            points={polyline}
+            fill="none"
+            stroke="var(--primary)"
+            strokeWidth={2.5}
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          />
+        ) : null}
+        {points.map((c, i) => (
+          <circle
+            key={i}
+            cx={c.x}
+            cy={c.y}
+            r={c.provisional ? 4.5 : 3.5}
+            fill={c.value >= 0 ? 'var(--emerald)' : 'var(--rose)'}
+            stroke="var(--card)"
+            strokeWidth={c.provisional ? 2 : 1.5}
+          />
+        ))}
+      </svg>
+      <ul id={pointsId} className="sr-only" data-testid={`trends-line-points-${player.rosterId}`}>
+        {player.points.map((pt, i) => (
+          <li key={pt.gameId}>
+            {pointSummaryText(
+              lang,
+              pt.opponent,
+              pt.date,
+              pt.provisional,
+              fmtPM(player.lineChart.points[i]!.value),
+            )}
+          </li>
+        ))}
+      </ul>
+    </>
   );
 }
 
 function MinutesBarChart({ player, lang }: { player: TrendPlayerViewModel; lang: Lang }) {
   const titleId = `trends-bar-title-${player.rosterId}`;
+  const pointsId = `trends-bar-points-${player.rosterId}`;
   return (
     <div
       className="row trends-bar-chart"
       role="img"
       aria-labelledby={titleId}
+      aria-describedby={pointsId}
       data-testid={`trends-bar-chart-${player.rosterId}`}
     >
       <span id={titleId} className="sr-only">
         {t(lang, 'trendsMinChartLabel')} — #{player.nr} {player.naam}
       </span>
+      <ul id={pointsId} className="sr-only" data-testid={`trends-bar-points-${player.rosterId}`}>
+        {player.points.map((pt, i) => (
+          <li key={pt.gameId}>
+            {pointSummaryText(
+              lang,
+              pt.opponent,
+              pt.date,
+              pt.provisional,
+              `${player.barChart.bars[i]!.minutes.toFixed(1)} ${t(lang, 'trendsMinLabel')}`,
+            )}
+          </li>
+        ))}
+      </ul>
       {player.barChart.bars.map((b, i) => (
         <div key={i} className="trends-bar-chart__col">
           <span className="mut2 tab trends-bar-chart__value">{b.minutes.toFixed(0)}</span>
