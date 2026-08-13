@@ -103,19 +103,26 @@ describe('createBrowserStorage', () => {
       expect(() => storage.getItem('x')).toThrow();
     });
 
-    it('geeft nog steeds null terug (werpt niet) wanneer de storage-getter zelf faalt of null teruggeeft', () => {
-      const storageFromThrowingGetter = createBrowserStorage(
+    it('laat getItem()/setItem()/removeItem() ook doorwerpen wanneer de storage-getter zelf faalt (herreview, aug. 2026)', () => {
+      // In niet-strikte modus (default `browserStorage`) is dit een stille null/no-op —
+      // hier moet het juist een detecteerbare fout zijn, anders behandelt een caller als
+      // LocalStorageCompletedGameRepository "storage-getter faalt" ten onrechte als "leeg".
+      const storage = createBrowserStorage(
         () => {
           throw new Error('SecurityError: storage disabled');
         },
         { swallowGetItemErrors: false },
       );
-      expect(storageFromThrowingGetter.getItem('x')).toBeNull();
+      expect(() => storage.getItem('x')).toThrow();
+      expect(() => storage.setItem('x', 'y')).toThrow();
+      expect(() => storage.removeItem('x')).toThrow();
+    });
 
-      const storageFromNullGetter = createBrowserStorage(() => null, {
-        swallowGetItemErrors: false,
-      });
-      expect(storageFromNullGetter.getItem('x')).toBeNull();
+    it('laat getItem()/setItem()/removeItem() ook doorwerpen wanneer de storage-getter expliciet null teruggeeft (herreview, aug. 2026)', () => {
+      const storage = createBrowserStorage(() => null, { swallowGetItemErrors: false });
+      expect(() => storage.getItem('x')).toThrow();
+      expect(() => storage.setItem('x', 'y')).toThrow();
+      expect(() => storage.removeItem('x')).toThrow();
     });
 
     it('rondt get/set/remove nog steeds normaal af via een werkende storage', () => {

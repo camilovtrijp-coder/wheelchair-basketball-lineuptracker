@@ -18,24 +18,45 @@ function tryGetStorage(getStorage: () => Storage | null): Storage | null {
   }
 }
 
+/**
+ * Vraagt de backing storage op zonder iets te slikken: een throwende getter
+ * blijft throwen, en een expliciete `null` (geen storage beschikbaar) wordt
+ * hier zelf omgezet in een throw — nodig zodat "storage onbeschikbaar" een
+ * caller-detecteerbare fout is i.p.v. een stille `null`/no-op (zie
+ * `CreateBrowserStorageOptions` hieronder).
+ */
+function requireStorage(getStorage: () => Storage | null): Storage {
+  const storage = getStorage();
+  if (storage === null) throw new Error('storage unavailable');
+  return storage;
+}
+
 export interface CreateBrowserStorageOptions {
   /**
    * Standaard `true` (bestaand contract, gebruikt door alle andere
    * `browserStorage`-callers zoals `i18n/persistence.ts`,
    * `device/trustedDevice.ts`, `context/selectedContext.ts`,
    * `onboarding/bootstrapProgress.ts`, `cloudImportFlag.ts` — geen van die
-   * callers wrapt `getItem()` zelf in een try/catch, dus een throwende
-   * `getItem()` zou daar een onbehandelde exception worden als dit ooit
-   * globaal zou wijzigen).
+   * callers wrapt `getItem()`/`setItem()` zelf in een try/catch, dus een
+   * throwende storage zou daar een onbehandelde exception worden als dit
+   * ooit globaal zou wijzigen).
    *
-   * Zet dit op `false` voor een caller die zélf een throwende
-   * `getItem()`-fout van een écht mislukte read moet kunnen onderscheiden
-   * van een legitiem lege/nog-niet-bestaande sleutel — zie de externe
-   * PR-6.3-review (aug. 2026): `LocalStorageCompletedGameRepository` mag een
-   * storage-readfout niet als "leeg" behandelen (dat zou `add()`/`remove()`
-   * de bestaande historie laten overschrijven), maar de gedeelde
-   * `browserStorage`-instantie moet dat null-op-fout-gedrag voor alle
-   * overige, hier niet-gewijzigde callers behouden.
+   * Zet dit op `false` voor een caller die zélf betrouwbaar "storage
+   * onbeschikbaar of de operatie is mislukt" moet kunnen onderscheiden van
+   * "leeg"/"gelukt" — zie de externe PR-6.3-review (aug. 2026), twee ronden:
+   * 1. eerste ronde: `LocalStorageCompletedGameRepository` mag een
+   *    METHODEFOUT van `Storage.getItem()` (bv. een corrupte/geweigerde
+   *    read) niet als "leeg" behandelen, anders overschrijven `add()`/
+   *    `remove()` de bestaande historie op basis van een foutief lege lijst;
+   * 2. herreview: dezelfde repository mag óók een falende of niet-
+   *    beschikbare storage-GETTER (`getStorage()` zelf gooit, of geeft
+   *    expliciet `null` terug) niet als "leeg" behandelen — én mag een
+   *    `setItem()` die daardoor stilzwijgend een no-op is niet als geslaagde
+   *    write rapporteren. In strict-modus (`false`) gooien `getItem()`,
+   *    `setItem()` en `removeItem()` daarom alledrie door zodra de storage
+   *    zelf niet verkregen kon worden, niet alleen bij een methodefout op
+   *    een wél verkregen storage. De gedeelde, niet-strikte `browserStorage`
+   *    behoudt voor alle overige callers het bestaande null-op-fout-gedrag.
    */
   swallowGetItemErrors?: boolean;
 }
@@ -44,12 +65,18 @@ export function createBrowserStorage(
   getStorage: () => Storage | null,
   options: CreateBrowserStorageOptions = {},
 ): KeyValueStorage {
-  const swallowGetItemErrors = options.swallowGetItemErrors ?? true;
+  const strict = !(options.swallowGetItemErrors ?? true);
+  if (strict) {
+    return {
+      getItem: (key) => requireStorage(getStorage).getItem(key),
+      setItem: (key, value) => requireStorage(getStorage).setItem(key, value),
+      removeItem: (key) => requireStorage(getStorage).removeItem(key),
+    };
+  }
   return {
     getItem: (key) => {
       const storage = tryGetStorage(getStorage);
       if (storage === null) return null;
-      if (!swallowGetItemErrors) return storage.getItem(key);
       try {
         return storage.getItem(key);
       } catch {

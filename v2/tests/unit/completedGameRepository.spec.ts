@@ -219,6 +219,45 @@ describe('LocalStorageCompletedGameRepository', () => {
     expect(JSON.parse(backingStore.get(key)!).map((g: CompletedGame) => g.id)).toEqual(['old']);
   });
 
+  it('add() weigert te schrijven bij een tijdelijk falende storage-GETTER (niet alleen een falende methode)', () => {
+    // Herreview-regressietest (externe PR-6.3-review, aug. 2026, ronde 2): de
+    // vorige test hierboven dekte alleen een falende `Storage.getItem()`-
+    // METHODE op een wél verkregen storage. `getStorage()` zelf kan ook maar
+    // één keer falen (bv. een tijdelijke SecurityError) en daarna weer een
+    // werkende storage teruggeven — exact het scenario uit de review.
+    const key = completedGamesStorageKey('org-1', 'team-1');
+    const backingStore = new Map<string, string>();
+    backingStore.set(key, JSON.stringify([completedGame({ id: 'old' })]));
+    const backing = {
+      getItem: (k: string) => backingStore.get(k) ?? null,
+      setItem: (k: string, value: string) => backingStore.set(k, value),
+      removeItem: (k: string) => backingStore.delete(k),
+    } as unknown as Storage;
+
+    let failNextGetter = true;
+    const storage = createBrowserStorage(
+      () => {
+        if (failNextGetter) {
+          failNextGetter = false;
+          throw new Error('SecurityError: storage temporarily unavailable');
+        }
+        return backing;
+      },
+      { swallowGetItemErrors: false },
+    );
+    const repo = new LocalStorageCompletedGameRepository(storage, 'org-1', 'team-1');
+
+    expect(repo.add(completedGame({ id: 'new' }))).toBe(false);
+    expect(JSON.parse(backingStore.get(key)!).map((g: CompletedGame) => g.id)).toEqual(['old']);
+  });
+
+  it('add() weigert te schrijven bij een blijvend onbeschikbare storage-getter (permanent null)', () => {
+    const storage = createBrowserStorage(() => null, { swallowGetItemErrors: false });
+    const repo = new LocalStorageCompletedGameRepository(storage, 'org-1', 'team-1');
+
+    expect(repo.add(completedGame({ id: 'new' }))).toBe(false);
+  });
+
   it('houdt teams strikt gescheiden (zelfde isolatie als de actieve wedstrijd)', () => {
     const storage = new TrackingStorage();
     const repoA = new LocalStorageCompletedGameRepository(storage, 'org-1', 'team-1');
