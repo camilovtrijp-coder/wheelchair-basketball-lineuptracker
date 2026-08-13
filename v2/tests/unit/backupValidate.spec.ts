@@ -105,6 +105,12 @@ describe('domain/backup/validate — envelope (plan §C.2-3/§G.2)', () => {
     );
   });
 
+  it('verwerpt een niet-geheel versienummer (bv. 1.5) — externe PR-6.6-review', () => {
+    expect(validateEnvelope({ type: BACKUP_TYPE, version: 1.5, data: {} }).errors[0]!.code).toBe(
+      'invalidVersion',
+    );
+  });
+
   it('accepteert de huidige versie', () => {
     const result = validateEnvelope({
       type: BACKUP_TYPE,
@@ -178,5 +184,26 @@ describe('domain/backup/validate — validateBackupData (plan §C.5/§G.3-4)', (
 
   it('ongeldige taal wordt geweigerd', () => {
     expect(validateBackupData({ lang: 'fr' as never })).toEqual([{ code: 'langInvalid' }]);
+  });
+
+  it('een CompletedGame met ontbrekende topvelden (sourceGameId/opponent/competition/quarterCount/periodLabel/useClassLimit) wordt geweigerd — externe PR-6.6-review', () => {
+    const minimal = {
+      id: 'g1',
+      date: '2026-01-01T10:00:00.000Z',
+      players: fivePlayers(),
+      segments: [segment()],
+      scoreFor: 2,
+      scoreAgainst: 1,
+    };
+    const errors = validateBackupData({ completedGames: [minimal as unknown as CompletedGame] });
+    expect(errors.length).toBeGreaterThan(0);
+    expect(errors.every((e) => e.code === 'gameInvalid')).toBe(true);
+  });
+
+  it('een niet-object segment-item (null) crasht niet en levert een vertaalde validatiefout op — externe PR-6.6-review', () => {
+    const game = completedGame({ segments: [null as unknown as Segment] });
+    expect(() => validateBackupData({ completedGames: [game] })).not.toThrow();
+    const errors = validateBackupData({ completedGames: [game] });
+    expect(errors.some((e) => e.code === 'gameInvalid')).toBe(true);
   });
 });

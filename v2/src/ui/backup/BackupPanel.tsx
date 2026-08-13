@@ -1,4 +1,4 @@
-import { useRef, useState } from 'preact/hooks';
+import { useEffect, useRef, useState } from 'preact/hooks';
 import type { AsyncSettingsRepository } from '../../application/settings/AsyncSettingsRepository';
 import type { AsyncRosterRepository } from '../../application/roster/AsyncRosterRepository';
 import type { GameRepository } from '../../application/game/GameRepository';
@@ -21,11 +21,24 @@ import { readBackupFile } from '../../infrastructure/backup/readBackupFile';
 import { downloadBackupFile } from '../../infrastructure/backup/downloadBackupFile';
 import type { Settings, SettingsKey } from '../../domain/settings/types';
 import type { Roster } from '../../domain/roster/types';
-import type { ActiveGame } from '../../domain/game/types';
 import { translate, type Lang, type StringKey } from '../../i18n/strings';
 
 function t(lang: Lang, key: StringKey): string {
   return translate(lang, key);
+}
+
+/**
+ * Doelcontext + bevoegdheid zoals bevestigd bij het bouwen van de preview
+ * (externe PR-6.6-review, aug. 2026). `BackupPanel` blijft bestaan wanneer
+ * `AuthGate`/`App` dezelfde instance nieuwe context-/`canWrite`-props geeft
+ * bij een organisatie-/teamwissel — zonder deze binding zou een reeds
+ * ingelezen back-up tegen de NIEUWE repositories/doel-ID's bevestigd kunnen
+ * worden i.p.v. dat de preview ongeldig wordt (plan §C.7).
+ */
+interface PreviewTarget {
+  organizationId: string;
+  teamId: string;
+  canWrite: boolean;
 }
 
 export interface BackupPanelProps {
@@ -37,7 +50,6 @@ export interface BackupPanelProps {
   teamName: string;
   settings: Settings & Record<string, unknown>;
   roster: Roster;
-  activeGame: ActiveGame | null;
   settingsRepo: AsyncSettingsRepository;
   rosterRepo: AsyncRosterRepository;
   gameRepo: GameRepository;
@@ -55,7 +67,7 @@ export interface BackupPanelProps {
 type PanelState =
   | { step: 'idle' }
   | { step: 'error'; message: string }
-  | { step: 'preview'; data: BackupV2Data; preview: ImportPreview }
+  | { step: 'preview'; data: BackupV2Data; preview: ImportPreview; target: PreviewTarget }
   | { step: 'running' }
   | { step: 'done'; ok: true }
   | { step: 'done'; ok: false; journal: ImportJournalEntry[] };
@@ -68,6 +80,14 @@ const SECTION_LABEL_KEY: Record<ImportJournalEntry['section'], StringKey> = {
   lang: 'backupSectionLang',
 };
 
+const OUTCOME_LABEL: Record<ImportJournalEntry['outcome'], string> = {
+  written: '✓',
+  skipped: '—',
+  failed: '✗',
+  rolledBack: '↩',
+  rollbackFailed: '⚠',
+};
+
 function firstErrorMessage(lang: Lang, errors: BackupValidationError[]): string {
   const first = errors[0]!;
   if (first.code === 'emptyData') return t(lang, 'validationNoRecognizableData');
@@ -78,7 +98,8 @@ function firstErrorMessage(lang: Lang, errors: BackupValidationError[]): string 
     first.code === 'invalidVersion' ||
     first.code === 'fileTooLarge' ||
     first.code === 'fileUnreadable' ||
-    first.code === 'fileNotJson'
+    first.code === 'fileNotJson' ||
+    first.code === 'migrationFailed'
   ) {
     return t(lang, 'importBackupInvalid');
   }
@@ -99,7 +120,6 @@ export function BackupPanel({
   teamName,
   settings,
   roster,
-  activeGame,
   settingsRepo,
   rosterRepo,
   gameRepo,
@@ -112,13 +132,43 @@ export function BackupPanel({
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const [state, setState] = useState<PanelState>({ step: 'idle' });
 
+  // Externe PR-6.6-review (aug. 2026): een organisatie-/teamwissel (of een
+  // capabiliteitswijziging, bv. een rolwijziging die tussentijds binnenkomt)
+  // ná het bouwen van de preview maakt hem ongeldig. `App` hergebruikt
+  // dezelfde `BackupPanel`-instance met nieuwe props (geen remount), dus
+  // zonder deze guard zou een reeds ingelezen back-up alsnog tegen de
+  // NIEUWE context bevestigd kunnen worden.
+  useEffect(() => {
+    if (state.step !== 'preview') return;
+    if (
+      state.target.organizationId !== organizationId ||
+      state.target.teamId !== teamId ||
+      state.target.canWrite !== canWrite
+    ) {
+      setState({ step: 'idle' });
+      if (fileInputRef.current) fileInputRef.current.value = '';
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [organizationId, teamId, canWrite]);
+
   function handleExport() {
+    if (!canWrite) return;
+    // Externe PR-6.6-review: zelfde reden als captureSnapshot() — een
+    // storage-/parsefout mag nooit als "leeg" geëxporteerd worden.
+    const completedResult = completedGameRepo.safeList
+      ? completedGameRepo.safeList()
+      : { status: 'ok' as const, games: completedGameRepo.list() };
+    const activeResult = gameRepo.safeRead();
+    if (completedResult.status === 'error' || activeResult.status === 'error') {
+      setState({ step: 'error', message: t(lang, 'statsReadError') });
+      return;
+    }
     const payload = buildBackupPayload(
       {
         settings,
         roster,
-        activeGame,
-        completedGames: completedGameRepo.list(),
+        activeGame: activeResult.game,
+        completedGames: completedResult.games,
         lang,
       },
       new Date(),
@@ -128,7 +178,7 @@ export function BackupPanel({
   }
 
   async function handleFileChosen(file: File | undefined) {
-    if (!file) return;
+    if (!canWrite || !file) return;
     const read = await readBackupFile(file);
     if (!read.ok) {
       setState({ step: 'error', message: t(lang, 'importBackupInvalid') });
@@ -140,7 +190,12 @@ export function BackupPanel({
       return;
     }
     const preview = buildImportPreview(parsed.data, parsed.version, parsed.exportedAt);
-    setState({ step: 'preview', data: parsed.data, preview });
+    setState({
+      step: 'preview',
+      data: parsed.data,
+      preview,
+      target: { organizationId, teamId, canWrite },
+    });
   }
 
   function deps(): BackupCoordinatorDeps {
@@ -157,9 +212,28 @@ export function BackupPanel({
 
   async function handleConfirmImport() {
     if (state.step !== 'preview') return;
+    // Herbevestiging vlak vóór schrijven (externe PR-6.6-review): de
+    // preview-binding hierboven vangt de meeste gevallen af via de
+    // useEffect, maar deze check is de laatste, synchrone poort vlak vóór
+    // een echte write — nooit vertrouwen op alleen de knop-`disabled`-state.
+    if (
+      !canWrite ||
+      state.target.organizationId !== organizationId ||
+      state.target.teamId !== teamId
+    ) {
+      setState({ step: 'idle' });
+      return;
+    }
+    const target = { organizationId, teamId };
+    const importData = state.data;
     setState({ step: 'running' });
     const d = deps();
-    const snapshot = await captureSnapshot(d);
+    const snapshotResult = await captureSnapshot(d);
+    if (!snapshotResult.ok) {
+      setState({ step: 'error', message: t(lang, 'statsReadError') });
+      return;
+    }
+    const snapshot = snapshotResult.snapshot;
 
     // Plan §C.8: eerst automatisch een herstelback-up van de HUIDIGE
     // doelcontext downloaden, vóór er iets geschreven wordt.
@@ -172,11 +246,11 @@ export function BackupPanel({
         lang,
       },
       new Date(),
-      { organizationId, teamId },
+      target,
     );
     downloadBackupFile(restorePayload, backupFilename(`${settings.teamName || teamId}-herstel`));
 
-    const result = await runImport(d, state.data, { organizationId, teamId }, snapshot);
+    const result = await runImport(d, importData, target, snapshot);
     if (result.ok) {
       setState({ step: 'done', ok: true });
       onImported();
@@ -205,6 +279,7 @@ export function BackupPanel({
           type="button"
           className="btn-outline"
           data-testid="backup-export-btn"
+          disabled={!canWrite}
           onClick={handleExport}
         >
           {t(lang, 'backupExportBtn')}
@@ -223,6 +298,7 @@ export function BackupPanel({
           type="file"
           accept="application/json"
           style="display:none"
+          disabled={!canWrite}
           data-testid="backup-file-input"
           onChange={(e) =>
             void handleFileChosen((e.target as HTMLInputElement).files?.[0] ?? undefined)
@@ -270,6 +346,14 @@ export function BackupPanel({
               t(lang, SECTION_LABEL_KEY[failedSection(state.journal)]),
             )}
           </p>
+          <ul className="backup-preview__list" data-testid="backup-journal">
+            {state.journal.map((entry, i) => (
+              <li key={i} data-testid={`backup-journal-${entry.section}-${entry.outcome}`}>
+                {OUTCOME_LABEL[entry.outcome]} {t(lang, SECTION_LABEL_KEY[entry.section])}:{' '}
+                {entry.outcome}
+              </li>
+            ))}
+          </ul>
           <button type="button" className="btn-outline" onClick={handleDismissResult}>
             OK
           </button>
@@ -311,6 +395,9 @@ function BackupPreviewCard({
         {t(lang, 'backupPreviewTarget')
           .replace('{org}', `${organizationName} (${teamName})`)
           .replace('{team}', teamName)}
+      </p>
+      <p className="xs mut2" data-testid="backup-preview-meta">
+        v{preview.sourceVersion} · {preview.exportedAt ?? '—'}
       </p>
       <ul className="backup-preview__list">
         <li data-testid="backup-preview-settings">

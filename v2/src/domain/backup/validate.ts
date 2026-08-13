@@ -2,7 +2,7 @@ import type { Settings, SettingsKey } from '../settings/types';
 import { SETTINGS_BOOLEAN_KEYS, SETTINGS_KEYS, SETTINGS_NUMBER_KEYS } from '../settings/types';
 import type { RosterPlayer } from '../roster/types';
 import { PLAYER_KEYS } from '../roster/types';
-import type { CompletedGame, GamePlayer, Segment } from '../game/types';
+import type { ActiveGame, CompletedGame, GamePlayer, Segment } from '../game/types';
 import { isValidLang } from '../../i18n/strings';
 import {
   BACKUP_TYPE,
@@ -18,6 +18,15 @@ import {
  * aanwezige sectie — één fout in een aanwezige sectie verwerpt de HELE
  * import (geen writes), maar een ONTBREKENDE sectie is geen fout (dat is
  * precies de "leegt dat onderdeel"-semantiek uit eigenaarsbesluit §E.2).
+ *
+ * Externe PR-6.6-review (aug. 2026): een vóór-migratie v2-native back-up
+ * (`version: 2`) komt HIER binnen zonder door `migrateV1.ts`'s defensieve
+ * `isPlainObject`-guards te zijn gegaan — elke sectie/array-item moet dus
+ * hier zelf, opnieuw, tegen malformed/`null`-invoer bestand zijn (niet
+ * aannemen dat een `Segment`/`GamePlayer`/`CompletedGame`-typering ook
+ * daadwerkelijk een object oplevert). Zonder deze guards crasht een
+ * `segments: [null]`-back-up met een ongefilterde `TypeError` i.p.v. een
+ * vertaalde validatiefout.
  */
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {
@@ -33,7 +42,9 @@ export function isBackupEnvelopeShape(
 /**
  * Plan §C.2/§C.3: eerste structuurcontrole vóór eventuele migratie. Geeft
  * de genormaliseerde versie terug (ontbrekend = v1 = `1`) zodat de
- * aanroeper weet of migratie nodig is.
+ * aanroeper weet of migratie nodig is. Alleen gehele ondersteunde versies
+ * worden geaccepteerd (`1.5` is bijvoorbeeld geen geldige versie — externe
+ * PR-6.6-review, aug. 2026).
  */
 export function validateEnvelope(raw: unknown): {
   errors: BackupValidationError[];
@@ -50,7 +61,7 @@ export function validateEnvelope(raw: unknown): {
     return { errors: [{ code: 'dataNotObject' }], version: NaN, data: null };
   }
   const version = raw.version == null ? 1 : Number(raw.version);
-  if (!Number.isFinite(version) || version < 1 || version > CURRENT_BACKUP_VERSION) {
+  if (!Number.isInteger(version) || version < 1 || version > CURRENT_BACKUP_VERSION) {
     return { errors: [{ code: 'invalidVersion' }], version: NaN, data: null };
   }
   return { errors: [], version, data: raw.data };
@@ -104,32 +115,54 @@ function validateRosterSection(roster: unknown): BackupValidationError[] {
   return errors;
 }
 
+const SEGMENT_STRING_KEYS = ['id'] as const;
+const SEGMENT_NUMBER_KEYS = ['quarter', 'beginSec', 'endSec', 'durSec', 'pf', 'pa'] as const;
+
 /**
  * Referentiële check gedeeld door `activeGame` en elk item in
  * `completedGames`: een `Segment.lineup` moet exact 5 bekende
  * `GamePlayer.id`'s bevatten (v1-pariteit: precies vijf spelers op het
- * veld), `durSec` positief, `pf`/`pa` niet-negatief.
+ * veld), `durSec` positief, `pf`/`pa` niet-negatief. Elk segment-item wordt
+ * EERST als plain object gecontroleerd — de invoer is op dit punt nog
+ * ongevalideerde `unknown`, ondanks de `readonly Segment[]`-typering
+ * (externe PR-6.6-review: `segments: [null]` mag nooit een TypeError geven).
  */
 function validateSegments(
-  segments: readonly Segment[],
+  segments: readonly unknown[],
   players: readonly GamePlayer[],
   gameLabel: string,
 ): BackupValidationError[] {
   const knownIds = new Set(players.map((p) => p.id));
   const errors: BackupValidationError[] = [];
-  for (const segment of segments) {
+  segments.forEach((raw, index) => {
+    const segLabel = `${gameLabel}:segment:${index}`;
+    if (!isPlainObject(raw)) {
+      errors.push({ code: 'gameInvalid', detail: `segment:${segLabel}` });
+      return;
+    }
+    for (const key of SEGMENT_STRING_KEYS) {
+      if (typeof raw[key] !== 'string') {
+        errors.push({ code: 'gameInvalid', detail: `segmentField:${key}:${segLabel}` });
+      }
+    }
+    for (const key of SEGMENT_NUMBER_KEYS) {
+      if (typeof raw[key] !== 'number' || !Number.isFinite(raw[key])) {
+        errors.push({ code: 'gameInvalid', detail: `segmentField:${key}:${segLabel}` });
+      }
+    }
+    const segment = raw as unknown as Segment;
     if (!Array.isArray(segment.lineup) || segment.lineup.length !== 5) {
-      errors.push({ code: 'gameInvalidLineupSize', detail: `${gameLabel}:${segment.id}` });
+      errors.push({ code: 'gameInvalidLineupSize', detail: segLabel });
     } else {
       for (const id of segment.lineup) {
         if (!knownIds.has(id)) {
-          errors.push({ code: 'gameUnknownLineupPlayer', detail: `${gameLabel}:${segment.id}` });
+          errors.push({ code: 'gameUnknownLineupPlayer', detail: segLabel });
           break;
         }
       }
     }
     if (typeof segment.durSec !== 'number' || segment.durSec <= 0) {
-      errors.push({ code: 'gameInvalidDuration', detail: `${gameLabel}:${segment.id}` });
+      errors.push({ code: 'gameInvalidDuration', detail: segLabel });
     }
     if (
       typeof segment.pf !== 'number' ||
@@ -137,9 +170,9 @@ function validateSegments(
       typeof segment.pa !== 'number' ||
       segment.pa < 0
     ) {
-      errors.push({ code: 'gameInvalidScore', detail: `${gameLabel}:${segment.id}` });
+      errors.push({ code: 'gameInvalidScore', detail: segLabel });
     }
-  }
+  });
   return errors;
 }
 
@@ -149,15 +182,66 @@ function validateGamePlayers(players: unknown, gameLabel: string): BackupValidat
   }
   const errors: BackupValidationError[] = [];
   const seen = new Set<string>();
-  for (const p of players) {
-    if (!isPlainObject(p) || typeof p.id !== 'string' || typeof p.rosterId !== 'number') {
-      errors.push({ code: 'gameInvalid', detail: `player:${gameLabel}` });
-      continue;
+  players.forEach((p, index) => {
+    if (
+      !isPlainObject(p) ||
+      typeof p.id !== 'string' ||
+      typeof p.rosterId !== 'number' ||
+      typeof p.nr !== 'string' ||
+      typeof p.naam !== 'string' ||
+      typeof p.kl !== 'string' ||
+      typeof p.vrouw !== 'boolean' ||
+      typeof p.jeugd !== 'boolean' ||
+      typeof p.participate !== 'boolean' ||
+      typeof p.start !== 'boolean'
+    ) {
+      errors.push({ code: 'gameInvalid', detail: `player:${gameLabel}:${index}` });
+      return;
     }
     if (seen.has(p.id)) {
       errors.push({ code: 'gameInvalid', detail: `duplicatePlayer:${gameLabel}` });
     }
     seen.add(p.id);
+  });
+  return errors;
+}
+
+/** Verplichte top-level `CompletedGame`-velden buiten spelers/segmenten/score
+ * (die krijgen hun eigen, specifiekere foutcodes hierboven/-onder). Zonder
+ * deze check accepteerde `validateCompletedGamesSection` eerder een
+ * `CompletedGame` met alleen `id`/`date`/`players`/`segments`/`scoreFor`/
+ * `scoreAgainst` — `sourceGameId`, `opponent`, `competition`, `quarterCount`,
+ * `periodLabel` en `useClassLimit` ontbraken dan stilzwijgend (externe
+ * PR-6.6-review, aug. 2026). */
+const COMPLETED_GAME_STRING_KEYS = [
+  'id',
+  'sourceGameId',
+  'opponent',
+  'competition',
+  'date',
+] as const;
+const COMPLETED_GAME_NUMBER_KEYS = ['quarterCount'] as const;
+
+function validateCompletedGameFields(
+  game: Record<string, unknown>,
+  label: string,
+): BackupValidationError[] {
+  const errors: BackupValidationError[] = [];
+  for (const key of COMPLETED_GAME_STRING_KEYS) {
+    if (typeof game[key] !== 'string') {
+      errors.push({ code: 'gameInvalid', detail: `field:${key}:${label}` });
+    }
+  }
+  for (const key of COMPLETED_GAME_NUMBER_KEYS) {
+    if (typeof game[key] !== 'number' || !Number.isFinite(game[key])) {
+      errors.push({ code: 'gameInvalid', detail: `field:${key}:${label}` });
+    }
+  }
+  if (typeof game.periodLabel !== 'string') {
+    errors.push({ code: 'gameInvalid', detail: `field:periodLabel:${label}` });
+  }
+  if (typeof game.useClassLimit !== 'boolean') {
+    errors.push({ code: 'gameInvalid', detail: `field:useClassLimit:${label}` });
   }
   return errors;
 }
@@ -172,6 +256,7 @@ export function validateCompletedGamesSection(games: unknown): BackupValidationE
       return;
     }
     const game = raw as unknown as CompletedGame;
+    errors.push(...validateCompletedGameFields(raw, label));
     errors.push(...validateGamePlayers(game.players, label));
     if (!Array.isArray(game.segments)) {
       errors.push({ code: 'gameInvalid', detail: `segments:${label}` });
@@ -190,16 +275,47 @@ export function validateCompletedGamesSection(games: unknown): BackupValidationE
   return errors;
 }
 
+const ACTIVE_GAME_STRING_KEYS = [
+  'id',
+  'organizationId',
+  'teamId',
+  'opponent',
+  'competition',
+] as const;
+
 export function validateActiveGameSection(game: unknown): BackupValidationError[] {
   if (game === null) return [];
   if (!isPlainObject(game)) return [{ code: 'gameInvalid', detail: 'not-object' }];
-  const g = game as unknown as CompletedGame;
   const errors: BackupValidationError[] = [];
+  for (const key of ACTIVE_GAME_STRING_KEYS) {
+    if (typeof game[key] !== 'string') {
+      errors.push({ code: 'gameInvalid', detail: `field:${key}:activeGame` });
+    }
+  }
+  if (game.phase !== 'setup' && game.phase !== 'tracking') {
+    errors.push({ code: 'gameInvalid', detail: 'field:phase:activeGame' });
+  }
+  const g = game as unknown as ActiveGame;
   errors.push(...validateGamePlayers(g.players, 'activeGame'));
-  if (!Array.isArray(g.segments)) {
-    errors.push({ code: 'gameInvalid', detail: 'segments:activeGame' });
+  // ActiveGame heeft geen `segments` (die bestaan pas ná afronden, zie
+  // CompletedGame) — alleen `onCourt` (huidige opstelling) en `actions`
+  // (de append-only actielog, zie domain/game/tracking.ts). Referentiële
+  // check: elke `onCourt`-referentie moet een bekende `GamePlayer.id` zijn.
+  if (!Array.isArray(game.onCourt)) {
+    errors.push({ code: 'gameInvalid', detail: 'field:onCourt:activeGame' });
   } else if (Array.isArray(g.players)) {
-    errors.push(...validateSegments(g.segments, g.players, 'activeGame'));
+    const knownIds = new Set(
+      (g.players as unknown[]).filter(isPlainObject).map((p) => p.id as unknown),
+    );
+    for (const id of game.onCourt) {
+      if (!knownIds.has(id)) {
+        errors.push({ code: 'gameUnknownLineupPlayer', detail: 'onCourt:activeGame' });
+        break;
+      }
+    }
+  }
+  if (!Array.isArray(g.actions)) {
+    errors.push({ code: 'gameInvalid', detail: 'field:actions:activeGame' });
   }
   return errors;
 }

@@ -5,7 +5,7 @@ import { normalizeRoster } from '../roster/normalize';
 import { SETTINGS_STORAGE_KEY } from '../settings/types';
 import { normalizeSettings } from '../settings/normalize';
 import { LANG_STORAGE_KEY, isValidLang } from '../../i18n/strings';
-import type { BackupV2Data } from './types';
+import type { BackupV2Data, BackupValidationError } from './types';
 
 /**
  * v1's `GAMES_KEY` (index.html `BACKUP_KEYS`) — de enige v1-back-upsleutel
@@ -49,67 +49,99 @@ function remapIds(ids: unknown, idMap: Map<number, string>): string[] {
 }
 
 /**
+ * Deterministische, herhaalbare ID's afgeleid van het v1-`Game.id` (plan §D:
+ * "vertrouw niet op een nieuwe `randomUUID()` per poging"). Twee migraties
+ * van EXACT dezelfde v1-back-up moeten byte-voor-byte dezelfde
+ * `CompletedGame` opleveren, anders zou `replaceAll()`-idempotentie bij
+ * retry alsnog een ander resultaat geven (externe PR-6.6-review, aug. 2026).
+ * `legacyGameId` is zelf al verplicht (zie `migrateV1CompletedGame` hieronder
+ * — ontbreken is nu een migratiefout, geen willekeurige fallback).
+ */
+function deterministicGameId(legacyGameId: string): string {
+  return `v1-import:${legacyGameId}`;
+}
+function deterministicPlayerId(legacyGameId: string, rosterId: number): string {
+  return `v1-import:${legacyGameId}:player:${rosterId}`;
+}
+function deterministicSegmentId(legacyGameId: string, index: number): string {
+  return `v1-import:${legacyGameId}:segment:${index}`;
+}
+
+/**
  * Projecteert één v1-`Game` (uit `lineup-tracker-games`) naar een
  * context-vrije `CompletedGame` — `organizationId`/`teamId` zijn hier nog
  * lege placeholders; `application/backup/BackupCoordinator.ts` tagt ze pas
  * na de door de gebruiker bevestigde doelcontext (plan §D: "Alle
  * gemigreerde objecten worden pas na volledige projectie met de
- * doelcontext getagd"). Spiegelt exact `migrateV1ActiveGame()`'s
+ * doelcontext getagd"). Spiegelt `migrateV1ActiveGame()`'s
  * spelersnapshot-/lineup-remapping (zelfde numerieke v1-speler-ID-schema),
  * maar zonder actielog — `CompletedGame` bevriest score/segmenten al direct.
+ *
+ * Fail-closed (externe PR-6.6-review, aug. 2026): een ontbrekend/ongeldig
+ * `Game.id`, een niet-plain-object spelers-/segment-item, of een
+ * niet-numerieke speler-`id` maakt de HELE wedstrijd ongeldig (`null`) i.p.v.
+ * stilzwijgend te defaulten naar `0`/`''`/een nieuwe willekeurige UUID — een
+ * corrupte v1-back-up mag nooit een halve of verzonnen wedstrijd opleveren.
  */
 export function migrateV1CompletedGame(raw: unknown): CompletedGame | null {
   if (!isPlainObject(raw)) return null;
   if (!Array.isArray(raw.players) || !Array.isArray(raw.segments)) return null;
+  if (typeof raw.id !== 'string' && typeof raw.id !== 'number') return null;
+  if (typeof raw.date !== 'string') return null;
+  const legacyGameId = String(raw.id);
 
   const idMap = new Map<number, string>();
-  const players: GamePlayer[] = raw.players.map((rawPlayer) => {
-    const p = isPlainObject(rawPlayer) ? rawPlayer : {};
-    const rosterId = num(p.id, 0);
-    const gamePlayerId = crypto.randomUUID();
+  const players: GamePlayer[] = [];
+  for (const rawPlayer of raw.players) {
+    if (!isPlainObject(rawPlayer) || typeof rawPlayer.id !== 'number') return null;
+    const rosterId = rawPlayer.id;
+    const gamePlayerId = deterministicPlayerId(legacyGameId, rosterId);
     idMap.set(rosterId, gamePlayerId);
-    return {
+    players.push({
       id: gamePlayerId,
       rosterId,
-      nr: str(p.nr, ''),
-      naam: str(p.naam, ''),
-      kl: str(p.kl, ''),
-      vrouw: p.vrouw === true,
-      jeugd: p.jeugd === true,
-      participate: p.participate !== false,
-      start: p.start === true,
-    };
-  });
+      nr: str(rawPlayer.nr, ''),
+      naam: str(rawPlayer.naam, ''),
+      kl: str(rawPlayer.kl, ''),
+      vrouw: rawPlayer.vrouw === true,
+      jeugd: rawPlayer.jeugd === true,
+      participate: rawPlayer.participate !== false,
+      start: rawPlayer.start === true,
+    });
+  }
 
-  const segments: Segment[] = raw.segments.map((rawSegment) => {
-    const s = isPlainObject(rawSegment) ? rawSegment : {};
-    return {
-      id: crypto.randomUUID(),
-      quarter: num(s.quarter, 1),
-      beginSec: num(s.beginSec, 0),
-      endSec: num(s.endSec, 0),
-      durSec: num(s.durSec, 0),
-      lineup: remapIds(s.lineup, idMap),
-      pf: num(s.pf, 0),
-      pa: num(s.pa, 0),
-      classSum: num(s.classSum, 0),
-      allowed: num(s.allowed, 0),
-      over: s.over === true,
-    };
-  });
+  const segments: Segment[] = [];
+  for (let index = 0; index < raw.segments.length; index += 1) {
+    const rawSegment = raw.segments[index];
+    if (!isPlainObject(rawSegment)) return null;
+    segments.push({
+      id: deterministicSegmentId(legacyGameId, index),
+      quarter: num(rawSegment.quarter, 1),
+      beginSec: num(rawSegment.beginSec, 0),
+      endSec: num(rawSegment.endSec, 0),
+      durSec: num(rawSegment.durSec, 0),
+      lineup: remapIds(rawSegment.lineup, idMap),
+      pf: num(rawSegment.pf, 0),
+      pa: num(rawSegment.pa, 0),
+      classSum: num(rawSegment.classSum, 0),
+      allowed: num(rawSegment.allowed, 0),
+      over: rawSegment.over === true,
+    });
+  }
 
   return {
-    id: crypto.randomUUID(),
+    id: deterministicGameId(legacyGameId),
     organizationId: '',
     teamId: '',
-    // Provenance: traceert terug naar het v1-`Game.id` — puur diagnostisch,
-    // niet gebruikt voor deduplicatie (die loopt via `replaceAll()`, zie
-    // BackupCoordinator: een herhaalde import van dezelfde back-up
-    // vervangt de doellijst identiek i.p.v. te stapelen).
-    sourceGameId: `v1-import:${str(raw.id, crypto.randomUUID())}`,
+    // Provenance: traceert terug naar het v1-`Game.id`. Ook gebruikt als
+    // basis voor `id` hierboven — een herhaalde migratie van dezelfde
+    // back-up levert zo een identiek object op, waardoor `replaceAll()`
+    // (zie BackupCoordinator) een retry idempotent maakt zonder aparte
+    // dedupe-sleutel.
+    sourceGameId: `v1-import:${legacyGameId}`,
     opponent: str(raw.opponent, ''),
     competition: str(raw.competition, ''),
-    date: str(raw.date, new Date().toISOString()),
+    date: raw.date,
     players,
     segments,
     scoreFor: num(raw.scoreFor, 0),
@@ -120,6 +152,11 @@ export function migrateV1CompletedGame(raw: unknown): CompletedGame | null {
   };
 }
 
+export interface V1MigrationResult {
+  data: BackupV2Data;
+  errors: BackupValidationError[];
+}
+
 /**
  * Projecteert v1's back-up-`data`-object (subset van `V1_BACKUP_KEYS`) naar
  * `BackupV2Data`. Puur en context-vrij: `activeGame`/`completedGames`-items
@@ -128,10 +165,19 @@ export function migrateV1CompletedGame(raw: unknown): CompletedGame | null {
  * Settings/roster hergebruiken de bestaande normalizers — "onbekende velden
  * alleen behouden wanneer het actuele contract dat expliciet toestaat"
  * (plan §D) is precies wat `normalizeSettings`/`normalizeRoster` al doen.
+ *
+ * Fail-closed op de wedstrijdenlijst (externe PR-6.6-review, aug. 2026): als
+ * `lineup-tracker-games` aanwezig is maar één item niet migreerbaar is (bv.
+ * `null`, of een structureel ongeldige wedstrijd), wordt dat NIET
+ * stilzwijgend uit de lijst gefilterd — de hele migratie faalt met een
+ * `migrationFailed`-fout, zodat een bevestiging nooit onbedoeld minder
+ * wedstrijden importeert dan de back-up feitelijk bevatte (en zo geldige
+ * doelhistorie kan leegmaken via het replace-per-onderdeel-contract).
  */
-export function migrateV1BackupData(raw: unknown): BackupV2Data {
-  if (!isPlainObject(raw)) return {};
+export function migrateV1BackupData(raw: unknown): V1MigrationResult {
+  if (!isPlainObject(raw)) return { data: {}, errors: [] };
   const result: BackupV2Data = {};
+  const errors: BackupValidationError[] = [];
 
   if (SETTINGS_STORAGE_KEY in raw) {
     result.settings = normalizeSettings(raw[SETTINGS_STORAGE_KEY]);
@@ -152,14 +198,23 @@ export function migrateV1BackupData(raw: unknown): BackupV2Data {
   }
   if (V1_GAMES_STORAGE_KEY in raw) {
     const gamesRaw = raw[V1_GAMES_STORAGE_KEY];
-    if (Array.isArray(gamesRaw)) {
-      result.completedGames = gamesRaw
-        .map((g) => migrateV1CompletedGame(g))
-        .filter((g): g is CompletedGame => g !== null);
+    if (!Array.isArray(gamesRaw)) {
+      errors.push({ code: 'migrationFailed', detail: 'games-not-array' });
+    } else {
+      const migratedGames: CompletedGame[] = [];
+      for (let index = 0; index < gamesRaw.length; index += 1) {
+        const migrated = migrateV1CompletedGame(gamesRaw[index]);
+        if (migrated === null) {
+          errors.push({ code: 'migrationFailed', detail: `game:${index}` });
+        } else {
+          migratedGames.push(migrated);
+        }
+      }
+      if (errors.length === 0) result.completedGames = migratedGames;
     }
   }
 
-  return result;
+  return { data: errors.length === 0 ? result : {}, errors };
 }
 
 /**

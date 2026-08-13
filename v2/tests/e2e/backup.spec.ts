@@ -1,4 +1,4 @@
-import { expect, type Page } from '@playwright/test';
+import { expect, test as base, type Page } from '@playwright/test';
 import { writeFileSync, mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -174,5 +174,112 @@ test.describe('v2 Back-up-sectie (PR 6.6)', () => {
     );
     await page.getByTestId('backup-file-input').setInputFiles(path);
     await expect(page.getByTestId('backup-error')).toBeVisible();
+  });
+
+  test('het hersteljournaal toont een uitkomst per sectie na een geslaagde import', async ({
+    page,
+  }) => {
+    await gotoSettings(page);
+    const path = await writeTempJson(v2Backup());
+    await page.getByTestId('backup-file-input').setInputFiles(path);
+    await expect(page.getByTestId('backup-preview')).toBeVisible();
+    await Promise.all([
+      page.waitForEvent('download'),
+      page.getByTestId('backup-confirm-btn').click(),
+    ]);
+    await expect(page.getByTestId('backup-success')).toBeVisible();
+    await expect(page.getByTestId('backup-journal-settings-written')).toBeVisible();
+    await expect(page.getByTestId('backup-journal-roster-written')).toBeVisible();
+  });
+
+  test('een herhaalde import van dezelfde back-up is idempotent (geen dubbele historie)', async ({
+    page,
+  }) => {
+    await gotoSettings(page);
+    const backup = v2Backup({
+      completedGames: [
+        {
+          id: 'g1',
+          organizationId: 'org-rotterdam',
+          teamId: 'team-u23',
+          sourceGameId: 'src-1',
+          opponent: 'Herhaalde Tegenstander',
+          competition: '',
+          date: '2026-01-01T10:00:00.000Z',
+          players: [],
+          segments: [],
+          scoreFor: 0,
+          scoreAgainst: 0,
+          quarterCount: 4,
+          periodLabel: '',
+          useClassLimit: false,
+        },
+      ],
+    });
+    const path = await writeTempJson(backup);
+
+    for (let i = 0; i < 2; i += 1) {
+      await page.getByTestId('backup-file-input').setInputFiles(path);
+      await expect(page.getByTestId('backup-preview')).toBeVisible();
+      await Promise.all([
+        page.waitForEvent('download'),
+        page.getByTestId('backup-confirm-btn').click(),
+      ]);
+      await expect(page.getByTestId('backup-success')).toBeVisible();
+    }
+
+    await page.getByTestId('nav-history').click();
+    const rows = page.getByText('Herhaalde Tegenstander');
+    await expect(rows).toHaveCount(1);
+  });
+});
+
+test.describe('v2 Back-up-sectie — bevoegdheid per rol (eigenaarsbesluit §E.4, externe PR-6.6-review)', () => {
+  // Deze tests loggen bewust NIET via de `./fixtures`-auto-login in (die is
+  // vast verankerd op bob/organizationAdmin) — scorer/viewer bestaan al in de
+  // seed (firebase/scripts/seed.ts: dave=scorer, erin=viewer, beiden op
+  // team-u23) en zijn nodig om te bewijzen dat de back-upknoppen ook
+  // daadwerkelijk uitgeschakeld zijn onder de canManageTeamData-grens, niet
+  // alleen bij de organizationAdmin die de rest van deze suite gebruikt.
+  async function loginAndOpenSettings(page: Page, email: string, password: string): Promise<void> {
+    await page.addInitScript(() => window.localStorage.setItem('lineup-tracker-lang', 'nl'));
+    await page.goto('/');
+    await page.getByTestId('auth-email').fill(email);
+    await page.getByTestId('auth-password').fill(password);
+    await page.getByTestId('auth-submit').click();
+    if (
+      await page
+        .getByTestId('trusted-device-no')
+        .isVisible({ timeout: 10_000 })
+        .catch(() => false)
+    ) {
+      await page.getByTestId('trusted-device-no').click();
+    }
+    if (
+      await page
+        .getByTestId('context-org-org-rotterdam')
+        .isVisible({ timeout: 10_000 })
+        .catch(() => false)
+    ) {
+      await page.getByTestId('context-org-org-rotterdam').click();
+      await page.waitForSelector('[data-testid="context-team-team-u23"]', { timeout: 10_000 });
+      await page.getByTestId('context-team-team-u23').click();
+    }
+    await page.waitForSelector('[data-testid="nav-settings"]', { timeout: 10_000 });
+    await page.getByTestId('nav-settings').click();
+  }
+
+  base('scorer (dave) ziet uitgeschakelde export-/importknoppen', async ({ page }) => {
+    await loginAndOpenSettings(page, 'dave@example.test', 'Spike123!');
+    await expect(page.getByTestId('backup-export-btn')).toBeDisabled();
+    await expect(page.getByTestId('backup-import-btn')).toBeDisabled();
+    await expect(page.getByTestId('backup-file-input')).toBeDisabled();
+  });
+
+  base('viewer (erin) ziet uitgeschakelde export-/importknoppen', async ({ page }) => {
+    await loginAndOpenSettings(page, 'erin@example.test', 'Spike123!');
+    await expect(page.getByTestId('backup-export-btn')).toBeDisabled();
+    await expect(page.getByTestId('backup-import-btn')).toBeDisabled();
+    await expect(page.getByTestId('backup-file-input')).toBeDisabled();
   });
 });

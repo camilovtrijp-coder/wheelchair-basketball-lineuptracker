@@ -625,7 +625,6 @@ export function App({
               teamName={(settings.teamName as string) || teamId}
               settings={settings}
               roster={roster}
-              activeGame={game}
               settingsRepo={repositories.settings}
               rosterRepo={repositories.roster}
               gameRepo={gameRepo}

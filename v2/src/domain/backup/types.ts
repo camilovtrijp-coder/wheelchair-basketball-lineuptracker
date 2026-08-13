@@ -122,10 +122,17 @@ export interface ImportPreview {
   lang: LangPreview;
 }
 
-/** Resultaat van een import- of hersteljournaalstap (plan §C.10). */
+/**
+ * Resultaat van een import- of hersteljournaalstap (plan §C.10).
+ * `rollbackFailed` is een apart, zichtbaar journaalresultaat (externe
+ * PR-6.6-review, aug. 2026): een herstelwrite die zelf ook faalt mag NOOIT
+ * stilzwijgend als `rolledBack` gemeld worden — dat zou een vals
+ * hersteld-rapport zijn terwijl de sectie feitelijk in een onbekende/
+ * gewijzigde staat is blijven staan.
+ */
 export interface ImportJournalEntry {
   section: 'settings' | 'roster' | 'activeGame' | 'completedGames' | 'lang';
-  outcome: 'written' | 'skipped' | 'failed' | 'rolledBack';
+  outcome: 'written' | 'skipped' | 'failed' | 'rolledBack' | 'rollbackFailed';
 }
 
 export interface ImportRunResult {

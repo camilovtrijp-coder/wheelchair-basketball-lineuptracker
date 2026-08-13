@@ -32,11 +32,21 @@ export function parseBackupPayload(raw: unknown): ParsedBackup {
 
   // version === 1 (of ontbrekend) betekent v1 (plan §C.3); migreer eerst
   // stapsgewijs (hier: één stap, want er is vooralsnog maar één oudere
-  // versie) naar het huidige v2-schema vóórdat sectievalidatie draait.
-  const data: BackupV2Data =
-    envelope.version < 2
-      ? migrateV1BackupData(envelope.data)
-      : (envelope.data as unknown as BackupV2Data);
+  // versie) naar het huidige v2-schema vóórdat sectievalidatie draait. Een
+  // migratiefout (bv. een corrupte wedstrijd in `lineup-tracker-games`)
+  // stopt hier al fail-closed — sectievalidatie draait dan niet meer, net
+  // als v1's "migratie mislukt" i.p.v. stil een deel van de data te
+  // negeren en de rest tóch te valideren.
+  let data: BackupV2Data;
+  if (envelope.version < 2) {
+    const migrated = migrateV1BackupData(envelope.data);
+    if (migrated.errors.length > 0) {
+      return { errors: migrated.errors, data: {}, version: envelope.version, exportedAt };
+    }
+    data = migrated.data;
+  } else {
+    data = envelope.data as unknown as BackupV2Data;
+  }
 
   const errors = validateBackupData(data);
   return { errors, data: errors.length === 0 ? data : {}, version: envelope.version, exportedAt };

@@ -110,28 +110,47 @@ export class LocalStorageGameRepository implements GameRepository {
     this.key = activeGameStorageKey(organizationId, teamId);
   }
 
-  read(): ActiveGame | null {
+  /**
+   * PR 6.6 §F 6.6b (externe review, aug. 2026): `read()` blijft voor
+   * bestaande callers `null` teruggeven op elke fout — maar `captureSnapshot()`
+   * in `application/backup/BackupCoordinator.ts` moet een echte storage-/
+   * parsefout kunnen onderscheiden van "gewoon geen actieve wedstrijd", anders
+   * kan een corrupte opslag als lege snapshot behandeld worden en zo een
+   * bestaande wedstrijd bij import stilzwijgend leegmaken. Een context-
+   * mismatch (de opgeslagen wedstrijd hoort bij een ander team) is GEEN
+   * leesfout — dat betekent gewoon "geen wedstrijd voor déze context".
+   */
+  private readResult(): { status: 'ok' | 'error'; game: ActiveGame | null } {
     let raw: string | null = null;
     try {
       raw = this.storage.getItem(this.key);
     } catch {
-      return null;
+      return { status: 'error', game: null };
     }
 
-    if (raw === null || raw === '') return null;
+    if (raw === null || raw === '') return { status: 'ok', game: null };
 
     let parsed: unknown;
     try {
       parsed = JSON.parse(raw);
     } catch {
-      return null;
+      return { status: 'error', game: null };
     }
 
-    if (!isActiveGameShape(parsed) || !matchesContext(parsed, this.organizationId, this.teamId)) {
-      return null;
+    if (!isActiveGameShape(parsed)) return { status: 'error', game: null };
+    if (!matchesContext(parsed, this.organizationId, this.teamId)) {
+      return { status: 'ok', game: null };
     }
 
-    return normalizeActiveGame(parsed);
+    return { status: 'ok', game: normalizeActiveGame(parsed) };
+  }
+
+  read(): ActiveGame | null {
+    return this.readResult().game;
+  }
+
+  safeRead(): { status: 'ok' | 'error'; game: ActiveGame | null } {
+    return this.readResult();
   }
 
   /**

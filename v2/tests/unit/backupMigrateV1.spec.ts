@@ -75,6 +75,28 @@ describe('domain/backup/migrateV1 — migrateV1CompletedGame (plan §D/§G.9)', 
     expect(migrateV1CompletedGame('x')).toBeNull();
     expect(migrateV1CompletedGame(null)).toBeNull();
   });
+
+  it('geeft null (fail-closed) bij een ontbrekend Game.id of Game.date i.p.v. te defaulten', () => {
+    const { id: _id, ...withoutId } = v1Game();
+    void _id;
+    expect(migrateV1CompletedGame(withoutId)).toBeNull();
+    const { date: _date, ...withoutDate } = v1Game();
+    void _date;
+    expect(migrateV1CompletedGame(withoutDate)).toBeNull();
+  });
+
+  it('geeft null (fail-closed) bij een corrupt spelers- of segmentitem i.p.v. te defaulten', () => {
+    expect(
+      migrateV1CompletedGame(v1Game({ players: [null, ...v1Game().players.slice(1)] })),
+    ).toBeNull();
+    expect(migrateV1CompletedGame(v1Game({ segments: [null] }))).toBeNull();
+  });
+
+  it('is deterministisch: tweemaal migreren van exact dezelfde v1-wedstrijd levert een identiek object op', () => {
+    const a = migrateV1CompletedGame(v1Game());
+    const b = migrateV1CompletedGame(v1Game());
+    expect(a).toEqual(b);
+  });
 });
 
 describe('domain/backup/migrateV1 — migrateV1BackupData (plan §D/§G.1)', () => {
@@ -101,7 +123,8 @@ describe('domain/backup/migrateV1 — migrateV1BackupData (plan §D/§G.1)', () 
         scoreAgainst: 0,
       },
     };
-    const data = migrateV1BackupData(raw);
+    const { data, errors } = migrateV1BackupData(raw);
+    expect(errors).toEqual([]);
     expect(data.settings?.teamName).toBe('Rotterdam U23');
     expect(data.roster).toHaveLength(1);
     expect(data.lang).toBe('en');
@@ -111,7 +134,10 @@ describe('domain/backup/migrateV1 — migrateV1BackupData (plan §D/§G.1)', () 
   });
 
   it('een ontbrekende sleutel levert een afwezige (undefined) sectie op', () => {
-    const data = migrateV1BackupData({ [SETTINGS_STORAGE_KEY]: { ...DEFAULT_SETTINGS } });
+    const { data, errors } = migrateV1BackupData({
+      [SETTINGS_STORAGE_KEY]: { ...DEFAULT_SETTINGS },
+    });
+    expect(errors).toEqual([]);
     expect(data.settings).toBeDefined();
     expect(data.roster).toBeUndefined();
     expect(data.activeGame).toBeUndefined();
@@ -120,10 +146,23 @@ describe('domain/backup/migrateV1 — migrateV1BackupData (plan §D/§G.1)', () 
   });
 
   it('een niet-hervatbare v1-actieve-wedstrijd (fase setup) levert geen activeGame-sectie op', () => {
-    const data = migrateV1BackupData({
+    const { data, errors } = migrateV1BackupData({
       [V1_ACTIVE_GAME_STORAGE_KEY]: { players: [], phase: 'setup', segments: [] },
     });
+    expect(errors).toEqual([]);
     expect(data.activeGame).toBeUndefined();
+  });
+
+  it('faalt fail-closed (geen stille filtering) wanneer één wedstrijd in de lijst corrupt is', () => {
+    const { data, errors } = migrateV1BackupData({
+      [V1_GAMES_STORAGE_KEY]: [v1Game(), null, v1Game({ id: 'legacy-game-2' })],
+    });
+    expect(errors.length).toBeGreaterThan(0);
+    expect(errors.some((e) => e.code === 'migrationFailed')).toBe(true);
+    // Bij een migratiefout wordt GEEN enkele sectie teruggegeven — ook niet
+    // de wél geldige wedstrijden — zodat een bevestiging nooit een
+    // gedeeltelijke (stil ingekorte) historie kan importeren.
+    expect(data.completedGames).toBeUndefined();
   });
 });
 
