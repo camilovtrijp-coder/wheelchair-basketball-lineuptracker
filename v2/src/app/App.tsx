@@ -25,6 +25,8 @@ import { LocalStorageGameRepository } from '../infrastructure/game/LocalStorageG
 import { createGameFromRoster } from '../domain/game/setup';
 import type { ActiveGame } from '../domain/game/types';
 import { GameSetupPanel } from '../ui/game/GameSetupPanel';
+import { LiveTrackingPanel } from '../ui/game/LiveTrackingPanel';
+import { V1MigrationPrompt } from '../ui/game/V1MigrationPrompt';
 
 export interface AppProps {
   repositories: ResolvedAppRepositories;
@@ -47,6 +49,15 @@ export interface AppProps {
    */
   canWrite: boolean;
   /**
+   * PR 6.1-review (aug. 2026): aparte, ruimere bevoegdheid voor de wedstrijd-UI
+   * (owner/admin/coach/scorer — zie domain/organizations/teamAccess.ts,
+   * `canWriteGameData`). Vóór deze toevoeging deelde `GameSetupPanel`/
+   * `LiveTrackingPanel` dezelfde `canWrite` als Settings/Roster, waardoor een
+   * scorer nergens kon scoren. Door AuthGate berekend uit dezelfde
+   * validateSelectedTeam()-call als `canWrite` (geen extra Firestore-read).
+   */
+  canWriteGame: boolean;
+  /**
    * Actieve organisatie/teamcontext (PR 5.2, AuthGate's `selectedContext`),
    * doorgegeven zodat een nieuwe wedstrijdopzet (PR 6.1) er verplicht mee
    * getagd en onder een eigen sleutel opgeslagen kan worden — zie
@@ -56,6 +67,17 @@ export interface AppProps {
    */
   organizationId: string;
   teamId: string;
+  /**
+   * PR 6.1-review (aug. 2026): weergavenaam van de actieve organisatie —
+   * uitsluitend gebruikt door `V1MigrationPrompt` om een ondubbelzinnig doel
+   * te tonen (organisatie + team, niet alleen teamnaam). Zonder de
+   * organisatienaam zou een bevestigingsvraag bij gelijknamige teams in twee
+   * verschillende organisaties niet te onderscheiden zijn — precies de
+   * situatie waarin deze prompt de gebruiker moet kunnen vertrouwen. Valt in
+   * AuthGate terug op `organizationId` als er (nog) geen membershipnaam
+   * bekend is.
+   */
+  organizationName: string;
 }
 
 type Tab = 'settings' | 'roster' | 'game';
@@ -88,7 +110,15 @@ const v1RosterRepo = new LocalStorageRosterRepository(browserStorage);
 // wordt toegeschreven zonder onderscheid tussen de vier mogelijke oorzaken.
 const STEP_STALL_TIMEOUT_MS = 8000;
 
-export function App({ repositories, syncStatus, canWrite, organizationId, teamId }: AppProps) {
+export function App({
+  repositories,
+  syncStatus,
+  canWrite,
+  canWriteGame,
+  organizationId,
+  teamId,
+  organizationName,
+}: AppProps) {
   const [lang, setLang] = useState<Lang>(initialLang);
   const [tab, setTab] = useState<Tab>('settings');
   const [settings, setSettings] = useState<(Settings & Record<string, unknown>) | null>(null);
@@ -129,6 +159,12 @@ export function App({ repositories, syncStatus, canWrite, organizationId, teamId
   );
   const [game, setGame] = useState<ActiveGame | null>(null);
   const [gameSaveError, setGameSaveError] = useState(false);
+  // PR 6.1-review (aug. 2026): een gedetecteerde, nog niet bevestigde
+  // v1-actieve-wedstrijd (zie GameRepository.detectV1Migration()) — v1 kende
+  // geen organisatie/teamcontext, dus dit team wordt pas een echt v2-`game`
+  // ná expliciete bevestiging door de gebruiker (handleConfirmV1Migration),
+  // nooit automatisch. Zie ui/game/V1MigrationPrompt.tsx.
+  const [v1MigrationCandidate, setV1MigrationCandidate] = useState<ActiveGame | null>(null);
 
   // Spiegelt v1's init() precies: een opgeslagen wedstrijd wordt alleen
   // hervat wanneer ze al écht gestart is (`phase === 'tracking'`) — v1:
@@ -139,26 +175,52 @@ export function App({ repositories, syncStatus, canWrite, organizationId, teamId
   // ze in de opslag — de opzet hieronder herderived 'm dan vers vanaf de
   // actuele roster. Reden: tot "Start wedstrijd" is geklikt is een opzet
   // laag-risico en mag een reload gewoon de huidige teamsamenstelling tonen;
-  // ná start (fase 'tracking') mag niets meer verloren gaan.
+  // ná start (fase 'tracking') mag niets meer verloren gaan. Zonder een eigen
+  // v2-wedstrijd wordt daarnaast gekeken of er een niet-bevestigde
+  // v1-migratie klaarstaat voor dit team (zie hierboven).
   useEffect(() => {
     const stored = gameRepo.read();
-    setGame(stored && stored.phase === 'tracking' ? stored : null);
+    if (stored && stored.phase === 'tracking') {
+      setGame(stored);
+      setV1MigrationCandidate(null);
+    } else {
+      setGame(null);
+      setV1MigrationCandidate(gameRepo.detectV1Migration());
+    }
     setGameSaveError(false);
   }, [gameRepo]);
 
-  // Spiegelt v1's freshState(): zodra er geen (te hervatten) wedstrijd is en
-  // team/instellingen geladen zijn, wordt een opzet vers vanaf de actuele
-  // roster afgeleid — ook zonder expliciete "nieuwe wedstrijd"-actie.
+  // Spiegelt v1's freshState(): zodra er geen (te hervatten) wedstrijd is,
+  // geen onbevestigd v1-migratievoorstel openstaat, en team/instellingen
+  // geladen zijn, wordt een opzet vers vanaf de actuele roster afgeleid —
+  // ook zonder expliciete "nieuwe wedstrijd"-actie. Draait bewust NIET terwijl
+  // `v1MigrationCandidate` nog openstaat: anders zou deze een verse opzet
+  // aanmaken en opslaan onder de v2-sleutel, waarna een latere reload de
+  // v1-migratie niet meer als "nog te bevestigen" zou herkennen (de v2-sleutel
+  // is dan niet meer leeg) — het voorstel zou zo onherroepelijk verdwijnen
+  // zonder dat de gebruiker ooit iets bevestigd heeft.
   useEffect(() => {
-    if (game !== null || settings === null || roster === null) return;
+    if (game !== null || v1MigrationCandidate !== null || settings === null || roster === null) {
+      return;
+    }
     const fresh = createGameFromRoster(roster, organizationId, teamId, settings.classBaseLimit);
     setGame(fresh);
     gameRepo.write(fresh);
-  }, [game, settings, roster, gameRepo, organizationId, teamId]);
+  }, [game, v1MigrationCandidate, settings, roster, gameRepo, organizationId, teamId]);
 
   function handleGameChange(next: ActiveGame) {
     setGame(next);
     setGameSaveError(!gameRepo.write(next));
+  }
+
+  function handleConfirmV1Migration() {
+    if (v1MigrationCandidate === null) return;
+    const ok = gameRepo.confirmV1Migration(v1MigrationCandidate);
+    setGameSaveError(!ok);
+    if (ok) {
+      setGame(v1MigrationCandidate);
+      setV1MigrationCandidate(null);
+    }
   }
 
   useEffect(() => {
@@ -408,6 +470,37 @@ export function App({ repositories, syncStatus, canWrite, organizationId, teamId
             canWrite={canWrite}
             updatedAt={rosterUpdatedAt}
           />
+        ) : v1MigrationCandidate !== null ? (
+          <V1MigrationPrompt
+            lang={lang}
+            game={v1MigrationCandidate}
+            organizationName={organizationName || organizationId}
+            teamName={(settings.teamName as string) || teamId}
+            canWrite={canWriteGame}
+            saveError={gameSaveError}
+            onConfirm={handleConfirmV1Migration}
+          />
+        ) : game?.phase === 'tracking' ? (
+          <LiveTrackingPanel
+            lang={lang}
+            game={game}
+            quarterCount={settings.quarterCount as number}
+            periodLabel={settings.periodLabel as string}
+            classification={{
+              useClassLimit: settings.useClassLimit === true,
+              classBaseLimit: settings.classBaseLimit as number,
+              maxBonus: settings.maxBonus as number,
+              bonusTag1Only: settings.bonusTag1Only as number,
+              bonusTag2Only: settings.bonusTag2Only as number,
+              bonusBoth: settings.bonusBoth as number,
+            }}
+            teamName={(settings.teamName as string) || ''}
+            tag1Label={tag1Label}
+            tag2Label={tag2Label}
+            onGameChange={handleGameChange}
+            canWrite={canWriteGame}
+            saveError={gameSaveError}
+          />
         ) : (
           <GameSetupPanel
             lang={lang}
@@ -415,7 +508,7 @@ export function App({ repositories, syncStatus, canWrite, organizationId, teamId
             useClassLimit={settings.useClassLimit === true}
             onGameChange={handleGameChange}
             onGoToRoster={() => setTab('roster')}
-            canWrite={canWrite}
+            canWrite={canWriteGame}
             saveError={gameSaveError}
           />
         )}

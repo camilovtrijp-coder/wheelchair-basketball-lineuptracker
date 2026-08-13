@@ -154,8 +154,10 @@ describe('app/App — listener-fout-detectie na initiële load (PR 5.4a)', () =>
         repositories={repositories}
         syncStatus={syncStatus}
         canWrite={true}
+        canWriteGame={true}
         organizationId="org-test"
         teamId="team-test"
+        organizationName="Org Test"
       />,
     );
 
@@ -190,8 +192,10 @@ describe('app/App — listener-fout-detectie na initiële load (PR 5.4a)', () =>
         repositories={localRepositories}
         syncStatus={syncStatus}
         canWrite={true}
+        canWriteGame={true}
         organizationId="org-test"
         teamId="team-test"
+        organizationName="Org Test"
       />,
     );
 

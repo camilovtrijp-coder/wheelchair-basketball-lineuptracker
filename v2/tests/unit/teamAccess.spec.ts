@@ -7,6 +7,7 @@ describe('domain/organizations/teamAccess', () => {
       expect(deriveTeamAccess('organizationOwner', null)).toEqual({
         effectiveRole: 'organizationOwner',
         canManageTeamData: true,
+        canWriteGameData: true,
         isExplicitlyAuthorized: true,
       });
     });
@@ -15,6 +16,7 @@ describe('domain/organizations/teamAccess', () => {
       expect(deriveTeamAccess('organizationAdmin', null)).toEqual({
         effectiveRole: 'organizationAdmin',
         canManageTeamData: true,
+        canWriteGameData: true,
         isExplicitlyAuthorized: true,
       });
     });
@@ -23,6 +25,7 @@ describe('domain/organizations/teamAccess', () => {
       expect(deriveTeamAccess('organizationOwner', 'viewer')).toEqual({
         effectiveRole: 'organizationOwner',
         canManageTeamData: true,
+        canWriteGameData: true,
         isExplicitlyAuthorized: true,
       });
     });
@@ -31,14 +34,16 @@ describe('domain/organizations/teamAccess', () => {
       expect(deriveTeamAccess('coach', 'coach')).toEqual({
         effectiveRole: 'coach',
         canManageTeamData: true,
+        canWriteGameData: true,
         isExplicitlyAuthorized: true,
       });
     });
 
-    it('scorer met expliciet teamMembers-document mag niet schrijven', () => {
+    it('scorer met expliciet teamMembers-document mag geen teamdata, maar wel wedstrijdacties schrijven', () => {
       expect(deriveTeamAccess('scorer', 'scorer')).toEqual({
         effectiveRole: 'scorer',
         canManageTeamData: false,
+        canWriteGameData: true,
         isExplicitlyAuthorized: true,
       });
     });
@@ -47,6 +52,7 @@ describe('domain/organizations/teamAccess', () => {
       expect(deriveTeamAccess('viewer', 'viewer')).toEqual({
         effectiveRole: 'viewer',
         canManageTeamData: false,
+        canWriteGameData: false,
         isExplicitlyAuthorized: true,
       });
     });
@@ -55,6 +61,7 @@ describe('domain/organizations/teamAccess', () => {
       expect(deriveTeamAccess('viewer', null)).toEqual({
         effectiveRole: 'viewer',
         canManageTeamData: false,
+        canWriteGameData: false,
         isExplicitlyAuthorized: false,
       });
     });
@@ -63,11 +70,13 @@ describe('domain/organizations/teamAccess', () => {
       expect(deriveTeamAccess('coach', null)).toEqual({
         effectiveRole: 'coach',
         canManageTeamData: false,
+        canWriteGameData: false,
         isExplicitlyAuthorized: false,
       });
       expect(deriveTeamAccess('scorer', null)).toEqual({
         effectiveRole: 'scorer',
         canManageTeamData: false,
+        canWriteGameData: false,
         isExplicitlyAuthorized: false,
       });
     });
@@ -76,6 +85,16 @@ describe('domain/organizations/teamAccess', () => {
       expect(deriveTeamAccess(null, 'coach')).toEqual({
         effectiveRole: 'coach',
         canManageTeamData: true,
+        canWriteGameData: true,
+        isExplicitlyAuthorized: true,
+      });
+    });
+
+    it('team-only gebruiker (orgRole null, issue #31) is scorer: mag geen teamdata, wel wedstrijdacties schrijven', () => {
+      expect(deriveTeamAccess(null, 'scorer')).toEqual({
+        effectiveRole: 'scorer',
+        canManageTeamData: false,
+        canWriteGameData: true,
         isExplicitlyAuthorized: true,
       });
     });
@@ -84,6 +103,7 @@ describe('domain/organizations/teamAccess', () => {
       expect(deriveTeamAccess(null, 'viewer')).toEqual({
         effectiveRole: 'viewer',
         canManageTeamData: false,
+        canWriteGameData: false,
         isExplicitlyAuthorized: true,
       });
     });
@@ -92,6 +112,7 @@ describe('domain/organizations/teamAccess', () => {
       expect(deriveTeamAccess(null, null)).toEqual({
         effectiveRole: 'viewer',
         canManageTeamData: false,
+        canWriteGameData: false,
         isExplicitlyAuthorized: false,
       });
     });

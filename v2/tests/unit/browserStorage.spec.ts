@@ -72,11 +72,25 @@ describe('createBrowserStorage', () => {
     expect(() => storage.removeItem('x')).not.toThrow();
   });
 
-  it('geeft null terug en werpt niet wanneer de storage-methoden zelf throwen', () => {
+  it('geeft null terug en werpt niet wanneer getItem() op een verkregen storage zelf throwt', () => {
     const storage = createBrowserStorage(() => throwingStorage());
 
     expect(storage.getItem('x')).toBeNull();
-    expect(() => storage.setItem('x', 'y')).not.toThrow();
-    expect(() => storage.removeItem('x')).not.toThrow();
+  });
+
+  it('laat een echte schrijffout (bv. quota overschreden) van een verkregen storage doorwerpen', () => {
+    const backing = new FakeStorage();
+    const quotaExceeded = () => {
+      throw new Error('QuotaExceededError');
+    };
+    const failingWrites = {
+      ...backing,
+      setItem: quotaExceeded,
+      removeItem: quotaExceeded,
+    } as unknown as Storage;
+    const storage = createBrowserStorage(() => failingWrites);
+
+    expect(() => storage.setItem('x', 'y')).toThrow();
+    expect(() => storage.removeItem('x')).toThrow();
   });
 });

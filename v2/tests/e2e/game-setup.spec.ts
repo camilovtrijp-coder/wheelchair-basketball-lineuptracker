@@ -88,7 +88,7 @@ test.describe('v2 wedstrijdopzet (PR 6.1)', () => {
     await expect(page.getByTestId('game-starters-info')).toContainText('5/5');
   });
 
-  test('starten persisteert de wedstrijd in "tracking"-fase, met plaatshouder en org/team-scope', async ({
+  test('starten persisteert de wedstrijd in "tracking"-fase, met het live-scherm en org/team-scope', async ({
     page,
   }) => {
     await addFiveNamedPlayersAndReload(page);
@@ -96,7 +96,9 @@ test.describe('v2 wedstrijdopzet (PR 6.1)', () => {
     await page.getByTestId('game-opponent').fill('Team B');
     await page.getByTestId('game-start-btn').click();
 
-    await expect(page.getByTestId('game-tracking-placeholder')).toBeVisible();
+    // Live wedstrijdscherm (PR 6.2) vervangt de opzetflow zodra phase='tracking'.
+    await expect(page.getByTestId('score-row-for')).toBeVisible();
+    await expect(page.getByTestId('game-opponent')).not.toBeVisible();
 
     const stored = (await readActiveGame(page)) as {
       phase: string;
@@ -113,10 +115,11 @@ test.describe('v2 wedstrijdopzet (PR 6.1)', () => {
     expect(stored.onCourt).toHaveLength(5);
     expect(stored.players).toHaveLength(5);
 
-    // Blijft na reload in de tracking-plaatshouder staan (geen nieuwe wedstrijd, geen dataverlies).
+    // Blijft na reload in het live-scherm staan (geen nieuwe wedstrijd, geen dataverlies) —
+    // v1-pariteit: alleen een gestarte ('tracking') wedstrijd wordt hervat, zie App.tsx.
     await page.reload();
     await page.getByTestId('nav-game').click();
-    await expect(page.getByTestId('game-tracking-placeholder')).toBeVisible();
+    await expect(page.getByTestId('score-row-for')).toBeVisible();
   });
 
   test('een nog-niet-gestarte opzet overleeft een reload NIET (v1-pariteit: alleen "tracking" hervat)', async ({
