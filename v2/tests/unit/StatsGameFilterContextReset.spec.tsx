@@ -151,9 +151,17 @@ describe('app/App — statsGameIds reset bij organisatie/teamwissel (externe PR-
       />,
     );
 
-    // Zonder de reset zou de stale Set (met alleen gA-2, dat niet in team B
-    // voorkomt) hier "(0)" tonen. Met de fix toont team B weer "alles": (1).
+    // Herreview (aug. 2026): de knopteller alleen is GEEN mutation-sensitive
+    // bewijs — team B heeft toevallig ook 1 wedstrijd, dus zowel de
+    // correcte reset (`null`, scope-lengte 1) als de foutieve stale Set uit
+    // team A (size 1, met een ID dat in team B niet bestaat) tonen hier
+    // dezelfde tekst "(1)". Het daadwerkelijke bewijs is de checkbox-state
+    // in de modal: bij `null` staat elk vinkje standaard AAN; bij een stale
+    // Set zonder `gB-1` zou dat vinkje juist UIT staan.
     await waitFor(() => expect(getByTestId('stats-games-btn').textContent).toContain('(1)'));
-    expect(getByTestId('stats-games-btn').textContent).not.toContain('(0)');
+    getByTestId('stats-games-btn').click();
+    await waitFor(() => expect(getByTestId('stats-games-modal')).toBeTruthy());
+    const checkbox = getByTestId('stats-game-check-gB-1') as HTMLInputElement;
+    expect(checkbox.checked).toBe(true);
   });
 });
