@@ -631,6 +631,8 @@ de actieve organisatie/teamcontext.
 
 ### PR 6.4 — statistieken
 
+Voorbereidingsplan: [`docs/pr-6.4-plan.md`](pr-6.4-plan.md).
+
 - lineupcombinaties, on/off, plus/min, speeltijd en per-10-minuten;
 - handmatig narekenbare fixtures;
 - totalen blijven afleidbaar uit bronacties/segmenten en niet alleen caches;
@@ -638,11 +640,15 @@ de actieve organisatie/teamcontext.
 
 ### PR 6.5 — trends
 
+Voorbereidingsplan: [`docs/pr-6.5-plan.md`](pr-6.5-plan.md).
+
 - chronologische spelertrends, gemiddelde speeltijd en plus/min;
 - lopende wedstrijd als voorlopig datapunt volgens v1-gedrag;
 - mobiele weergave en lege/partiële/cachedata duidelijk onderscheiden.
 
 ### PR 6.6 — back-up, import en lokale migratie
+
+Voorbereidingsplan: [`docs/pr-6.6-plan.md`](pr-6.6-plan.md).
 
 - bestaande v1-back-up valideren en veilig migreren;
 - preview vóór import en automatische downloadbare back-up;
