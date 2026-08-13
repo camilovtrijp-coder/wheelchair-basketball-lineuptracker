@@ -59,13 +59,21 @@ export interface Segment {
  * Bewust NIET in deze log (blijven, net als in v1, direct gemuteerde en
  * meteen gepersisteerde "huidige stand"-velden op `ActiveGame` zelf, geen
  * actielog-entries — zie hieronder): de huidige opstelling (`onCourt`), het
- * lopende kwart en de begin/eind-kloktijd van het nog-open segment. Elk
- * segment slaat zijn eigen kwart/tijden al vast zodra het wordt opgeslagen —
- * dat historische feit staat dus al in `Segment`, ongeacht wat er daarna met
- * het "huidige" kwart/de klok gebeurt. Ook het live tikken/wisselen vóór
- * "Klaar met wisselen" (v1's `pendingSwapLineup`/`selected`) is bewust
- * ongepersisteerde, ongeconfirmde UI-state — pas het afsluiten van een
- * segment is een bevestigde handeling.
+ * lopende kwart, de begin/eind-kloktijd van het nog-open segment en de
+ * pre-wissel-snapshot (`pendingSwapLineup`). Elk segment slaat zijn eigen
+ * kwart/tijden al vast zodra het wordt opgeslagen — dat historische feit
+ * staat dus al in `Segment`, ongeacht wat er daarna met het "huidige" kwart/
+ * de klok gebeurt.
+ *
+ * `pendingSwapLineup` wijkt hierin bewust af van v1: in v1 is dit een puur
+ * ongepersisteerde JS-variabele, dus een reload/crash tijdens een nog niet
+ * bevestigd blokje wissels verliest de grens tussen "vóór" en "ná" de wissel
+ * — het eerstvolgende opgeslagen segment gebruikt dan stilzwijgend de al
+ * gewisselde opstelling voor de hele duur. v2 bewaart deze snapshot wél
+ * (direct gemuteerd, net als `onCourt`), zodat zo'n crash geen bevestigde
+ * segmentgrens meer kan verminken — alleen het lopende tikken/selecteren zelf
+ * (`selected`, welke speler op dit moment is aangetikt) blijft ongepersisteerde
+ * UI-state, want dat is nooit meer dan een cursor zonder betekenis op zichzelf.
  */
 export type GameAction =
   | { type: 'score-delta'; id: string; team: 'for' | 'against'; delta: number; at: string }
@@ -105,6 +113,13 @@ export interface ActiveGame {
    */
   beginSec: number;
   endSec: number;
+  /**
+   * Snapshot van `onCourt` van vóór het huidige, nog niet bevestigde blokje
+   * wissels (v1: `pendingSwapLineup`) — `null` zolang er geen wissel loopt.
+   * Zie de toelichting bij `GameAction` hierboven voor waarom dit veld, in
+   * tegenstelling tot v1, wél gepersisteerd wordt.
+   */
+  pendingSwapLineup: string[] | null;
   /** Append-only; leeg tot de eerste `tracking`-handeling. */
   actions: GameAction[];
   createdAt: string;

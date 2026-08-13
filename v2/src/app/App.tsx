@@ -428,6 +428,7 @@ export function App({ repositories, syncStatus, canWrite, organizationId, teamId
             tag2Label={tag2Label}
             onGameChange={handleGameChange}
             canWrite={canWrite}
+            saveError={gameSaveError}
           />
         ) : (
           <GameSetupPanel

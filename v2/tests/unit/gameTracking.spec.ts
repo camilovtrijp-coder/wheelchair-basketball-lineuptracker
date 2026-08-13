@@ -54,6 +54,7 @@ function game(overrides: Partial<ActiveGame> = {}): ActiveGame {
     curQuarter: 1,
     beginSec: MAX_CLOCK_SECONDS,
     endSec: MAX_CLOCK_SECONDS,
+    pendingSwapLineup: null,
     actions: [],
     createdAt: '2026-01-01T00:00:00.000Z',
     startedAt: '2026-01-01T00:05:00.000Z',

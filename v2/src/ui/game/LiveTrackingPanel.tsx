@@ -28,6 +28,7 @@ export interface LiveTrackingPanelProps {
   tag2Label: string;
   onGameChange: (next: ActiveGame) => void;
   canWrite: boolean;
+  saveError: boolean;
 }
 
 function t(lang: Lang, key: StringKey): string {
@@ -159,12 +160,13 @@ export function LiveTrackingPanel({
   tag2Label,
   onGameChange,
   canWrite,
+  saveError,
 }: LiveTrackingPanelProps) {
   const [selected, setSelected] = useState<Selected | null>(null);
   // Snapshot van onCourt van vóór het huidige, nog niet bevestigde blokje
-  // wissels (v1: `pendingSwapLineup`). Bewust niet gepersisteerd — zie
-  // domain/game/types.ts bij `GameAction`.
-  const [pendingSwapLineup, setPendingSwapLineup] = useState<string[] | null>(null);
+  // wissels (v1: `pendingSwapLineup`) — anders dan v1 wél gepersisteerd op
+  // `game.pendingSwapLineup`, zie domain/game/types.ts bij `GameAction`.
+  const pendingSwapLineup = game.pendingSwapLineup;
   const [swapConfirmEndSec, setSwapConfirmEndSec] = useState<number | null>(null);
   const [endTouched, setEndTouched] = useState(false);
   const [editSegmentId, setEditSegmentId] = useState<string | null>(null);
@@ -195,8 +197,11 @@ export function LiveTrackingPanel({
       const courtId = where === 'court' ? id : selected.id;
       const benchId = where === 'bench' ? id : selected.id;
       const snapshot = pendingSwapLineup ?? game.onCourt;
-      setPendingSwapLineup(snapshot);
-      onGameChange({ ...game, onCourt: swapOnCourt(game.onCourt, courtId, benchId) });
+      onGameChange({
+        ...game,
+        onCourt: swapOnCourt(game.onCourt, courtId, benchId),
+        pendingSwapLineup: snapshot,
+      });
       setSelected(null);
     } else {
       setSelected({ id, where });
@@ -205,8 +210,7 @@ export function LiveTrackingPanel({
 
   function handleDiscardSwaps() {
     if (pendingSwapLineup == null) return;
-    onGameChange({ ...game, onCourt: pendingSwapLineup });
-    setPendingSwapLineup(null);
+    onGameChange({ ...game, onCourt: pendingSwapLineup, pendingSwapLineup: null });
   }
 
   function buildAndAppendSegment(
@@ -229,6 +233,7 @@ export function LiveTrackingPanel({
       ...game,
       beginSec: endSec,
       endSec,
+      pendingSwapLineup: null,
       actions: [...game.actions, segmentSavedAction(segment)],
     });
   }
@@ -241,8 +246,9 @@ export function LiveTrackingPanel({
     if (swapDur < 0) return;
     if (swapDur > 0) {
       buildAndAppendSegment(game.curQuarter, game.beginSec, swapConfirmEndSec, pendingSwapLineup);
+    } else {
+      onGameChange({ ...game, pendingSwapLineup: null });
     }
-    setPendingSwapLineup(null);
     setSwapConfirmEndSec(null);
   }
 
@@ -251,7 +257,6 @@ export function LiveTrackingPanel({
     const lineup = pendingSwapLineup ?? game.onCourt;
     if (!canSaveSegment(dur, lineup)) return;
     buildAndAppendSegment(game.curQuarter, game.beginSec, game.endSec, lineup);
-    setPendingSwapLineup(null);
     setEndTouched(false);
   }
 
@@ -395,6 +400,12 @@ export function LiveTrackingPanel({
           </span>
         </p>
       </header>
+
+      {saveError ? (
+        <p className="settings-error" role="alert" data-testid="game-save-error">
+          {t(lang, 'gameSaveError')}
+        </p>
+      ) : null}
 
       <div className="score-card">
         {scoreRow('for')}

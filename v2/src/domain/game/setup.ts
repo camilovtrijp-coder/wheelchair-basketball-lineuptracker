@@ -47,6 +47,7 @@ export function createGameFromRoster(
     curQuarter: 1,
     beginSec: 0,
     endSec: 0,
+    pendingSwapLineup: null,
     actions: [],
     createdAt: now,
     startedAt: null,
