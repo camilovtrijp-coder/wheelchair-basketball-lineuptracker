@@ -152,9 +152,17 @@ outsider-contextquery die aantoont dat er niets lekt).
 
 ## Buiten scope van dit contract
 
-- Wedstrijd-/actiepaden (`games`, `actions`): default-deny tot Fase 7, geen
-  querycontract nodig zolang die paden niet bestaan.
-- Elke toekomstige nieuwe query (bijv. voor wedstrijdhistorie of statistieken
-  in Fase 6/7) vereist een eigen, even expliciet vastgelegd en beproefd
-  contract — dit document dekt uitsluitend de twee contextwisselaar-queries
-  hierboven.
+- Wedstrijd-/actiepaden (`games`, `actions`, PR 7.1b): de directe paden
+  (`organizations/{orgId}/teams/{teamId}/games/{gameId}` en
+  `.../actions/{actionId}`) zijn nu wél gedefinieerd — zie `firestore.rules`
+  punt 8–12 en `tests/rules/games-and-actions.spec.ts`. Er is bewust GEEN
+  recursieve-wildcard match toegevoegd: elke `collectionGroup`-query op
+  `games`/`actions` blijft daarom default-deny, want er is nog geen
+  cross-team-querybehoefte (in tegenstelling tot `organizationMembers`/
+  `teamMembers` hierboven, die per definitie een "over alle teams heen"-vraag
+  beantwoorden). Zodra een toekomstige fase (bijv. PR 7.2's cloudhistorie of
+  een coachdashboard) zo'n query wel nodig heeft, vereist dat een eigen,
+  even expliciet vastgelegd en beproefd contract, exact zoals hierboven.
+- Elke andere toekomstige nieuwe query (bijv. voor statistieken) vereist een
+  eigen, even expliciet vastgelegd en beproefd contract — dit document dekt
+  uitsluitend de twee contextwisselaar-queries hierboven.
