@@ -22,7 +22,11 @@ export function isPlainObject(value: unknown): value is Record<string, unknown> 
 
 export function assertString(documentType: string, field: string, value: unknown): string {
   if (typeof value !== 'string') {
-    throw new DocumentValidationError(documentType, field, `moet een string zijn, kreeg ${typeof value}`);
+    throw new DocumentValidationError(
+      documentType,
+      field,
+      `moet een string zijn, kreeg ${typeof value}`,
+    );
   }
   return value;
 }
@@ -38,21 +42,33 @@ export function assertNonEmptyString(documentType: string, field: string, value:
 export function assertEmail(documentType: string, field: string, value: unknown): string {
   const s = assertNonEmptyString(documentType, field, value);
   if (!s.includes('@')) {
-    throw new DocumentValidationError(documentType, field, `moet een e-mailadres zijn, kreeg "${s}"`);
+    throw new DocumentValidationError(
+      documentType,
+      field,
+      `moet een e-mailadres zijn, kreeg "${s}"`,
+    );
   }
   return s;
 }
 
 export function assertBoolean(documentType: string, field: string, value: unknown): boolean {
   if (typeof value !== 'boolean') {
-    throw new DocumentValidationError(documentType, field, `moet een boolean zijn, kreeg ${typeof value}`);
+    throw new DocumentValidationError(
+      documentType,
+      field,
+      `moet een boolean zijn, kreeg ${typeof value}`,
+    );
   }
   return value;
 }
 
 export function assertNumber(documentType: string, field: string, value: unknown): number {
   if (typeof value !== 'number' || Number.isNaN(value)) {
-    throw new DocumentValidationError(documentType, field, `moet een getal zijn, kreeg ${typeof value}`);
+    throw new DocumentValidationError(
+      documentType,
+      field,
+      `moet een getal zijn, kreeg ${typeof value}`,
+    );
   }
   return value;
 }
@@ -60,7 +76,11 @@ export function assertNumber(documentType: string, field: string, value: unknown
 export function assertInteger(documentType: string, field: string, value: unknown): number {
   const n = assertNumber(documentType, field, value);
   if (!Number.isInteger(n)) {
-    throw new DocumentValidationError(documentType, field, `moet een geheel getal zijn, kreeg ${n}`);
+    throw new DocumentValidationError(
+      documentType,
+      field,
+      `moet een geheel getal zijn, kreeg ${n}`,
+    );
   }
   return n;
 }
@@ -81,9 +101,78 @@ export function assertNullableStringArray(
   return assertStringArray(documentType, field, value);
 }
 
-export function assertNullableString(documentType: string, field: string, value: unknown): string | null {
+export function assertNullableString(
+  documentType: string,
+  field: string,
+  value: unknown,
+): string | null {
   if (value === null) return null;
   return assertString(documentType, field, value);
+}
+
+/**
+ * Review-opvolging PR 7.1a (externe review, aug. 2026): een niet-lege string
+ * is geen geldig ISO-tijdstip — `assertNonEmptyString` liet bijv.
+ * `"dit-is-geen-tijdstip"` ongemoeid door voor client-autoritatieve
+ * tijdvelden (`GameDocument.createdAt`/`startedAt`,
+ * `GameActionEnvelopeDocument.occurredAt` — bewust géén Firestore
+ * `Timestamp`, zie de toelichting bij die documenten). `Date.parse()` faalt
+ * (`NaN`) op niet-parseerbare strings; dat is hier voldoende om malformed
+ * serverdata fail-closed te weigeren.
+ */
+export function assertIsoTimestampString(
+  documentType: string,
+  field: string,
+  value: unknown,
+): string {
+  const s = assertNonEmptyString(documentType, field, value);
+  if (Number.isNaN(Date.parse(s))) {
+    throw new DocumentValidationError(
+      documentType,
+      field,
+      `moet een geldige ISO-tijdstip-string zijn, kreeg "${s}"`,
+    );
+  }
+  return s;
+}
+
+export function assertNullableIsoTimestampString(
+  documentType: string,
+  field: string,
+  value: unknown,
+): string | null {
+  if (value === null) return null;
+  return assertIsoTimestampString(documentType, field, value);
+}
+
+/**
+ * Review-opvolging PR 7.1a: contextvelden (`organizationId`/`teamId`/
+ * `gameId`/`actionId`) werden alleen op aanwezigheid/type gecontroleerd, niet
+ * tegen het daadwerkelijke Firestore-pad van het document — een document kon
+ * dus geldige, maar voor het pad VERKEERDE context-ID's dragen. `pathSegments()`
+ * splitst `snapshot.ref.path` (bijv.
+ * `organizations/org-1/teams/team-1/games/game-1`) in de losse padsegmenten;
+ * `assertPathContextField()` weigert een veld dat niet overeenkomt met het
+ * segment op de verwachte positie.
+ */
+export function pathSegments(path: string): string[] {
+  return path.split('/').filter((segment) => segment.length > 0);
+}
+
+export function assertPathContextField(
+  documentType: string,
+  field: string,
+  value: string,
+  pathSegment: string | undefined,
+): string {
+  if (value !== pathSegment) {
+    throw new DocumentValidationError(
+      documentType,
+      field,
+      `komt niet overeen met het Firestore-pad (veld "${value}", pad-segment "${pathSegment ?? '(ontbreekt)'}")`,
+    );
+  }
+  return value;
 }
 
 export function assertTimestamp(documentType: string, field: string, value: unknown): Timestamp {
@@ -93,12 +182,20 @@ export function assertTimestamp(documentType: string, field: string, value: unkn
   return value;
 }
 
-export function assertNullableTimestamp(documentType: string, field: string, value: unknown): Timestamp | null {
+export function assertNullableTimestamp(
+  documentType: string,
+  field: string,
+  value: unknown,
+): Timestamp | null {
   if (value === null) return null;
   return assertTimestamp(documentType, field, value);
 }
 
-export function assertOptionalTimestamp(documentType: string, field: string, value: unknown): Timestamp | undefined {
+export function assertOptionalTimestamp(
+  documentType: string,
+  field: string,
+  value: unknown,
+): Timestamp | undefined {
   if (value === undefined) return undefined;
   return assertTimestamp(documentType, field, value);
 }
@@ -120,7 +217,11 @@ export function assertOneOf<T extends string>(
 ): T {
   const s = assertString(documentType, field, value);
   if (!(allowed as readonly string[]).includes(s)) {
-    throw new DocumentValidationError(documentType, field, `moet één van [${allowed.join(', ')}] zijn, kreeg "${s}"`);
+    throw new DocumentValidationError(
+      documentType,
+      field,
+      `moet één van [${allowed.join(', ')}] zijn, kreeg "${s}"`,
+    );
   }
   return s as T;
 }

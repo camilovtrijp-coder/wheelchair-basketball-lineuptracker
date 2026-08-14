@@ -3,11 +3,14 @@ import {
   DocumentValidationError,
   assertBoolean,
   assertInteger,
+  assertIsoTimestampString,
   assertNonEmptyString,
   assertNumber,
   assertOneOf,
+  assertPathContextField,
   assertStringArray,
   isPlainObject,
+  pathSegments,
 } from './validation.js';
 
 const TYPE = 'gameAction';
@@ -98,7 +101,10 @@ function assertActionPayload(field: string, value: unknown): GameActionPayloadDo
         value: assertNumber(TYPE, `${field}.value`, value.value),
       };
     case 'segment-saved':
-      return { type: actionType, segment: assertSegment(`${field}.segment`, value.segment) };
+      return {
+        type: actionType,
+        segment: assertSegment(`${field}.segment`, value.segment),
+      };
     case 'segment-edited':
       return {
         type: actionType,
@@ -159,16 +165,26 @@ export const gameActionConverter: FirestoreDataConverter<GameActionEnvelopeDocum
   },
   fromFirestore(snapshot: QueryDocumentSnapshot): GameActionEnvelopeDocument {
     const data = snapshot.data();
+    // Pad: organizations/{orgId}/teams/{teamId}/games/{gameId}/actions/{actionId}.
+    const segments = pathSegments(snapshot.ref.path);
+    const organizationId = assertNonEmptyString(TYPE, 'organizationId', data.organizationId);
+    const teamId = assertNonEmptyString(TYPE, 'teamId', data.teamId);
+    const gameId = assertNonEmptyString(TYPE, 'gameId', data.gameId);
+    const actionId = assertNonEmptyString(TYPE, 'actionId', data.actionId);
+    assertPathContextField(TYPE, 'organizationId', organizationId, segments[1]);
+    assertPathContextField(TYPE, 'teamId', teamId, segments[3]);
+    assertPathContextField(TYPE, 'gameId', gameId, segments[5]);
+    assertPathContextField(TYPE, 'actionId', actionId, segments[7]);
     return {
-      organizationId: assertNonEmptyString(TYPE, 'organizationId', data.organizationId),
-      teamId: assertNonEmptyString(TYPE, 'teamId', data.teamId),
-      gameId: assertNonEmptyString(TYPE, 'gameId', data.gameId),
-      actionId: assertNonEmptyString(TYPE, 'actionId', data.actionId),
+      organizationId,
+      teamId,
+      gameId,
+      actionId,
       authorUid: assertNonEmptyString(TYPE, 'authorUid', data.authorUid),
       deviceId: assertNonEmptyString(TYPE, 'deviceId', data.deviceId),
       writerEpoch: assertInteger(TYPE, 'writerEpoch', data.writerEpoch),
       sequence: assertInteger(TYPE, 'sequence', data.sequence),
-      occurredAt: assertNonEmptyString(TYPE, 'occurredAt', data.occurredAt),
+      occurredAt: assertIsoTimestampString(TYPE, 'occurredAt', data.occurredAt),
       schemaVersion: assertSchemaVersion('schemaVersion', data.schemaVersion),
       action: assertActionPayload('action', data.action),
     };

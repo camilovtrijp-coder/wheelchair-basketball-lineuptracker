@@ -3,15 +3,19 @@ import {
   DocumentValidationError,
   assertBoolean,
   assertInteger,
+  assertIsoTimestampString,
   assertNonEmptyString,
+  assertNullableIsoTimestampString,
   assertNullableString,
   assertNullableStringArray,
   assertNumber,
   assertOneOf,
+  assertPathContextField,
   assertString,
   assertStringArray,
   assertTimestamp,
   isPlainObject,
+  pathSegments,
 } from './validation.js';
 
 const TYPE = 'game';
@@ -116,9 +120,15 @@ export const gameConverter: FirestoreDataConverter<GameDocument> = {
   },
   fromFirestore(snapshot: QueryDocumentSnapshot): GameDocument {
     const data = snapshot.data();
+    // Pad: organizations/{orgId}/teams/{teamId}/games/{gameId}.
+    const segments = pathSegments(snapshot.ref.path);
+    const organizationId = assertNonEmptyString(TYPE, 'organizationId', data.organizationId);
+    const teamId = assertNonEmptyString(TYPE, 'teamId', data.teamId);
+    assertPathContextField(TYPE, 'organizationId', organizationId, segments[1]);
+    assertPathContextField(TYPE, 'teamId', teamId, segments[3]);
     return {
-      organizationId: assertNonEmptyString(TYPE, 'organizationId', data.organizationId),
-      teamId: assertNonEmptyString(TYPE, 'teamId', data.teamId),
+      organizationId,
+      teamId,
       phase: assertOneOf(TYPE, 'phase', data.phase, GAME_PHASES),
       players: assertGamePlayers('players', data.players),
       opponent: assertString(TYPE, 'opponent', data.opponent),
@@ -129,7 +139,11 @@ export const gameConverter: FirestoreDataConverter<GameDocument> = {
       curQuarter: assertInteger(TYPE, 'curQuarter', data.curQuarter),
       beginSec: assertInteger(TYPE, 'beginSec', data.beginSec),
       endSec: assertInteger(TYPE, 'endSec', data.endSec),
-      pendingSwapLineup: assertNullableStringArray(TYPE, 'pendingSwapLineup', data.pendingSwapLineup),
+      pendingSwapLineup: assertNullableStringArray(
+        TYPE,
+        'pendingSwapLineup',
+        data.pendingSwapLineup,
+      ),
       scoreFor: assertInteger(TYPE, 'scoreFor', data.scoreFor),
       scoreAgainst: assertInteger(TYPE, 'scoreAgainst', data.scoreAgainst),
       segmentCount: assertInteger(TYPE, 'segmentCount', data.segmentCount),
@@ -137,8 +151,8 @@ export const gameConverter: FirestoreDataConverter<GameDocument> = {
       deviceId: assertNullableString(TYPE, 'deviceId', data.deviceId),
       writerEpoch: assertInteger(TYPE, 'writerEpoch', data.writerEpoch),
       revision: assertInteger(TYPE, 'revision', data.revision),
-      createdAt: assertNonEmptyString(TYPE, 'createdAt', data.createdAt),
-      startedAt: assertNullableString(TYPE, 'startedAt', data.startedAt),
+      createdAt: assertIsoTimestampString(TYPE, 'createdAt', data.createdAt),
+      startedAt: assertNullableIsoTimestampString(TYPE, 'startedAt', data.startedAt),
       updatedAt: assertTimestamp(TYPE, 'updatedAt', data.updatedAt),
     };
   },

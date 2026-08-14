@@ -214,8 +214,12 @@ describe('documentgrootte- en read/write-budget (PR 7.1a)', () => {
   });
 
   it('een enkele action-envelope (segment-saved, het grootste actietype) blijft ruim onder de documentlimiet', () => {
-    const [firstAction] = projectGameActions(fullGameFixture(), context);
-    const bytes = new TextEncoder().encode(JSON.stringify(firstAction)).length;
+    const envelopes = projectGameActions(fullGameFixture(), context);
+    const segmentSavedAction = envelopes.find(
+      (envelope) => envelope.action.type === 'segment-saved',
+    );
+    expect(segmentSavedAction).toBeDefined();
+    const bytes = new TextEncoder().encode(JSON.stringify(segmentSavedAction)).length;
     expect(bytes).toBeLessThan(FIRESTORE_MAX_DOCUMENT_BYTES / 1000);
   });
 
