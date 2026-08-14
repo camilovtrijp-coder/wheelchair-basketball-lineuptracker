@@ -110,14 +110,17 @@ test.describe('v2 Back-up-sectie (PR 6.6)', () => {
     // Inhoudsassertie (herreview PR #52, aug. 2026): de herstelback-up moet
     // de OUDE (huidige, vóór-import) teaminstellingen bevatten — niet de
     // net geïmporteerde — anders is 'm terugzetten na een foute import
-    // zinloos. firebase/scripts/seed.ts zet team-u23's teamName op
-    // 'Rotterdam Basketball (fictief)'.
+    // zinloos. Deze suite draait in lokale modus (fixtures.ts:
+    // "onvertrouwd apparaat" — localStorage, niet de Firestore-seed), dus
+    // de vóór-importwaarde is hier `DEFAULT_SETTINGS.teamName` (leeg) i.p.v.
+    // een seed-teamnaam — de robuuste assertie is dat het simpelweg NIET de
+    // zojuist geïmporteerde naam is.
     const restorePath = await restoreDownload.path();
     expect(restorePath).not.toBeNull();
     const restorePayload = readDownloadedBackup(restorePath!);
     const restoreData = restorePayload.data as Record<string, unknown>;
     const restoreSettings = restoreData.settings as Record<string, unknown>;
-    expect(restoreSettings.teamName).toBe('Rotterdam Basketball (fictief)');
+    expect(restoreSettings.teamName).not.toBe('Geïmporteerd Team');
 
     await expect(page.getByTestId('backup-success')).toBeVisible();
     await page.getByTestId('nav-settings').click();
