@@ -14,7 +14,9 @@ import type { AsyncSettingsRepository } from '../../src/application/settings/Asy
 import type { AsyncRosterRepository } from '../../src/application/roster/AsyncRosterRepository';
 import type { GameRepository } from '../../src/application/game/GameRepository';
 import type { CompletedGameRepository } from '../../src/application/game/CompletedGameRepository';
+import type { LangWritePort } from '../../src/application/i18n/LangRepository';
 import type { WriteResult } from '../../src/domain/syncState';
+import type { Lang } from '../../src/i18n/strings';
 
 const SYNCED = { status: 'gesynchroniseerd' as const, fromCache: false, hasPendingWrites: false };
 const PENDING = {
@@ -167,6 +169,22 @@ function fakeCompletedGameRepo(initial: CompletedGame[]): CompletedGameRepositor
   };
 }
 
+type LangMode = 'ok' | 'failAlways' | 'staleReadback';
+
+function fakeLangRepo(initial: Lang, getMode: () => LangMode): LangWritePort {
+  let current: Lang | null = initial;
+  return {
+    read: () => current,
+    write: (l) => {
+      const mode = getMode();
+      if (mode === 'failAlways') return false;
+      if (mode === 'staleReadback') return true; // "succes", niet echt geschreven
+      current = l;
+      return true;
+    },
+  };
+}
+
 function completedGame(id: string): CompletedGame {
   return {
     id,
@@ -196,14 +214,17 @@ let settingsRepo: AsyncSettingsRepository;
 let rosterRepo: AsyncRosterRepository;
 let gameRepo: GameRepository;
 let completedGameRepo: CompletedGameRepository;
+let langRepo: LangWritePort;
 let langSet: string | null;
 let deps: BackupCoordinatorDeps;
 let settingsMode: WriteMode;
 let rosterMode: WriteMode;
+let langMode: LangMode;
 
 beforeEach(() => {
   settingsMode = 'ok';
   rosterMode = 'ok';
+  langMode = 'ok';
   settingsRepo = fakeSettingsRepo(
     { ...DEFAULT_SETTINGS, teamName: 'Bestaand team' },
     () => settingsMode,
@@ -214,12 +235,15 @@ beforeEach(() => {
   );
   gameRepo = fakeGameRepo(null);
   completedGameRepo = fakeCompletedGameRepo([completedGame('existing')]);
+  langRepo = fakeLangRepo('nl', () => langMode);
   langSet = null;
   deps = {
     settingsRepo,
     rosterRepo,
     gameRepo,
     completedGameRepo,
+    langRepo,
+    currentLang: 'nl',
     setLang: (l) => {
       langSet = l;
     },
@@ -458,6 +482,68 @@ describe('application/backup/BackupCoordinator — cloud: nooit succes vóór se
       vi.useRealTimers();
     }
   }, 10_000);
+});
+
+describe('application/backup/BackupCoordinator — taal: write+readback+rollback, geen onfeilbare write (externe PR-6.6-review)', () => {
+  it('meldt failed en rolt alle secties terug wanneer de taal-storage-write faalt (bv. een throwende setItem)', async () => {
+    const throwingLangRepo: LangWritePort = {
+      read: () => 'nl',
+      write: () => {
+        throw new Error('QuotaExceededError');
+      },
+    };
+    deps = { ...deps, langRepo: throwingLangRepo };
+    const snapshot = await snapshotOrThrow(deps);
+    const data: BackupV2Data = {
+      settings: { ...DEFAULT_SETTINGS, teamName: 'X' },
+      lang: 'en',
+    };
+    const result = await runImport(deps, data, TARGET, snapshot);
+    expect(result.ok).toBe(false);
+    expect(result.journal.map((j) => `${j.section}:${j.outcome}`)).toEqual([
+      'settings:written',
+      'roster:written',
+      'completedGames:written',
+      'activeGame:written',
+      'lang:failed',
+      // De rollbackpoging van taal gebruikt dezelfde blijvend-throwende
+      // adapter, dus faalt ook eerlijk — nooit stilzwijgend als rolledBack.
+      'lang:rollbackFailed',
+      'activeGame:rolledBack',
+      'completedGames:rolledBack',
+      'roster:rolledBack',
+      'settings:rolledBack',
+    ]);
+    // Settings is teruggerold ondanks dat die stap zelf prima gelukt was —
+    // een falende taal-write mag geen gedeeltelijk succes achterlaten.
+    expect((await settingsRepo.read()).teamName).toBe('Bestaand team');
+    // setLang() is NIET aangeroepen: de React-state mag nooit een taal
+    // tonen die niet daadwerkelijk is opgeslagen.
+    expect(langSet).toBeNull();
+  });
+
+  it('meldt failed bij een taal-readback-mismatch (write meldt succes, storage geeft de oude waarde terug)', async () => {
+    langMode = 'staleReadback';
+    const snapshot = await snapshotOrThrow(deps);
+    const data: BackupV2Data = { lang: 'en' };
+    const result = await runImport(deps, data, TARGET, snapshot);
+    expect(result.ok).toBe(false);
+    expect(result.journal[4]).toEqual({ section: 'lang', outcome: 'failed' });
+    // setLang() is nooit met de MISLUKTE waarde 'en' aangeroepen — de
+    // readback-mismatch bewijst dat die storage-write niet echt doorkwam,
+    // dus mag de React-state niet naar 'en' springen. De rollback-poging
+    // erna herstelt (schrijft/leest 'nl', de snapshot-waarde) wél normaal.
+    expect(langSet).not.toBe('en');
+  });
+
+  it('schrijft taal pas naar de React-state (setLang) NA een bevestigde storage-write', async () => {
+    const snapshot = await snapshotOrThrow(deps);
+    const data: BackupV2Data = { lang: 'en' };
+    const result = await runImport(deps, data, TARGET, snapshot);
+    expect(result.ok).toBe(true);
+    expect(langSet).toBe('en');
+    expect(langRepo.read()).toBe('en');
+  });
 });
 
 describe('application/backup/BackupCoordinator — idempotente retry (plan §D/§G.6)', () => {

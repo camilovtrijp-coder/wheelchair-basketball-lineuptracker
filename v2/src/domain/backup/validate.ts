@@ -67,7 +67,13 @@ export function validateEnvelope(raw: unknown): {
   return { errors: [], version, data: raw.data };
 }
 
-function validateSettingsSection(settings: unknown): BackupValidationError[] {
+/** Nu ook exported (externe PR-6.6-review, aug. 2026) voor hergebruik door
+ * `migrateV1.ts`'s fail-closed v1-settingsmigratie — die mag `normalizeSettings()`
+ * (bewust permissief, vult ontbrekende velden aan met defaults, zie de
+ * docstring daar) niet gebruiken vóórdat de RAUWE v1-data eerst tegen
+ * dezelfde eisen als v1's eigen validator is getoetst: v1 wijst een
+ * back-up met ontbrekende settingsvelden af i.p.v. ze aan te vullen. */
+export function validateSettingsSection(settings: unknown): BackupValidationError[] {
   if (!isPlainObject(settings)) return [{ code: 'settingsInvalid', detail: 'not-object' }];
   const errors: BackupValidationError[] = [];
   for (const key of SETTINGS_KEYS) {
@@ -90,7 +96,19 @@ function validateSettingsSection(settings: unknown): BackupValidationError[] {
   return errors;
 }
 
-function validateRosterSection(roster: unknown): BackupValidationError[] {
+const ROSTER_STRING_KEYS = ['nr', 'naam', 'kl'] as const;
+const ROSTER_BOOLEAN_KEYS = ['vrouw', 'jeugd'] as const;
+
+/**
+ * Externe PR-6.6-review (aug. 2026): controleerde voorheen alleen
+ * AANWEZIGHEID van de bekende velden en het TYPE van `id` — een aanwezig
+ * maar verkeerd-getypeerd `nr`/`naam`/`kl`/`vrouw`/`jeugd` (bv. `nr: 9`
+ * i.p.v. `"9"`) werd zo geaccepteerd. Nu ook exported voor hergebruik door
+ * `migrateV1.ts`'s fail-closed v1-rostermigratie (die dezelfde strengheid
+ * nodig heeft als deze v2-sectievalidatie, i.p.v. `normalizeRoster()`'s
+ * bewust permissieve live-app-boot-contract).
+ */
+export function validateRosterSection(roster: unknown): BackupValidationError[] {
   if (!Array.isArray(roster)) return [{ code: 'rosterInvalid', detail: 'not-array' }];
   const errors: BackupValidationError[] = [];
   const seenIds = new Set<number>();
@@ -102,6 +120,16 @@ function validateRosterSection(roster: unknown): BackupValidationError[] {
     for (const key of PLAYER_KEYS) {
       if (!(key in entry)) {
         errors.push({ code: 'rosterInvalid', detail: `missing:${key}:${index}` });
+      }
+    }
+    for (const key of ROSTER_STRING_KEYS) {
+      if (key in entry && typeof entry[key] !== 'string') {
+        errors.push({ code: 'rosterInvalid', detail: `type:${key}:${index}` });
+      }
+    }
+    for (const key of ROSTER_BOOLEAN_KEYS) {
+      if (key in entry && typeof entry[key] !== 'boolean') {
+        errors.push({ code: 'rosterInvalid', detail: `type:${key}:${index}` });
       }
     }
     if (typeof entry.id !== 'number') {
@@ -277,9 +305,47 @@ function validateCompletedGameFields(
   return errors;
 }
 
+/**
+ * Externe PR-6.6-review (aug. 2026): een dubbele `CompletedGame.id`/
+ * `sourceGameId` binnen ÉÉN payload werd niet gedetecteerd — bijvoorbeeld
+ * twee v1-wedstrijden met hetzelfde legacy-`Game.id` krijgen via de
+ * deterministische mapping (`domain/backup/migrateV1.ts`) exact hetzelfde
+ * gemigreerde `id`/`sourceGameId` en werden beide geaccepteerd. Omdat
+ * `replaceAll()` (zie `BackupCoordinator`) de VOLLEDIGE doellijst in één
+ * keer vervangt, zou zo'n interne botsing twee entries met hetzelfde ID
+ * naast elkaar wegschrijven — een lijst die per-ID geïndexeerd/verwijderd
+ * wordt (zie `remove(id)`) hoort nooit dubbele ID's te bevatten.
+ */
+function findDuplicateGameIds(games: readonly CompletedGame[]): BackupValidationError[] {
+  const errors: BackupValidationError[] = [];
+  const seenIds = new Set<string>();
+  const seenSourceIds = new Set<string>();
+  games.forEach((game, index) => {
+    if (typeof game.id === 'string') {
+      if (seenIds.has(game.id)) {
+        errors.push({ code: 'gameDuplicateId', detail: `id:${game.id}:game:${index}` });
+      } else {
+        seenIds.add(game.id);
+      }
+    }
+    if (typeof game.sourceGameId === 'string') {
+      if (seenSourceIds.has(game.sourceGameId)) {
+        errors.push({
+          code: 'gameDuplicateId',
+          detail: `sourceGameId:${game.sourceGameId}:game:${index}`,
+        });
+      } else {
+        seenSourceIds.add(game.sourceGameId);
+      }
+    }
+  });
+  return errors;
+}
+
 export function validateCompletedGamesSection(games: unknown): BackupValidationError[] {
   if (!Array.isArray(games)) return [{ code: 'gameInvalid', detail: 'not-array' }];
   const errors: BackupValidationError[] = [];
+  const plainGames: CompletedGame[] = [];
   games.forEach((raw, index) => {
     const label = `game:${index}`;
     if (!isPlainObject(raw)) {
@@ -287,6 +353,7 @@ export function validateCompletedGamesSection(games: unknown): BackupValidationE
       return;
     }
     const game = raw as unknown as CompletedGame;
+    plainGames.push(game);
     errors.push(...validateCompletedGameFields(raw, label));
     errors.push(...validateGamePlayers(game.players, label));
     if (!Array.isArray(game.segments)) {
@@ -303,6 +370,7 @@ export function validateCompletedGamesSection(games: unknown): BackupValidationE
       errors.push({ code: 'gameInvalidScore', detail: `scoreAgainst:${label}` });
     }
   });
+  errors.push(...findDuplicateGameIds(plainGames));
   return errors;
 }
 

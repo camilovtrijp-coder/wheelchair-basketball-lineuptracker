@@ -66,6 +66,10 @@ test.describe('v2 Back-up-sectie (PR 6.6)', () => {
 
     await expect(page.getByTestId('backup-preview')).toBeVisible();
     await expect(page.getByTestId('backup-preview-target')).toBeVisible();
+    // Expliciete organisatie-/team-ID naast de weergavenaam (plan §C.7,
+    // herreview PR #52, aug. 2026) — disambiguatie bij gelijknamige teams.
+    await expect(page.getByTestId('backup-preview-target-id')).toContainText('org-rotterdam');
+    await expect(page.getByTestId('backup-preview-target-id')).toContainText('team-u23');
     await expect(page.getByTestId('backup-preview-settings')).toContainText('Geïmporteerd Team');
     await expect(page.getByTestId('backup-preview-roster')).toContainText('1');
     // Deze e2e-suite draait in lokale modus (fixtures.ts: "onvertrouwd

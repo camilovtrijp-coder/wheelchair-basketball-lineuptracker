@@ -12,7 +12,16 @@ import { SETTINGS_STORAGE_KEY, DEFAULT_SETTINGS } from '../../src/domain/setting
 import { LANG_STORAGE_KEY } from '../../src/i18n/strings';
 
 function v1Player(id: number, nr: string, naam = `Speler ${nr}`) {
-  return { id, nr, naam, kl: '3.0', vrouw: false, jeugd: false };
+  return {
+    id,
+    nr,
+    naam,
+    kl: '3.0',
+    vrouw: false,
+    jeugd: false,
+    participate: true,
+    start: true,
+  };
 }
 
 function v1Game(overrides: Record<string, unknown> = {}) {
@@ -96,6 +105,29 @@ describe('domain/backup/migrateV1 — migrateV1CompletedGame (plan §D/§G.9)', 
     const a = migrateV1CompletedGame(v1Game());
     const b = migrateV1CompletedGame(v1Game());
     expect(a).toEqual(b);
+  });
+
+  // Herreview op PR #52 (aug. 2026): `str(..., '')`/`num(..., 0)`-fallbacks
+  // maskeerden eerder een aanwezige-maar-fout-getypeerde v1-waarde als een
+  // stille default, vóórdat validatie de typefout kon zien.
+  it('geeft null (fail-closed) bij een string-getypeerde scoreFor i.p.v. deze stil naar 0 te vertalen', () => {
+    expect(migrateV1CompletedGame(v1Game({ scoreFor: '6' }))).toBeNull();
+    expect(migrateV1CompletedGame(v1Game({ scoreAgainst: '4' }))).toBeNull();
+    expect(migrateV1CompletedGame(v1Game({ quarterCount: '4' }))).toBeNull();
+  });
+
+  it('geeft null (fail-closed) bij ontbrekende/verkeerd-getypeerde metadata (opponent/competition/periodLabel/useClassLimit)', () => {
+    expect(migrateV1CompletedGame(v1Game({ opponent: 42 }))).toBeNull();
+    const { competition: _c, ...withoutCompetition } = v1Game();
+    void _c;
+    expect(migrateV1CompletedGame(withoutCompetition)).toBeNull();
+    expect(migrateV1CompletedGame(v1Game({ useClassLimit: 'ja' }))).toBeNull();
+  });
+
+  it('geeft null (fail-closed) bij verkeerd-getypeerde spelersvelden (nr/naam/kl/vrouw/jeugd/participate/start)', () => {
+    const badPlayers: unknown[] = v1Game().players.slice();
+    badPlayers[0] = { ...(badPlayers[0] as Record<string, unknown>), nr: 9 };
+    expect(migrateV1CompletedGame(v1Game({ players: badPlayers }))).toBeNull();
   });
 });
 
@@ -182,6 +214,46 @@ describe('domain/backup/migrateV1 — migrateV1BackupData (plan §D/§G.1)', () 
     const { data, errors } = migrateV1BackupData({ [ROSTER_STORAGE_KEY]: 'not-an-array' });
     expect(errors.some((e) => e.code === 'migrationFailed' && e.detail === 'roster')).toBe(true);
     expect(data.roster).toBeUndefined();
+  });
+
+  // Herreview op PR #52 (aug. 2026): `normalizeRoster()` filtert een
+  // niet-object entry stil weg (`[validPlayer, null]` → `[validPlayer]`) —
+  // legitiem voor de live-app-boot, maar bij een back-up-import hoort dat
+  // de HELE migratie te blokkeren, niet het roster stil in te korten.
+  it('faalt fail-closed op een roster met een niet-object entry (i.p.v. deze stil te filteren)', () => {
+    const validPlayer = {
+      id: 1,
+      nr: '1',
+      naam: 'Anna',
+      kl: '3.0',
+      vrouw: false,
+      jeugd: false,
+    };
+    const { data, errors } = migrateV1BackupData({
+      [ROSTER_STORAGE_KEY]: [validPlayer, null],
+    });
+    expect(errors.some((e) => e.code === 'migrationFailed' && e.detail === 'roster')).toBe(true);
+    expect(data.roster).toBeUndefined();
+  });
+
+  it('faalt fail-closed op een roster-item met een verkeerd-getypeerd veld (nr als getal i.p.v. string)', () => {
+    const { data, errors } = migrateV1BackupData({
+      [ROSTER_STORAGE_KEY]: [{ id: 1, nr: 9, naam: 'Anna', kl: '3.0', vrouw: false, jeugd: false }],
+    });
+    expect(errors.some((e) => e.code === 'migrationFailed' && e.detail === 'roster')).toBe(true);
+    expect(data.roster).toBeUndefined();
+  });
+
+  // v1's eigen `validateSettings()` wijst ontbrekende settingsvelden af —
+  // `normalizeSettings()` vult die eerder stil aan met defaults, wat bij
+  // een back-up-import geldige doelsettings gedeeltelijk zou overschrijven
+  // met defaultwaarden voor de ontbrekende velden.
+  it('faalt fail-closed op settings met een ontbrekend veld i.p.v. deze aan te vullen met defaults', () => {
+    const { teamName: _drop, ...incompleteSettings } = { ...DEFAULT_SETTINGS };
+    void _drop;
+    const { data, errors } = migrateV1BackupData({ [SETTINGS_STORAGE_KEY]: incompleteSettings });
+    expect(errors.some((e) => e.code === 'migrationFailed' && e.detail === 'settings')).toBe(true);
+    expect(data.settings).toBeUndefined();
   });
 
   it('faalt fail-closed op een ongeldige taalcode i.p.v. de sectie stil weg te laten', () => {

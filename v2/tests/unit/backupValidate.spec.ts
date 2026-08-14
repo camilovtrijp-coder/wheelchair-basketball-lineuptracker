@@ -201,6 +201,34 @@ describe('domain/backup/validate — validateBackupData (plan §C.5/§G.3-4)', (
     expect(validateBackupData({ completedGames: [completedGame()] })).toEqual([]);
   });
 
+  // Herreview op PR #52 (aug. 2026): twee wedstrijden met hetzelfde `id`
+  // (of dezelfde `sourceGameId`) binnen ÉÉN payload werden niet
+  // gedetecteerd — `replaceAll()` zou zo'n interne botsing zonder waarschuwing
+  // wegschrijven.
+  it('twee wedstrijden met hetzelfde id binnen dezelfde payload worden geweigerd', () => {
+    const errors = validateBackupData({
+      completedGames: [
+        completedGame({ id: 'dup', sourceGameId: 'src-a' }),
+        completedGame({ id: 'dup', sourceGameId: 'src-b' }),
+      ],
+    });
+    expect(errors.some((e) => e.code === 'gameDuplicateId' && e.detail?.startsWith('id:'))).toBe(
+      true,
+    );
+  });
+
+  it('twee wedstrijden met hetzelfde sourceGameId (maar verschillend id) worden geweigerd', () => {
+    const errors = validateBackupData({
+      completedGames: [
+        completedGame({ id: 'g1', sourceGameId: 'dup-src' }),
+        completedGame({ id: 'g2', sourceGameId: 'dup-src' }),
+      ],
+    });
+    expect(
+      errors.some((e) => e.code === 'gameDuplicateId' && e.detail?.startsWith('sourceGameId:')),
+    ).toBe(true);
+  });
+
   it('activeGame: null is geldig (expliciet "geen wedstrijd")', () => {
     expect(validateBackupData({ activeGame: null })).toEqual([]);
   });

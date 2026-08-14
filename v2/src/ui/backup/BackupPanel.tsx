@@ -3,6 +3,7 @@ import type { AsyncSettingsRepository } from '../../application/settings/AsyncSe
 import type { AsyncRosterRepository } from '../../application/roster/AsyncRosterRepository';
 import type { GameRepository } from '../../application/game/GameRepository';
 import type { CompletedGameRepository } from '../../application/game/CompletedGameRepository';
+import type { LangWritePort } from '../../application/i18n/LangRepository';
 import {
   captureSnapshot,
   runImport,
@@ -58,6 +59,8 @@ export interface BackupPanelProps {
   rosterRepo: AsyncRosterRepository;
   gameRepo: GameRepository;
   completedGameRepo: CompletedGameRepository;
+  /** Storage-schrijfpoort voor de taalvoorkeur — zie `application/i18n/LangRepository.ts`. */
+  langRepo: LangWritePort;
   setLang: (lang: Lang) => void;
   /** App ververst zijn live state (settings/roster/game/historie) na een geslaagde import. */
   onImported: () => void;
@@ -124,6 +127,7 @@ export function BackupPanel({
   rosterRepo,
   gameRepo,
   completedGameRepo,
+  langRepo,
   setLang,
   onImported,
 }: BackupPanelProps) {
@@ -207,6 +211,8 @@ export function BackupPanel({
       rosterRepo,
       gameRepo,
       completedGameRepo,
+      langRepo,
+      currentLang: lang,
       setLang,
     };
   }
@@ -317,6 +323,8 @@ export function BackupPanel({
         <BackupPreviewCard
           lang={lang}
           preview={state.preview}
+          organizationId={organizationId}
+          teamId={teamId}
           organizationName={organizationName}
           teamName={teamName}
           settingsRosterMode={settingsRosterMode}
@@ -383,6 +391,8 @@ function JournalList({ journal, lang }: { journal: ImportJournalEntry[]; lang: L
 function BackupPreviewCard({
   lang,
   preview,
+  organizationId,
+  teamId,
   organizationName,
   teamName,
   settingsRosterMode,
@@ -391,6 +401,8 @@ function BackupPreviewCard({
 }: {
   lang: Lang;
   preview: ImportPreview;
+  organizationId: string;
+  teamId: string;
   organizationName: string;
   teamName: string;
   settingsRosterMode: 'local' | 'cloud';
@@ -423,6 +435,12 @@ function BackupPreviewCard({
         {t(lang, 'backupPreviewTarget')
           .replace('{org}', `${organizationName} (${teamName})`)
           .replace('{team}', teamName)}
+      </p>
+      {/* Expliciete organisatie-/team-ID (plan §C.7, externe PR-6.6-review,
+       * aug. 2026): twee organisaties/teams met exact dezelfde weergavenaam
+       * zijn anders niet van elkaar te onderscheiden vlak vóór bevestiging. */}
+      <p className="xs mut2" data-testid="backup-preview-target-id">
+        {organizationId} / {teamId}
       </p>
       <p className="xs mut2" data-testid="backup-preview-meta">
         v{preview.sourceVersion} · {preview.exportedAt ?? '—'}

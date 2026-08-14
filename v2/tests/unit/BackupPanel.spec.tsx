@@ -9,6 +9,8 @@ import type { AsyncSettingsRepository } from '../../src/application/settings/Asy
 import type { AsyncRosterRepository } from '../../src/application/roster/AsyncRosterRepository';
 import type { GameRepository } from '../../src/application/game/GameRepository';
 import type { CompletedGameRepository } from '../../src/application/game/CompletedGameRepository';
+import type { LangWritePort } from '../../src/application/i18n/LangRepository';
+import type { Lang } from '../../src/i18n/strings';
 import { BACKUP_TYPE, CURRENT_BACKUP_VERSION } from '../../src/domain/backup/types';
 
 afterEach(() => cleanup());
@@ -65,6 +67,17 @@ function fakeCompletedGameRepo(): CompletedGameRepository {
   };
 }
 
+function fakeLangRepo(): LangWritePort {
+  let current: Lang | null = null;
+  return {
+    read: () => current,
+    write: (l) => {
+      current = l;
+      return true;
+    },
+  };
+}
+
 function baseProps(overrides: Partial<Parameters<typeof BackupPanel>[0]> = {}) {
   return {
     lang: 'nl' as const,
@@ -80,6 +93,7 @@ function baseProps(overrides: Partial<Parameters<typeof BackupPanel>[0]> = {}) {
     rosterRepo: fakeRosterRepo(),
     gameRepo: fakeGameRepo(),
     completedGameRepo: fakeCompletedGameRepo(),
+    langRepo: fakeLangRepo(),
     setLang: vi.fn(),
     onImported: vi.fn(),
     ...overrides,
@@ -174,5 +188,19 @@ describe('ui/backup/BackupPanel — lokale/cloudbestemming per sectie in de prev
     expect(getByTestId('backup-preview-settings').textContent).toContain('cloud');
     expect(getByTestId('backup-preview-roster').textContent).toContain('cloud');
     expect(getByTestId('backup-preview-completedgames').textContent).toContain('lokaal');
+  });
+});
+
+describe('ui/backup/BackupPanel — expliciete org/team-ID in de preview (plan §C.7, herreview PR #52, aug. 2026)', () => {
+  it('toont organizationId/teamId naast de weergavenaam (disambiguatie bij gelijknamige teams)', async () => {
+    const { getByTestId } = render(
+      <BackupPanel {...baseProps({ organizationId: 'org-rotterdam', teamId: 'team-u23-b' })} />,
+    );
+    await fireEvent.change(getByTestId('backup-file-input'), {
+      target: { files: [validBackupFile()] },
+    });
+    await waitFor(() => expect(getByTestId('backup-preview')).toBeTruthy());
+    expect(getByTestId('backup-preview-target-id').textContent).toContain('org-rotterdam');
+    expect(getByTestId('backup-preview-target-id').textContent).toContain('team-u23-b');
   });
 });

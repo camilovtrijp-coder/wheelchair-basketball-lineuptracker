@@ -1,11 +1,10 @@
 import type { GamePlayer, Segment, ActiveGame, CompletedGame } from '../game/types';
 import { V1_ACTIVE_GAME_STORAGE_KEY, migrateV1ActiveGame } from '../game/v1Migration';
 import { ROSTER_STORAGE_KEY } from '../roster/types';
-import { normalizeRoster } from '../roster/normalize';
 import { SETTINGS_STORAGE_KEY } from '../settings/types';
-import { normalizeSettings } from '../settings/normalize';
 import { LANG_STORAGE_KEY, isValidLang } from '../../i18n/strings';
 import type { BackupV2Data, BackupValidationError } from './types';
+import { validateSettingsSection, validateRosterSection } from './validate';
 
 /**
  * v1's `GAMES_KEY` (index.html `BACKUP_KEYS`) — de enige v1-back-upsleutel
@@ -28,14 +27,6 @@ export const V1_BACKUP_KEYS = [
   SETTINGS_STORAGE_KEY,
   LANG_STORAGE_KEY,
 ] as const;
-
-function num(value: unknown, fallback: number): number {
-  return typeof value === 'number' && Number.isFinite(value) ? value : fallback;
-}
-
-function str(value: unknown, fallback: string): string {
-  return typeof value === 'string' ? value : fallback;
-}
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
@@ -83,49 +74,113 @@ function deterministicSegmentId(legacyGameId: string, index: number): string {
  * stilzwijgend te defaulten naar `0`/`''`/een nieuwe willekeurige UUID — een
  * corrupte v1-back-up mag nooit een halve of verzonnen wedstrijd opleveren.
  */
+/** `undefined` bij een ontbrekend/verkeerd-getypeerd verplicht stringveld —
+ * NOOIT een fallback-waarde (externe PR-6.6-review, aug. 2026: `str(...,
+ * '')`/`num(..., 0)` maskeerden eerder een aanwezige-maar-fout-getypeerde
+ * v1-waarde — bv. `scoreFor: "6"` — als een stille `0`, vóórdat
+ * `validateBackupData()` de kans kreeg die typefout te zien). */
+function reqStr(value: unknown): string | undefined {
+  return typeof value === 'string' ? value : undefined;
+}
+function reqNum(value: unknown): number | undefined {
+  return typeof value === 'number' && Number.isFinite(value) ? value : undefined;
+}
+function reqBool(value: unknown): boolean | undefined {
+  return typeof value === 'boolean' ? value : undefined;
+}
+
 export function migrateV1CompletedGame(raw: unknown): CompletedGame | null {
   if (!isPlainObject(raw)) return null;
   if (!Array.isArray(raw.players) || !Array.isArray(raw.segments)) return null;
   if (typeof raw.id !== 'string' && typeof raw.id !== 'number') return null;
-  if (typeof raw.date !== 'string') return null;
+  const date = reqStr(raw.date);
+  if (date === undefined) return null;
+  const opponent = reqStr(raw.opponent);
+  const competition = reqStr(raw.competition);
+  const scoreFor = reqNum(raw.scoreFor);
+  const scoreAgainst = reqNum(raw.scoreAgainst);
+  const quarterCount = reqNum(raw.quarterCount);
+  const periodLabel = reqStr(raw.periodLabel);
+  const useClassLimit = reqBool(raw.useClassLimit);
+  if (
+    opponent === undefined ||
+    competition === undefined ||
+    scoreFor === undefined ||
+    scoreAgainst === undefined ||
+    quarterCount === undefined ||
+    periodLabel === undefined ||
+    useClassLimit === undefined
+  ) {
+    return null;
+  }
   const legacyGameId = String(raw.id);
 
   const idMap = new Map<number, string>();
   const players: GamePlayer[] = [];
   for (const rawPlayer of raw.players) {
     if (!isPlainObject(rawPlayer) || typeof rawPlayer.id !== 'number') return null;
+    const nr = reqStr(rawPlayer.nr);
+    const naam = reqStr(rawPlayer.naam);
+    const kl = reqStr(rawPlayer.kl);
+    const vrouw = reqBool(rawPlayer.vrouw);
+    const jeugd = reqBool(rawPlayer.jeugd);
+    const participate = reqBool(rawPlayer.participate);
+    const start = reqBool(rawPlayer.start);
+    if (
+      nr === undefined ||
+      naam === undefined ||
+      kl === undefined ||
+      vrouw === undefined ||
+      jeugd === undefined ||
+      participate === undefined ||
+      start === undefined
+    ) {
+      return null;
+    }
     const rosterId = rawPlayer.id;
     const gamePlayerId = deterministicPlayerId(legacyGameId, rosterId);
     idMap.set(rosterId, gamePlayerId);
-    players.push({
-      id: gamePlayerId,
-      rosterId,
-      nr: str(rawPlayer.nr, ''),
-      naam: str(rawPlayer.naam, ''),
-      kl: str(rawPlayer.kl, ''),
-      vrouw: rawPlayer.vrouw === true,
-      jeugd: rawPlayer.jeugd === true,
-      participate: rawPlayer.participate !== false,
-      start: rawPlayer.start === true,
-    });
+    players.push({ id: gamePlayerId, rosterId, nr, naam, kl, vrouw, jeugd, participate, start });
   }
 
   const segments: Segment[] = [];
   for (let index = 0; index < raw.segments.length; index += 1) {
     const rawSegment = raw.segments[index];
     if (!isPlainObject(rawSegment)) return null;
+    const quarter = reqNum(rawSegment.quarter);
+    const beginSec = reqNum(rawSegment.beginSec);
+    const endSec = reqNum(rawSegment.endSec);
+    const durSec = reqNum(rawSegment.durSec);
+    const pf = reqNum(rawSegment.pf);
+    const pa = reqNum(rawSegment.pa);
+    const classSum = reqNum(rawSegment.classSum);
+    const allowed = reqNum(rawSegment.allowed);
+    const over = reqBool(rawSegment.over);
+    if (
+      quarter === undefined ||
+      beginSec === undefined ||
+      endSec === undefined ||
+      durSec === undefined ||
+      pf === undefined ||
+      pa === undefined ||
+      classSum === undefined ||
+      allowed === undefined ||
+      over === undefined
+    ) {
+      return null;
+    }
     segments.push({
       id: deterministicSegmentId(legacyGameId, index),
-      quarter: num(rawSegment.quarter, 1),
-      beginSec: num(rawSegment.beginSec, 0),
-      endSec: num(rawSegment.endSec, 0),
-      durSec: num(rawSegment.durSec, 0),
+      quarter,
+      beginSec,
+      endSec,
+      durSec,
       lineup: remapIds(rawSegment.lineup, idMap),
-      pf: num(rawSegment.pf, 0),
-      pa: num(rawSegment.pa, 0),
-      classSum: num(rawSegment.classSum, 0),
-      allowed: num(rawSegment.allowed, 0),
-      over: rawSegment.over === true,
+      pf,
+      pa,
+      classSum,
+      allowed,
+      over,
     });
   }
 
@@ -139,16 +194,16 @@ export function migrateV1CompletedGame(raw: unknown): CompletedGame | null {
     // (zie BackupCoordinator) een retry idempotent maakt zonder aparte
     // dedupe-sleutel.
     sourceGameId: `v1-import:${legacyGameId}`,
-    opponent: str(raw.opponent, ''),
-    competition: str(raw.competition, ''),
-    date: raw.date,
+    opponent,
+    competition,
+    date,
     players,
     segments,
-    scoreFor: num(raw.scoreFor, 0),
-    scoreAgainst: num(raw.scoreAgainst, 0),
-    quarterCount: num(raw.quarterCount, 4),
-    periodLabel: str(raw.periodLabel, ''),
-    useClassLimit: raw.useClassLimit === true,
+    scoreFor,
+    scoreAgainst,
+    quarterCount,
+    periodLabel,
+    useClassLimit,
   };
 }
 
@@ -200,28 +255,33 @@ export function migrateV1BackupData(raw: unknown): V1MigrationResult {
   // Fail-closed op settings/roster/taal (externe PR-6.6-review, aug. 2026):
   // `normalizeSettings`/`normalizeRoster` zijn bewust permissief voor de
   // LIVE-app-boot (v1-pariteit: ontbrekende/onbruikbare opgeslagen data
-  // valt daar terug op defaults/leeg — zie hun eigen docstrings), maar die
-  // permissiviteit hoort niet thuis in een back-up-IMPORT: een bevestigde
-  // import met `lineup-tracker-settings: null` mocht voorheen stilzwijgend
-  // geldige doelsettings met `DEFAULT_SETTINGS` overschrijven i.p.v. de
-  // import te weigeren. Alleen de vórm wordt hier gecontroleerd
-  // (plain object / array / geldige taalcode); de bestaande normalizers
-  // blijven verantwoordelijk voor veld-voor-veld-normalisatie zoals ze dat
-  // al deden.
+  // valt daar terug op defaults/leeg, en niet-object rosterentries worden
+  // stil gefilterd — zie hun eigen docstrings), maar die permissiviteit
+  // hoort niet thuis in een back-up-IMPORT: v1's eigen `validateSettings()`
+  // wijst een back-up met ontbrekende settingsvelden al af, en een
+  // `[geldigeSpeler, null]`-roster hoort de HELE import te blokkeren, niet
+  // stilzwijgend tot één speler te worden ingekort. Hergebruikt daarom
+  // dezelfde velddiepe validators als de v2-sectievalidatie
+  // (`validateSettingsSection`/`validateRosterSection` uit `validate.ts`)
+  // in plaats van de permissieve normalizers: de rauwe v1-data moet AL
+  // volledig en correct getypeerd zijn vóór migratie, er wordt niets meer
+  // aangevuld/gerepareerd.
   if (SETTINGS_STORAGE_KEY in raw) {
     const rawSettings = raw[SETTINGS_STORAGE_KEY];
-    if (!isPlainObject(rawSettings)) {
+    const settingsErrors = validateSettingsSection(rawSettings);
+    if (settingsErrors.length > 0) {
       errors.push({ code: 'migrationFailed', detail: 'settings' });
     } else {
-      result.settings = normalizeSettings(rawSettings);
+      result.settings = rawSettings as BackupV2Data['settings'];
     }
   }
   if (ROSTER_STORAGE_KEY in raw) {
     const rawRoster = raw[ROSTER_STORAGE_KEY];
-    if (!Array.isArray(rawRoster)) {
+    const rosterErrors = validateRosterSection(rawRoster);
+    if (rosterErrors.length > 0) {
       errors.push({ code: 'migrationFailed', detail: 'roster' });
     } else {
-      result.roster = normalizeRoster(rawRoster);
+      result.roster = rawRoster as BackupV2Data['roster'];
     }
   }
   if (LANG_STORAGE_KEY in raw) {

@@ -67,7 +67,8 @@ export type BackupErrorCode =
   | 'gameInvalidLineupSize'
   | 'gameUnknownLineupPlayer'
   | 'gameInvalidDuration'
-  | 'gameInvalidScore';
+  | 'gameInvalidScore'
+  | 'gameDuplicateId';
 
 export interface BackupValidationError {
   code: BackupErrorCode;

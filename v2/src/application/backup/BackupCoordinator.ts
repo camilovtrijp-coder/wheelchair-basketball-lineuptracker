@@ -2,6 +2,7 @@ import type { AsyncSettingsRepository } from '../settings/AsyncSettingsRepositor
 import type { AsyncRosterRepository } from '../roster/AsyncRosterRepository';
 import type { GameRepository } from '../game/GameRepository';
 import type { CompletedGameRepository } from '../game/CompletedGameRepository';
+import type { LangWritePort } from '../i18n/LangRepository';
 import { DEFAULT_SETTINGS, type Settings } from '../../domain/settings/types';
 import type { Roster } from '../../domain/roster/types';
 import { retagWithContext } from '../../domain/backup/migrateV1';
@@ -29,12 +30,28 @@ import type { Lang } from '../../i18n/strings';
  * serverafwijzing zou dan een net gemelde "import geslaagd" alsnog
  * gedeeltelijk ongedaan maken zonder dat de coordinator dat kan
  * detecteren. Zie `writeSettingsSection`/`writeRosterSection` hieronder.
+ *
+ * `langRepo`/`currentLang` (externe PR-6.6-review, aug. 2026): taal werd
+ * eerder als onfeilbaar behandeld — `setLang()` is slechts de React-
+ * state-setter, terwijl de daadwerkelijke `Storage.setItem()`-write pas
+ * later, ongecontroleerd, in een `App.tsx`-`useEffect` gebeurde (die kan
+ * gooien bij quota/security). Taal krijgt nu dezelfde write+readback+
+ * rollback-garantie als settings/roster/historie/actieve wedstrijd (zie
+ * `writeLangSection` hieronder); `setLang()` wordt pas na een bevestigde
+ * storage-write aangeroepen, zodat de UI nooit een taal toont die niet
+ * daadwerkelijk is opgeslagen. `currentLang` is de huidige actieve taal
+ * (altijd een geldige `Lang`, gevoed door `App`'s React-state) en dient als
+ * snapshot-/rollbackbaseline — een rauwe storage-read zou bij een nog
+ * nooit opgeslagen taal `null` kunnen zijn, wat geen bruikbare "terug
+ * hiernaar toe"-waarde is.
  */
 export interface BackupCoordinatorDeps {
   settingsRepo: AsyncSettingsRepository;
   rosterRepo: AsyncRosterRepository;
   gameRepo: GameRepository;
   completedGameRepo: CompletedGameRepository;
+  langRepo: LangWritePort;
+  currentLang: Lang;
   setLang: (lang: Lang) => void;
 }
 
@@ -48,9 +65,10 @@ export interface BackupSnapshot {
   roster: Roster;
   activeGame: ActiveGame | null;
   completedGames: CompletedGame[];
+  lang: Lang;
 }
 
-type SectionName = 'settings' | 'roster' | 'completedGames' | 'activeGame';
+type SectionName = 'settings' | 'roster' | 'completedGames' | 'activeGame' | 'lang';
 
 export type CaptureSnapshotResult =
   { ok: true; snapshot: BackupSnapshot } | { ok: false; failedSection: SectionName };
@@ -149,6 +167,7 @@ export async function captureSnapshot(deps: BackupCoordinatorDeps): Promise<Capt
       roster,
       activeGame: activeResult.game,
       completedGames: completedResult.games,
+      lang: deps.currentLang,
     },
   };
 }
@@ -245,6 +264,23 @@ function writeCompletedGamesSection(
 }
 
 /**
+ * Schrijft de taalvoorkeur via `langRepo` (storage) mét readback, en werkt
+ * pas ná een bevestigde write ook de React-state bij via `setLang()` —
+ * nooit andersom (externe PR-6.6-review, aug. 2026: de UI mag nooit een
+ * taal tonen die niet daadwerkelijk is opgeslagen).
+ */
+function writeLangSection(deps: BackupCoordinatorDeps, lang: Lang): 'written' | 'failed' {
+  try {
+    if (!deps.langRepo.write(lang)) return 'failed';
+    if (deps.langRepo.read() !== lang) return 'failed';
+    deps.setLang(lang);
+    return 'written';
+  } catch {
+    return 'failed';
+  }
+}
+
+/**
  * Herstelt één sectie terug naar de snapshot-waarde (plan §C.10). Wordt
  * aangeroepen voor ELKE sectie die deze run heeft AANGERAAKT — inclusief de
  * sectie die zelf faalde (externe PR-6.6-review, aug. 2026: een adapter die
@@ -275,6 +311,10 @@ async function rollbackSection(
     }
     case 'activeGame': {
       const outcome = writeActiveGameSection(deps, snapshot.activeGame);
+      return outcome === 'written' ? 'rolledBack' : 'rollbackFailed';
+    }
+    case 'lang': {
+      const outcome = writeLangSection(deps, snapshot.lang);
       return outcome === 'written' ? 'rolledBack' : 'rollbackFailed';
     }
   }
@@ -331,12 +371,17 @@ export async function runImport(
   if (activeGameOutcome === 'failed') return rollbackAttempted();
 
   // Taal is apparaatvoorkeur, geen teamdata (plan §D) — alleen toegepast als
-  // aanwezig, nooit "geleegd" bij afwezigheid, en geen onderdeel van
-  // rollback (een write hier kan niet falen: het is een synchrone
-  // in-memory/localStorage-taalkeuze, geen repository-write met readback).
+  // aanwezig, nooit "geleegd" bij afwezigheid. Wél, sinds de externe
+  // PR-6.6-review (aug. 2026), met dezelfde write+readback+rollback-
+  // garantie als de teamdata-secties hierboven (zie `writeLangSection`) —
+  // een falende storage-write (quota/security) mag nooit als `written`
+  // gemeld worden, en moet dezelfde rollback van de al geschreven secties
+  // triggeren.
   if (retagged.lang !== undefined) {
-    deps.setLang(retagged.lang);
-    journal.push({ section: 'lang', outcome: 'written' });
+    attempted.push('lang');
+    const langOutcome = writeLangSection(deps, retagged.lang);
+    journal.push({ section: 'lang', outcome: langOutcome });
+    if (langOutcome === 'failed') return rollbackAttempted();
   } else {
     journal.push({ section: 'lang', outcome: 'skipped' });
   }

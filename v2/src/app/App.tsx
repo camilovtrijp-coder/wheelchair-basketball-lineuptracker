@@ -23,6 +23,7 @@ import type { ResolvedAppRepositories } from '../infrastructure/repositories/res
 import type { SyncStatusApi } from '../application/sync/useSyncStatus';
 import { LocalStorageGameRepository } from '../infrastructure/game/LocalStorageGameRepository';
 import { LocalStorageCompletedGameRepository } from '../infrastructure/game/LocalStorageCompletedGameRepository';
+import { LocalStorageLangRepository } from '../infrastructure/i18n/LocalStorageLangRepository';
 import { createGameFromRoster } from '../domain/game/setup';
 import { finishGame } from '../domain/game/finish';
 import type { ActiveGame, CompletedGame } from '../domain/game/types';
@@ -106,6 +107,7 @@ function tFor(lang: Lang): (key: StringKey) => string {
 // gebruikt om settings/roster op te slaan of te lezen voor weergave.
 const v1SettingsRepo = new LocalStorageSettingsRepository(browserStorage);
 const v1RosterRepo = new LocalStorageRosterRepository(browserStorage);
+const langRepo = new LocalStorageLangRepository(browserStorage);
 
 // PR 5.3d-vervolgonderzoek: hoelang een van de vier onderstaande stappen
 // (settings-read, roster-read, settings-listener, roster-listener) mag
@@ -630,6 +632,7 @@ export function App({
               rosterRepo={repositories.roster}
               gameRepo={gameRepo}
               completedGameRepo={completedGameRepo}
+              langRepo={langRepo}
               setLang={setLang}
               onImported={() => void handleBackupImported()}
             />
