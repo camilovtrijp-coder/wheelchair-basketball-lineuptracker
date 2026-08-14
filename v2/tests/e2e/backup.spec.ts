@@ -82,6 +82,7 @@ test.describe('v2 Back-up-sectie (PR 6.6)', () => {
     page,
   }) => {
     await gotoSettings(page);
+    const teamNameBeforeImport = await page.getByTestId('settings-teamName').inputValue();
     const path = await writeTempJson(v2Backup());
     await page.getByTestId('backup-file-input').setInputFiles(path);
 
@@ -112,15 +113,15 @@ test.describe('v2 Back-up-sectie (PR 6.6)', () => {
     // net geïmporteerde — anders is 'm terugzetten na een foute import
     // zinloos. Deze suite draait in lokale modus (fixtures.ts:
     // "onvertrouwd apparaat" — localStorage, niet de Firestore-seed), dus
-    // de vóór-importwaarde is hier `DEFAULT_SETTINGS.teamName` (leeg) i.p.v.
-    // een seed-teamnaam — de robuuste assertie is dat het simpelweg NIET de
-    // zojuist geïmporteerde naam is.
+    // een seed-teamnaam. Lees de werkelijke baseline daarom vóór de import
+    // uit de UI en vergelijk exact; alleen `not.toBe(de nieuwe naam)` zou
+    // ook bij `undefined` of een andere verkeerde herstelwaarde slagen.
     const restorePath = await restoreDownload.path();
     expect(restorePath).not.toBeNull();
     const restorePayload = readDownloadedBackup(restorePath!);
     const restoreData = restorePayload.data as Record<string, unknown>;
     const restoreSettings = restoreData.settings as Record<string, unknown>;
-    expect(restoreSettings.teamName).not.toBe('Geïmporteerd Team');
+    expect(restoreSettings.teamName).toBe(teamNameBeforeImport);
 
     await expect(page.getByTestId('backup-success')).toBeVisible();
     await page.getByTestId('nav-settings').click();
@@ -314,7 +315,14 @@ test.describe('v2 Back-up-sectie (PR 6.6)', () => {
       if (
         url.includes('firestore.googleapis.com') ||
         url.includes('identitytoolkit.googleapis.com') ||
-        url.includes('securetoken.googleapis.com')
+        url.includes('securetoken.googleapis.com') ||
+        // In CI gebruikt de webclient de Firebase-emulators. Zonder deze
+        // poorten zou een echte Firestore/Auth-call juist daar onzichtbaar
+        // blijven en de test ten onrechte groen worden.
+        url.includes('127.0.0.1:8080') ||
+        url.includes('localhost:8080') ||
+        url.includes('127.0.0.1:9099') ||
+        url.includes('localhost:9099')
       ) {
         externalRequests.push(url);
       }
