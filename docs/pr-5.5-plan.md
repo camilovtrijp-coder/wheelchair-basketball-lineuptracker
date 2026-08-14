@@ -61,14 +61,14 @@ Status: 5.5a gemerged (#43). 5.5b-config gereed, site-koppeling bewust uitgestel
 1. ~~`netlify.toml` (root) — v1-blok behouden, nieuw v2-blok toevoegen~~ **Technisch bijgesteld** (zie §E.6): één root-`netlify.toml` kan geen twee `[build]`-tabellen bevatten. In plaats daarvan: `v2/netlify.toml` als eigen bestand (`command`, `publish = "dist"`, `[context.production]`/`[context.deploy-preview]`/`[context.branch-deploy]` met `VITE_DEPLOY_CONTEXT`, PWA-headers, SPA-fallback-redirect zonder `force` — bestaande assets zoals `sw.js`/`assets/*` krijgen daardoor al voorrang boven de redirect). Root-`netlify.toml` kreeg alleen een verwijzende commentaarregel, geen functionele wijziging. **Voltooid, code-only, geen hostingeffect.**
 2. Firebase-webconfig per context als Netlify environment variables (eigenaar zet deze in de Netlify UI — vereist accounttoegang, dus apart, pas zodra de echte staging/productie-Firebase-projecten bestaan).
 3. Netlify-account/plan-controle (eenmalig, door eigenaar): legacy- of credit-based, quota, kosten; **geen betaalde upgrade, geen auto-recharge**. Vastleggen in `docs/pr-5.5-onderzoeksrapport.md` §B.1. (Bekend: het bestaande account staat op het Free-teamplan, met al één gekoppelde site voor v1.)
-4. GitHub-koppeling voor v2: nieuwe, aparte site met "Base directory" = `v2`. **Bewust uitgesteld tot de eigenaar dit expliciet aanzet** (§E.6) — niet automatisch bij het mergen van deze PR. Bij activatie: volg de activatiechecklist in §E.6 (Deploy Previews eerst uit, alleen production-branch).
+4. GitHub-koppeling voor v2: nieuwe, aparte site met "Base directory" = `v2`. **Bewust uitgesteld tot de eigenaar dit expliciet aanzet** (§E.6) — niet automatisch bij het mergen van deze PR. Bij activatie: volg de gecorrigeerde activatiechecklist in §E.7; Deploy Previews mogen vanaf het begin aan staan en wijzen uitsluitend naar staging.
 5. PWA-verificatie na eerste staging-deploy: preview laadt, `sw.js` zonder lange cache, directe route valt terug op `index.html`, offline reload werkt.
 
 **Buiten scope:** account-koppeling, eerste deploy, monitoring/alerts.
 
 **Acceptatiecriteria:** nieuwe PR krijgt automatisch een Deploy Preview; preview toont staging-Firebase-webconfig in de console; staging-`firestore.rules` uit PR 5.1 actief; main-deploys gebruiken productie-context maar wijzen nog niet naar het bestaande productieadres; `sw.js`/`manifest.webmanifest` met juiste MIME-typen; geen console-errors bij paint/reload.
 
-**Risico's:** één build per context (zie 5.5a); SPA-redirect moet getest tegen edge-cases (`sw.js`, `assets/*` mogen niet redirecten); Netlify's gratis Deploy-Preview-quota kan een bottleneck worden bij veel PR's — documenteren zodra bekend.
+**Risico's:** één build per context (zie 5.5a); SPA-redirect moet getest tegen edge-cases (`sw.js`, `assets/*` mogen niet redirecten); Deploy Previews kosten volgens de in §E.6–§E.7 vastgelegde verificatie geen deploy-credits, maar iedere productie-deploy vanaf `main` wel — werkelijk verbruik via de Usage-tab volgen.
 
 ### 5.5c — iOS/Android-handmatig protocol + staging-verbruiksmeting (na 5.5b live)
 
@@ -121,7 +121,7 @@ Status: 5.5a gemerged (#43). 5.5b-config gereed, site-koppeling bewust uitgestel
 
 1. **5.5a** op een nieuwe branch `feature/pr-5.5a-firebase-webconfig-externalization`, gebaseerd op `main` (huidige head, na PR #41). CI groen; PR open. **Voltooid (#43).**
 2. **5.5b-config** (dit besluit, 12 augustus 2026): `v2/netlify.toml` + verwijzing in root-`netlify.toml` mergen zonder Netlify-site-koppeling — code-only, geen hostingeffect, net als 5.5a. **Voltooid.**
-3. **5.5b-activatie** (later, op een moment dat de eigenaar kiest): staging-Firebase-project aanmaken, Netlify-account/plan bevestigen, nieuwe v2-Netlify-site aanmaken en koppelen met "Base directory" = `v2`, activatiechecklist uit §E.6 volgen (Deploy Previews eerst uit). Eerste Deploy Preview-URL dan in `docs/pr-5.5-onderzoeksrapport.md` §B.1.
+3. **5.5b-activatie** (later, op een moment dat de eigenaar kiest): staging-Firebase-project aanmaken, Netlify-account/plan bevestigen, nieuwe v2-Netlify-site aanmaken en koppelen met "Base directory" = `v2`, gecorrigeerde activatiechecklist uit §E.7 volgen (Deploy Previews mogen vanaf het begin aan en gebruiken staging). Eerste Deploy Preview-URL dan in `docs/pr-5.5-onderzoeksrapport.md` §B.1.
 4. **5.5c** op `feature/pr-5.5c-handmatige-validatie-en-verbruik` zodra 5.5b-activatie live is. Geen code, alleen docs.
 
 **Buiten scope van 5.5:** PR 8.1 (Safari/iPadOS-module-SW), PR 8.3 (security/privacy/kosten review), PR 8.5 (productie-cutover). 5.5 stopt waar de eerste brede platformpilot-uitrol veilig kan beginnen, conform `pr-5.3d-onderzoeksrapport.md` §J trigger-criterium 3.

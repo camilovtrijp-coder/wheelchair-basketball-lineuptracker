@@ -98,6 +98,36 @@ Ontbreekt één van deze vijf, dan toont de app dat vóór de wedstrijd begint �
 - PR 7.1 (Firestore-wedstrijdmodel) en PR 7.3 (single-writer) implementeren dit contract daadwerkelijk voor de live wedstrijdflow; dit ADR legt het ontwerp vast, niet de implementatie.
 - Tombstone-bewaarbeleid blijft een open punt tot PR 7.2 — hier bewust niet vooruitgeschoven, zelfde afweging als het Firestore-back-upbeleid in ADR-001 (PR 8.3).
 
+## Verduidelijkingen voor fase 7 (14 augustus 2026)
+
+De lokale fase-6-implementatie en het bewijs uit PR 5.3/5.4 maken vier
+uitvoeringsdetails expliciet. Deze verduidelijken het geaccepteerde model; ze
+veranderen niet de keuze voor append-only actions en single-writer.
+
+1. **Create-only betekent werkelijk onveranderlijk.** Een action-retry gebruikt
+   dezelfde client-ID, maar mag een al bestaand document niet met een andere
+   payload overschrijven. Security Rules staan alleen create toe; de gateway
+   behandelt "bestaat al en is semantisch gelijk" als idempotent bevestigd en
+   iedere afwijking als integriteitsconflict.
+2. **De lokale actielog is de duurzame synchronisatiebron.** Firestore pending
+   writes alleen zijn geen volledig domein-outboxcontract, vooral niet na een
+   latere Rules-afwijzing. PR 7.1 gebruikt daarom `ActiveGame.actions` plus een
+   klein lokaal checkpoint met bevestigde action-ID's/revisie/foutstatus. Een
+   generieke IndexedDB-outbox wordt pas toegevoegd als tests een concreet gat
+   aantonen.
+3. **Writerlease is een epoch/fencing-contract, geen timer.** Het parentdocument
+   draagt actieve `writerUid`, `deviceId` en monotoon `writerEpoch`; iedere
+   action draagt dezelfde epoch plus een sequence. Overname is alleen online,
+   expliciet en transactioneel en verhoogt de epoch. Er is geen automatische
+   expiry: netwerkverlies mag de courtside-scorer niet ongemerkt onteigenen.
+4. **Bronacties en draaivelden hebben verschillende taken.** Score, segmenten,
+   plus/min en speeltijd blijven afleidbaar uit actions. `onCourt`, huidig kwart,
+   open klok en `pendingSwapLineup` staan als actuele snapshotvelden op het
+   parentdocument en worden met echte field patches geschreven. Een cloudgame
+   vereist vóór tip-off een serverbevestigde writerclaim; daarna kan de actieve
+   scorer de hele wedstrijd offline spelen. Alleen-lokale modus blijft zonder
+   claim of netwerk beschikbaar.
+
 ## Besluiten van de eigenaar (5 augustus 2026)
 
 1. **Single-tab persistence**: geaccepteerd als startaanname. Courtside-gebruik is typisch één scorer op één toestel/tabblad; multi-tab-coördinatie voegt complexiteit toe zonder concrete behoefte. Heroverwegen indien een toekomstige flow bewust meerdere tabbladen tegelijk vereist.
