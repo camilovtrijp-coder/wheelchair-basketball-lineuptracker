@@ -671,6 +671,47 @@ describe('documentcontracten: weigeren malformed serverdata', () => {
     ).toThrow(DocumentValidationError);
   });
 
+  // Tweede reviewerprobe (externe review PR 7.1a): een kale Date.parse()-
+  // check accepteerde ook niet-ISO-formaten ("January 1, 2026") en
+  // normaliseerde een onmogelijke kalenderdatum stilzwijgend ("2026-02-31"
+  // → 3 maart) i.p.v. te weigeren. assertIsoTimestampString() eist nu een
+  // strikte round-trip via toISOString().
+  it('game: parseerbare maar niet-ISO-string voor createdAt wordt geweigerd', () => {
+    expect(() =>
+      gameConverter.fromFirestore!(
+        mockSnapshot({ ...validGame, createdAt: 'January 1, 2026' }, GAME_PATH),
+        {},
+      ),
+    ).toThrow(DocumentValidationError);
+  });
+
+  it('game: onmogelijke kalenderdatum voor createdAt wordt geweigerd (geen stille normalisatie)', () => {
+    expect(() =>
+      gameConverter.fromFirestore!(
+        mockSnapshot({ ...validGame, createdAt: '2026-02-31T00:00:00.000Z' }, GAME_PATH),
+        {},
+      ),
+    ).toThrow(DocumentValidationError);
+  });
+
+  it('game: parseerbare maar niet-ISO-string voor startedAt wordt geweigerd', () => {
+    expect(() =>
+      gameConverter.fromFirestore!(
+        mockSnapshot({ ...validGame, startedAt: 'January 1, 2026' }, GAME_PATH),
+        {},
+      ),
+    ).toThrow(DocumentValidationError);
+  });
+
+  it('game: onmogelijke kalenderdatum voor startedAt wordt geweigerd (geen stille normalisatie)', () => {
+    expect(() =>
+      gameConverter.fromFirestore!(
+        mockSnapshot({ ...validGame, startedAt: '2026-02-31T00:00:00.000Z' }, GAME_PATH),
+        {},
+      ),
+    ).toThrow(DocumentValidationError);
+  });
+
   it('gameAction: onbekend actietype wordt geweigerd', () => {
     expect(() =>
       gameActionConverter.fromFirestore!(
@@ -761,6 +802,33 @@ describe('documentcontracten: weigeren malformed serverdata', () => {
       gameActionConverter.fromFirestore!(
         mockSnapshot(
           { ...validGameAction, occurredAt: 'dit-is-geen-tijdstip' },
+          gameActionPath('action-1'),
+        ),
+        {},
+      ),
+    ).toThrow(DocumentValidationError);
+  });
+
+  // Tweede reviewerprobe (externe review PR 7.1a): parseerbare niet-ISO-
+  // string en onmogelijke kalenderdatum, zelfde strikte round-trip-eis als
+  // bij game.createdAt/startedAt hierboven.
+  it('gameAction: parseerbare maar niet-ISO-string voor occurredAt wordt geweigerd', () => {
+    expect(() =>
+      gameActionConverter.fromFirestore!(
+        mockSnapshot(
+          { ...validGameAction, occurredAt: 'January 1, 2026' },
+          gameActionPath('action-1'),
+        ),
+        {},
+      ),
+    ).toThrow(DocumentValidationError);
+  });
+
+  it('gameAction: onmogelijke kalenderdatum voor occurredAt wordt geweigerd (geen stille normalisatie)', () => {
+    expect(() =>
+      gameActionConverter.fromFirestore!(
+        mockSnapshot(
+          { ...validGameAction, occurredAt: '2026-02-31T00:00:00.000Z' },
           gameActionPath('action-1'),
         ),
         {},

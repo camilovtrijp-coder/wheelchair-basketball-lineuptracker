@@ -116,9 +116,19 @@ export function assertNullableString(
  * `"dit-is-geen-tijdstip"` ongemoeid door voor client-autoritatieve
  * tijdvelden (`GameDocument.createdAt`/`startedAt`,
  * `GameActionEnvelopeDocument.occurredAt` — bewust géén Firestore
- * `Timestamp`, zie de toelichting bij die documenten). `Date.parse()` faalt
- * (`NaN`) op niet-parseerbare strings; dat is hier voldoende om malformed
- * serverdata fail-closed te weigeren.
+ * `Timestamp`, zie de toelichting bij die documenten).
+ *
+ * Tweede review-opvolging PR 7.1a (externe review, aug. 2026): een kale
+ * `Date.parse()`-check bewijst niet dat de invoer een geldige ISO-string is —
+ * `Date.parse()` accepteert ook niet-ISO-formaten zoals `"January 1, 2026"`,
+ * en normaliseert een onmogelijke kalenderdatum zoals
+ * `"2026-02-31T00:00:00.000Z"` stilzwijgend naar 3 maart in plaats van te
+ * weigeren. De applicatie produceert deze velden zelf altijd canoniek via
+ * `Date.prototype.toISOString()` (zie `ActiveGame.createdAt`/`startedAt` en
+ * `GameAction.at`), dus een strikte round-trip-eis — geparste waarde exact
+ * gelijk aan `toISOString()` van diezelfde waarde — weigert zowel
+ * niet-ISO-formaten als ongeldige kalenderdata, terwijl elke echt door de
+ * applicatie geschreven waarde ongewijzigd blijft accepteren.
  */
 export function assertIsoTimestampString(
   documentType: string,
@@ -126,7 +136,8 @@ export function assertIsoTimestampString(
   value: unknown,
 ): string {
   const s = assertNonEmptyString(documentType, field, value);
-  if (Number.isNaN(Date.parse(s))) {
+  const ms = Date.parse(s);
+  if (Number.isNaN(ms) || new Date(ms).toISOString() !== s) {
     throw new DocumentValidationError(
       documentType,
       field,
