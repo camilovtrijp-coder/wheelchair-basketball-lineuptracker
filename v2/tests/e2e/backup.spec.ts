@@ -1,8 +1,16 @@
 import { expect, test as base, type Page } from '@playwright/test';
-import { writeFileSync, mkdtempSync } from 'node:fs';
+import { writeFileSync, mkdtempSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from './fixtures';
+
+/** Leest en parseert een gedownload back-upbestand — bewijst de
+ * daadwerkelijke INHOUD (herreview PR #52, aug. 2026: eerder werd alleen de
+ * bestandsnaam gecontroleerd, niet of de payload de juiste envelope/sectie-
+ * data bevat). */
+function readDownloadedBackup(path: string): Record<string, unknown> {
+  return JSON.parse(readFileSync(path, 'utf-8')) as Record<string, unknown>;
+}
 
 async function writeTempJson(content: unknown): Promise<string> {
   const dir = mkdtempSync(join(tmpdir(), 'backup-e2e-'));
@@ -55,6 +63,19 @@ test.describe('v2 Back-up-sectie (PR 6.6)', () => {
       page.getByTestId('backup-export-btn').click(),
     ]);
     expect(download.suggestedFilename()).toMatch(/-backup-\d{8}\.json$/);
+    // Inhoudsassertie (herreview PR #52, aug. 2026) — niet alleen de
+    // bestandsnaam: een geldige v2-envelope met de daadwerkelijke
+    // teaminstellingen, niet een leeg/kapot bestand.
+    const path = await download.path();
+    expect(path).not.toBeNull();
+    const payload = readDownloadedBackup(path!);
+    expect(payload.type).toBe('lineup-tracker-backup');
+    expect(payload.version).toBe(2);
+    expect(typeof payload.exportedAt).toBe('string');
+    const data = payload.data as Record<string, unknown>;
+    expect(data.settings).toBeTruthy();
+    expect(Array.isArray(data.roster)).toBe(true);
+    expect(Array.isArray(data.completedGames)).toBe(true);
   });
 
   test('import toont een preview met doelteam en effecten, en schrijft pas na bevestiging', async ({
@@ -86,6 +107,17 @@ test.describe('v2 Back-up-sectie (PR 6.6)', () => {
       page.getByTestId('backup-confirm-btn').click(),
     ]);
     expect(restoreDownload.suggestedFilename()).toMatch(/-backup-\d{8}\.json$/);
+    // Inhoudsassertie (herreview PR #52, aug. 2026): de herstelback-up moet
+    // de OUDE (huidige, vóór-import) teaminstellingen bevatten — niet de
+    // net geïmporteerde — anders is 'm terugzetten na een foute import
+    // zinloos. firebase/scripts/seed.ts zet team-u23's teamName op
+    // 'Rotterdam Basketball (fictief)'.
+    const restorePath = await restoreDownload.path();
+    expect(restorePath).not.toBeNull();
+    const restorePayload = readDownloadedBackup(restorePath!);
+    const restoreData = restorePayload.data as Record<string, unknown>;
+    const restoreSettings = restoreData.settings as Record<string, unknown>;
+    expect(restoreSettings.teamName).toBe('Rotterdam Basketball (fictief)');
 
     await expect(page.getByTestId('backup-success')).toBeVisible();
     await page.getByTestId('nav-settings').click();
@@ -256,6 +288,46 @@ test.describe('v2 Back-up-sectie (PR 6.6)', () => {
     const rows = page.getByText('Herhaalde Tegenstander');
     await expect(rows).toHaveCount(1);
   });
+
+  // Herreview PR #52 (aug. 2026): §G eist een expliciete "lokale modus doet
+  // geen netwerkcall"-test. Deze hele suite draait al in lokale modus
+  // (fixtures.ts: "onvertrouwd apparaat", geen cloud-adapter — zie
+  // selectRepositories()), maar dat werd nooit expliciet bewezen op
+  // netwerkniveau. Een export+import-cyclus in lokale modus mag GEEN
+  // request naar Firestore/Auth (of enige andere externe host) maken —
+  // alles moet via `LocalAsyncSettingsRepository`/
+  // `LocalStorageCompletedGameRepository` (localStorage) lopen.
+  test('een volledige export+import-cyclus in lokale modus maakt geen enkele netwerkcall naar Firestore/Auth', async ({
+    page,
+  }) => {
+    await gotoSettings(page);
+
+    const externalRequests: string[] = [];
+    page.on('request', (req) => {
+      const url = req.url();
+      // Alleen requests NA deze listener-registratie tellen mee — de
+      // initiële paginalaad/auth-sessierestore (vóór `gotoSettings()`) is
+      // hier niet relevant, dit gaat specifiek om de back-upflow zelf.
+      if (
+        url.includes('firestore.googleapis.com') ||
+        url.includes('identitytoolkit.googleapis.com') ||
+        url.includes('securetoken.googleapis.com')
+      ) {
+        externalRequests.push(url);
+      }
+    });
+
+    const path = await writeTempJson(v2Backup());
+    await page.getByTestId('backup-file-input').setInputFiles(path);
+    await expect(page.getByTestId('backup-preview')).toBeVisible();
+    await Promise.all([
+      page.waitForEvent('download'),
+      page.getByTestId('backup-confirm-btn').click(),
+    ]);
+    await expect(page.getByTestId('backup-success')).toBeVisible();
+
+    expect(externalRequests).toEqual([]);
+  });
 });
 
 test.describe('v2 Back-up-sectie — bevoegdheid per rol (eigenaarsbesluit §E.4, externe PR-6.6-review)', () => {
@@ -303,5 +375,33 @@ test.describe('v2 Back-up-sectie — bevoegdheid per rol (eigenaarsbesluit §E.4
     await expect(page.getByTestId('backup-export-btn')).toBeDisabled();
     await expect(page.getByTestId('backup-import-btn')).toBeDisabled();
     await expect(page.getByTestId('backup-file-input')).toBeDisabled();
+  });
+
+  // Volledige matrix (herreview PR #52, aug. 2026): owner/admin/coach horen
+  // canManageTeamData te hebben (dus actieve knoppen), scorer/viewer niet
+  // (hierboven al bewezen). alice=organizationOwner, carol=coach — beiden
+  // al aanwezig in firebase/scripts/seed.ts op org-rotterdam/team-u23.
+  base('owner (alice) ziet actieve export-/importknoppen', async ({ page }) => {
+    await loginAndOpenSettings(page, 'alice@example.test', 'Spike123!');
+    await expect(page.getByTestId('backup-export-btn')).toBeEnabled();
+    await expect(page.getByTestId('backup-import-btn')).toBeEnabled();
+    await expect(page.getByTestId('backup-file-input')).toBeEnabled();
+  });
+
+  base('coach (carol) ziet actieve export-/importknoppen', async ({ page }) => {
+    await loginAndOpenSettings(page, 'carol@example.test', 'Spike123!');
+    await expect(page.getByTestId('backup-export-btn')).toBeEnabled();
+    await expect(page.getByTestId('backup-import-btn')).toBeEnabled();
+    await expect(page.getByTestId('backup-file-input')).toBeEnabled();
+  });
+
+  // admin (bob) is al de standaardgebruiker van de rest van deze suite
+  // (zie fixtures.ts) — expliciet ook hier opgenomen zodat de volledige
+  // owner/admin/coach/scorer/viewer-matrix in één beschrijvend blok staat.
+  base('admin (bob) ziet actieve export-/importknoppen', async ({ page }) => {
+    await loginAndOpenSettings(page, 'bob@example.test', 'Spike123!');
+    await expect(page.getByTestId('backup-export-btn')).toBeEnabled();
+    await expect(page.getByTestId('backup-import-btn')).toBeEnabled();
+    await expect(page.getByTestId('backup-file-input')).toBeEnabled();
   });
 });
