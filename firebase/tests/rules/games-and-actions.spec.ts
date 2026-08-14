@@ -203,6 +203,39 @@ describe('games/{gameId}: create', () => {
     );
   });
 
+  // Tweede reviewerprobe (externe review, aug. 2026, P1): writerUid/deviceId
+  // moeten SAMEN "beide null" of "beide gezet" zijn — een writer zonder
+  // geldige deviceId kan daarna geen enkele action meer schrijven.
+  it('mag GEEN writerUid zetten zonder geldige deviceId (writer/device-inconsistentie)', async () => {
+    const db = authCtx(env, USERS.dave.uid, { email: USERS.dave.email, email_verified: true });
+    await assertFails(
+      setDoc(
+        gameRef(db, ORG_A, TEAM_A1, 'game-1'),
+        sampleGame({ writerUid: USERS.dave.uid, deviceId: null }),
+      ),
+    );
+  });
+
+  it('mag GEEN lege string als deviceId aanmaken bij een directe claim', async () => {
+    const db = authCtx(env, USERS.dave.uid, { email: USERS.dave.email, email_verified: true });
+    await assertFails(
+      setDoc(
+        gameRef(db, ORG_A, TEAM_A1, 'game-1'),
+        sampleGame({ writerUid: USERS.dave.uid, deviceId: '' }),
+      ),
+    );
+  });
+
+  it('mag GEEN deviceId zetten zonder writerUid (writer/device-inconsistentie, omgekeerd)', async () => {
+    const db = authCtx(env, USERS.dave.uid, { email: USERS.dave.email, email_verified: true });
+    await assertFails(
+      setDoc(
+        gameRef(db, ORG_A, TEAM_A1, 'game-1'),
+        sampleGame({ writerUid: null, deviceId: 'device-dave' }),
+      ),
+    );
+  });
+
   it('cross-team: dave (scorer op team A1) mag GEEN wedstrijd aanmaken op team B1', async () => {
     const db = authCtx(env, USERS.dave.uid, { email: USERS.dave.email, email_verified: true });
     await assertFails(
@@ -415,6 +448,17 @@ describe('games/{gameId}: initiële claim via update (nog geen writer)', () => {
       updateDoc(gameRef(db, ORG_A, TEAM_A1, 'game-1'), {
         writerUid: USERS.alice.uid,
         deviceId: 'device-alice',
+        revision: 1,
+      }),
+    );
+  });
+
+  it('mag NIET claimen met een lege string als deviceId', async () => {
+    const db = authCtx(env, USERS.dave.uid, { email: USERS.dave.email, email_verified: true });
+    await assertFails(
+      updateDoc(gameRef(db, ORG_A, TEAM_A1, 'game-1'), {
+        writerUid: USERS.dave.uid,
+        deviceId: '',
         revision: 1,
       }),
     );
@@ -742,6 +786,155 @@ describe('games/{gameId}/actions/{actionId}: create (stale-epoch/deviceId-weiger
           deviceId: 'device-dave',
           writerEpoch: 3,
           occurredAt: 'niet-een-tijdstip',
+        }),
+      ),
+    );
+  });
+
+  it('mag GEEN lege string als deviceId aanmaken', async () => {
+    const db = authCtx(env, USERS.dave.uid, { email: USERS.dave.email, email_verified: true });
+    await assertFails(
+      setDoc(
+        actionRef(db, ORG_A, TEAM_A1, 'game-1', 'action-1'),
+        sampleGameAction({ authorUid: USERS.dave.uid, deviceId: '', writerEpoch: 3 }),
+      ),
+    );
+  });
+
+  // Tweede reviewerprobe (externe review, aug. 2026, P1): `segment` werd
+  // voorheen alleen op `map`-type gecontroleerd — een leeg object of een
+  // segment met verkeerd-getypeerde/extra velden ging erdoorheen, terwijl
+  // assertSegment() alle elf velden van Segment valideert.
+  const validSegment = {
+    id: 'seg-1',
+    quarter: 1,
+    beginSec: 600,
+    endSec: 480,
+    durSec: 120,
+    lineup: ['gp-1', 'gp-2', 'gp-3', 'gp-4', 'gp-5'],
+    pf: 4,
+    pa: 2,
+    classSum: 14.0,
+    allowed: 14.5,
+    over: false,
+  };
+
+  it('mag GEEN segment-saved met een leeg segment-object aanmaken', async () => {
+    const db = authCtx(env, USERS.dave.uid, { email: USERS.dave.email, email_verified: true });
+    await assertFails(
+      setDoc(
+        actionRef(db, ORG_A, TEAM_A1, 'game-1', 'action-1'),
+        sampleGameAction({
+          authorUid: USERS.dave.uid,
+          deviceId: 'device-dave',
+          writerEpoch: 3,
+          action: { type: 'segment-saved', segment: {} },
+        }),
+      ),
+    );
+  });
+
+  it('mag GEEN segment-saved met een ontbrekend segmentveld aanmaken', async () => {
+    const { over: _over, ...segmentWithoutOver } = validSegment;
+    const db = authCtx(env, USERS.dave.uid, { email: USERS.dave.email, email_verified: true });
+    await assertFails(
+      setDoc(
+        actionRef(db, ORG_A, TEAM_A1, 'game-1', 'action-1'),
+        sampleGameAction({
+          authorUid: USERS.dave.uid,
+          deviceId: 'device-dave',
+          writerEpoch: 3,
+          action: { type: 'segment-saved', segment: segmentWithoutOver },
+        }),
+      ),
+    );
+  });
+
+  it('mag GEEN segment-saved met een onbekend extra segmentveld aanmaken', async () => {
+    const db = authCtx(env, USERS.dave.uid, { email: USERS.dave.email, email_verified: true });
+    await assertFails(
+      setDoc(
+        actionRef(db, ORG_A, TEAM_A1, 'game-1', 'action-1'),
+        sampleGameAction({
+          authorUid: USERS.dave.uid,
+          deviceId: 'device-dave',
+          writerEpoch: 3,
+          action: { type: 'segment-saved', segment: { ...validSegment, extraVeld: 'onverwacht' } },
+        }),
+      ),
+    );
+  });
+
+  it('mag GEEN segment met een verkeerd getypeerd veld aanmaken (quarter als string)', async () => {
+    const db = authCtx(env, USERS.dave.uid, { email: USERS.dave.email, email_verified: true });
+    await assertFails(
+      setDoc(
+        actionRef(db, ORG_A, TEAM_A1, 'game-1', 'action-1'),
+        sampleGameAction({
+          authorUid: USERS.dave.uid,
+          deviceId: 'device-dave',
+          writerEpoch: 3,
+          action: { type: 'segment-saved', segment: { ...validSegment, quarter: '1' } },
+        }),
+      ),
+    );
+  });
+
+  it('mag GEEN segment-edited met een leeg segment-object aanmaken', async () => {
+    const db = authCtx(env, USERS.dave.uid, { email: USERS.dave.email, email_verified: true });
+    await assertFails(
+      setDoc(
+        actionRef(db, ORG_A, TEAM_A1, 'game-1', 'action-1'),
+        sampleGameAction({
+          authorUid: USERS.dave.uid,
+          deviceId: 'device-dave',
+          writerEpoch: 3,
+          action: { type: 'segment-edited', segmentId: 'seg-1', segment: {} },
+        }),
+      ),
+    );
+  });
+
+  it('mag GEEN segment-edited met een lege segmentId aanmaken', async () => {
+    const db = authCtx(env, USERS.dave.uid, { email: USERS.dave.email, email_verified: true });
+    await assertFails(
+      setDoc(
+        actionRef(db, ORG_A, TEAM_A1, 'game-1', 'action-1'),
+        sampleGameAction({
+          authorUid: USERS.dave.uid,
+          deviceId: 'device-dave',
+          writerEpoch: 3,
+          action: { type: 'segment-edited', segmentId: '', segment: validSegment },
+        }),
+      ),
+    );
+  });
+
+  it('mag GEEN segment-deleted met een lege segmentId aanmaken', async () => {
+    const db = authCtx(env, USERS.dave.uid, { email: USERS.dave.email, email_verified: true });
+    await assertFails(
+      setDoc(
+        actionRef(db, ORG_A, TEAM_A1, 'game-1', 'action-1'),
+        sampleGameAction({
+          authorUid: USERS.dave.uid,
+          deviceId: 'device-dave',
+          writerEpoch: 3,
+          action: { type: 'segment-deleted', segmentId: '' },
+        }),
+      ),
+    );
+  });
+
+  it('mag WEL een volledig geldig segment-saved aanmaken (regressie, geen overvalidatie)', async () => {
+    const db = authCtx(env, USERS.dave.uid, { email: USERS.dave.email, email_verified: true });
+    await assertSucceeds(
+      setDoc(
+        actionRef(db, ORG_A, TEAM_A1, 'game-1', 'action-1'),
+        sampleGameAction({
+          authorUid: USERS.dave.uid,
+          deviceId: 'device-dave',
+          writerEpoch: 3,
+          action: { type: 'segment-saved', segment: validSegment },
         }),
       ),
     );

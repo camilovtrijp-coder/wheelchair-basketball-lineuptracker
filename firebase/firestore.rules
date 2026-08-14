@@ -64,6 +64,11 @@ rules_version = '2';
 //     `writerUid` (ADR-002's epoch/fencing-contract, punt 3) niet op een ANDERE
 //     gebruiker dan de maker gezet kan worden — "maker" is hier dus geborgd via het
 //     writer-veld zelf, er is geen apart `createdBy`-veld op `GameDocument`.
+//     [Tweede review-opvolging, P1] `writerUid`/`deviceId` moeten SAMEN "beide
+//     null" of "beide gezet, deviceId non-empty" zijn — een document met
+//     `writerUid` al gezet maar `deviceId == null` kan daarna geen enkele
+//     action meer accepteren en ook niet via het initiële-claim-pad hersteld
+//     worden (dat vereist juist `writerUid == null`).
 //  10. Game-update is gesplitst in twee expliciete paden, elk met een strikte
 //      veldallowlist (identiteits-/historische kernvelden —
 //      `organizationId`/`teamId`/`players`/`opponent`/`competition`/`clockDown`/
@@ -113,10 +118,18 @@ rules_version = '2';
 //      vormregel (`matches()`) gecontroleerd — Rules kunnen, in tegenstelling
 //      tot de converter, geen kalenderlogica narekenen (bijv. 31 februari),
 //      dus dat blijft de converter-laag's taak; hier gaat het om de vorm.
-//      Rules kunnen geen lussen gebruiken, dus de geneste `players`/`segment`-
-//      structuren worden hier alleen op `list`/`map`-type gecontroleerd, niet
-//      veld-voor-veld — die diepere validatie blijft de taak van de PR 7.1a-
-//      converter bij het lezen.
+//      `segment` (in `segment-saved`/`segment-edited`) wordt volledig
+//      gevalideerd via `isValidSegment()` — Segment heeft een vast, klein
+//      aantal top-level velden, dus dat ís zonder lus volledig te
+//      controleren (exacte sleutelset + veldtype per veld). `players`
+//      (list van objecten) en `onCourt`/`pendingSwapLineup`/`segment.lineup`
+//      (list van strings) blijven wél alleen op `list`-type gecontroleerd:
+//      Rules hebben geen lus-/`.all()`-constructie om een list element-voor-
+//      element te valideren — een bewuste, gedocumenteerde taalgrens. Dat
+//      residuele gat wordt beperkt doordat schrijftoegang al tot
+//      `canWriteGameData`-rollen beperkt is en de PR 7.1c-schrijfpad
+//      uitsluitend `projectGameForCloud()`-afgeleide payloads schrijft; de
+//      PR 7.1a-converter blijft fail-closed bij het lezen.
 
 service cloud.firestore {
   match /databases/{database}/documents {
@@ -203,6 +216,19 @@ service cloud.firestore {
     // Punt 13: volledige schema-/typevalidatie, toegepast op zowel create als
     // de resulterende documentstaat na elke update — een write mag NOOIT een
     // document opleveren dat de PR 7.1a-converter niet meer kan lezen.
+    //
+    // [Tweede review-opvolging, P1] Rules kunnen NIET itereren over een list
+    // (geen `.all()`/`.map()`/lus-constructie in de Firestore-Rules-taal —
+    // een bewuste, gedocumenteerde taalgrens, geen omissie). `players`
+    // (list van GamePlayer) en `onCourt`/`pendingSwapLineup` (list van
+    // roster-ID-strings) kunnen daarom alleen op `list`-type gecontroleerd
+    // worden, niet element-voor-element. Dit residuele gat wordt beperkt
+    // door twee lagen buiten Rules: (1) schrijftoegang is al beperkt tot
+    // canWriteGameData-rollen (owner/admin/coach/scorer), nooit een
+    // willekeurige gebruiker; (2) de PR 7.1c-schrijfpad schrijft uitsluitend
+    // `projectGameForCloud()`-afgeleide payloads, nooit rechtstreeks
+    // gebruikersinvoer. De PR 7.1a-converter blijft de bron van waarheid bij
+    // het lezen en faalt fail-closed op elke malformed speler-entry.
     function isValidGamePayload(data) {
       return data.keys().hasAll(gameKeys()) && data.keys().hasOnly(gameKeys()) &&
         data.organizationId is string &&
@@ -222,7 +248,7 @@ service cloud.firestore {
         data.scoreAgainst is int &&
         data.segmentCount is int &&
         (data.writerUid == null || data.writerUid is string) &&
-        (data.deviceId == null || data.deviceId is string) &&
+        (data.deviceId == null || (data.deviceId is string && data.deviceId.size() > 0)) &&
         data.writerEpoch is int &&
         data.revision is int &&
         data.createdAt is string && isIsoTimestampShape(data.createdAt) &&
@@ -242,11 +268,40 @@ service cloud.firestore {
       return team in ['for', 'against'];
     }
 
+    // Exacte sleutelset + veldtypen van SegmentDocument
+    // (firebase/src/documents/gameAction.ts's assertSegment()). Anders dan
+    // `players`/`onCourt` hierboven ís dit een volledig, klein, vast aantal
+    // top-level velden — dus WEL volledig te valideren zonder lus. `lineup`
+    // blijft alleen op `list`-type gecontroleerd (zelfde taalgrens als
+    // hierboven — geen element-voor-element-validatie van de rugnummer-ID's).
+    function isValidSegment(segment) {
+      return segment.keys().hasAll([
+          'id', 'quarter', 'beginSec', 'endSec', 'durSec', 'lineup',
+          'pf', 'pa', 'classSum', 'allowed', 'over'
+        ]) &&
+        segment.keys().hasOnly([
+          'id', 'quarter', 'beginSec', 'endSec', 'durSec', 'lineup',
+          'pf', 'pa', 'classSum', 'allowed', 'over'
+        ]) &&
+        segment.id is string && segment.id.size() > 0 &&
+        segment.quarter is int &&
+        segment.beginSec is int &&
+        segment.endSec is int &&
+        segment.durSec is int &&
+        segment.lineup is list &&
+        segment.pf is number &&
+        segment.pa is number &&
+        segment.classSum is number &&
+        segment.allowed is number &&
+        segment.over is bool;
+    }
+
     // Discriminated union van GameActionPayloadDocument — exacte sleutelset
     // per actietype, spiegelt firebase/src/documents/gameAction.ts's
-    // assertActionPayload(). Geneste `segment`-velden worden alleen op
-    // `map`-type gecontroleerd (Rules hebben geen lussen voor veld-voor-veld-
-    // validatie van Segment) — die diepere check blijft converter-scope.
+    // assertActionPayload(). `segment` wordt nu volledig gevalideerd via
+    // isValidSegment() (tweede review-opvolging, P1: eerder alleen op
+    // `map`-type gecontroleerd, waardoor bijv. `segment: {}` werd
+    // geaccepteerd terwijl assertSegment() dat afwijst).
     function isValidActionPayload(action) {
       return (action.type == 'score-delta' &&
           action.keys().hasAll(['type', 'team', 'delta']) && action.keys().hasOnly(['type', 'team', 'delta']) &&
@@ -256,27 +311,31 @@ service cloud.firestore {
           isValidScoreTeam(action.team) && action.value is number) ||
         (action.type == 'segment-saved' &&
           action.keys().hasAll(['type', 'segment']) && action.keys().hasOnly(['type', 'segment']) &&
-          action.segment is map) ||
+          action.segment is map && isValidSegment(action.segment)) ||
         (action.type == 'segment-edited' &&
           action.keys().hasAll(['type', 'segmentId', 'segment']) &&
           action.keys().hasOnly(['type', 'segmentId', 'segment']) &&
-          action.segmentId is string && action.segment is map) ||
+          action.segmentId is string && action.segmentId.size() > 0 &&
+          action.segment is map && isValidSegment(action.segment)) ||
         (action.type == 'segment-deleted' &&
           action.keys().hasAll(['type', 'segmentId']) && action.keys().hasOnly(['type', 'segmentId']) &&
-          action.segmentId is string);
+          action.segmentId is string && action.segmentId.size() > 0);
     }
 
     // Punt 13: volledige schema-/typevalidatie voor action-envelopes.
     // `schemaVersion == 1` spiegelt GAME_ACTION_SCHEMA_VERSION (fail-closed op
     // onbekende toekomstige versies, zelfde contract als de converter).
+    // `authorUid`/`deviceId` zijn non-empty (spiegelt assertNonEmptyString()
+    // in de converter — tweede review-opvolging, P1: een lege deviceId-
+    // string werd voorheen alleen als `is string` gecontroleerd).
     function isValidActionEnvelope(data) {
       return data.keys().hasAll(actionKeys()) && data.keys().hasOnly(actionKeys()) &&
         data.organizationId is string &&
         data.teamId is string &&
         data.gameId is string &&
         data.actionId is string &&
-        data.authorUid is string &&
-        data.deviceId is string &&
+        data.authorUid is string && data.authorUid.size() > 0 &&
+        data.deviceId is string && data.deviceId.size() > 0 &&
         data.writerEpoch is int &&
         data.sequence is int &&
         data.occurredAt is string && isIsoTimestampShape(data.occurredAt) &&
@@ -440,14 +499,23 @@ service cloud.firestore {
           // Punt 9/13: volledig schema/type (isValidGamePayload), pad-/
           // payloadcontext, toegestane initiële fase/revisie/epoch, en
           // "maker" geborgd via het writer-veld (geen apart createdBy-veld).
+          // Tweede review-opvolging (P1): writerUid/deviceId moeten SAMEN
+          // "beide null" (nog geen claim) of "beide gezet" zijn — een
+          // document met writerUid == eigen uid maar deviceId == null kon
+          // voorheen ontstaan, en zo'n document kan daarna geen enkele
+          // action meer accepteren (die eist een non-empty deviceId die
+          // overeenkomt met het parentdocument) én niet meer via het
+          // initiële-claim-pad hersteld worden (dat vereist juist
+          // writerUid == null).
           allow create: if canWriteGameData(orgId, teamId) &&
             isValidGamePayload(request.resource.data) &&
             request.resource.data.organizationId == orgId &&
             request.resource.data.teamId == teamId &&
             request.resource.data.revision == 0 &&
             request.resource.data.writerEpoch == 0 &&
-            (request.resource.data.writerUid == null ||
-              request.resource.data.writerUid == request.auth.uid);
+            ((request.resource.data.writerUid == null && request.resource.data.deviceId == null) ||
+              (request.resource.data.writerUid == request.auth.uid &&
+                request.resource.data.deviceId is string && request.resource.data.deviceId.size() > 0));
 
           // Punt 10a: normale patch — uitsluitend de ACTUELE writer, en
           // writer-/epochvelden blijven exact ongewijzigd (geen claim/
@@ -481,8 +549,9 @@ service cloud.firestore {
           allow update: if canWriteGameData(orgId, teamId) &&
             isValidGamePayload(request.resource.data) &&
             resource.data.writerUid == null &&
+            resource.data.deviceId == null &&
             request.resource.data.writerUid == request.auth.uid &&
-            request.resource.data.deviceId is string &&
+            request.resource.data.deviceId is string && request.resource.data.deviceId.size() > 0 &&
             request.resource.data.writerEpoch == resource.data.writerEpoch &&
             request.resource.data.diff(resource.data).affectedKeys()
               .hasOnly(['writerUid', 'deviceId', 'revision', 'updatedAt']) &&
