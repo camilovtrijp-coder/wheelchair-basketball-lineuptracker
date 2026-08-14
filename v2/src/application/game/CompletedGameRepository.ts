@@ -29,6 +29,23 @@ export interface CompletedGameRepository {
    */
   safeList?(): CompletedGamesReadResult;
   /**
+   * Strikte variant van `safeList()`, alleen bedoeld voor back-up-export/
+   * -snapshot (externe PR-6.6-review, aug. 2026). `safeList()` filtert een
+   * individueel corrupt/mistagged item bewust stil weg (zie de eigen
+   * docstring bij de adapter: één beschadigd item mag de rest van de
+   * historie niet verbergen in de gewone Stats/Historie-UI) — maar
+   * diezelfde stilte is gevaarlijk voor een back-up: een export/herstel-
+   * back-up die zo'n gefilterd item gewoon weglaat, ziet er voor de
+   * gebruiker uit als een volledige back-up terwijl ze onvolledig is. Een
+   * import die zo'n onvolledig herstelbestand ooit terug moet zetten,
+   * herstelt dan niet alles. `safeListStrict()` geeft daarom `status:
+   * 'error'` zodra ook maar één item wordt afgekeurd — een corrupte/
+   * mistagged historie is voor export-doeleinden nooit hetzelfde als "geen
+   * historie". Default-implementatie valt terug op `safeList()`/`list()`
+   * voor adapters die het onderscheid niet kunnen maken.
+   */
+  safeListStrict?(): CompletedGamesReadResult;
+  /**
    * Voegt een net afgeronde wedstrijd vooraan toe. `false` als de opslag
    * faalde (bijv. quota overschreden) of `game` niet bij deze
    * organisatie/team hoort.

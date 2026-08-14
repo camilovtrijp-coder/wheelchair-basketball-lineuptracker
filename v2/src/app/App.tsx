@@ -625,12 +625,11 @@ export function App({
               teamName={(settings.teamName as string) || teamId}
               settings={settings}
               roster={roster}
+              settingsRosterMode={repositories.mode}
               settingsRepo={repositories.settings}
               rosterRepo={repositories.roster}
               gameRepo={gameRepo}
               completedGameRepo={completedGameRepo}
-              saveSettings={syncStatus.saveSettings}
-              saveRoster={syncStatus.saveRoster}
               setLang={setLang}
               onImported={() => void handleBackupImported()}
             />

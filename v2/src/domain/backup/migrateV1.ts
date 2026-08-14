@@ -174,27 +174,81 @@ export interface V1MigrationResult {
  * wedstrijden importeert dan de back-up feitelijk bevatte (en zo geldige
  * doelhistorie kan leegmaken via het replace-per-onderdeel-contract).
  */
+/**
+ * Structurele plausibiliteitscheck vóór `migrateV1ActiveGame()` (externe
+ * PR-6.6-review, aug. 2026): die functie retourneert `null` zowel voor
+ * "structureel onbruikbaar" als voor de bewust toegestane, legitieme v1-
+ * uitzondering "opzet nog niet gestart, dus niet hervatbaar" (zie
+ * `isV1Resumable()` in `domain/game/v1Migration.ts` — geen segments én geen
+ * `phase:'tracking'`). Zonder onderscheid zou een corrupte v1-actieve-
+ * wedstrijd (bv. `players` niet eens een array) stilzwijgend als "geen
+ * actieve wedstrijd" behandeld worden i.p.v. de import te blokkeren. Alleen
+ * de vorm wordt hier gecontroleerd; welke v1-staat wél/niet hervatbaar is
+ * blijft uitsluitend `isV1Resumable()`'s beslissing.
+ */
+function isPlausibleV1ActiveGame(value: unknown): value is Record<string, unknown> {
+  if (!isPlainObject(value)) return false;
+  if (!Array.isArray(value.players)) return false;
+  return value.players.every((p) => isPlainObject(p));
+}
+
 export function migrateV1BackupData(raw: unknown): V1MigrationResult {
   if (!isPlainObject(raw)) return { data: {}, errors: [] };
   const result: BackupV2Data = {};
   const errors: BackupValidationError[] = [];
 
+  // Fail-closed op settings/roster/taal (externe PR-6.6-review, aug. 2026):
+  // `normalizeSettings`/`normalizeRoster` zijn bewust permissief voor de
+  // LIVE-app-boot (v1-pariteit: ontbrekende/onbruikbare opgeslagen data
+  // valt daar terug op defaults/leeg — zie hun eigen docstrings), maar die
+  // permissiviteit hoort niet thuis in een back-up-IMPORT: een bevestigde
+  // import met `lineup-tracker-settings: null` mocht voorheen stilzwijgend
+  // geldige doelsettings met `DEFAULT_SETTINGS` overschrijven i.p.v. de
+  // import te weigeren. Alleen de vórm wordt hier gecontroleerd
+  // (plain object / array / geldige taalcode); de bestaande normalizers
+  // blijven verantwoordelijk voor veld-voor-veld-normalisatie zoals ze dat
+  // al deden.
   if (SETTINGS_STORAGE_KEY in raw) {
-    result.settings = normalizeSettings(raw[SETTINGS_STORAGE_KEY]);
+    const rawSettings = raw[SETTINGS_STORAGE_KEY];
+    if (!isPlainObject(rawSettings)) {
+      errors.push({ code: 'migrationFailed', detail: 'settings' });
+    } else {
+      result.settings = normalizeSettings(rawSettings);
+    }
   }
   if (ROSTER_STORAGE_KEY in raw) {
-    result.roster = normalizeRoster(raw[ROSTER_STORAGE_KEY]);
+    const rawRoster = raw[ROSTER_STORAGE_KEY];
+    if (!Array.isArray(rawRoster)) {
+      errors.push({ code: 'migrationFailed', detail: 'roster' });
+    } else {
+      result.roster = normalizeRoster(rawRoster);
+    }
   }
   if (LANG_STORAGE_KEY in raw) {
     const lang = raw[LANG_STORAGE_KEY];
-    if (isValidLang(lang)) result.lang = lang;
+    if (!isValidLang(lang)) {
+      errors.push({ code: 'migrationFailed', detail: 'lang' });
+    } else {
+      result.lang = lang;
+    }
   }
   if (V1_ACTIVE_GAME_STORAGE_KEY in raw) {
-    // migrateV1ActiveGame vereist organizationId/teamId als parameter (het
-    // bestaande PR-6.1-contract) — hier nog lege placeholders, retagging
-    // gebeurt pas na bevestiging (zie retagWithContext()).
-    const migrated = migrateV1ActiveGame(raw[V1_ACTIVE_GAME_STORAGE_KEY], '', '');
-    if (migrated !== null) result.activeGame = migrated;
+    const rawActiveGame = raw[V1_ACTIVE_GAME_STORAGE_KEY];
+    if (
+      rawActiveGame !== null &&
+      rawActiveGame !== undefined &&
+      !isPlausibleV1ActiveGame(rawActiveGame)
+    ) {
+      errors.push({ code: 'migrationFailed', detail: 'activeGame' });
+    } else {
+      // migrateV1ActiveGame vereist organizationId/teamId als parameter (het
+      // bestaande PR-6.1-contract) — hier nog lege placeholders, retagging
+      // gebeurt pas na bevestiging (zie retagWithContext()). `null` hier is
+      // ofwel afwezige data ofwel isV1Resumable()'s legitieme "niet
+      // hervatbaar" — beide zijn geen migratiefout.
+      const migrated = migrateV1ActiveGame(rawActiveGame, '', '');
+      if (migrated !== null) result.activeGame = migrated;
+    }
   }
   if (V1_GAMES_STORAGE_KEY in raw) {
     const gamesRaw = raw[V1_GAMES_STORAGE_KEY];

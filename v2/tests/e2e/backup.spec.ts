@@ -68,6 +68,11 @@ test.describe('v2 Back-up-sectie (PR 6.6)', () => {
     await expect(page.getByTestId('backup-preview-target')).toBeVisible();
     await expect(page.getByTestId('backup-preview-settings')).toContainText('Geïmporteerd Team');
     await expect(page.getByTestId('backup-preview-roster')).toContainText('1');
+    // Deze e2e-suite draait in lokale modus (fixtures.ts: "onvertrouwd
+    // apparaat" — geen cloud-adapter); de preview moet dat per sectie tonen
+    // (externe PR-6.6-review, aug. 2026, punt 5).
+    await expect(page.getByTestId('backup-preview-settings')).toContainText('lokaal');
+    await expect(page.getByTestId('backup-preview-completedgames')).toContainText('lokaal');
 
     // Nog niets geschreven vóór bevestiging.
     await expect(page.getByTestId('settings-teamName')).not.toHaveValue('Geïmporteerd Team');

@@ -7,7 +7,7 @@ import {
   type BackupV2Data,
 } from '../../src/domain/backup/types';
 import { DEFAULT_SETTINGS } from '../../src/domain/settings/types';
-import type { CompletedGame, GamePlayer, Segment } from '../../src/domain/game/types';
+import type { ActiveGame, CompletedGame, GamePlayer, Segment } from '../../src/domain/game/types';
 
 function gamePlayer(id: string, rosterId: number): GamePlayer {
   return {
@@ -66,6 +66,29 @@ function completedGame(overrides: Partial<CompletedGame> = {}): CompletedGame {
     quarterCount: 4,
     periodLabel: '',
     useClassLimit: false,
+    ...overrides,
+  };
+}
+
+function activeGame(overrides: Partial<ActiveGame> = {}): ActiveGame {
+  return {
+    id: 'ag1',
+    organizationId: 'org-1',
+    teamId: 'team-1',
+    phase: 'tracking',
+    players: fivePlayers(),
+    opponent: 'Tegenstander',
+    competition: '',
+    clockDown: true,
+    limitStr: '',
+    onCourt: ['p1', 'p2', 'p3', 'p4', 'p5'],
+    curQuarter: 1,
+    beginSec: 600,
+    endSec: 500,
+    pendingSwapLineup: null,
+    actions: [],
+    createdAt: '2026-01-01T10:00:00.000Z',
+    startedAt: '2026-01-01T10:00:00.000Z',
     ...overrides,
   };
 }
@@ -180,6 +203,95 @@ describe('domain/backup/validate — validateBackupData (plan §C.5/§G.3-4)', (
 
   it('activeGame: null is geldig (expliciet "geen wedstrijd")', () => {
     expect(validateBackupData({ activeGame: null })).toEqual([]);
+  });
+
+  it('een volledig geldige activeGame-sectie (inclusief lege actions) is geldig', () => {
+    expect(validateBackupData({ activeGame: activeGame() })).toEqual([]);
+  });
+
+  it('activeGame met ontbrekend/verkeerd-getypeerd limitStr/clockDown/curQuarter/beginSec/endSec wordt geweigerd — externe PR-6.6-review', () => {
+    const errors = validateBackupData({
+      activeGame: activeGame({
+        limitStr: 1 as unknown as string,
+        clockDown: 'yes' as unknown as boolean,
+        curQuarter: '1' as unknown as number,
+      }),
+    });
+    expect(errors.some((e) => e.detail === 'field:limitStr:activeGame')).toBe(true);
+    expect(errors.some((e) => e.detail === 'field:clockDown:activeGame')).toBe(true);
+    expect(errors.some((e) => e.detail === 'field:curQuarter:activeGame')).toBe(true);
+  });
+
+  it('activeGame.pendingSwapLineup met een onbekende spelersreferentie wordt geweigerd', () => {
+    const errors = validateBackupData({
+      activeGame: activeGame({ pendingSwapLineup: ['p1', 'unknown-id'] }),
+    });
+    expect(errors.some((e) => e.code === 'gameUnknownLineupPlayer')).toBe(true);
+  });
+
+  it('activeGame.actions: een niet-object item crasht niet en levert een vertaalde fout op', () => {
+    const errors = validateBackupData({
+      activeGame: activeGame({ actions: [null as unknown as ActiveGame['actions'][number]] }),
+    });
+    expect(errors.some((e) => e.code === 'gameInvalid')).toBe(true);
+  });
+
+  it('activeGame.actions: een score-delta zonder geldig team/delta wordt geweigerd', () => {
+    const errors = validateBackupData({
+      activeGame: activeGame({
+        actions: [
+          {
+            type: 'score-delta',
+            id: 'a1',
+            team: 'sideways' as unknown as 'for',
+            delta: 'oops' as unknown as number,
+            at: '2026-01-01T10:00:00.000Z',
+          },
+        ],
+      }),
+    });
+    expect(errors.some((e) => e.detail?.includes('actionField:team'))).toBe(true);
+    expect(errors.some((e) => e.detail?.includes('actionField:delta'))).toBe(true);
+  });
+
+  it('activeGame.actions: een embedded segment-saved-actie met een ongeldig segment (verkeerde lineupgrootte) wordt geweigerd', () => {
+    const errors = validateBackupData({
+      activeGame: activeGame({
+        actions: [
+          {
+            type: 'segment-saved',
+            id: 'a1',
+            at: '2026-01-01T10:00:00.000Z',
+            segment: segment({ lineup: ['p1', 'p2'] }),
+          },
+        ],
+      }),
+    });
+    expect(errors.some((e) => e.code === 'gameInvalidLineupSize')).toBe(true);
+  });
+
+  it('een segment met inconsistente durSec (niet gelijk aan |endSec - beginSec|) wordt geweigerd', () => {
+    const game = completedGame({
+      segments: [segment({ beginSec: 0, endSec: 100, durSec: 999 })],
+    });
+    const errors = validateBackupData({ completedGames: [game] });
+    expect(errors.some((e) => e.code === 'gameInvalidDuration')).toBe(true);
+  });
+
+  it('een segment zonder geldige classSum/allowed/over wordt geweigerd', () => {
+    const game = completedGame({
+      segments: [
+        segment({
+          classSum: 'x' as unknown as number,
+          allowed: undefined as unknown as number,
+          over: 'yes' as unknown as boolean,
+        }),
+      ],
+    });
+    const errors = validateBackupData({ completedGames: [game] });
+    expect(errors.some((e) => e.detail?.includes('segmentField:classSum'))).toBe(true);
+    expect(errors.some((e) => e.detail?.includes('segmentField:allowed'))).toBe(true);
+    expect(errors.some((e) => e.detail?.includes('segmentField:over'))).toBe(true);
   });
 
   it('ongeldige taal wordt geweigerd', () => {

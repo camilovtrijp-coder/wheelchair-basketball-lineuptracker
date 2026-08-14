@@ -334,3 +334,45 @@ describe('LocalStorageCompletedGameRepository.safeList (PR 6.4 §A.2)', () => {
     expect(repo.safeList().games.map((g) => g.id)).toEqual(['valid']);
   });
 });
+
+describe('LocalStorageCompletedGameRepository.safeListStrict (externe PR-6.6-review, aug. 2026)', () => {
+  // safeList() blijft het permissieve UI-contract (één beschadigd item
+  // verbergt de rest niet, zie de test hierboven) — safeListStrict() is de
+  // striktere, uitsluitend voor back-up-export/-snapshot bedoelde variant:
+  // een enkel afgekeurd item maakt de HELE lijst 'error', want een export/
+  // herstelback-up die zo'n item gewoon weglaat ziet er ten onrechte
+  // volledig uit.
+  it('meldt error zodra ook maar één item gefilterd wordt, waar safeList() datzelfde item stil filtert', () => {
+    const storage = new TrackingStorage();
+    const key = completedGamesStorageKey('org-1', 'team-1');
+    storage.seed(key, JSON.stringify([completedGame({ id: 'valid' }), { id: 'missing-fields' }]));
+    const repo = new LocalStorageCompletedGameRepository(storage, 'org-1', 'team-1');
+    expect(repo.safeList().status).toBe('ok');
+    expect(repo.safeListStrict!()).toEqual({ status: 'error', games: [] });
+  });
+
+  it('meldt error bij een context-mismatched item (andere organizationId/teamId dan de sleutel)', () => {
+    const storage = new TrackingStorage();
+    const key = completedGamesStorageKey('org-1', 'team-1');
+    storage.seed(
+      key,
+      JSON.stringify([completedGame({ id: 'mismatched', organizationId: 'org-ANDER' })]),
+    );
+    const repo = new LocalStorageCompletedGameRepository(storage, 'org-1', 'team-1');
+    expect(repo.safeListStrict!()).toEqual({ status: 'error', games: [] });
+  });
+
+  it('meldt ok/missing net als safeList() zolang niets gefilterd wordt', () => {
+    const storage = new TrackingStorage();
+    const key = completedGamesStorageKey('org-1', 'team-1');
+    const repoEmpty = new LocalStorageCompletedGameRepository(storage, 'org-1', 'team-1');
+    expect(repoEmpty.safeListStrict!()).toEqual({ status: 'missing', games: [] });
+
+    storage.seed(key, JSON.stringify([completedGame({ id: 'valid' })]));
+    const repo = new LocalStorageCompletedGameRepository(storage, 'org-1', 'team-1');
+    expect(repo.safeListStrict!()).toEqual({
+      status: 'ok',
+      games: [completedGame({ id: 'valid' })],
+    });
+  });
+});

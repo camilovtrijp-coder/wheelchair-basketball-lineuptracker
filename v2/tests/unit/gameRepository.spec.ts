@@ -247,6 +247,22 @@ describe('infrastructure/game/LocalStorageGameRepository', () => {
     expect(repo.read()).toBeNull();
   });
 
+  it('safeRead() meldt status:error (niet ok/null) bij een context-mismatch — externe PR-6.6-review', () => {
+    // De sleutel zelf is al organisatie/team-specifiek: data eronder met een
+    // ANDERE organizationId/teamId is dus mistagged/corrupt, geen bewijs
+    // van "geen wedstrijd voor deze context". Een back-up-snapshot/-export
+    // gebaseerd op `status:'ok', game:null` zou deze corrupte staat
+    // stilzwijgend als lege snapshot behandelen.
+    const storage = new TrackingStorage();
+    const mismatched = activeGame({ organizationId: 'org-ANDER', teamId: 'team-ANDER' });
+    storage.seed(activeGameStorageKey('org-1', 'team-1'), JSON.stringify(mismatched));
+    const repo = new LocalStorageGameRepository(storage, 'org-1', 'team-1');
+
+    const result = repo.safeRead();
+    expect(result.status).toBe('error');
+    expect(result.game).toBeNull();
+  });
+
   describe('v1-compatibiliteit (docs/IMPLEMENTATION_PLAN.md §11, PR 6.1-review, aug. 2026)', () => {
     // Twee stappen (detecteren/bevestigen) i.p.v. automatisch adopteren: v1
     // kende geen organisatie/teamcontext, dus de code kan zelf niet bewijzen

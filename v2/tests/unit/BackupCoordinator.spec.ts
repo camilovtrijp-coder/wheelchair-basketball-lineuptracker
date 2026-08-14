@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
 import {
   captureSnapshot,
   runImport,
@@ -14,14 +14,74 @@ import type { AsyncSettingsRepository } from '../../src/application/settings/Asy
 import type { AsyncRosterRepository } from '../../src/application/roster/AsyncRosterRepository';
 import type { GameRepository } from '../../src/application/game/GameRepository';
 import type { CompletedGameRepository } from '../../src/application/game/CompletedGameRepository';
+import type { WriteResult } from '../../src/domain/syncState';
 
 const SYNCED = { status: 'gesynchroniseerd' as const, fromCache: false, hasPendingWrites: false };
+const PENDING = {
+  status: 'wacht-op-synchronisatie' as const,
+  fromCache: true,
+  hasPendingWrites: true,
+};
+const FAILED = { status: 'actie-nodig' as const, fromCache: false, hasPendingWrites: false };
 
-function fakeSettingsRepo(initial: Settings & Record<string, unknown>): AsyncSettingsRepository {
+/**
+ * Schrijfmodus per sectie (externe PR-6.6-review, aug. 2026: "mutate-then-
+ * false", readback-mismatch, "lokaal geaccepteerd maar door de server
+ * afgewezen" en "settled blijft onbepaald hangen" zijn vier apart te
+ * onderscheiden faalscenario's, niet hetzelfde als een simpele
+ * always-fails-vlag):
+ * - `'ok'`: normale write, muteert en `settled` resolvet meteen `{ok:true}`.
+ * - `'failAlways'`: `write()` retourneert `ok:false`, muteert niets.
+ * - `'mutateThenFalse'`: muteert de onderliggende opslag WEL, maar meldt
+ *   toch `ok:false` — een adapter/wrapper-bug die de coordinator alleen via
+ *   een expliciete rollback van de sectie zelf kan herstellen.
+ * - `'staleReadback'`: `write()`/`settled` melden succes, maar de opslag
+ *   levert bij lezen de OUDE waarde terug.
+ * - `'serverReject'`: exact het cloudcontract uit `useSyncStatus`/
+ *   `FirestoreSettingsRepository` — `write()` retourneert meteen `ok:true`
+ *   (lokale acceptatie via latency compensation) en muteert de opslag ook
+ *   meteen, maar `settled` resolvet pas ÁSYNCHROON alsnog `{ok:false}`
+ *   (serverafwijzing) — de coordinator mag dan nooit vroeg succes melden.
+ * - `'settleTimeout'`: `settled` resolvet NOOIT (het gedocumenteerde issue
+ *   #27-gate: offline blijft settled voor precies dit document onbepaald
+ *   hangen) — de coordinator moet dit begrensd (nooit oneindig) als
+ *   `'failed'` behandelen, niet stilzwijgend blijven wachten.
+ */
+type WriteMode =
+  'ok' | 'failAlways' | 'mutateThenFalse' | 'staleReadback' | 'serverReject' | 'settleTimeout';
+
+function fakeSettingsRepo(
+  initial: Settings & Record<string, unknown>,
+  getMode: () => WriteMode,
+): AsyncSettingsRepository {
   let current = initial;
   return {
     read: async () => current,
-    write: async (s) => {
+    write: async (s): Promise<WriteResult> => {
+      const mode = getMode();
+      if (mode === 'failAlways') {
+        return { ok: false, syncState: FAILED, settled: Promise.resolve({ ok: false }) };
+      }
+      if (mode === 'mutateThenFalse') {
+        current = s;
+        return { ok: false, syncState: FAILED, settled: Promise.resolve({ ok: false }) };
+      }
+      if (mode === 'staleReadback') {
+        // "Succes", maar de storage wordt bewust NIET gemuteerd.
+        return { ok: true, syncState: SYNCED, settled: Promise.resolve({ ok: true }) };
+      }
+      if (mode === 'serverReject') {
+        current = s;
+        return {
+          ok: true,
+          syncState: PENDING,
+          settled: Promise.resolve().then(() => ({ ok: false, error: 'rules-denied' })),
+        };
+      }
+      if (mode === 'settleTimeout') {
+        current = s;
+        return { ok: true, syncState: PENDING, settled: new Promise(() => undefined) };
+      }
       current = s;
       return { ok: true, syncState: SYNCED, settled: Promise.resolve({ ok: true }) };
     },
@@ -33,11 +93,34 @@ function fakeSettingsRepo(initial: Settings & Record<string, unknown>): AsyncSet
   };
 }
 
-function fakeRosterRepo(initial: Roster): AsyncRosterRepository {
+function fakeRosterRepo(initial: Roster, getMode: () => WriteMode): AsyncRosterRepository {
   let current = initial;
   return {
     read: async () => current,
-    write: async (r) => {
+    write: async (r): Promise<WriteResult> => {
+      const mode = getMode();
+      if (mode === 'failAlways') {
+        return { ok: false, syncState: FAILED, settled: Promise.resolve({ ok: false }) };
+      }
+      if (mode === 'mutateThenFalse') {
+        current = r;
+        return { ok: false, syncState: FAILED, settled: Promise.resolve({ ok: false }) };
+      }
+      if (mode === 'staleReadback') {
+        return { ok: true, syncState: SYNCED, settled: Promise.resolve({ ok: true }) };
+      }
+      if (mode === 'serverReject') {
+        current = r;
+        return {
+          ok: true,
+          syncState: PENDING,
+          settled: Promise.resolve().then(() => ({ ok: false, error: 'rules-denied' })),
+        };
+      }
+      if (mode === 'settleTimeout') {
+        current = r;
+        return { ok: true, syncState: PENDING, settled: new Promise(() => undefined) };
+      }
       current = r;
       return { ok: true, syncState: SYNCED, settled: Promise.resolve({ ok: true }) };
     },
@@ -68,6 +151,7 @@ function fakeCompletedGameRepo(initial: CompletedGame[]): CompletedGameRepositor
   return {
     list: () => current,
     safeList: () => ({ status: 'ok', games: current }),
+    safeListStrict: () => ({ status: 'ok', games: current }),
     add: (g) => {
       current = [g, ...current];
       return true;
@@ -114,60 +198,28 @@ let gameRepo: GameRepository;
 let completedGameRepo: CompletedGameRepository;
 let langSet: string | null;
 let deps: BackupCoordinatorDeps;
-
-/**
- * Schrijfmodus per sectie (externe PR-6.6-review, aug. 2026: "mutate-then-
- * false", readback-mismatch en fout-tijdens-rollback zijn drie apart te
- * onderscheiden faalscenario's, niet hetzelfde als een simpele
- * always-fails-vlag):
- * - `'ok'`: normale write, muteert en retourneert `true`.
- * - `'failAlways'`: retourneert altijd `false`, muteert niets (klassieke
- *   write-fout, bv. quota overschreden).
- * - `'mutateThenFalse'`: muteert de onderliggende opslag WEL, maar meldt
- *   toch `false` — een adapter/wrapper-bug die de coordinator alleen via
- *   een expliciete rollback van de sectie zelf kan herstellen.
- * - `'staleReadback'`: meldt `true` maar de opslag levert bij lezen de OUDE
- *   waarde terug — de readback-vergelijking moet dit als `'failed'` zien.
- */
-type WriteMode = 'ok' | 'failAlways' | 'mutateThenFalse' | 'staleReadback';
 let settingsMode: WriteMode;
 let rosterMode: WriteMode;
 
 beforeEach(() => {
-  settingsRepo = fakeSettingsRepo({ ...DEFAULT_SETTINGS, teamName: 'Bestaand team' });
-  rosterRepo = fakeRosterRepo([
-    { id: 9, nr: '9', naam: 'Oude speler', kl: '3.0', vrouw: false, jeugd: false },
-  ]);
+  settingsMode = 'ok';
+  rosterMode = 'ok';
+  settingsRepo = fakeSettingsRepo(
+    { ...DEFAULT_SETTINGS, teamName: 'Bestaand team' },
+    () => settingsMode,
+  );
+  rosterRepo = fakeRosterRepo(
+    [{ id: 9, nr: '9', naam: 'Oude speler', kl: '3.0', vrouw: false, jeugd: false }],
+    () => rosterMode,
+  );
   gameRepo = fakeGameRepo(null);
   completedGameRepo = fakeCompletedGameRepo([completedGame('existing')]);
   langSet = null;
-  settingsMode = 'ok';
-  rosterMode = 'ok';
   deps = {
     settingsRepo,
     rosterRepo,
     gameRepo,
     completedGameRepo,
-    saveSettings: async (payload) => {
-      if (settingsMode === 'failAlways') return false;
-      if (settingsMode === 'mutateThenFalse') {
-        await settingsRepo.write(payload);
-        return false;
-      }
-      if (settingsMode === 'staleReadback') return true; // niet daadwerkelijk geschreven
-      await settingsRepo.write(payload);
-      return true;
-    },
-    saveRoster: async (payload) => {
-      if (rosterMode === 'failAlways') return false;
-      if (rosterMode === 'mutateThenFalse') {
-        await rosterRepo.write(payload);
-        return false;
-      }
-      if (rosterMode === 'staleReadback') return true;
-      await rosterRepo.write(payload);
-      return true;
-    },
     setLang: (l) => {
       langSet = l;
     },
@@ -237,19 +289,18 @@ describe('application/backup/BackupCoordinator — falen en rollback (plan §C.1
     const snapshot = await snapshotOrThrow(deps);
     settingsMode = 'failAlways';
     // Simuleer een write die na de initiële fout weer normaal werkt (bv.
-    // een tijdelijke quotafout) — de rollback-write die de coordinator
-    // intern doet, moet dan gewoon slagen.
-    const originalSaveSettings = deps.saveSettings;
+    // een tijdelijke quotafout): zet settingsMode terug op 'ok' zodra de
+    // eerste (mislukte) write is geweest — de rollback-write die de
+    // coordinator daarna intern doet, moet dan gewoon slagen.
+    const originalWrite = settingsRepo.write.bind(settingsRepo);
     let callCount = 0;
-    deps = {
-      ...deps,
-      saveSettings: async (payload, changedKeys) => {
-        callCount += 1;
-        if (callCount === 1) return false;
-        settingsMode = 'ok';
-        return originalSaveSettings(payload, changedKeys);
-      },
+    settingsRepo.write = async (payload, changedKeys) => {
+      callCount += 1;
+      if (callCount === 1) return originalWrite(payload, changedKeys);
+      settingsMode = 'ok';
+      return originalWrite(payload, changedKeys);
     };
+    deps = { ...deps, settingsRepo };
     const result = await runImport(deps, {}, TARGET, snapshot);
     expect(result.ok).toBe(false);
     expect(result.journal).toEqual([
@@ -268,12 +319,9 @@ describe('application/backup/BackupCoordinator — falen en rollback (plan §C.1
     const result = await runImport(deps, data, TARGET, snapshot);
     expect(result.ok).toBe(false);
     expect(result.journal[0]).toEqual({ section: 'settings', outcome: 'failed' });
-    // Ondanks dat de onderliggende write wél muteerde, is settings na
-    // rollback weer exact de snapshot-waarde (de rollback-write zelf werkt
-    // weer normaal zodra settingsMode terug op 'ok' zou staan, maar hier
-    // blijft 'mutateThenFalse' aanstaan — dus de rollbackpoging faalt ook
-    // op dezelfde manier, en de coordinator MOET dat als rollbackFailed
-    // melden, niet als rolledBack).
+    // De rollbackpoging gebruikt dezelfde kapotte adapter (blijft
+    // mutateThenFalse) en moet dat dus ook eerlijk als rollbackFailed
+    // melden, niet als rolledBack.
     expect(result.journal[1]!.outcome).toBe('rollbackFailed');
   });
 
@@ -313,6 +361,7 @@ describe('application/backup/BackupCoordinator — falen en rollback (plan §C.1
       replaceAll: () => true, // "lukt", maar list() hieronder blijft de oude data tonen
       list: () => [completedGame('never-changed')],
       safeList: () => ({ status: 'ok', games: [completedGame('never-changed')] }),
+      safeListStrict: () => ({ status: 'ok', games: [completedGame('never-changed')] }),
     };
     deps = { ...deps, completedGameRepo: brokenCompletedGameRepo };
     const data: BackupV2Data = { completedGames: [completedGame('imported')] };
@@ -376,6 +425,41 @@ describe('application/backup/BackupCoordinator — falen en rollback (plan §C.1
   });
 });
 
+describe('application/backup/BackupCoordinator — cloud: nooit succes vóór serverbevestiging (externe PR-6.6-review)', () => {
+  it('meldt geen succes wanneer settings lokaal geaccepteerd wordt maar de server de write daarna afwijst', async () => {
+    const snapshot = await snapshotOrThrow(deps);
+    settingsMode = 'serverReject';
+    const data: BackupV2Data = { settings: { ...DEFAULT_SETTINGS, teamName: 'Server-wijst-af' } };
+    const result = await runImport(deps, data, TARGET, snapshot);
+    expect(result.ok).toBe(false);
+    expect(result.journal[0]!.outcome).toBe('failed');
+    // De rollback gebruikt dezelfde repo, die na settled ook weer
+    // 'serverReject' teruggeeft voor de herstelwrite — dus ook die faalt
+    // eerlijk, nooit stilzwijgend geveinsd succes.
+    expect(result.journal[1]!.outcome).toBe('rollbackFailed');
+  });
+
+  it('meldt geen succes en hangt niet oneindig wanneer settled offline onbepaald blijft hangen (issue #27-gate)', async () => {
+    vi.useFakeTimers();
+    try {
+      const snapshot = await snapshotOrThrow(deps);
+      settingsMode = 'settleTimeout';
+      const data: BackupV2Data = { settings: { ...DEFAULT_SETTINGS, teamName: 'Offline' } };
+      const resultPromise = runImport(deps, data, TARGET, snapshot);
+      // Zowel de initiële write ALS de daaropvolgende rollback-poging
+      // (dezelfde kapotte/offline adapter) wachten elk begrensd
+      // (IMPORT_SETTLE_TIMEOUT_MS) — nooit oneindig, en de coordinator
+      // mag ondertussen geen vals succes melden.
+      await vi.advanceTimersByTimeAsync(40_000);
+      const result = await resultPromise;
+      expect(result.ok).toBe(false);
+      expect(result.journal[0]!.outcome).toBe('failed');
+    } finally {
+      vi.useRealTimers();
+    }
+  }, 10_000);
+});
+
 describe('application/backup/BackupCoordinator — idempotente retry (plan §D/§G.6)', () => {
   it('dezelfde import tweemaal levert identiek dezelfde eindtoestand op, geen dubbele wedstrijden', async () => {
     const data: BackupV2Data = { completedGames: [completedGame('imported')] };
@@ -391,10 +475,24 @@ describe('application/backup/BackupCoordinator — idempotente retry (plan §D/�
 });
 
 describe('application/backup/BackupCoordinator — captureSnapshot leesfouten (plan §A.2/§C.8)', () => {
-  it('geeft ok:false terug wanneer completedGameRepo.safeList() een leesfout meldt, i.p.v. een lege snapshot', async () => {
+  it('geeft ok:false terug wanneer completedGameRepo.safeListStrict() een leesfout meldt, i.p.v. een lege snapshot', async () => {
     const brokenCompletedGameRepo: CompletedGameRepository = {
       ...completedGameRepo,
-      safeList: () => ({ status: 'error', games: [] }),
+      safeListStrict: () => ({ status: 'error', games: [] }),
+    };
+    const result = await captureSnapshot({ ...deps, completedGameRepo: brokenCompletedGameRepo });
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.failedSection).toBe('completedGames');
+  });
+
+  it('geeft ok:false terug wanneer een individueel item wél leesbaar maar mistagged/corrupt is (safeListStrict, i.t.t. safeList dat zoiets filtert)', async () => {
+    // safeList() blijft het permissieve UI-contract (één beschadigd item
+    // verbergt de rest niet) — safeListStrict() is de striktere variant
+    // die specifiek voor back-up-doeleinden alles-of-niets is.
+    const brokenCompletedGameRepo: CompletedGameRepository = {
+      ...completedGameRepo,
+      safeList: () => ({ status: 'ok', games: [completedGame('existing')] }),
+      safeListStrict: () => ({ status: 'error', games: [] }),
     };
     const result = await captureSnapshot({ ...deps, completedGameRepo: brokenCompletedGameRepo });
     expect(result.ok).toBe(false);
@@ -409,5 +507,17 @@ describe('application/backup/BackupCoordinator — captureSnapshot leesfouten (p
     const result = await captureSnapshot({ ...deps, gameRepo: brokenGameRepo });
     expect(result.ok).toBe(false);
     if (!result.ok) expect(result.failedSection).toBe('activeGame');
+  });
+
+  it('geeft ok:false terug wanneer settingsRepo.read() reject (i.p.v. de UI in "running" te laten hangen)', async () => {
+    const brokenSettingsRepo: AsyncSettingsRepository = {
+      ...settingsRepo,
+      read: async () => {
+        throw new Error('storage kapot');
+      },
+    };
+    const result = await captureSnapshot({ ...deps, settingsRepo: brokenSettingsRepo });
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.failedSection).toBe('settings');
   });
 });

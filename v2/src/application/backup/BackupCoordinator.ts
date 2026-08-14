@@ -2,7 +2,7 @@ import type { AsyncSettingsRepository } from '../settings/AsyncSettingsRepositor
 import type { AsyncRosterRepository } from '../roster/AsyncRosterRepository';
 import type { GameRepository } from '../game/GameRepository';
 import type { CompletedGameRepository } from '../game/CompletedGameRepository';
-import { DEFAULT_SETTINGS, type Settings, type SettingsKey } from '../../domain/settings/types';
+import { DEFAULT_SETTINGS, type Settings } from '../../domain/settings/types';
 import type { Roster } from '../../domain/roster/types';
 import { retagWithContext } from '../../domain/backup/migrateV1';
 import type { BackupV2Data, ImportJournalEntry, ImportRunResult } from '../../domain/backup/types';
@@ -17,19 +17,24 @@ import type { Lang } from '../../i18n/strings';
  * blijft achter `AsyncSettingsRepository`/`GameRepository`/
  * `CompletedGameRepository` (de UI/App.tsx geeft de al-geresolvede
  * instanties door, precies zoals Settings/Roster/Stats/Trends dat al doen).
+ *
+ * Externe PR-6.6-review (aug. 2026): schrijft settings/roster bewust
+ * RECHTSTREEKS via `settingsRepo.write()`/`rosterRepo.write()` — niet meer
+ * via `useSyncStatus`'s `saveSettings`/`saveRoster`. Die laatste twee zijn
+ * doelbewust optimistisch (zie hun eigen documentatie in
+ * `application/sync/useSyncStatus.ts`): ze retourneren `true` zodra een
+ * cloudwrite LOKAAL is geaccepteerd, zonder op serverbevestiging
+ * (`settled`) te wachten — geschikt voor interactieve Settings/Roster-UI,
+ * maar niet voor een back-up-import: een latere Firestore Rules-/
+ * serverafwijzing zou dan een net gemelde "import geslaagd" alsnog
+ * gedeeltelijk ongedaan maken zonder dat de coordinator dat kan
+ * detecteren. Zie `writeSettingsSection`/`writeRosterSection` hieronder.
  */
 export interface BackupCoordinatorDeps {
   settingsRepo: AsyncSettingsRepository;
   rosterRepo: AsyncRosterRepository;
   gameRepo: GameRepository;
   completedGameRepo: CompletedGameRepository;
-  /** Dezelfde `syncStatus.saveSettings`/`saveRoster` als Settings/Roster al gebruiken —
-   * respecteert zo automatisch lokale/cloudmodus (eigenaarsbesluit §E.3). */
-  saveSettings: (
-    payload: Settings & Record<string, unknown>,
-    changedKeys?: readonly SettingsKey[],
-  ) => Promise<boolean>;
-  saveRoster: (payload: Roster) => Promise<boolean>;
   setLang: (lang: Lang) => void;
 }
 
@@ -45,43 +50,103 @@ export interface BackupSnapshot {
   completedGames: CompletedGame[];
 }
 
+type SectionName = 'settings' | 'roster' | 'completedGames' | 'activeGame';
+
 export type CaptureSnapshotResult =
-  | { ok: true; snapshot: BackupSnapshot }
-  | { ok: false; failedSection: 'activeGame' | 'completedGames' };
+  { ok: true; snapshot: BackupSnapshot } | { ok: false; failedSection: SectionName };
+
+/**
+ * Wacht bewust hooguit `IMPORT_SETTLE_TIMEOUT_MS` op een write's
+ * serverbevestiging (`settled`, zie `domain/syncState.ts`) — nooit
+ * onbepaald (externe PR-6.6-review, aug. 2026: `FirestoreSettingsRepository`
+ * documenteert zelf een bekend gate — issue #27 — waarbij `settled` voor
+ * PRECIES het beschreven document offline nooit meer resolvet). Een import
+ * mag daardoor nooit onbeperkt in `running` blijven hangen: bij een timeout
+ * behandelt de coordinator de stap als mislukt (`'failed'`) en start de
+ * bestaande rollback — hetzelfde eerlijke, nooit-vals-succes-pad als een
+ * expliciete serverafwijzing. `settled` zelf reject per contract nooit, dus
+ * hier is geen aparte catch nodig.
+ */
+const IMPORT_SETTLE_TIMEOUT_MS = 15_000;
+
+async function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T | 'timeout'> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const timeout = new Promise<'timeout'>((resolve) => {
+    timer = setTimeout(() => resolve('timeout'), ms);
+  });
+  try {
+    return await Promise.race([promise, timeout]);
+  } finally {
+    if (timer !== undefined) clearTimeout(timer);
+  }
+}
+
+function safeListStrict(repo: CompletedGameRepository): {
+  status: 'ok' | 'missing' | 'error';
+  games: CompletedGame[];
+} {
+  if (repo.safeListStrict) return repo.safeListStrict();
+  if (repo.safeList) return repo.safeList();
+  return { status: 'ok', games: repo.list() };
+}
 
 /**
  * Legt de huidige doeldata vast VÓÓR er iets geschreven wordt (plan §C.10 /
  * startvoorwaarde A.2). Leest rechtstreeks via de repositories i.p.v. te
  * vertrouwen op eventueel verouderde in-memory UI-state.
  *
- * Externe PR-6.6-review (aug. 2026): gebruikt bewust `safeList()`/
+ * Externe PR-6.6-review (aug. 2026): gebruikt bewust `safeListStrict()`/
  * `safeRead()` i.p.v. `list()`/`read()` — die laatste twee vertalen een
- * echte storage-/parsefout stilzwijgend naar "leeg"/`null`, waardoor een
- * corrupte opslag als lege snapshot behandeld zou worden. Een download of
- * import gebaseerd op zo'n valse lege snapshot kan bestaande, wél aanwezige
+ * echte storage-/parsefout (of een individueel corrupt/mistagged item)
+ * stilzwijgend naar "leeg"/`null`/"gefilterd", waardoor een corrupte opslag
+ * als lege of onvolledige snapshot behandeld zou worden. Een download of
+ * import gebaseerd op zo'n valse snapshot kan bestaande, wél aanwezige
  * historie of een actieve wedstrijd stilzwijgend overschrijven/leegmaken —
  * precies het scenario dat startvoorwaarde A.2 uitsluit. Bij een leesfout
- * geeft deze functie `ok: false` terug; de aanroeper mag dan NIETS
- * downloaden of schrijven.
+ * (inclusief een onverwachte reject van `settingsRepo.read()`/
+ * `rosterRepo.read()`) geeft deze functie `ok: false` terug; de aanroeper
+ * mag dan NIETS downloaden of schrijven.
  */
 export async function captureSnapshot(deps: BackupCoordinatorDeps): Promise<CaptureSnapshotResult> {
-  const completedResult = deps.completedGameRepo.safeList
-    ? deps.completedGameRepo.safeList()
-    : { status: 'ok' as const, games: deps.completedGameRepo.list() };
+  let completedResult: ReturnType<typeof safeListStrict>;
+  try {
+    completedResult = safeListStrict(deps.completedGameRepo);
+  } catch {
+    return { ok: false, failedSection: 'completedGames' };
+  }
   if (completedResult.status === 'error') {
     return { ok: false, failedSection: 'completedGames' };
   }
 
-  const activeResult = deps.gameRepo.safeRead();
+  let activeResult: ReturnType<GameRepository['safeRead']>;
+  try {
+    activeResult = deps.gameRepo.safeRead();
+  } catch {
+    return { ok: false, failedSection: 'activeGame' };
+  }
   if (activeResult.status === 'error') {
     return { ok: false, failedSection: 'activeGame' };
+  }
+
+  let settings: Settings & Record<string, unknown>;
+  try {
+    settings = await deps.settingsRepo.read();
+  } catch {
+    return { ok: false, failedSection: 'settings' };
+  }
+
+  let roster: Roster;
+  try {
+    roster = await deps.rosterRepo.read();
+  } catch {
+    return { ok: false, failedSection: 'roster' };
   }
 
   return {
     ok: true,
     snapshot: {
-      settings: await deps.settingsRepo.read(),
-      roster: await deps.rosterRepo.read(),
+      settings,
+      roster,
       activeGame: activeResult.game,
       completedGames: completedResult.games,
     },
@@ -119,10 +184,16 @@ async function writeSettingsSection(
   settings: (Settings & Record<string, unknown>) | undefined,
 ): Promise<'written' | 'failed'> {
   const target = settings ?? (DEFAULT_SETTINGS as Settings & Record<string, unknown>);
-  const ok = await deps.saveSettings(target);
-  if (!ok) return 'failed';
-  const readBack = await deps.settingsRepo.read();
-  return deepEqual(readBack, target) ? 'written' : 'failed';
+  try {
+    const writeResult = await deps.settingsRepo.write(target);
+    if (!writeResult.ok) return 'failed';
+    const settled = await withTimeout(writeResult.settled, IMPORT_SETTLE_TIMEOUT_MS);
+    if (settled === 'timeout' || !settled.ok) return 'failed';
+    const readBack = await deps.settingsRepo.read();
+    return deepEqual(readBack, target) ? 'written' : 'failed';
+  } catch {
+    return 'failed';
+  }
 }
 
 async function writeRosterSection(
@@ -130,20 +201,31 @@ async function writeRosterSection(
   roster: Roster | undefined,
 ): Promise<'written' | 'failed'> {
   const target = roster ?? [];
-  const ok = await deps.saveRoster(target);
-  if (!ok) return 'failed';
-  const readBack = await deps.rosterRepo.read();
-  return deepEqual(readBack, target) ? 'written' : 'failed';
+  try {
+    const writeResult = await deps.rosterRepo.write(target);
+    if (!writeResult.ok) return 'failed';
+    const settled = await withTimeout(writeResult.settled, IMPORT_SETTLE_TIMEOUT_MS);
+    if (settled === 'timeout' || !settled.ok) return 'failed';
+    const readBack = await deps.rosterRepo.read();
+    return deepEqual(readBack, target) ? 'written' : 'failed';
+  } catch {
+    return 'failed';
+  }
 }
 
 function writeActiveGameSection(
   deps: BackupCoordinatorDeps,
   activeGame: BackupV2Data['activeGame'],
 ): 'written' | 'failed' {
-  const ok = activeGame ? deps.gameRepo.write(activeGame) : deps.gameRepo.clear();
-  if (!ok) return 'failed';
-  const readBack = deps.gameRepo.read();
-  return deepEqual(readBack, activeGame ?? null) ? 'written' : 'failed';
+  try {
+    const ok = activeGame ? deps.gameRepo.write(activeGame) : deps.gameRepo.clear();
+    if (!ok) return 'failed';
+    const readBack = deps.gameRepo.safeRead();
+    if (readBack.status === 'error') return 'failed';
+    return deepEqual(readBack.game, activeGame ?? null) ? 'written' : 'failed';
+  } catch {
+    return 'failed';
+  }
 }
 
 function writeCompletedGamesSection(
@@ -151,13 +233,16 @@ function writeCompletedGamesSection(
   games: BackupV2Data['completedGames'],
 ): 'written' | 'failed' {
   const target = games ?? [];
-  const ok = deps.completedGameRepo.replaceAll(target);
-  if (!ok) return 'failed';
-  const readBack = deps.completedGameRepo.list();
-  return deepEqual(readBack, target) ? 'written' : 'failed';
+  try {
+    const ok = deps.completedGameRepo.replaceAll(target);
+    if (!ok) return 'failed';
+    const readBack = safeListStrict(deps.completedGameRepo);
+    if (readBack.status === 'error') return 'failed';
+    return deepEqual(readBack.games, target) ? 'written' : 'failed';
+  } catch {
+    return 'failed';
+  }
 }
-
-type SectionName = 'settings' | 'roster' | 'completedGames' | 'activeGame';
 
 /**
  * Herstelt één sectie terug naar de snapshot-waarde (plan §C.10). Wordt
@@ -198,12 +283,14 @@ async function rollbackSection(
 /**
  * Voert de import uit (plan §C.9): schrijft in vaste volgorde (settings →
  * roster → afgeronde wedstrijden → actieve wedstrijd → taal), verifieert
- * elke stap met een diepe readback-vergelijking, en rolt bij de EERSTE fout
- * ALLE tot dan toe aangeraakte secties terug naar `snapshot` — inclusief de
- * net gefaalde sectie zelf, in omgekeerde volgorde. Elke rollbackpoging
- * krijgt een eigen, nooit-geveinsd journaalresultaat (`rolledBack` of
- * `rollbackFailed`). Stopt na de eerste fout: geen "best effort"-vervolg op
- * de resterende secties (plan §B "niet in scope").
+ * elke stap met een diepe readback-vergelijking NA serverbevestiging (zie
+ * `writeSettingsSection`/`writeRosterSection` — nooit vroeg succes in
+ * cloudmodus), en rolt bij de EERSTE fout ALLE tot dan toe aangeraakte
+ * secties terug naar `snapshot` — inclusief de net gefaalde sectie zelf, in
+ * omgekeerde volgorde. Elke rollbackpoging krijgt een eigen,
+ * nooit-geveinsd journaalresultaat (`rolledBack` of `rollbackFailed`).
+ * Stopt na de eerste fout: geen "best effort"-vervolg op de resterende
+ * secties (plan §B "niet in scope").
  */
 export async function runImport(
   deps: BackupCoordinatorDeps,

@@ -164,6 +164,67 @@ describe('domain/backup/migrateV1 — migrateV1BackupData (plan §D/§G.1)', () 
     // gedeeltelijke (stil ingekorte) historie kan importeren.
     expect(data.completedGames).toBeUndefined();
   });
+
+  // Externe PR-6.6-review (aug. 2026): `lineup-tracker-settings: null` mocht
+  // eerder stil via `normalizeSettings()` naar `DEFAULT_SETTINGS` vallen —
+  // bij een bevestigde import zou dat geldige doelsettings overschrijven
+  // met defaults i.p.v. de import te weigeren.
+  it('faalt fail-closed op malformed settings (null) i.p.v. stil DEFAULT_SETTINGS te gebruiken', () => {
+    const { data, errors } = migrateV1BackupData({ [SETTINGS_STORAGE_KEY]: null });
+    expect(errors.some((e) => e.code === 'migrationFailed' && e.detail === 'settings')).toBe(true);
+    expect(data.settings).toBeUndefined();
+  });
+
+  // `lineup-tracker-roster: "not-an-array"` mocht eerder stil via
+  // `normalizeRoster()` naar `[]` vallen — bij bevestiging zou dat een
+  // geldig doelroster legen.
+  it('faalt fail-closed op malformed roster (geen array) i.p.v. stil te legen', () => {
+    const { data, errors } = migrateV1BackupData({ [ROSTER_STORAGE_KEY]: 'not-an-array' });
+    expect(errors.some((e) => e.code === 'migrationFailed' && e.detail === 'roster')).toBe(true);
+    expect(data.roster).toBeUndefined();
+  });
+
+  it('faalt fail-closed op een ongeldige taalcode i.p.v. de sectie stil weg te laten', () => {
+    const { data, errors } = migrateV1BackupData({ [LANG_STORAGE_KEY]: 'xx-not-a-lang' });
+    expect(errors.some((e) => e.code === 'migrationFailed' && e.detail === 'lang')).toBe(true);
+    expect(data.lang).toBeUndefined();
+  });
+
+  // Een gecombineerde probe: malformed settings/roster naast een geldige
+  // taal moet NOG STEEDS de volledige migratie laten falen (geen enkele
+  // sectie teruggeven, ook niet de wél geldige taal).
+  it('een gecombineerde malformed-settings+roster-probe met geldige taal faalt volledig (geen enkele sectie)', () => {
+    const { data, errors } = migrateV1BackupData({
+      [SETTINGS_STORAGE_KEY]: null,
+      [ROSTER_STORAGE_KEY]: 'not-an-array',
+      [LANG_STORAGE_KEY]: 'en',
+    });
+    expect(errors.length).toBeGreaterThanOrEqual(2);
+    expect(data.settings).toBeUndefined();
+    expect(data.roster).toBeUndefined();
+    expect(data.lang).toBeUndefined();
+  });
+
+  // Een structureel onbruikbare actieve wedstrijd (players is geen array)
+  // is een migratiefout — dat is iets anders dan v1's legitieme "opzet nog
+  // niet gestart, dus niet hervatbaar"-uitzondering (zie de test hierboven
+  // met `phase: 'setup'`), die WEL een lege (undefined) sectie mag opleveren.
+  it('faalt fail-closed op een structureel malformed activeGame (players geen array), i.t.t. de legitieme niet-hervatbare uitzondering', () => {
+    const { data, errors } = migrateV1BackupData({
+      [V1_ACTIVE_GAME_STORAGE_KEY]: { players: 'not-an-array', phase: 'tracking' },
+    });
+    expect(errors.some((e) => e.code === 'migrationFailed' && e.detail === 'activeGame')).toBe(
+      true,
+    );
+    expect(data.activeGame).toBeUndefined();
+  });
+
+  it('een afwezige/`null` actieve wedstrijd blijft geen migratiefout (legitiem "geen wedstrijd")', () => {
+    const { errors: errorsNull } = migrateV1BackupData({ [V1_ACTIVE_GAME_STORAGE_KEY]: null });
+    expect(errorsNull).toEqual([]);
+    const { errors: errorsAbsent } = migrateV1BackupData({});
+    expect(errorsAbsent).toEqual([]);
+  });
 });
 
 describe('domain/backup/migrateV1 — retagWithContext (plan §D)', () => {

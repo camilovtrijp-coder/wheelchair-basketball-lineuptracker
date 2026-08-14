@@ -116,17 +116,84 @@ function validateRosterSection(roster: unknown): BackupValidationError[] {
 }
 
 const SEGMENT_STRING_KEYS = ['id'] as const;
-const SEGMENT_NUMBER_KEYS = ['quarter', 'beginSec', 'endSec', 'durSec', 'pf', 'pa'] as const;
+const SEGMENT_NUMBER_KEYS = [
+  'quarter',
+  'beginSec',
+  'endSec',
+  'durSec',
+  'pf',
+  'pa',
+  'classSum',
+  'allowed',
+] as const;
 
 /**
- * Referentiële check gedeeld door `activeGame` en elk item in
- * `completedGames`: een `Segment.lineup` moet exact 5 bekende
- * `GamePlayer.id`'s bevatten (v1-pariteit: precies vijf spelers op het
- * veld), `durSec` positief, `pf`/`pa` niet-negatief. Elk segment-item wordt
- * EERST als plain object gecontroleerd — de invoer is op dit punt nog
+ * Eén segment (los van de array eromheen) tegen een bekende spelers-ID-set.
+ * Gedeeld door `completedGames[].segments` en elke `segment-saved`/
+ * `segment-edited`-actie in `activeGame.actions` (externe PR-6.6-review, aug.
+ * 2026: die embedded segmenten werden voorheen helemaal niet gecontroleerd —
+ * alleen de array/veld-AANWEZIGHEID van `actions`, niet de inhoud). Elk item
+ * wordt EERST als plain object gecontroleerd — de invoer is op dit punt nog
  * ongevalideerde `unknown`, ondanks de `readonly Segment[]`-typering
- * (externe PR-6.6-review: `segments: [null]` mag nooit een TypeError geven).
+ * (`segments: [null]` mag nooit een TypeError geven).
  */
+function validateSegmentShape(
+  raw: unknown,
+  knownIds: Set<string>,
+  segLabel: string,
+): BackupValidationError[] {
+  const errors: BackupValidationError[] = [];
+  if (!isPlainObject(raw)) {
+    errors.push({ code: 'gameInvalid', detail: `segment:${segLabel}` });
+    return errors;
+  }
+  for (const key of SEGMENT_STRING_KEYS) {
+    if (typeof raw[key] !== 'string') {
+      errors.push({ code: 'gameInvalid', detail: `segmentField:${key}:${segLabel}` });
+    }
+  }
+  for (const key of SEGMENT_NUMBER_KEYS) {
+    if (typeof raw[key] !== 'number' || !Number.isFinite(raw[key])) {
+      errors.push({ code: 'gameInvalid', detail: `segmentField:${key}:${segLabel}` });
+    }
+  }
+  if (typeof raw.over !== 'boolean') {
+    errors.push({ code: 'gameInvalid', detail: `segmentField:over:${segLabel}` });
+  }
+  const segment = raw as unknown as Segment;
+  if (!Array.isArray(segment.lineup) || segment.lineup.length !== 5) {
+    errors.push({ code: 'gameInvalidLineupSize', detail: segLabel });
+  } else {
+    for (const id of segment.lineup) {
+      if (!knownIds.has(id)) {
+        errors.push({ code: 'gameUnknownLineupPlayer', detail: segLabel });
+        break;
+      }
+    }
+  }
+  if (typeof segment.durSec !== 'number' || segment.durSec <= 0) {
+    errors.push({ code: 'gameInvalidDuration', detail: segLabel });
+  } else if (
+    typeof segment.beginSec === 'number' &&
+    typeof segment.endSec === 'number' &&
+    segment.durSec !== Math.abs(segment.endSec - segment.beginSec)
+  ) {
+    // Zelfde formule als `applyAction`'s segment-saved-tak
+    // (domain/game/tracking.ts) — een afwijkende `durSec` kan geen
+    // consistente CSV/stats-berekening opleveren.
+    errors.push({ code: 'gameInvalidDuration', detail: `inconsistent:${segLabel}` });
+  }
+  if (
+    typeof segment.pf !== 'number' ||
+    segment.pf < 0 ||
+    typeof segment.pa !== 'number' ||
+    segment.pa < 0
+  ) {
+    errors.push({ code: 'gameInvalidScore', detail: segLabel });
+  }
+  return errors;
+}
+
 function validateSegments(
   segments: readonly unknown[],
   players: readonly GamePlayer[],
@@ -135,43 +202,7 @@ function validateSegments(
   const knownIds = new Set(players.map((p) => p.id));
   const errors: BackupValidationError[] = [];
   segments.forEach((raw, index) => {
-    const segLabel = `${gameLabel}:segment:${index}`;
-    if (!isPlainObject(raw)) {
-      errors.push({ code: 'gameInvalid', detail: `segment:${segLabel}` });
-      return;
-    }
-    for (const key of SEGMENT_STRING_KEYS) {
-      if (typeof raw[key] !== 'string') {
-        errors.push({ code: 'gameInvalid', detail: `segmentField:${key}:${segLabel}` });
-      }
-    }
-    for (const key of SEGMENT_NUMBER_KEYS) {
-      if (typeof raw[key] !== 'number' || !Number.isFinite(raw[key])) {
-        errors.push({ code: 'gameInvalid', detail: `segmentField:${key}:${segLabel}` });
-      }
-    }
-    const segment = raw as unknown as Segment;
-    if (!Array.isArray(segment.lineup) || segment.lineup.length !== 5) {
-      errors.push({ code: 'gameInvalidLineupSize', detail: segLabel });
-    } else {
-      for (const id of segment.lineup) {
-        if (!knownIds.has(id)) {
-          errors.push({ code: 'gameUnknownLineupPlayer', detail: segLabel });
-          break;
-        }
-      }
-    }
-    if (typeof segment.durSec !== 'number' || segment.durSec <= 0) {
-      errors.push({ code: 'gameInvalidDuration', detail: segLabel });
-    }
-    if (
-      typeof segment.pf !== 'number' ||
-      segment.pf < 0 ||
-      typeof segment.pa !== 'number' ||
-      segment.pa < 0
-    ) {
-      errors.push({ code: 'gameInvalidScore', detail: segLabel });
-    }
+    errors.push(...validateSegmentShape(raw, knownIds, `${gameLabel}:segment:${index}`));
   });
   return errors;
 }
@@ -281,7 +312,77 @@ const ACTIVE_GAME_STRING_KEYS = [
   'teamId',
   'opponent',
   'competition',
+  'limitStr',
 ] as const;
+const ACTIVE_GAME_NUMBER_KEYS = ['curQuarter', 'beginSec', 'endSec'] as const;
+
+const ACTION_TYPES = [
+  'score-delta',
+  'score-set',
+  'segment-saved',
+  'segment-edited',
+  'segment-deleted',
+] as const;
+
+/**
+ * Elk item in `activeGame.actions` (externe PR-6.6-review, aug. 2026: alleen
+ * de AANWEZIGHEID van de `actions`-array werd gecontroleerd, niet de inhoud
+ * — een corrupte/afgeknotte actielog zou zo alsnog geïmporteerd kunnen
+ * worden en later een crash of stille foutieve score/segmentreconstructie
+ * geven, zie `domain/game/tracking.ts` `applyAction()`/`deriveGameHistory()`
+ * die op precies deze velden vertrouwen zonder eigen runtime-guards).
+ */
+function validateActionShape(
+  raw: unknown,
+  knownIds: Set<string>,
+  label: string,
+): BackupValidationError[] {
+  const errors: BackupValidationError[] = [];
+  if (!isPlainObject(raw)) {
+    errors.push({ code: 'gameInvalid', detail: `action:${label}` });
+    return errors;
+  }
+  if (typeof raw.id !== 'string' || typeof raw.at !== 'string') {
+    errors.push({ code: 'gameInvalid', detail: `actionField:id/at:${label}` });
+  }
+  if (!ACTION_TYPES.includes(raw.type as (typeof ACTION_TYPES)[number])) {
+    errors.push({ code: 'gameInvalid', detail: `actionField:type:${label}` });
+    return errors;
+  }
+  switch (raw.type) {
+    case 'score-delta':
+      if (raw.team !== 'for' && raw.team !== 'against') {
+        errors.push({ code: 'gameInvalid', detail: `actionField:team:${label}` });
+      }
+      if (typeof raw.delta !== 'number' || !Number.isFinite(raw.delta)) {
+        errors.push({ code: 'gameInvalid', detail: `actionField:delta:${label}` });
+      }
+      break;
+    case 'score-set':
+      if (raw.team !== 'for' && raw.team !== 'against') {
+        errors.push({ code: 'gameInvalid', detail: `actionField:team:${label}` });
+      }
+      if (typeof raw.value !== 'number' || !Number.isFinite(raw.value) || raw.value < 0) {
+        errors.push({ code: 'gameInvalid', detail: `actionField:value:${label}` });
+      }
+      break;
+    case 'segment-saved':
+      errors.push(...validateSegmentShape(raw.segment, knownIds, `${label}:segment`));
+      break;
+    case 'segment-edited':
+      if (typeof raw.segmentId !== 'string') {
+        errors.push({ code: 'gameInvalid', detail: `actionField:segmentId:${label}` });
+      }
+      errors.push(...validateSegmentShape(raw.segment, knownIds, `${label}:segment`));
+      break;
+    case 'segment-deleted':
+      if (typeof raw.segmentId !== 'string') {
+        errors.push({ code: 'gameInvalid', detail: `actionField:segmentId:${label}` });
+      }
+      break;
+  }
+  return errors;
+}
 
 export function validateActiveGameSection(game: unknown): BackupValidationError[] {
   if (game === null) return [];
@@ -292,11 +393,22 @@ export function validateActiveGameSection(game: unknown): BackupValidationError[
       errors.push({ code: 'gameInvalid', detail: `field:${key}:activeGame` });
     }
   }
+  for (const key of ACTIVE_GAME_NUMBER_KEYS) {
+    if (typeof game[key] !== 'number' || !Number.isFinite(game[key])) {
+      errors.push({ code: 'gameInvalid', detail: `field:${key}:activeGame` });
+    }
+  }
+  if (typeof game.clockDown !== 'boolean') {
+    errors.push({ code: 'gameInvalid', detail: 'field:clockDown:activeGame' });
+  }
   if (game.phase !== 'setup' && game.phase !== 'tracking') {
     errors.push({ code: 'gameInvalid', detail: 'field:phase:activeGame' });
   }
   const g = game as unknown as ActiveGame;
   errors.push(...validateGamePlayers(g.players, 'activeGame'));
+  const knownIds = Array.isArray(g.players)
+    ? new Set((g.players as unknown[]).filter(isPlainObject).map((p) => p.id as unknown as string))
+    : new Set<string>();
   // ActiveGame heeft geen `segments` (die bestaan pas ná afronden, zie
   // CompletedGame) — alleen `onCourt` (huidige opstelling) en `actions`
   // (de append-only actielog, zie domain/game/tracking.ts). Referentiële
@@ -304,9 +416,6 @@ export function validateActiveGameSection(game: unknown): BackupValidationError[
   if (!Array.isArray(game.onCourt)) {
     errors.push({ code: 'gameInvalid', detail: 'field:onCourt:activeGame' });
   } else if (Array.isArray(g.players)) {
-    const knownIds = new Set(
-      (g.players as unknown[]).filter(isPlainObject).map((p) => p.id as unknown),
-    );
     for (const id of game.onCourt) {
       if (!knownIds.has(id)) {
         errors.push({ code: 'gameUnknownLineupPlayer', detail: 'onCourt:activeGame' });
@@ -314,8 +423,24 @@ export function validateActiveGameSection(game: unknown): BackupValidationError[
       }
     }
   }
+  if (game.pendingSwapLineup !== null) {
+    if (!Array.isArray(game.pendingSwapLineup)) {
+      errors.push({ code: 'gameInvalid', detail: 'field:pendingSwapLineup:activeGame' });
+    } else if (Array.isArray(g.players)) {
+      for (const id of game.pendingSwapLineup) {
+        if (typeof id !== 'string' || !knownIds.has(id)) {
+          errors.push({ code: 'gameUnknownLineupPlayer', detail: 'pendingSwapLineup:activeGame' });
+          break;
+        }
+      }
+    }
+  }
   if (!Array.isArray(g.actions)) {
     errors.push({ code: 'gameInvalid', detail: 'field:actions:activeGame' });
+  } else {
+    g.actions.forEach((raw, index) => {
+      errors.push(...validateActionShape(raw, knownIds, `activeGame:action:${index}`));
+    });
   }
   return errors;
 }

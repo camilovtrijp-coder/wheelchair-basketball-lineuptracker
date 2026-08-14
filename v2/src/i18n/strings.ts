@@ -201,6 +201,8 @@ const nl = {
   backupEffectClear: 'wordt geleegd',
   backupEffectUnchanged: 'blijft ongewijzigd',
   backupPreviewNotPresent: 'niet aanwezig in de back-up',
+  backupDestinationLocal: 'lokaal',
+  backupDestinationCloud: 'cloud',
   backupConfirmBtn: 'Bevestig import',
   backupCancelBtn: 'Annuleren',
   backupRestoreDownloading:
@@ -496,6 +498,8 @@ const en = {
   backupEffectClear: 'will be cleared',
   backupEffectUnchanged: 'stays unchanged',
   backupPreviewNotPresent: 'not present in the backup',
+  backupDestinationLocal: 'local',
+  backupDestinationCloud: 'cloud',
   backupConfirmBtn: 'Confirm import',
   backupCancelBtn: 'Cancel',
   backupRestoreDownloading:

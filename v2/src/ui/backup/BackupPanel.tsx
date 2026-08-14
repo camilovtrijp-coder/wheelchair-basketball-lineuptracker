@@ -19,7 +19,7 @@ import type {
 } from '../../domain/backup/types';
 import { readBackupFile } from '../../infrastructure/backup/readBackupFile';
 import { downloadBackupFile } from '../../infrastructure/backup/downloadBackupFile';
-import type { Settings, SettingsKey } from '../../domain/settings/types';
+import type { Settings } from '../../domain/settings/types';
 import type { Roster } from '../../domain/roster/types';
 import { translate, type Lang, type StringKey } from '../../i18n/strings';
 
@@ -50,15 +50,14 @@ export interface BackupPanelProps {
   teamName: string;
   settings: Settings & Record<string, unknown>;
   roster: Roster;
+  /** Eigenaarsbesluit §E.3: settings/roster volgen de actieve repositorymodus
+   * (`AppRepositories.mode`) — wedstrijdhistorie/actieve wedstrijd zijn tot
+   * en met fase 6 altijd lokaal (zie `BackupPreviewCard`). */
+  settingsRosterMode: 'local' | 'cloud';
   settingsRepo: AsyncSettingsRepository;
   rosterRepo: AsyncRosterRepository;
   gameRepo: GameRepository;
   completedGameRepo: CompletedGameRepository;
-  saveSettings: (
-    payload: Settings & Record<string, unknown>,
-    changedKeys?: readonly SettingsKey[],
-  ) => Promise<boolean>;
-  saveRoster: (payload: Roster) => Promise<boolean>;
   setLang: (lang: Lang) => void;
   /** App ververst zijn live state (settings/roster/game/historie) na een geslaagde import. */
   onImported: () => void;
@@ -120,12 +119,11 @@ export function BackupPanel({
   teamName,
   settings,
   roster,
+  settingsRosterMode,
   settingsRepo,
   rosterRepo,
   gameRepo,
   completedGameRepo,
-  saveSettings,
-  saveRoster,
   setLang,
   onImported,
 }: BackupPanelProps) {
@@ -154,10 +152,15 @@ export function BackupPanel({
   function handleExport() {
     if (!canWrite) return;
     // Externe PR-6.6-review: zelfde reden als captureSnapshot() — een
-    // storage-/parsefout mag nooit als "leeg" geëxporteerd worden.
-    const completedResult = completedGameRepo.safeList
-      ? completedGameRepo.safeList()
-      : { status: 'ok' as const, games: completedGameRepo.list() };
+    // storage-/parsefout OF een individueel corrupt/mistagged item mag
+    // nooit als "leeg"/"volledig" geëxporteerd worden. `safeListStrict()`
+    // (i.p.v. het permissievere `safeList()`) meldt daarom al bij één
+    // afgekeurd item `status:'error'`.
+    const completedResult = completedGameRepo.safeListStrict
+      ? completedGameRepo.safeListStrict()
+      : completedGameRepo.safeList
+        ? completedGameRepo.safeList()
+        : { status: 'ok' as const, games: completedGameRepo.list() };
     const activeResult = gameRepo.safeRead();
     if (completedResult.status === 'error' || activeResult.status === 'error') {
       setState({ step: 'error', message: t(lang, 'statsReadError') });
@@ -204,8 +207,6 @@ export function BackupPanel({
       rosterRepo,
       gameRepo,
       completedGameRepo,
-      saveSettings,
-      saveRoster,
       setLang,
     };
   }
@@ -318,6 +319,7 @@ export function BackupPanel({
           preview={state.preview}
           organizationName={organizationName}
           teamName={teamName}
+          settingsRosterMode={settingsRosterMode}
           onConfirm={() => void handleConfirmImport()}
           onCancel={handleCancelPreview}
         />
@@ -383,6 +385,7 @@ function BackupPreviewCard({
   preview,
   organizationName,
   teamName,
+  settingsRosterMode,
   onConfirm,
   onCancel,
 }: {
@@ -390,6 +393,7 @@ function BackupPreviewCard({
   preview: ImportPreview;
   organizationName: string;
   teamName: string;
+  settingsRosterMode: 'local' | 'cloud';
   onConfirm: () => void;
   onCancel: () => void;
 }) {
@@ -398,6 +402,19 @@ function BackupPreviewCard({
     if (effect === 'clear') return t(lang, 'backupEffectClear');
     return t(lang, 'backupEffectUnchanged');
   }
+
+  // Eigenaarsbesluit §E.3: settings/roster volgen de huidige lokale/cloud-
+  // repositorymodus; wedstrijdhistorie/actieve wedstrijd zijn tot en met
+  // fase 6 altijd lokaal per team (volledige cloudmigratie is fase 7-scope).
+  // Nog niet in de UI zichtbaar vóór deze review (externe PR-6.6-review,
+  // aug. 2026, punt 5) — een gebruiker in cloudmodus kon niet aan de
+  // preview zien dat settings/roster naar de cloud gaan terwijl historie
+  // altijd lokaal blijft.
+  const settingsRosterDestination =
+    settingsRosterMode === 'cloud'
+      ? t(lang, 'backupDestinationCloud')
+      : t(lang, 'backupDestinationLocal');
+  const gameDestination = t(lang, 'backupDestinationLocal');
 
   return (
     <div className="card backup-preview" data-testid="backup-preview">
@@ -413,20 +430,20 @@ function BackupPreviewCard({
       <ul className="backup-preview__list">
         <li data-testid="backup-preview-settings">
           {t(lang, 'backupSectionSettings')}: {preview.settings.teamName ?? '—'} (
-          {effectLabel(preview.settings.effect)})
+          {effectLabel(preview.settings.effect)}, {settingsRosterDestination})
         </li>
         <li data-testid="backup-preview-roster">
           {t(lang, 'backupSectionRoster')}: {preview.roster.playerCount} (
-          {effectLabel(preview.roster.effect)})
+          {effectLabel(preview.roster.effect)}, {settingsRosterDestination})
         </li>
         <li data-testid="backup-preview-activegame">
           {t(lang, 'backupSectionActiveGame')}:{' '}
           {preview.activeGame.opponent ?? t(lang, 'backupPreviewNotPresent')} (
-          {effectLabel(preview.activeGame.effect)})
+          {effectLabel(preview.activeGame.effect)}, {gameDestination})
         </li>
         <li data-testid="backup-preview-completedgames">
           {t(lang, 'backupSectionCompletedGames')}: {preview.completedGames.count} (
-          {effectLabel(preview.completedGames.effect)})
+          {effectLabel(preview.completedGames.effect)}, {gameDestination})
         </li>
         <li data-testid="backup-preview-lang">
           {t(lang, 'backupSectionLang')}: {preview.lang.value ?? t(lang, 'backupPreviewNotPresent')}{' '}

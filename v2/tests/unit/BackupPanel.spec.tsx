@@ -75,12 +75,11 @@ function baseProps(overrides: Partial<Parameters<typeof BackupPanel>[0]> = {}) {
     teamName: 'Team A',
     settings: { ...DEFAULT_SETTINGS, teamName: 'Team A' },
     roster: [] as Roster,
+    settingsRosterMode: 'local' as const,
     settingsRepo: fakeSettingsRepo(),
     rosterRepo: fakeRosterRepo(),
     gameRepo: fakeGameRepo(),
     completedGameRepo: fakeCompletedGameRepo(),
-    saveSettings: vi.fn(async () => true),
-    saveRoster: vi.fn(async () => true),
     setLang: vi.fn(),
     onImported: vi.fn(),
     ...overrides,
@@ -149,5 +148,31 @@ describe('ui/backup/BackupPanel — preview-invalidatie bij contextwissel (plan 
     rerender(<BackupPanel {...props} canWrite={false} />);
 
     expect(queryByTestId('backup-preview')).toBeNull();
+  });
+});
+
+describe('ui/backup/BackupPanel — lokale/cloudbestemming per sectie in de preview (§G, externe PR-6.6-review)', () => {
+  it('toont "lokaal" voor settings/roster wanneer settingsRosterMode local is', async () => {
+    const { getByTestId } = render(<BackupPanel {...baseProps({ settingsRosterMode: 'local' })} />);
+    await fireEvent.change(getByTestId('backup-file-input'), {
+      target: { files: [validBackupFile()] },
+    });
+    await waitFor(() => expect(getByTestId('backup-preview')).toBeTruthy());
+    expect(getByTestId('backup-preview-settings').textContent).toContain('lokaal');
+    expect(getByTestId('backup-preview-roster').textContent).toContain('lokaal');
+    // Wedstrijdhistorie/actieve wedstrijd blijven altijd lokaal (fase
+    // 6-scope), ongeacht settingsRosterMode.
+    expect(getByTestId('backup-preview-completedgames').textContent).toContain('lokaal');
+  });
+
+  it('toont "cloud" voor settings/roster wanneer settingsRosterMode cloud is, maar historie blijft lokaal', async () => {
+    const { getByTestId } = render(<BackupPanel {...baseProps({ settingsRosterMode: 'cloud' })} />);
+    await fireEvent.change(getByTestId('backup-file-input'), {
+      target: { files: [validBackupFile()] },
+    });
+    await waitFor(() => expect(getByTestId('backup-preview')).toBeTruthy());
+    expect(getByTestId('backup-preview-settings').textContent).toContain('cloud');
+    expect(getByTestId('backup-preview-roster').textContent).toContain('cloud');
+    expect(getByTestId('backup-preview-completedgames').textContent).toContain('lokaal');
   });
 });

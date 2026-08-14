@@ -138,8 +138,15 @@ export class LocalStorageGameRepository implements GameRepository {
     }
 
     if (!isActiveGameShape(parsed)) return { status: 'error', game: null };
+    // De sleutel zelf is al organisatie/team-specifiek
+    // (`activeGameStorageKey()`) — data die daaronder staat maar een ANDERE
+    // organizationId/teamId draagt, is dus per definitie mistagged/corrupt
+    // op deze sleutel, niet "gewoon geen wedstrijd voor deze context"
+    // (externe PR-6.6-review, aug. 2026: eerder gaf dit `status:'ok'` terug,
+    // waardoor een back-uphersteld/-export deze corrupte staat als lege
+    // snapshot kon behandelen).
     if (!matchesContext(parsed, this.organizationId, this.teamId)) {
-      return { status: 'ok', game: null };
+      return { status: 'error', game: null };
     }
 
     return { status: 'ok', game: normalizeActiveGame(parsed) };
