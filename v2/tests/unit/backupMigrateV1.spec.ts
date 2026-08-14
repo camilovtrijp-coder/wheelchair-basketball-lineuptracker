@@ -24,6 +24,12 @@ function v1Player(id: number, nr: string, naam = `Speler ${nr}`) {
   };
 }
 
+/** Exacte spelersnapshot die v1 `finishGame()` in `lineup-tracker-games`
+ * opslaat: `participate` en `start` zijn daar bewust niet aanwezig. */
+function v1CompletedPlayer(id: number, nr: string, naam = `Speler ${nr}`) {
+  return { id, nr, naam, kl: '3.0', vrouw: false, jeugd: false };
+}
+
 function v1Game(overrides: Record<string, unknown> = {}) {
   return {
     id: 'legacy-game-1',
@@ -31,11 +37,11 @@ function v1Game(overrides: Record<string, unknown> = {}) {
     competition: '',
     date: '2025-01-01T10:00:00.000Z',
     players: [
-      v1Player(1, '1'),
-      v1Player(2, '2'),
-      v1Player(3, '3'),
-      v1Player(4, '4'),
-      v1Player(5, '5'),
+      v1CompletedPlayer(1, '1'),
+      v1CompletedPlayer(2, '2'),
+      v1CompletedPlayer(3, '3'),
+      v1CompletedPlayer(4, '4'),
+      v1CompletedPlayer(5, '5'),
     ],
     segments: [
       {
@@ -66,6 +72,8 @@ describe('domain/backup/migrateV1 — migrateV1CompletedGame (plan §D/§G.9)', 
     expect(migrated).not.toBeNull();
     expect(migrated!.players).toHaveLength(5);
     expect(migrated!.players.map((p) => p.rosterId).sort()).toEqual([1, 2, 3, 4, 5]);
+    expect(migrated!.players.every((p) => p.participate)).toBe(true);
+    expect(migrated!.players.every((p) => !p.start)).toBe(true);
     expect(migrated!.segments).toHaveLength(1);
     expect(migrated!.segments[0]!.lineup).toHaveLength(5);
     // lineup-ID's zijn herschreven naar de nieuwe game-player-UUID's, niet
@@ -128,6 +136,17 @@ describe('domain/backup/migrateV1 — migrateV1CompletedGame (plan §D/§G.9)', 
     const badPlayers: unknown[] = v1Game().players.slice();
     badPlayers[0] = { ...(badPlayers[0] as Record<string, unknown>), nr: 9 };
     expect(migrateV1CompletedGame(v1Game({ players: badPlayers }))).toBeNull();
+
+    const badParticipate: unknown[] = v1Game().players.slice();
+    badParticipate[0] = {
+      ...(badParticipate[0] as Record<string, unknown>),
+      participate: 'ja',
+    };
+    expect(migrateV1CompletedGame(v1Game({ players: badParticipate }))).toBeNull();
+
+    const badStart: unknown[] = v1Game().players.slice();
+    badStart[0] = { ...(badStart[0] as Record<string, unknown>), start: 1 };
+    expect(migrateV1CompletedGame(v1Game({ players: badStart }))).toBeNull();
   });
 });
 

@@ -29,8 +29,6 @@ function v1Player(id: number, nr: string) {
     kl: '3.0',
     vrouw: false,
     jeugd: false,
-    participate: true,
-    start: true,
   };
 }
 
@@ -85,6 +83,8 @@ describe('domain/backup/parse — volledige v1-envelopepijplijn (herreview PR #5
     expect(parsed.data.settings?.teamName).toBe('Rotterdam U23');
     expect(parsed.data.roster).toHaveLength(1);
     expect(parsed.data.completedGames).toHaveLength(1);
+    expect(parsed.data.completedGames?.[0]?.players.every((p) => p.participate)).toBe(true);
+    expect(parsed.data.completedGames?.[0]?.players.every((p) => !p.start)).toBe(true);
   });
 
   it('een v1-wedstrijd met een string-getypeerde scoreFor levert errors op en NUL data (geen partiële import)', () => {

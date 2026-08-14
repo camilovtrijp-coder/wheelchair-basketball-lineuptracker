@@ -124,8 +124,14 @@ export function migrateV1CompletedGame(raw: unknown): CompletedGame | null {
     const kl = reqStr(rawPlayer.kl);
     const vrouw = reqBool(rawPlayer.vrouw);
     const jeugd = reqBool(rawPlayer.jeugd);
-    const participate = reqBool(rawPlayer.participate);
-    const start = reqBool(rawPlayer.start);
+    // v1's `finishGame()` snapshot (index.html) bewaart uitsluitend de zes
+    // teamvelden en laat de per-wedstrijdkeuzes `participate`/`start` bewust
+    // weg. Oudere/handmatige exports kunnen deze velden wel bevatten: als
+    // ze aanwezig zijn moeten ze booleans zijn, maar afwezigheid is de
+    // geldige canonieke v1-vorm. Gebruik dan dezelfde compatibiliteits-
+    // defaults als vóór de fail-closed aanscherping.
+    const participate = 'participate' in rawPlayer ? reqBool(rawPlayer.participate) : true;
+    const start = 'start' in rawPlayer ? reqBool(rawPlayer.start) : false;
     if (
       nr === undefined ||
       naam === undefined ||
