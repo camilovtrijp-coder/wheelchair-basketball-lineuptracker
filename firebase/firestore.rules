@@ -3,7 +3,9 @@ rules_version = '2';
 // PR 5.1 — reproduceerbare Firebase-basis. Vervolg op de begrensde spike (PR 4.4,
 // zie firebase-spike/). Implementeert ADR-003's Rules-only-uitnodigingsflow en
 // organisatie-/team-/rolgebonden autorisatie voor settings/roster (fase-4/5-scope).
-// Wedstrijd-/actiepaden (games/actions/seasons) zijn NIET gedefinieerd → default-deny (Fase 7).
+//
+// PR 7.1b voegt games/{gameId}(/actions/{actionId}) toe (docs/pr-7.1-plan.md §C
+// 7.1b). Seasons-paden bestaan nog niet en blijven default-deny.
 //
 // Expliciete ontwerpkeuzes, overgenomen uit de spike (zie firebase-spike/docs/SPIKE_REPORT.md):
 //  1. rolopslag: organizationMembers/{uid}.role is bron van waarheid op org-niveau;
@@ -50,6 +52,38 @@ rules_version = '2';
 //     ingelogde gebruikers) maar heeft via `canReadTeam` wél directe leestoegang tot
 //     het teamdocument — zonder deze denormalisatie zou de contextwisselaar voor
 //     zo'n gebruiker geen organisatienaam kunnen tonen.
+//
+// Nieuw in PR 7.1b — games/{gameId}(/actions/{actionId}) (docs/pr-7.1-plan.md §C 7.1b):
+//  8. `canWriteGameData` is een eigen, ruimere bevoegdheid dan `canManageTeamData`:
+//     owner/admin/coach/scorer mogen wedstrijddata schrijven (spiegelt exact
+//     `v2/src/domain/organizations/teamAccess.ts` `deriveTeamAccess().canWriteGameData`
+//     — coach/scorer mogen scoren/wisselen zonder settings/roster te mogen beheren);
+//     viewer blijft overal read-only via `canReadTeam`.
+//  9. Game-create eist overeenkomende pad-/payloadcontext (`organizationId`/`teamId`),
+//     `phase in ['setup','tracking']`, `revision == 0` en dat een eventuele initiële
+//     `writerUid` (ADR-002's epoch/fencing-contract, punt 3) niet op een ANDERE
+//     gebruiker dan de maker gezet kan worden — "maker" is hier dus geborgd via het
+//     writer-veld zelf, er is geen apart `createdBy`-veld op `GameDocument`.
+//  10. Game-update gebruikt een strikte veldallowlist (draaivelden, afgeleide
+//      snapshot, writer-/revisievelden) — identiteits-/historische kernvelden
+//      (`organizationId`/`teamId`/`players`/`opponent`/`competition`/`clockDown`/
+//      `limitStr`/`createdAt`) zijn na create onveranderlijk. `phase` mag alleen
+//      gelijk blijven of van `'setup'` naar `'tracking'` (nooit terug/overslaan);
+//      `writerEpoch` mag nooit dalen (monotoon, ADR-002 punt 3); `revision` moet
+//      exact met 1 omhoog — dit is tevens de optimistische-concurrencycontrole
+//      voor snapshotpatches uit PR 7.1c: een niet-transactionele write op een
+//      verouderde `revision` wordt door Rules geweigerd, geen aparte transactie
+//      nodig.
+//  11. Action-create is create-only (geen update/delete, ADR-002 punt 1): eigen
+//      auteur (`authorUid == request.auth.uid`), overeenkomende pad-/payloadcontext,
+//      en `writerEpoch`/`deviceId` moeten overeenkomen met de ACTUELE waarden op het
+//      parentdocument, geschreven door de daadwerkelijke huidige `writerUid`. Een
+//      actie uit een oude/overgenomen epoch (na een toekomstige PR 7.3-overname)
+//      wordt hierdoor al geweigerd, ook al is de overnamelogica zelf pas 7.3-scope.
+//  12. Geen recursieve-wildcard match voor `games`/`actions` (in tegenstelling tot
+//      punt 4/6 hierboven): er is nog geen cross-team queerybehoefte, dus elke
+//      `collectionGroup`-query op `games`/`actions` blijft default-deny — zie
+//      `firebase/docs/QUERY_CONTRACT.md` §"Wedstrijd-/actiepaden".
 
 service cloud.firestore {
   match /databases/{database}/documents {
@@ -93,6 +127,24 @@ service cloud.firestore {
     function canManageTeamData(orgId, teamId) {
       return isOrgOwnerOrAdmin(orgId) ||
         (isTeamMember(orgId, teamId) && teamRole(orgId, teamId) == 'coach');
+    }
+
+    // PR 7.1b, punt 8: ruimere bevoegdheid dan canManageTeamData — owner/admin/
+    // coach/scorer mogen wedstrijddata schrijven, spiegelt
+    // v2/src/domain/organizations/teamAccess.ts deriveTeamAccess().canWriteGameData.
+    function canWriteGameData(orgId, teamId) {
+      return isOrgOwnerOrAdmin(orgId) ||
+        (isTeamMember(orgId, teamId) && teamRole(orgId, teamId) in ['coach', 'scorer']);
+    }
+
+    function gameRef(orgId, teamId, gameId) {
+      return /databases/$(database)/documents/organizations/$(orgId)/teams/$(teamId)/games/$(gameId);
+    }
+
+    // Enkel gebruikt binnen action-Rules; Firestore memoiseert herhaalde get()-
+    // aanroepen naar hetzelfde document binnen één evaluatie (geen extra leeskosten).
+    function gameData(orgId, teamId, gameId) {
+      return get(gameRef(orgId, teamId, gameId)).data;
     }
 
     function invRef(orgId, invId) {
@@ -242,6 +294,61 @@ service cloud.firestore {
         match /roster/{rosterId} {
           allow read:  if canReadTeam(orgId, teamId);
           allow write: if rosterId == 'current' && canManageTeamData(orgId, teamId);
+        }
+
+        // ---- games/{gameId}: PR 7.1a/7.1b — cloudkopie van ActiveGame ----
+        match /games/{gameId} {
+          allow read: if canReadTeam(orgId, teamId);
+
+          // Punt 9: pad-/payloadcontext, toegestane initiële fase/revisie, en
+          // "maker" geborgd via het writer-veld (geen apart createdBy-veld).
+          allow create: if canWriteGameData(orgId, teamId) &&
+            request.resource.data.organizationId == orgId &&
+            request.resource.data.teamId == teamId &&
+            request.resource.data.phase in ['setup', 'tracking'] &&
+            request.resource.data.revision == 0 &&
+            request.resource.data.writerEpoch == 0 &&
+            (request.resource.data.writerUid == null ||
+              request.resource.data.writerUid == request.auth.uid);
+
+          // Punt 10: strikte veldallowlist + statusovergang + monotone
+          // epoch/revisie. Kernvelden (organizationId/teamId/players/opponent/
+          // competition/clockDown/limitStr/createdAt) zijn hierdoor impliciet
+          // onveranderlijk — ze staan niet in de allowlist.
+          allow update: if canWriteGameData(orgId, teamId) &&
+            request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+              'phase', 'onCourt', 'curQuarter', 'beginSec', 'endSec',
+              'pendingSwapLineup', 'scoreFor', 'scoreAgainst', 'segmentCount',
+              'writerUid', 'deviceId', 'writerEpoch', 'revision', 'startedAt', 'updatedAt'
+            ]) &&
+            request.resource.data.organizationId == resource.data.organizationId &&
+            request.resource.data.teamId == resource.data.teamId &&
+            (request.resource.data.phase == resource.data.phase ||
+              (resource.data.phase == 'setup' && request.resource.data.phase == 'tracking')) &&
+            request.resource.data.writerEpoch >= resource.data.writerEpoch &&
+            request.resource.data.revision == resource.data.revision + 1;
+
+          allow delete: if false;
+
+          // ---- actions/{actionId}: append-only bronactielog (PR 7.1a/7.1b) ----
+          match /actions/{actionId} {
+            allow read: if canReadTeam(orgId, teamId);
+
+            // Punt 11: create-only, eigen auteur, overeenkomende pad-/
+            // payloadcontext, en writerEpoch/deviceId/writerUid moeten
+            // overeenkomen met de ACTUELE claim op het parentdocument.
+            allow create: if canWriteGameData(orgId, teamId) &&
+              request.resource.data.organizationId == orgId &&
+              request.resource.data.teamId == teamId &&
+              request.resource.data.gameId == gameId &&
+              request.resource.data.actionId == actionId &&
+              request.resource.data.authorUid == request.auth.uid &&
+              gameData(orgId, teamId, gameId).writerUid == request.auth.uid &&
+              request.resource.data.writerEpoch == gameData(orgId, teamId, gameId).writerEpoch &&
+              request.resource.data.deviceId == gameData(orgId, teamId, gameId).deviceId;
+
+            allow update, delete: if false;
+          }
         }
       }
     }
