@@ -5,4 +5,6 @@ export * from './team.js';
 export * from './teamMember.js';
 export * from './settings.js';
 export * from './roster.js';
+export * from './game.js';
+export * from './gameAction.js';
 export * from './validation.js';

@@ -57,6 +57,35 @@ export function assertNumber(documentType: string, field: string, value: unknown
   return value;
 }
 
+export function assertInteger(documentType: string, field: string, value: unknown): number {
+  const n = assertNumber(documentType, field, value);
+  if (!Number.isInteger(n)) {
+    throw new DocumentValidationError(documentType, field, `moet een geheel getal zijn, kreeg ${n}`);
+  }
+  return n;
+}
+
+export function assertStringArray(documentType: string, field: string, value: unknown): string[] {
+  if (!Array.isArray(value) || !value.every((entry) => typeof entry === 'string')) {
+    throw new DocumentValidationError(documentType, field, 'moet een array van strings zijn');
+  }
+  return value;
+}
+
+export function assertNullableStringArray(
+  documentType: string,
+  field: string,
+  value: unknown,
+): string[] | null {
+  if (value === null) return null;
+  return assertStringArray(documentType, field, value);
+}
+
+export function assertNullableString(documentType: string, field: string, value: unknown): string | null {
+  if (value === null) return null;
+  return assertString(documentType, field, value);
+}
+
 export function assertTimestamp(documentType: string, field: string, value: unknown): Timestamp {
   if (!(value instanceof Timestamp)) {
     throw new DocumentValidationError(documentType, field, 'moet een Firestore Timestamp zijn');
