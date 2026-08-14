@@ -2,10 +2,16 @@
 // Bewijst:
 // - lezen voor elk geautoriseerd teamlid, schrijven alleen voor owner/admin/coach/scorer;
 // - game-create: pad-/payloadcontext, toegestane initiële fase/revisie/epoch, "maker"-borging;
-// - game-update: strikte veldallowlist, toegestane faseovergang, monotone epoch/revisie;
-// - action-create: create-only, eigen auteur, epoch/deviceId/writerUid moeten matchen met het
-//   parentdocument (stale-epoch-weigering — het fundament voor de PR 7.3-overname);
+// - game-update is gesplitst in een normale patch (uitsluitend de ACTUELE writer; writer-/
+//   epochvelden blijven exact ongewijzigd) en een initiële claim (alleen op een nog
+//   ongeclaimd document, uitsluitend de eigen uid, epoch blijft gelijk) — een latere
+//   overname van een AL geclaimd document is geen van beide en blijft geweigerd
+//   (PR 7.3-scope); strikte veldallowlist, toegestane faseovergang, monotone revisie;
+// - action-create: create-only, eigen auteur, epoch/deviceId moeten matchen met de ACTUELE
+//   claim op het parentdocument (stale-epoch-weigering — het fundament voor PR 7.3-overname);
 // - action-update/delete altijd geweigerd (ADR-002 punt 1: create-only is echt onveranderlijk);
+// - volledige schema-/typevalidatie (exacte sleutelset, veldtypen, schemaVersion,
+//   action-discriminant/payload, ISO-tijdstipvorm) voor zowel games als actions;
 // - cross-org/team-isolatie en self-promotion (vervalste writerUid/context);
 // - queryscope: een collectionGroup-query op actions blijft default-deny (geen recursieve match).
 
@@ -326,6 +332,45 @@ describe('games/{gameId}: update', () => {
     );
   });
 
+  // Review-opvolging (externe review, aug. 2026, P1): een normale patch mocht
+  // voorheen writerUid/deviceId/writerEpoch gewoon meesturen — elke bevoegde
+  // gebruiker (niet alleen de huidige writer) kon zo de claim overschrijven,
+  // en writerEpoch kon willekeurig vooruitspringen zonder enige overname.
+  it('de huidige writer mag writerEpoch NIET laten stijgen via een normale patch (geen overname via dit pad)', async () => {
+    const db = authCtx(env, USERS.dave.uid, { email: USERS.dave.email, email_verified: true });
+    await assertFails(
+      updateDoc(gameRef(db, ORG_A, TEAM_A1, 'game-1'), { writerEpoch: 1, revision: 1 }),
+    );
+  });
+
+  it('de huidige writer mag deviceId NIET wijzigen via een normale patch', async () => {
+    const db = authCtx(env, USERS.dave.uid, { email: USERS.dave.email, email_verified: true });
+    await assertFails(
+      updateDoc(gameRef(db, ORG_A, TEAM_A1, 'game-1'), { deviceId: 'ander-apparaat', revision: 1 }),
+    );
+  });
+
+  it('de huidige writer mag writerUid NIET op een ander zetten via een normale patch', async () => {
+    const db = authCtx(env, USERS.dave.uid, { email: USERS.dave.email, email_verified: true });
+    await assertFails(
+      updateDoc(gameRef(db, ORG_A, TEAM_A1, 'game-1'), { writerUid: USERS.alice.uid, revision: 1 }),
+    );
+  });
+
+  it('een andere bevoegde gebruiker (carol, coach) dan de huidige writer (dave) mag NIET patchen', async () => {
+    const db = authCtx(env, USERS.carol.uid, { email: USERS.carol.email, email_verified: true });
+    await assertFails(
+      updateDoc(gameRef(db, ORG_A, TEAM_A1, 'game-1'), { onCourt: ['gp-1'], revision: 1 }),
+    );
+  });
+
+  it('owner (impliciete toegang, maar niet de huidige writer) mag ook NIET patchen', async () => {
+    const db = authCtx(env, USERS.alice.uid, { email: USERS.alice.email, email_verified: true });
+    await assertFails(
+      updateDoc(gameRef(db, ORG_A, TEAM_A1, 'game-1'), { onCourt: ['gp-1'], revision: 1 }),
+    );
+  });
+
   it('viewer mag NIET patchen', async () => {
     const db = authCtx(env, USERS.erin.uid, { email: USERS.erin.email, email_verified: true });
     await assertFails(
@@ -336,6 +381,140 @@ describe('games/{gameId}: update', () => {
   it('mag NOOIT verwijderd worden', async () => {
     const db = authCtx(env, USERS.dave.uid, { email: USERS.dave.email, email_verified: true });
     await assertFails(deleteDoc(gameRef(db, ORG_A, TEAM_A1, 'game-1')));
+  });
+});
+
+describe('games/{gameId}: initiële claim via update (nog geen writer)', () => {
+  beforeEach(async () => {
+    await withAdmin(env, async (db) => {
+      await db
+        .collection('organizations')
+        .doc(ORG_A)
+        .collection('teams')
+        .doc(TEAM_A1)
+        .collection('games')
+        .doc('game-1')
+        .set(sampleGame()); // writerUid/deviceId blijven null (default sampleGame())
+    });
+  });
+
+  it('scorer mag een nog ongeclaimd document op de eigen uid claimen', async () => {
+    const db = authCtx(env, USERS.dave.uid, { email: USERS.dave.email, email_verified: true });
+    await assertSucceeds(
+      updateDoc(gameRef(db, ORG_A, TEAM_A1, 'game-1'), {
+        writerUid: USERS.dave.uid,
+        deviceId: 'device-dave',
+        revision: 1,
+      }),
+    );
+  });
+
+  it('mag NIET een ANDER uid claimen dan de eigen (self-promotion via update)', async () => {
+    const db = authCtx(env, USERS.dave.uid, { email: USERS.dave.email, email_verified: true });
+    await assertFails(
+      updateDoc(gameRef(db, ORG_A, TEAM_A1, 'game-1'), {
+        writerUid: USERS.alice.uid,
+        deviceId: 'device-alice',
+        revision: 1,
+      }),
+    );
+  });
+
+  it('mag writerEpoch NIET laten springen tijdens de initiële claim', async () => {
+    const db = authCtx(env, USERS.dave.uid, { email: USERS.dave.email, email_verified: true });
+    await assertFails(
+      updateDoc(gameRef(db, ORG_A, TEAM_A1, 'game-1'), {
+        writerUid: USERS.dave.uid,
+        deviceId: 'device-dave',
+        writerEpoch: 1,
+        revision: 1,
+      }),
+    );
+  });
+
+  it('viewer mag niet claimen', async () => {
+    const db = authCtx(env, USERS.erin.uid, { email: USERS.erin.email, email_verified: true });
+    await assertFails(
+      updateDoc(gameRef(db, ORG_A, TEAM_A1, 'game-1'), {
+        writerUid: USERS.erin.uid,
+        deviceId: 'device-erin',
+        revision: 1,
+      }),
+    );
+  });
+});
+
+describe('games/{gameId}: overname van een AL geclaimd document via update wordt geweigerd', () => {
+  beforeEach(async () => {
+    await withAdmin(env, async (db) => {
+      await db
+        .collection('organizations')
+        .doc(ORG_A)
+        .collection('teams')
+        .doc(TEAM_A1)
+        .collection('games')
+        .doc('game-1')
+        .set(sampleGame({ writerUid: USERS.dave.uid, deviceId: 'device-dave' }));
+    });
+  });
+
+  it('een andere bevoegde gebruiker (carol) mag de claim NIET overnemen via update (PR 7.3-scope)', async () => {
+    const db = authCtx(env, USERS.carol.uid, { email: USERS.carol.email, email_verified: true });
+    await assertFails(
+      updateDoc(gameRef(db, ORG_A, TEAM_A1, 'game-1'), {
+        writerUid: USERS.carol.uid,
+        deviceId: 'device-carol',
+        writerEpoch: 1,
+        revision: 1,
+      }),
+    );
+  });
+});
+
+// Review-opvolging (externe review, aug. 2026, P1): Rules controleerden
+// voorheen slechts enkele context-/writervelden, niet de volledige
+// sleutelset/veldtypen — een document zonder verplicht veld (bv. `updatedAt`,
+// exact de reviewerprobe) of met een onbekend extra veld werd geaccepteerd.
+describe('games/{gameId}: schema-/typevalidatie (create)', () => {
+  it('mag GEEN document zonder verplicht veld aanmaken (ontbrekende updatedAt)', async () => {
+    const { updatedAt: _updatedAt, ...withoutUpdatedAt } = sampleGame();
+    const db = authCtx(env, USERS.alice.uid, { email: USERS.alice.email, email_verified: true });
+    await assertFails(setDoc(gameRef(db, ORG_A, TEAM_A1, 'game-1'), withoutUpdatedAt));
+  });
+
+  it('mag GEEN document met een onbekend extra veld aanmaken', async () => {
+    const db = authCtx(env, USERS.alice.uid, { email: USERS.alice.email, email_verified: true });
+    await assertFails(
+      setDoc(gameRef(db, ORG_A, TEAM_A1, 'game-1'), { ...sampleGame(), extraVeld: 'onverwacht' }),
+    );
+  });
+
+  it('mag GEEN clockDown als string aanmaken (verkeerd type)', async () => {
+    const db = authCtx(env, USERS.alice.uid, { email: USERS.alice.email, email_verified: true });
+    await assertFails(
+      setDoc(gameRef(db, ORG_A, TEAM_A1, 'game-1'), sampleGame({ clockDown: 'true' })),
+    );
+  });
+
+  it('mag GEEN niet-geheel getal curQuarter aanmaken (verkeerd type)', async () => {
+    const db = authCtx(env, USERS.alice.uid, { email: USERS.alice.email, email_verified: true });
+    await assertFails(
+      setDoc(gameRef(db, ORG_A, TEAM_A1, 'game-1'), sampleGame({ curQuarter: 1.5 })),
+    );
+  });
+
+  it('mag GEEN players als niet-array aanmaken (verkeerd type)', async () => {
+    const db = authCtx(env, USERS.alice.uid, { email: USERS.alice.email, email_verified: true });
+    await assertFails(
+      setDoc(gameRef(db, ORG_A, TEAM_A1, 'game-1'), sampleGame({ players: 'niet-een-array' })),
+    );
+  });
+
+  it('mag GEEN niet-ISO-vorm voor createdAt aanmaken', async () => {
+    const db = authCtx(env, USERS.alice.uid, { email: USERS.alice.email, email_verified: true });
+    await assertFails(
+      setDoc(gameRef(db, ORG_A, TEAM_A1, 'game-1'), sampleGame({ createdAt: 'niet-een-tijdstip' })),
+    );
   });
 });
 
@@ -407,7 +586,10 @@ describe('games/{gameId}/actions/{actionId}: create (stale-epoch/deviceId-weiger
     );
   });
 
-  it('vervalste contextvelden (gameId/actionId/organizationId/teamId) worden geweigerd', async () => {
+  // Review-opvolging (externe review, aug. 2026): oorspronkelijk één
+  // gecombineerde test die alleen `gameId` muteerde — opgesplitst in vier
+  // afzonderlijke probes zodat elk contextveld aantoonbaar los fail-closed is.
+  it('vervalste gameId (contextveld) wordt geweigerd', async () => {
     const db = authCtx(env, USERS.dave.uid, { email: USERS.dave.email, email_verified: true });
     await assertFails(
       setDoc(
@@ -417,6 +599,149 @@ describe('games/{gameId}/actions/{actionId}: create (stale-epoch/deviceId-weiger
           deviceId: 'device-dave',
           writerEpoch: 3,
           gameId: 'game-2',
+        }),
+      ),
+    );
+  });
+
+  it('vervalste actionId (contextveld) wordt geweigerd', async () => {
+    const db = authCtx(env, USERS.dave.uid, { email: USERS.dave.email, email_verified: true });
+    await assertFails(
+      setDoc(
+        actionRef(db, ORG_A, TEAM_A1, 'game-1', 'action-1'),
+        sampleGameAction({
+          authorUid: USERS.dave.uid,
+          deviceId: 'device-dave',
+          writerEpoch: 3,
+          actionId: 'action-9',
+        }),
+      ),
+    );
+  });
+
+  it('vervalste organizationId (contextveld) wordt geweigerd', async () => {
+    const db = authCtx(env, USERS.dave.uid, { email: USERS.dave.email, email_verified: true });
+    await assertFails(
+      setDoc(
+        actionRef(db, ORG_A, TEAM_A1, 'game-1', 'action-1'),
+        sampleGameAction({
+          authorUid: USERS.dave.uid,
+          deviceId: 'device-dave',
+          writerEpoch: 3,
+          organizationId: ORG_B,
+        }),
+      ),
+    );
+  });
+
+  it('vervalste teamId (contextveld) wordt geweigerd', async () => {
+    const db = authCtx(env, USERS.dave.uid, { email: USERS.dave.email, email_verified: true });
+    await assertFails(
+      setDoc(
+        actionRef(db, ORG_A, TEAM_A1, 'game-1', 'action-1'),
+        sampleGameAction({
+          authorUid: USERS.dave.uid,
+          deviceId: 'device-dave',
+          writerEpoch: 3,
+          teamId: TEAM_B1,
+        }),
+      ),
+    );
+  });
+
+  // Review-opvolging (externe review, aug. 2026, P1): Rules controleerden
+  // voorheen slechts enkele context-/writervelden, niet de volledige
+  // sleutelset/veldtypen/schemaVersion/action-discriminant.
+  it('mag GEEN actie zonder verplicht veld aanmaken (ontbrekende sequence)', async () => {
+    const { sequence: _sequence, ...withoutSequence } = sampleGameAction({
+      authorUid: USERS.dave.uid,
+      deviceId: 'device-dave',
+      writerEpoch: 3,
+    });
+    const db = authCtx(env, USERS.dave.uid, { email: USERS.dave.email, email_verified: true });
+    await assertFails(setDoc(actionRef(db, ORG_A, TEAM_A1, 'game-1', 'action-1'), withoutSequence));
+  });
+
+  it('mag GEEN actie met een onbekend extra veld aanmaken', async () => {
+    const db = authCtx(env, USERS.dave.uid, { email: USERS.dave.email, email_verified: true });
+    await assertFails(
+      setDoc(actionRef(db, ORG_A, TEAM_A1, 'game-1', 'action-1'), {
+        ...sampleGameAction({ authorUid: USERS.dave.uid, deviceId: 'device-dave', writerEpoch: 3 }),
+        extraVeld: 'onverwacht',
+      }),
+    );
+  });
+
+  it('mag GEEN onbekende schemaVersion aanmaken', async () => {
+    const db = authCtx(env, USERS.dave.uid, { email: USERS.dave.email, email_verified: true });
+    await assertFails(
+      setDoc(
+        actionRef(db, ORG_A, TEAM_A1, 'game-1', 'action-1'),
+        sampleGameAction({
+          authorUid: USERS.dave.uid,
+          deviceId: 'device-dave',
+          writerEpoch: 3,
+          schemaVersion: 2,
+        }),
+      ),
+    );
+  });
+
+  it('mag GEEN onbekend actietype aanmaken', async () => {
+    const db = authCtx(env, USERS.dave.uid, { email: USERS.dave.email, email_verified: true });
+    await assertFails(
+      setDoc(
+        actionRef(db, ORG_A, TEAM_A1, 'game-1', 'action-1'),
+        sampleGameAction({
+          authorUid: USERS.dave.uid,
+          deviceId: 'device-dave',
+          writerEpoch: 3,
+          action: { type: 'score-multiply', team: 'for', delta: 2 },
+        }),
+      ),
+    );
+  });
+
+  it('mag GEEN score-delta met een extra onbekend payloadveld aanmaken', async () => {
+    const db = authCtx(env, USERS.dave.uid, { email: USERS.dave.email, email_verified: true });
+    await assertFails(
+      setDoc(
+        actionRef(db, ORG_A, TEAM_A1, 'game-1', 'action-1'),
+        sampleGameAction({
+          authorUid: USERS.dave.uid,
+          deviceId: 'device-dave',
+          writerEpoch: 3,
+          action: { type: 'score-delta', team: 'for', delta: 2, extraVeld: 'onverwacht' },
+        }),
+      ),
+    );
+  });
+
+  it('mag GEEN niet-numerieke delta aanmaken (verkeerd type)', async () => {
+    const db = authCtx(env, USERS.dave.uid, { email: USERS.dave.email, email_verified: true });
+    await assertFails(
+      setDoc(
+        actionRef(db, ORG_A, TEAM_A1, 'game-1', 'action-1'),
+        sampleGameAction({
+          authorUid: USERS.dave.uid,
+          deviceId: 'device-dave',
+          writerEpoch: 3,
+          action: { type: 'score-delta', team: 'for', delta: '2' },
+        }),
+      ),
+    );
+  });
+
+  it('mag GEEN niet-ISO-vorm voor occurredAt aanmaken', async () => {
+    const db = authCtx(env, USERS.dave.uid, { email: USERS.dave.email, email_verified: true });
+    await assertFails(
+      setDoc(
+        actionRef(db, ORG_A, TEAM_A1, 'game-1', 'action-1'),
+        sampleGameAction({
+          authorUid: USERS.dave.uid,
+          deviceId: 'device-dave',
+          writerEpoch: 3,
+          occurredAt: 'niet-een-tijdstip',
         }),
       ),
     );

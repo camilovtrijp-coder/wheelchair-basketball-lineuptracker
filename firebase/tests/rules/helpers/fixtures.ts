@@ -1,6 +1,8 @@
 // Fictieve constanten gedeeld door alle rules-specs.
 // Geen échte spelersdata, geen echte e-mailadressen.
 
+import { Timestamp } from 'firebase/firestore';
+
 export const ORG_A = 'org-rotterdam';
 export const ORG_B = 'org-nbb';
 export const TEAM_A1 = 'team-u23';
@@ -81,6 +83,7 @@ export function sampleGame(overrides: Record<string, unknown> = {}) {
     revision: 0,
     createdAt: '2026-01-01T00:00:00.000Z',
     startedAt: null,
+    updatedAt: Timestamp.now(),
     ...overrides,
   };
 }
