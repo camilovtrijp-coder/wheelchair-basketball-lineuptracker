@@ -61,30 +61,37 @@ export class LocalStorageCompletedGameRepository implements CompletedGameReposit
    * blijft gewoon gefilterd (niet de hele lijst ongeldig) — dat is een ander
    * risico (één beschadigd item verbergt de rest niet) dan een mislukte read.
    */
-  private readAll(): { games: CompletedGame[]; ok: boolean; missing: boolean } {
+  private readAll(): {
+    games: CompletedGame[];
+    ok: boolean;
+    missing: boolean;
+    rejectedCount: number;
+  } {
     let raw: string | null = null;
     try {
       raw = this.storage.getItem(this.key);
     } catch {
-      return { games: [], ok: false, missing: false };
+      return { games: [], ok: false, missing: false, rejectedCount: 0 };
     }
-    if (raw === null || raw === '') return { games: [], ok: true, missing: true };
+    if (raw === null || raw === '') return { games: [], ok: true, missing: true, rejectedCount: 0 };
 
     let parsed: unknown;
     try {
       parsed = JSON.parse(raw);
     } catch {
-      return { games: [], ok: false, missing: false };
+      return { games: [], ok: false, missing: false, rejectedCount: 0 };
     }
-    if (!Array.isArray(parsed)) return { games: [], ok: false, missing: false };
+    if (!Array.isArray(parsed)) return { games: [], ok: false, missing: false, rejectedCount: 0 };
 
+    const games = parsed.filter(
+      (item): item is CompletedGame =>
+        isCompletedGameShape(item) && matchesContext(item, this.organizationId, this.teamId),
+    );
     return {
-      games: parsed.filter(
-        (item): item is CompletedGame =>
-          isCompletedGameShape(item) && matchesContext(item, this.organizationId, this.teamId),
-      ),
+      games,
       ok: true,
       missing: false,
+      rejectedCount: parsed.length - games.length,
     };
   }
 
@@ -110,6 +117,14 @@ export class LocalStorageCompletedGameRepository implements CompletedGameReposit
     return { status: resolved, games: r.games };
   }
 
+  /** Zie de interface-docstring (`application/game/CompletedGameRepository.ts`)
+   * voor waarom dit een apart, strikter contract is dan `safeList()`. */
+  safeListStrict(): CompletedGamesReadResult {
+    const r = this.readAll();
+    if (!r.ok || r.rejectedCount > 0) return { status: 'error', games: [] };
+    return { status: r.missing ? 'missing' : 'ok', games: r.games };
+  }
+
   add(game: CompletedGame): boolean {
     if (game.organizationId !== this.organizationId || game.teamId !== this.teamId) return false;
     const current = this.readAll();
@@ -121,6 +136,22 @@ export class LocalStorageCompletedGameRepository implements CompletedGameReposit
     const current = this.readAll();
     if (!current.ok) return false;
     return this.writeAll(current.games.filter((g) => g.id !== id));
+  }
+
+  replaceAll(games: CompletedGame[]): boolean {
+    if (
+      games.some(
+        (g) =>
+          !matchesContext(
+            g as unknown as Record<string, unknown>,
+            this.organizationId,
+            this.teamId,
+          ),
+      )
+    ) {
+      return false;
+    }
+    return this.writeAll(games);
   }
 
   private writeAll(games: CompletedGame[]): boolean {

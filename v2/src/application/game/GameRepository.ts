@@ -25,4 +25,24 @@ export interface GameRepository {
    * de migratie onbevestigd en kan een latere poging het opnieuw proberen.
    */
   confirmV1Migration(game: ActiveGame): boolean;
+  /**
+   * PR 6.6 §F 6.6b: verwijdert de opgeslagen actieve wedstrijd voor deze
+   * organisatie/team volledig — nodig voor het replace-per-onderdeel-
+   * importcontract (een back-up zonder `activeGame`-sectie "leegt" de
+   * doelcontext, v1-pariteit: een ontbrekende back-upsleutel deed
+   * `localStorage.removeItem`). `true` als de sleutel na de call niet meer
+   * bestaat (ook als hij al leeg was); `false` bij een opslagfout.
+   */
+  clear(): boolean;
+  /**
+   * PR 6.6 §F 6.6b (externe review, aug. 2026): expliciet onderscheid tussen
+   * "geen actieve wedstrijd" (`status: 'ok'`, `game: null`) en "kon niet
+   * gelezen worden" (`status: 'error'`) — zelfde reden als
+   * `CompletedGameRepository.safeList()`. `read()` blijft voor bestaande
+   * callers `null` teruggeven op elke fout; alleen de back-up-snapshot
+   * (`captureSnapshot()`) heeft het onderscheid nodig om een leesfout niet
+   * als "geen wedstrijd" te behandelen en zo een bestaande wedstrijd
+   * stilzwijgend te kunnen leegmaken bij import.
+   */
+  safeRead(): { status: 'ok' | 'error'; game: ActiveGame | null };
 }

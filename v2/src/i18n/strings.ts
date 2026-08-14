@@ -177,6 +177,40 @@ const nl = {
   trendsHideGames: 'Verberg wedstrijden',
   trendsProvisional: 'Voorlopig',
 
+  // PR 6.6: back-up, import en lokale migratie. Strings gespiegeld van v1
+  // (index.html `backup*`/`importBackup*`-vertalingen) waar mogelijk. NL =
+  // primary, EN = secondary.
+  backupTitle: 'Back-up',
+  backupDesc:
+    'Bewaar een kopie van dit team (spelers, instellingen, wedstrijdgeschiedenis) — handig bij een nieuw toestel of gewiste browseropslag. Oudere back-ups van deze app blijven importeerbaar.',
+  backupExportBtn: '⬇ Exporteer back-up',
+  backupImportBtn: '⬆ Importeer back-up',
+  importBackupInvalid: 'Dit bestand lijkt geen geldige Lineup Tracker-back-up te zijn.',
+  importBackupInvalidData:
+    'De back-up bevat ongeldige data: {details}. De huidige gegevens zijn niet aangepast.',
+  importBackupInvalidDataAndMore: ' (en {n} andere fouten)',
+  validationNoRecognizableData: 'De back-up bevat geen herkenbare data.',
+  backupPreviewTitle: 'Back-up controleren',
+  backupPreviewTarget: 'Doelteam: {org} / {team}',
+  backupSectionSettings: 'Instellingen',
+  backupSectionRoster: 'Team',
+  backupSectionActiveGame: 'Actieve wedstrijd',
+  backupSectionCompletedGames: 'Wedstrijdhistorie',
+  backupSectionLang: 'Taalvoorkeur',
+  backupEffectReplace: 'wordt vervangen',
+  backupEffectClear: 'wordt geleegd',
+  backupEffectUnchanged: 'blijft ongewijzigd',
+  backupPreviewNotPresent: 'niet aanwezig in de back-up',
+  backupDestinationLocal: 'lokaal',
+  backupDestinationCloud: 'cloud',
+  backupConfirmBtn: 'Bevestig import',
+  backupCancelBtn: 'Annuleren',
+  backupRestoreDownloading:
+    'Er wordt eerst automatisch een herstelback-up van de huidige gegevens gedownload…',
+  backupImportSuccess: 'Import gelukt. De pagina toont de nieuwe gegevens.',
+  backupImportFailed:
+    'Import mislukt bij "{section}". Eerder geschreven onderdelen zijn teruggedraaid; er is niets gedeeltelijk aangepast. De zojuist gedownloade herstelback-up bevat de gegevens van vóór deze poging.',
+
   cloudImportPrompt:
     'Kopieer je lokale gegevens eenmalig naar de cloud. De cloud-versie wordt dan leidend; je lokale kopie blijft bewaard.',
   cloudImportButton: 'Eenmalig naar cloud kopiëren',
@@ -441,6 +475,38 @@ const en = {
   trendsShowGames: 'Show {n} games',
   trendsHideGames: 'Hide games',
   trendsProvisional: 'Provisional',
+
+  // PR 6.6: backup, import and local migration. See NL block for rationale; v1 parity.
+  backupTitle: 'Backup',
+  backupDesc:
+    'Keep a copy of this team (players, settings, match history) — handy for a new device or a cleared browser storage. Older backups from this app remain importable.',
+  backupExportBtn: '⬇ Export backup',
+  backupImportBtn: '⬆ Import backup',
+  importBackupInvalid: "This file doesn't look like a valid Lineup Tracker backup.",
+  importBackupInvalidData:
+    'The backup contains invalid data: {details}. Your current data was not modified.',
+  importBackupInvalidDataAndMore: ' (and {n} more errors)',
+  validationNoRecognizableData: 'The backup contains no recognizable data.',
+  backupPreviewTitle: 'Review backup',
+  backupPreviewTarget: 'Target team: {org} / {team}',
+  backupSectionSettings: 'Settings',
+  backupSectionRoster: 'Team',
+  backupSectionActiveGame: 'Active match',
+  backupSectionCompletedGames: 'Match history',
+  backupSectionLang: 'Language preference',
+  backupEffectReplace: 'will be replaced',
+  backupEffectClear: 'will be cleared',
+  backupEffectUnchanged: 'stays unchanged',
+  backupPreviewNotPresent: 'not present in the backup',
+  backupDestinationLocal: 'local',
+  backupDestinationCloud: 'cloud',
+  backupConfirmBtn: 'Confirm import',
+  backupCancelBtn: 'Cancel',
+  backupRestoreDownloading:
+    'A recovery backup of the current data is downloaded automatically first…',
+  backupImportSuccess: 'Import succeeded. The page shows the new data.',
+  backupImportFailed:
+    'Import failed at "{section}". Previously written parts were rolled back; nothing was left partially changed. The recovery backup just downloaded contains the data from before this attempt.',
 
   cloudImportPrompt:
     'Copy your local data to the cloud once. The cloud version becomes the source of truth; your local copy is kept as a fallback.',

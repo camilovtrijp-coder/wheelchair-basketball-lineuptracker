@@ -23,6 +23,7 @@ import type { ResolvedAppRepositories } from '../infrastructure/repositories/res
 import type { SyncStatusApi } from '../application/sync/useSyncStatus';
 import { LocalStorageGameRepository } from '../infrastructure/game/LocalStorageGameRepository';
 import { LocalStorageCompletedGameRepository } from '../infrastructure/game/LocalStorageCompletedGameRepository';
+import { LocalStorageLangRepository } from '../infrastructure/i18n/LocalStorageLangRepository';
 import { createGameFromRoster } from '../domain/game/setup';
 import { finishGame } from '../domain/game/finish';
 import type { ActiveGame, CompletedGame } from '../domain/game/types';
@@ -32,6 +33,7 @@ import { V1MigrationPrompt } from '../ui/game/V1MigrationPrompt';
 import { HistoryPanel } from '../ui/game/HistoryPanel';
 import { StatsPanel } from '../ui/stats/StatsPanel';
 import { TrendsPanel } from '../ui/trends/TrendsPanel';
+import { BackupPanel } from '../ui/backup/BackupPanel';
 
 export interface AppProps {
   repositories: ResolvedAppRepositories;
@@ -105,6 +107,7 @@ function tFor(lang: Lang): (key: StringKey) => string {
 // gebruikt om settings/roster op te slaan of te lezen voor weergave.
 const v1SettingsRepo = new LocalStorageSettingsRepository(browserStorage);
 const v1RosterRepo = new LocalStorageRosterRepository(browserStorage);
+const langRepo = new LocalStorageLangRepository(browserStorage);
 
 // PR 5.3d-vervolgonderzoek: hoelang een van de vier onderstaande stappen
 // (settings-read, roster-read, settings-listener, roster-listener) mag
@@ -332,6 +335,22 @@ export function App({
     if (!ok) return;
     setCompletedGames((prev) => prev.filter((g) => g.id !== id));
     setHistoryOpenId((prev) => (prev === id ? null : prev));
+  }
+
+  /**
+   * PR 6.6: ververst alle vier live App-states nadat `BackupPanel` een
+   * import heeft afgerond — de coordinator schrijft rechtstreeks naar de
+   * repositories/localStorage, buiten React om, dus zonder deze herlezing
+   * zou de UI de oude waarden blijven tonen tot een volgende toevallige
+   * her-render.
+   */
+  async function handleBackupImported() {
+    setSettings(await getSettingsAsync(repositories.settings));
+    setRoster(await getRosterAsync(repositories.roster));
+    setGame(gameRepo.read());
+    setCompletedGames(completedGameRepo.list());
+    setHistoryOpenId(null);
+    setStatsGameIds(null);
   }
 
   useEffect(() => {
@@ -581,18 +600,43 @@ export function App({
           </p>
         ) : null}
         {tab === 'settings' ? (
-          <SettingsPanel
-            lang={lang}
-            storage={browserStorage}
-            settings={settings}
-            onSettingsChange={setSettings}
-            onSave={syncStatus.saveSettings}
-            onReset={syncStatus.resetSettings}
-            onRefresh={() => getSettingsAsync(repositories.settings)}
-            onCloudMigrate={repositories.mode === 'cloud' ? handleCloudMigrateSettings : undefined}
-            canWrite={canWrite}
-            updatedAt={settingsUpdatedAt}
-          />
+          <>
+            <SettingsPanel
+              lang={lang}
+              storage={browserStorage}
+              settings={settings}
+              onSettingsChange={setSettings}
+              onSave={syncStatus.saveSettings}
+              onReset={syncStatus.resetSettings}
+              onRefresh={() => getSettingsAsync(repositories.settings)}
+              onCloudMigrate={
+                repositories.mode === 'cloud' ? handleCloudMigrateSettings : undefined
+              }
+              canWrite={canWrite}
+              updatedAt={settingsUpdatedAt}
+            />
+            {/* PR 6.6: back-up-sectie, eigenaarsbesluit §E.4 — zelfde
+             * bevoegdheidsgrens als Settings/Roster (`canWrite` ==
+             * `canManageTeamData`), geen apart capabilitycontract nodig. */}
+            <BackupPanel
+              lang={lang}
+              canWrite={canWrite}
+              organizationId={organizationId}
+              teamId={teamId}
+              organizationName={organizationName || organizationId}
+              teamName={(settings.teamName as string) || teamId}
+              settings={settings}
+              roster={roster}
+              settingsRosterMode={repositories.mode}
+              settingsRepo={repositories.settings}
+              rosterRepo={repositories.roster}
+              gameRepo={gameRepo}
+              completedGameRepo={completedGameRepo}
+              langRepo={langRepo}
+              setLang={setLang}
+              onImported={() => void handleBackupImported()}
+            />
+          </>
         ) : tab === 'roster' ? (
           <RosterPanel
             lang={lang}
