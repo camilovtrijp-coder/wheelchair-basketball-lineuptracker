@@ -1,4 +1,7 @@
-// Seeder voor de Firebase Emulator Suite (Auth + Firestore).
+// Seeder voor de Firebase Emulator Suite (Auth + Firestore) — NOOIT tegen een
+// echt project (staging/productie) draaien, zie docs/pr-5.5-handmatig-protocol.md
+// §"Testaccounts en stagingdata zonder service-accountkey" voor het alternatief
+// (handmatig via de app-UI op de echte staging-deploy).
 // Gebruikt firebase-admin — omzeilt Security Rules (bewuste keuze voor seeddata).
 // Vereist: FIRESTORE_EMULATOR_HOST=127.0.0.1:8080 en FIREBASE_AUTH_EMULATOR_HOST=127.0.0.1:9099
 // (worden door `firebase emulators:exec` automatisch gezet).
@@ -7,6 +10,23 @@ import { generateKeyPairSync } from 'crypto';
 import { initializeApp, cert } from 'firebase-admin/app';
 import { getAuth } from 'firebase-admin/auth';
 import { getFirestore, FieldValue } from 'firebase-admin/firestore';
+
+// Expliciete, hardop-falende bewaking (PR 5.5b-activatievoorbereiding, aug.
+// 2026): dit script kan sowieso niet tegen een echt Google-project draaien —
+// het wegwerp-zelfondertekende sleutelpaar hieronder wordt alleen door de
+// emulator geaccepteerd (die verifieert geen handtekeningen), een echte
+// Google-backend zou 'm afwijzen — maar die impliciete bescherming is geen
+// vervanging voor een expliciete, leesbare fout die uitlegt WAAROM, mocht
+// iemand dit script ooit per ongeluk zonder de emulator-env-vars aanroepen
+// (bijv. een verkeerd geconfigureerde CI-stap of lokale shell).
+if (!process.env.FIRESTORE_EMULATOR_HOST || !process.env.FIREBASE_AUTH_EMULATOR_HOST) {
+  throw new Error(
+    'seed.ts weigert te draaien: FIRESTORE_EMULATOR_HOST/FIREBASE_AUTH_EMULATOR_HOST zijn niet ' +
+      'gezet. Dit script is uitsluitend voor de Firebase Emulator Suite (via `firebase emulators:exec` ' +
+      'of `npm run verify`) en mag nooit tegen een echt project (staging/productie) draaien — zie ' +
+      'docs/pr-5.5-handmatig-protocol.md voor hoe testaccounts/stagingdata dan wél worden aangemaakt.',
+  );
+}
 
 // Genereer een wegwerp-RSA-sleutelpaar bij elke run. De emulator verifieert geen handtekeningen;
 // cert() vereist enkel een syntactisch geldig PEM-sleutel om te kunnen parsen.
