@@ -18,6 +18,8 @@ import { App } from '../../src/app/App';
 import { GameSyncCoordinator } from '../../src/application/game/GameSyncCoordinator';
 import { LocalStorageGameSyncCheckpointRepository } from '../../src/infrastructure/game/LocalStorageGameSyncCheckpointRepository';
 import { pendingFinalizeStorageKey } from '../../src/infrastructure/game/LocalStoragePendingFinalizeRepository';
+import { activeGameStorageKey } from '../../src/infrastructure/game/LocalStorageGameRepository';
+import { completedGamesStorageKey } from '../../src/infrastructure/game/LocalStorageCompletedGameRepository';
 import type { PendingFinalizeEntry } from '../../src/application/game/PendingFinalizeRepository';
 import type {
   GameActionUploadOutcome,
@@ -37,6 +39,7 @@ import type { GameActionEnvelopeDocument } from 'firebase-base/documents';
 afterEach(() => {
   cleanup();
   window.localStorage.clear();
+  vi.restoreAllMocks();
 });
 
 const SYNCED: SyncState = { status: 'gesynchroniseerd', fromCache: false, hasPendingWrites: false };
@@ -267,5 +270,157 @@ describe('app/App — hervat een openstaande afronding na reload (PR 7.2a, P1-fi
     const raw = window.localStorage.getItem(pendingFinalizeStorageKey(ORG_ID, TEAM_ID));
     expect(raw).not.toBeNull();
     expect(JSON.parse(raw!)).toEqual([entry]);
+  });
+});
+
+/** Wedstrijd met minstens één opgeslagen segment — `canFinishGame()` (en dus
+ * de "Afronden"-knop) vereist dat er iets is afgeleid om te bevriezen. */
+function trackingGameReadyToFinish(): ActiveGame {
+  return {
+    id: 'game-live',
+    organizationId: ORG_ID,
+    teamId: TEAM_ID,
+    phase: 'tracking',
+    players: [],
+    opponent: 'Tegenstander',
+    competition: '',
+    clockDown: true,
+    limitStr: '14.5',
+    onCourt: [],
+    curQuarter: 1,
+    beginSec: 600,
+    endSec: 480,
+    pendingSwapLineup: null,
+    actions: [
+      {
+        type: 'segment-saved',
+        id: 'seg-action-1',
+        segment: {
+          id: 'seg-1',
+          quarter: 1,
+          beginSec: 600,
+          endSec: 480,
+          durSec: 120,
+          lineup: ['gp-1', 'gp-2', 'gp-3', 'gp-4', 'gp-5'],
+          pf: 4,
+          pa: 2,
+          classSum: 14,
+          allowed: 14.5,
+          over: false,
+        },
+        at: '2026-01-01T00:10:00.000Z',
+      },
+    ],
+    createdAt: '2026-01-01T00:00:00.000Z',
+    startedAt: '2026-01-01T00:05:00.000Z',
+  };
+}
+
+/**
+ * Simuleert een échte storage-fout (bijv. quota) die specifiek de
+ * pending-finalize-write raakt — settings/roster/completedGames/de actieve-
+ * wedstrijdsleutel blijven allemaal gewoon schrijfbaar, exact zoals een
+ * quotafout in de praktijk slechts één write zou raken. Vervangt
+ * `window.localStorage` volledig i.p.v. `vi.spyOn(window.localStorage,
+ * 'setItem')`: jsdom's `Storage` is een Proxy die een PROPERTY-assignment als
+ * `storage.setItem = fn` zelf al als "sla een item met sleutel 'setItem' op"
+ * interpreteert (dezelfde magie die `storage.foo = 'x'` laat werken als
+ * `setItem('foo','x')`) — `vi.spyOn` (dat intern precies zo'n assignment
+ * doet) raakt dus nooit de echte `setItem()`-aanroepen die de app zelf doet.
+ * Een volledige vervanging van het `window.localStorage`-object omzeilt die
+ * eigenaardigheid.
+ */
+class SelectiveFailStorage {
+  private readonly store = new Map<string, string>();
+  constructor(private readonly failOnSetKeys: ReadonlySet<string>) {}
+  getItem(key: string): string | null {
+    return this.store.get(key) ?? null;
+  }
+  setItem(key: string, value: string): void {
+    if (this.failOnSetKeys.has(key)) throw new Error('quota overschreden (test)');
+    this.store.set(key, value);
+  }
+  removeItem(key: string): void {
+    this.store.delete(key);
+  }
+  clear(): void {
+    this.store.clear();
+  }
+}
+
+describe('app/App — een mislukte outbox-write is een echte precondition (PR 7.2a, P1-fix tweede ronde PR #61)', () => {
+  it('bij een mislukte pendingFinalizeRepo-write blijft de bronwedstrijd ONGERESET en wordt finalize() nooit aangeroepen', async () => {
+    const originalLocalStorage = window.localStorage;
+    const pendingKey = pendingFinalizeStorageKey(ORG_ID, TEAM_ID);
+    const customStorage = new SelectiveFailStorage(new Set([pendingKey]));
+    customStorage.setItem(
+      activeGameStorageKey(ORG_ID, TEAM_ID),
+      JSON.stringify(trackingGameReadyToFinish()),
+    );
+    Object.defineProperty(window, 'localStorage', { value: customStorage, configurable: true });
+
+    try {
+      // "Afronden" vraagt een window.confirm(); in jsdom bestaat dat niet
+      // standaard, dus altijd bevestigen.
+      vi.spyOn(window, 'confirm').mockReturnValue(true);
+
+      const gateway = alwaysSucceedsGateway();
+      const finalizeSpy = vi.spyOn(gateway, 'finalizeCompletedGame');
+      const coordinator = new GameSyncCoordinator({
+        gateway,
+        checkpoints: new LocalStorageGameSyncCheckpointRepository(customStorage),
+      });
+
+      const repositories = {
+        mode: 'cloud' as const,
+        settings: new ImmediateSettingsRepository(),
+        roster: new ImmediateRosterRepository(),
+        gameSync: coordinator,
+        gameWriterContext: writer,
+      };
+
+      const { getByTestId } = render(
+        <App
+          repositories={repositories}
+          syncStatus={fakeSyncStatusApi()}
+          canWrite={true}
+          canWriteGame={true}
+          organizationId={ORG_ID}
+          teamId={TEAM_ID}
+          organizationName="Org Resume Test"
+        />,
+      );
+
+      await waitFor(() => expect(getByTestId('nav-settings')).toBeTruthy());
+      getByTestId('nav-game').click();
+      const finishBtn = await waitFor(() => getByTestId('finish-game-btn') as HTMLButtonElement);
+      expect(finishBtn.disabled).toBe(false);
+      finishBtn.click();
+
+      // De foutmelding wordt getoond...
+      await waitFor(() => expect(getByTestId('game-save-error')).toBeTruthy());
+
+      // ...en de bronwedstrijd blijft EXACT zoals ze was: geen reset naar een
+      // verse opzet. Dit is de kern van de fix — zonder deze precondition zou
+      // de reset alsnog doorgaan en de enige retrybron verliezen.
+      const stored = customStorage.getItem(activeGameStorageKey(ORG_ID, TEAM_ID));
+      expect(stored).not.toBeNull();
+      expect(JSON.parse(stored!)).toMatchObject({ id: 'game-live', phase: 'tracking' });
+      expect(JSON.parse(stored!).actions).toHaveLength(1);
+
+      // finalize() is nooit aangeroepen op basis van niet-duurzame invoer.
+      expect(finalizeSpy).not.toHaveBeenCalled();
+
+      // De lokale CompletedGame/CSV zijn wél al bevestigd (die write ging
+      // vooraf aan de mislukte outbox-write en is niet geraakt door de mock).
+      const completedRaw = customStorage.getItem(completedGamesStorageKey(ORG_ID, TEAM_ID));
+      expect(completedRaw).not.toBeNull();
+      expect(JSON.parse(completedRaw!)).toHaveLength(1);
+    } finally {
+      Object.defineProperty(window, 'localStorage', {
+        value: originalLocalStorage,
+        configurable: true,
+      });
+    }
   });
 });

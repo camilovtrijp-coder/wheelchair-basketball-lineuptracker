@@ -41,6 +41,24 @@ function matchesContext(
   return entry.completed.organizationId === organizationId && entry.completed.teamId === teamId;
 }
 
+/**
+ * P1-fix, tweede ronde (externe review PR #61): deze outbox is de ENIGE
+ * duurzame bron voor een openstaande afronding — een `add()`/`remove()` die
+ * een mislukte/onbeschikbare read stilzwijgend als "leeg" behandelt, zou
+ * bestaande entries kunnen overschrijven/wissen op basis van een foutieve
+ * lege lijst (exact het patroon dat `LocalStorageCompletedGameRepository`'s
+ * eigen `readAll()`/`ok`-onderscheid al oplost voor de historie, aug. 2026-
+ * review). Anders dan die repository filtert deze wél nog steeds een
+ * INDIVIDUEEL corrupt/mistagged item weg zonder de rest ongeldig te
+ * verklaren (`ok:true` met een kortere lijst) — alleen een écht mislukte of
+ * onbeschikbare read (storage-getter faalt, corrupte JSON, geen array) zet
+ * `ok:false`.
+ */
+interface ReadAllResult {
+  entries: PendingFinalizeEntry[];
+  ok: boolean;
+}
+
 export class LocalStoragePendingFinalizeRepository implements PendingFinalizeRepository {
   private readonly key: string;
 
@@ -52,31 +70,32 @@ export class LocalStoragePendingFinalizeRepository implements PendingFinalizeRep
     this.key = pendingFinalizeStorageKey(organizationId, teamId);
   }
 
-  private readAll(): PendingFinalizeEntry[] {
+  private readAll(): ReadAllResult {
     let raw: string | null = null;
     try {
       raw = this.storage.getItem(this.key);
     } catch {
-      return [];
+      return { entries: [], ok: false };
     }
-    if (raw === null || raw === '') return [];
+    if (raw === null || raw === '') return { entries: [], ok: true };
     let parsed: unknown;
     try {
       parsed = JSON.parse(raw);
     } catch {
-      return [];
+      return { entries: [], ok: false };
     }
-    if (!Array.isArray(parsed)) return [];
+    if (!Array.isArray(parsed)) return { entries: [], ok: false };
     // Een individueel corrupt/mistagged item wordt gefilterd, niet de hele
     // lijst ongeldig verklaard — zelfde afweging als `safeList()` op
     // `LocalStorageCompletedGameRepository`: dit is bovendien een puur
     // interne retry-outbox (geen door de gebruiker zichtbare historie), dus
     // een individueel corrupt item nooit-meer-retrybaar laten worden is
     // veiliger dan de hele outbox te laten falen.
-    return parsed.filter(
+    const entries = parsed.filter(
       (item): item is PendingFinalizeEntry =>
         isPendingFinalizeEntryShape(item) && matchesContext(item, this.organizationId, this.teamId),
     );
+    return { entries, ok: true };
   }
 
   private writeAll(entries: PendingFinalizeEntry[]): boolean {
@@ -89,18 +108,23 @@ export class LocalStoragePendingFinalizeRepository implements PendingFinalizeRep
   }
 
   list(): PendingFinalizeEntry[] {
-    return this.readAll();
+    return this.readAll().entries;
   }
 
   add(entry: PendingFinalizeEntry): boolean {
     if (!matchesContext(entry, this.organizationId, this.teamId)) return false;
     const current = this.readAll();
-    const withoutSame = current.filter((e) => e.completed.id !== entry.completed.id);
+    // Fail-closed (P1-fix, tweede ronde): een mislukte read mag nooit
+    // vervolgens een write doen op basis van een foutief lege lijst — dat
+    // zou een bestaande, nog niet gelezen entry stilzwijgend overschrijven.
+    if (!current.ok) return false;
+    const withoutSame = current.entries.filter((e) => e.completed.id !== entry.completed.id);
     return this.writeAll([...withoutSame, entry]);
   }
 
   remove(completedGameId: string): boolean {
     const current = this.readAll();
-    return this.writeAll(current.filter((e) => e.completed.id !== completedGameId));
+    if (!current.ok) return false;
+    return this.writeAll(current.entries.filter((e) => e.completed.id !== completedGameId));
   }
 }

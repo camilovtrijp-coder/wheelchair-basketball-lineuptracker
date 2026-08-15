@@ -196,15 +196,19 @@ export function App({
     () => new LocalStorageCompletedGameRepository(strictReadBrowserStorage, organizationId, teamId),
     [organizationId, teamId],
   );
-  // PR 7.2a, P1-fix (externe review PR #61): duurzame outbox voor
-  // `GameSyncCoordinator.finalize()`'s invoer — zie
+  // PR 7.2a, P1-fix (externe review PR #61, tweede ronde): duurzame outbox
+  // voor `GameSyncCoordinator.finalize()`'s invoer — zie
   // `application/game/PendingFinalizeRepository.ts`. Gebruikt bewust
-  // `browserStorage` (niet `strictReadBrowserStorage`): een leesfout hier
-  // betekent hooguit "deze sessie herprobeert een openstaande afronding
-  // niet automatisch", nooit dataverlies van de al-lokaal-bevestigde
-  // `CompletedGame` zelf.
+  // `strictReadBrowserStorage` (niet de gedeelde `browserStorage`):
+  // `handleFinishGame()` behandelt een mislukte outbox-write als een echte
+  // precondition vóór het actieve-wedstrijdslot gereset wordt (zie daar) —
+  // met de niet-strikte `browserStorage` was een onbeschikbare/falende
+  // storage-GETTER een stille no-op die `writeAll()` alsnog als geslaagd
+  // (`true`) liet zien, waardoor precies die precondition-check de mislukking
+  // niet had kunnen detecteren.
   const pendingFinalizeRepo = useMemo(
-    () => new LocalStoragePendingFinalizeRepository(browserStorage, organizationId, teamId),
+    () =>
+      new LocalStoragePendingFinalizeRepository(strictReadBrowserStorage, organizationId, teamId),
     [organizationId, teamId],
   );
   const [completedGames, setCompletedGames] = useState<CompletedGame[]>([]);
@@ -498,29 +502,32 @@ export function App({
       setCompletedGames((prev) => [completed, ...prev]);
     }
 
-    // PR 7.2a, P1-fix (externe review PR #61): schrijf EERST naar de
-    // duurzame outbox (`pendingFinalizeRepo`, met dezelfde `game` — nog met
+    // PR 7.2a, P1-fix (externe review PR #61, tweede ronde): de duurzame
+    // outbox-write (`pendingFinalizeRepo`, met dezelfde `game` — nog met
     // zijn volledige `actions`-log — waaruit `archived` zojuist is
-    // afgeleid), vóórdat `gameRepo`/`game`-state hieronder naar `fresh`
-    // wordt gereset. Dit is de laatste plek waar de bronacties nog
-    // beschikbaar zijn (v2 kent maar één actieve-wedstrijdslot); zonder deze
-    // duurzame kopie zou een crash tussen deze regel en een voltooide
-    // `finalize()` de enige retrybron verliezen. Alleen in cloud-modus
-    // (`repositories.gameSync`) — anders is er niets om te syncen.
-    // Best-effort: de lokale CompletedGame/CSV blijven hoe dan ook
-    // beschikbaar (die schrijfactie is al bevestigd hierboven); een mislukte
-    // outbox-write raakt uitsluitend de duurzaamheid van de cloud-
-    // afronding-retry, gecombineerd hieronder met de reset-fout in één
-    // `gameSaveError`-melding.
-    const pendingFinalizeOk =
-      !repositories.gameSync || pendingFinalizeRepo.add({ game, completed: archived });
+    // afgeleid) is nu een ECHTE precondition vóór de reset hieronder, exact
+    // zoals `completedGameRepo.add()` hierboven al is: mislukt de write
+    // (strikte storage — een echt falende/onbeschikbare backing store is
+    // hier detecteerbaar, geen stille no-op meer, zie de instantiatie
+    // hierboven), dan stopt deze functie HIER. Het actieve-wedstrijdslot
+    // blijft dan ongemoeid — het blijft zelf de laatste, volledige
+    // bronactielog — en de gebruiker ziet de foutmelding en kan "Afronden"
+    // gewoon opnieuw proberen (`alreadyArchived` hierboven maakt een retry
+    // idempotent, er ontstaat nooit een tweede `CompletedGame`). Zonder deze
+    // precondition zou de reset hieronder de enige retrybron alsnog kunnen
+    // vernietigen terwijl de outbox 'm niet duurzaam heeft overgenomen.
+    // Alleen relevant in cloud-modus — lokale modus heeft niets om te syncen.
+    if (repositories.gameSync && !pendingFinalizeRepo.add({ game, completed: archived })) {
+      setGameSaveError(true);
+      return;
+    }
     // Fire-and-forget cloud-finalize; `runFinalize` is zelf een no-op in
     // lokale modus.
     runFinalize(game, archived);
 
     const fresh = createGameFromRoster(roster, organizationId, teamId, settings.classBaseLimit);
     const resetOk = gameRepo.write(fresh);
-    setGameSaveError(!resetOk || !pendingFinalizeOk);
+    setGameSaveError(!resetOk);
     setGame(resetOk ? fresh : null);
     setHistoryOpenId(archived.id);
     setTab('history');

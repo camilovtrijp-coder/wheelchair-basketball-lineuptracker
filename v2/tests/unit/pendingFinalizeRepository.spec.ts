@@ -166,4 +166,56 @@ describe('infrastructure/game/LocalStoragePendingFinalizeRepository (PR 7.2a, P1
     );
     expect(repo.add(entry())).toBe(false);
   });
+
+  // P1-fix, tweede ronde (externe review PR #61): een falende/onbeschikbare
+  // storage-GETTER mag `add()`/`remove()` NOOIT als "leeg, dus veilig om te
+  // overschrijven" behandelen — dat zou een al aanwezige, alleen-nog-niet-
+  // gelezen entry stilzwijgend wissen. Deze `FlakyStorage` laat `setItem()`
+  // gewoon slagen (een echte browser-storage die tijdelijk niet leesbaar is,
+  // blijft doorgaans wél schrijfbaar) terwijl `getItem()` faalt — precies het
+  // scenario waarin de oude, niet-fail-closed implementatie een write op
+  // basis van een foutieve lege lijst zou hebben gedaan.
+  class FlakyStorage implements KeyValueStorage {
+    private readonly store = new Map<string, string>();
+    getShouldThrow = false;
+    getItem(key: string): string | null {
+      if (this.getShouldThrow) throw new Error('read mislukt');
+      return this.store.get(key) ?? null;
+    }
+    setItem(key: string, value: string): void {
+      this.store.set(key, value);
+    }
+    removeItem(key: string): void {
+      this.store.delete(key);
+    }
+  }
+
+  it('add() overschrijft NOOIT een bestaande entry op basis van een mislukte read (fail-closed)', () => {
+    const storage = new FlakyStorage();
+    const repo = new LocalStoragePendingFinalizeRepository(storage, 'org-1', 'team-1');
+    expect(repo.add(entry())).toBe(true);
+
+    storage.getShouldThrow = true;
+    const secondEntry = entry({
+      completed: completed({ id: 'completed-2', sourceGameId: 'game-2' }),
+    });
+    expect(repo.add(secondEntry)).toBe(false);
+
+    // Bewijs dat de oorspronkelijke entry nog intact staat — geen write is
+    // uitgevoerd op basis van de mislukte read.
+    storage.getShouldThrow = false;
+    expect(repo.list()).toEqual([entry()]);
+  });
+
+  it('remove() verwijdert NOOIT de hele outbox op basis van een mislukte read (fail-closed)', () => {
+    const storage = new FlakyStorage();
+    const repo = new LocalStoragePendingFinalizeRepository(storage, 'org-1', 'team-1');
+    repo.add(entry());
+
+    storage.getShouldThrow = true;
+    expect(repo.remove('completed-1')).toBe(false);
+
+    storage.getShouldThrow = false;
+    expect(repo.list()).toEqual([entry()]);
+  });
 });
