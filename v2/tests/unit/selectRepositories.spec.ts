@@ -3,12 +3,29 @@ import type { Firestore } from 'firebase/firestore';
 import { selectRepositories } from '../../src/infrastructure/repositories/selectRepositories';
 import type { AuthUser } from '../../src/domain/auth/types';
 import type { SelectedContext } from '../../src/domain/organizations/types';
+import type { KeyValueStorage } from '../../src/i18n/persistence';
 
 // FakeFirestore volstaat als dummy — de selectiefunctie geeft de Firestore-instantie
 // door aan de adapters; zolang de adapters gewoon geïnitialiseerd worden (constructor
 // slaat alleen op) is de inhoud irrelevant. Het gaat hier om de keuze, niet om I/O.
 function fakeDb(): Firestore {
   return {} as Firestore;
+}
+
+// PR 7.1c: selectRepositories() heeft nu ook lokale opslag nodig (deviceId +
+// GameSyncCheckpointRepository) — een verse in-memory storage per aanroep is
+// hier voldoende, de inhoud is voor deze selectie-tests niet relevant.
+function fakeStorage(): KeyValueStorage {
+  const store = new Map<string, string>();
+  return {
+    getItem: (key) => store.get(key) ?? null,
+    setItem: (key, value) => {
+      store.set(key, value);
+    },
+    removeItem: (key) => {
+      store.delete(key);
+    },
+  };
 }
 
 const user: AuthUser = { uid: 'uid-1', email: 'a@example.test', emailVerified: true };
@@ -21,6 +38,7 @@ describe('infrastructure/repositories/selectRepositories', () => {
       selectedContext: context,
       trustedDevice: true,
       firestoreDb: fakeDb(),
+      storage: fakeStorage(),
     });
     expect(out.kind).toBe('local');
   });
@@ -31,6 +49,7 @@ describe('infrastructure/repositories/selectRepositories', () => {
       selectedContext: null,
       trustedDevice: true,
       firestoreDb: fakeDb(),
+      storage: fakeStorage(),
     });
     expect(out.kind).toBe('local');
   });
@@ -41,6 +60,7 @@ describe('infrastructure/repositories/selectRepositories', () => {
       selectedContext: context,
       trustedDevice: false,
       firestoreDb: fakeDb(),
+      storage: fakeStorage(),
     });
     expect(out.kind).toBe('local');
   });
@@ -51,6 +71,7 @@ describe('infrastructure/repositories/selectRepositories', () => {
       selectedContext: context,
       trustedDevice: true,
       firestoreDb: fakeDb(),
+      storage: fakeStorage(),
     });
     expect(out.kind).toBe('cloud');
     if (out.kind === 'cloud') {
@@ -72,12 +93,14 @@ describe('infrastructure/repositories/selectRepositories', () => {
         selectedContext: context,
         trustedDevice: true,
         firestoreDb: fakeDb(),
+        storage: fakeStorage(),
       });
       const after = selectRepositories({
         authUser: user,
         selectedContext: context,
         trustedDevice: true,
         firestoreDb: fakeDb(),
+        storage: fakeStorage(),
       });
       expect(before.kind).toBe(after.kind);
       expect(before.kind).toBe('cloud');
@@ -94,12 +117,14 @@ describe('infrastructure/repositories/selectRepositories', () => {
       selectedContext: context,
       trustedDevice: true,
       firestoreDb: fakeDb(),
+      storage: fakeStorage(),
     });
     const b = selectRepositories({
       authUser: user,
       selectedContext: context,
       trustedDevice: true,
       firestoreDb: fakeDb(),
+      storage: fakeStorage(),
     });
     if (a.kind === 'cloud' && b.kind === 'cloud') {
       expect(a.settings).not.toBe(b.settings);

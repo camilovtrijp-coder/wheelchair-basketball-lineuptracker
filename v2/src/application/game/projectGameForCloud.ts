@@ -90,6 +90,54 @@ export function projectGameSnapshot(game: ActiveGame): GameSnapshotProjection {
   };
 }
 
+/**
+ * Exacte "draaivelden"-subset uit ADR-002 §"Verduidelijkingen voor fase 7"
+ * punt 4 (plus de afgeleide score-/segmentsnapshot en `phase`/`startedAt`) —
+ * spiegelt precies de veldallowlist van firestore.rules' normale
+ * game-updatepad (PR 7.1b, punt 10a). Nooit `organizationId`/`teamId`/
+ * `players`/`opponent`/`competition`/`clockDown`/`limitStr`/`createdAt` (die
+ * zijn na `ensureGame()`'s create onveranderlijk) en nooit `writerUid`/
+ * `deviceId`/`writerEpoch`/`revision` (die beheert `GameSyncCoordinator`
+ * zelf, zie de initiële-claimstap). Bevat bewust altijd de volledige subset,
+ * ook velden die sinds de laatste patch niet gewijzigd zijn: Firestore
+ * Rules' `diff(resource.data).affectedKeys()` reageert alleen op een
+ * werkelijke waardewijziging in het resulterende document, dus een
+ * ongewijzigd veld meesturen is een no-op voor de Rules-validatie en dit
+ * spaart de coordinator een eigen "wat is er sinds de vorige patch
+ * veranderd"-boekhouding uit — er is hooguit één actieve schrijver per
+ * wedstrijd (het epoch/fencingcontract), dus er is geen ander apparaat dat
+ * intussen een van deze velden onafhankelijk gewijzigd kan hebben.
+ */
+export function projectGameSnapshotPatch(
+  game: ActiveGame,
+): Pick<
+  GameSnapshotProjection,
+  | 'phase'
+  | 'onCourt'
+  | 'curQuarter'
+  | 'beginSec'
+  | 'endSec'
+  | 'pendingSwapLineup'
+  | 'scoreFor'
+  | 'scoreAgainst'
+  | 'segmentCount'
+  | 'startedAt'
+> {
+  const snapshot = projectGameSnapshot(game);
+  return {
+    phase: snapshot.phase,
+    onCourt: snapshot.onCourt,
+    curQuarter: snapshot.curQuarter,
+    beginSec: snapshot.beginSec,
+    endSec: snapshot.endSec,
+    pendingSwapLineup: snapshot.pendingSwapLineup,
+    scoreFor: snapshot.scoreFor,
+    scoreAgainst: snapshot.scoreAgainst,
+    segmentCount: snapshot.segmentCount,
+    startedAt: snapshot.startedAt,
+  };
+}
+
 function projectActionPayload(action: GameAction): GameActionPayloadDocument {
   switch (action.type) {
     case 'score-delta':

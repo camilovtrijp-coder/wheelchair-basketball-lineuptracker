@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'preact/hooks';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'preact/hooks';
 import { browserStorage, strictReadBrowserStorage } from '../i18n/browserStorage';
 import { readLang, writeLang } from '../i18n/persistence';
 import { resolveInitialLang } from '../i18n/detect';
@@ -34,6 +34,8 @@ import { HistoryPanel } from '../ui/game/HistoryPanel';
 import { StatsPanel } from '../ui/stats/StatsPanel';
 import { TrendsPanel } from '../ui/trends/TrendsPanel';
 import { BackupPanel } from '../ui/backup/BackupPanel';
+import { SyncStatusIndicator } from '../ui/sync/SyncStatusIndicator';
+import type { SyncStatus } from '../domain/syncState';
 
 export interface AppProps {
   repositories: ResolvedAppRepositories;
@@ -68,9 +70,9 @@ export interface AppProps {
    * Actieve organisatie/teamcontext (PR 5.2, AuthGate's `selectedContext`),
    * doorgegeven zodat een nieuwe wedstrijdopzet (PR 6.1) er verplicht mee
    * getagd en onder een eigen sleutel opgeslagen kan worden — zie
-   * infrastructure/game/LocalStorageGameRepository.ts. Wedstrijddata is in
-   * PR 6.1 nog uitsluitend lokaal (geen Firestore-adapter); cloud-sync komt
-   * pas met PR 7.1.
+   * infrastructure/game/LocalStorageGameRepository.ts. Wedstrijddata blijft
+   * altijd eerst lokaal (PR 6.1); PR 7.1c voegt daarnaast een optionele
+   * cloud-sync toe via `repositories.gameSync` (alleen actief in cloud-modus).
    */
   organizationId: string;
   teamId: string;
@@ -158,9 +160,11 @@ export function App({
   const settingsLoadedRef = useRef(false);
   const rosterLoadedRef = useRef(false);
 
-  // PR 6.1: wedstrijdopzet. Lokaal-only (nog geen Firestore-adapter, zie
-  // GameRepository.ts) en per organisatie/team-context opgeslagen, zodat een
+  // PR 6.1: wedstrijdopzet, per organisatie/team-context opgeslagen zodat een
   // contextwissel de opzet van een ander team niet overschrijft of verliest.
+  // `gameRepo` (GameRepository.ts) blijft de enige, synchrone bron van
+  // waarheid — PR 7.1c voegt daar een async, fire-and-forget cloud-sync
+  // bovenop toe (zie `runGameSync` hieronder), geen vervanging.
   const gameRepo = useMemo(
     () => new LocalStorageGameRepository(browserStorage, organizationId, teamId),
     [organizationId, teamId],
@@ -270,6 +274,78 @@ export function App({
     setGame(next);
     setGameSaveError(!gameRepo.write(next));
   }
+
+  /**
+   * PR 7.1c: wedstrijd-cloud-sync (docs/pr-7.1-plan.md §C 7.1c). Lokaal
+   * schrijven (`gameRepo.write()` hierboven) blijft altijd de bron van
+   * waarheid en gebeurt synchroon/blokkerend; deze sync is bewust
+   * fire-and-forget bovenop dat lokale schrijfpad — een trage of mislukte
+   * cloud-sync mag de live scorebediening nooit blokkeren (zelfde
+   * grondprincipe als settings/roster se write(), zie domain/syncState.ts).
+   * `repositories.gameSync`/`gameWriterContext` zijn `null` in lokale modus
+   * (resolveAppRepositories.ts) — dan gebeurt hier letterlijk niets, dus
+   * geen enkele Firestore/Auth-aanroep in lokale modus (acceptatiecriterium
+   * 5, docs/pr-7.1-plan.md §C 7.1c).
+   *
+   * `latestGameRef` + de in-flight/queued-vlaggen voorkomen twee dingen: (1)
+   * twee overlappende `sync()`-aanroepen op dezelfde wedstrijd (elke actie
+   * tijdens live scoren zou anders een eigen sync-cyclus starten), en (2) een
+   * queued retry die per ongeluk een VEROUDERDE snapshot verstuurt — de
+   * queued aanroep leest `latestGameRef.current` pas op het moment dat hij
+   * daadwerkelijk start, nooit een snapshot die op queue-tijdstip vastligt.
+   */
+  const [gameSyncStatus, setGameSyncStatus] = useState<SyncStatus>('lokaal-beschikbaar');
+  const latestGameRef = useRef<ActiveGame | null>(null);
+  const gameSyncInFlightRef = useRef(false);
+  const gameSyncQueuedRef = useRef(false);
+  latestGameRef.current = game;
+
+  const runGameSync = useCallback(() => {
+    const coordinator = repositories.gameSync;
+    const writerContext = repositories.gameWriterContext;
+    if (!coordinator || !writerContext) return;
+    const current = latestGameRef.current;
+    if (!current || current.phase !== 'tracking') return;
+    if (gameSyncInFlightRef.current) {
+      gameSyncQueuedRef.current = true;
+      return;
+    }
+    gameSyncInFlightRef.current = true;
+    setGameSyncStatus('wacht-op-synchronisatie');
+    coordinator
+      .sync(current, writerContext)
+      .then(
+        (checkpoint) =>
+          setGameSyncStatus(checkpoint.status === 'idle' ? 'gesynchroniseerd' : 'actie-nodig'),
+        () => setGameSyncStatus('actie-nodig'),
+      )
+      .finally(() => {
+        gameSyncInFlightRef.current = false;
+        if (gameSyncQueuedRef.current) {
+          gameSyncQueuedRef.current = false;
+          runGameSync();
+        }
+      });
+  }, [repositories.gameSync, repositories.gameWriterContext]);
+
+  useEffect(() => {
+    setGameSyncStatus('lokaal-beschikbaar');
+  }, [game?.id]);
+
+  useEffect(() => {
+    runGameSync();
+  }, [game, runGameSync]);
+
+  // Reconnect-trigger: een sync die tijdens offline in 'actie-nodig' bleef
+  // steken, probeert hierdoor opnieuw zodra de browser weer online komt —
+  // zonder te wachten op de eerstvolgende live wedstrijdactie.
+  useEffect(() => {
+    function handleOnline() {
+      runGameSync();
+    }
+    window.addEventListener('online', handleOnline);
+    return () => window.removeEventListener('online', handleOnline);
+  }, [runGameSync]);
 
   function handleConfirmV1Migration() {
     if (v1MigrationCandidate === null) return;
@@ -598,6 +674,16 @@ export function App({
           >
             {t('listenerErrorIndicator')}
           </p>
+        ) : null}
+        {/* PR 7.1c: alleen zichtbaar tijdens een lopende cloud-wedstrijd — een
+         * bekeken opzet of afgeronde historie heeft geen actieve sync-cyclus
+         * (zie runGameSync hierboven, die dan sowieso niets doet). */}
+        {repositories.mode === 'cloud' && game !== null && game.phase === 'tracking' ? (
+          <SyncStatusIndicator
+            lang={lang}
+            status={gameSyncStatus}
+            testId="game-sync-status-indicator"
+          />
         ) : null}
         {tab === 'settings' ? (
           <>

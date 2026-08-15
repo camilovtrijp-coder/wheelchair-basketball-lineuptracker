@@ -11,6 +11,8 @@
 
 import type { AsyncRosterRepository } from '../../application/roster/AsyncRosterRepository';
 import type { AsyncSettingsRepository } from '../../application/settings/AsyncSettingsRepository';
+import type { GameSyncCoordinator } from '../../application/game/GameSyncCoordinator';
+import type { GameCloudWriterContext } from '../../application/game/projectGameForCloud';
 import type { KeyValueStorage } from '../../i18n/persistence';
 import type { RepositorySelection } from './selectRepositories';
 import { LocalAsyncRosterRepository } from '../roster/LocalAsyncRosterRepository';
@@ -22,6 +24,9 @@ export interface ResolvedAppRepositories {
   mode: 'local' | 'cloud';
   settings: AsyncSettingsRepository;
   roster: AsyncRosterRepository;
+  /** PR 7.1c: `null` in lokale modus — App roept dan nooit cloud-sync aan voor wedstrijden. */
+  gameSync: GameSyncCoordinator | null;
+  gameWriterContext: GameCloudWriterContext | null;
 }
 
 export function resolveAppRepositories(
@@ -29,11 +34,19 @@ export function resolveAppRepositories(
   storage: KeyValueStorage,
 ): ResolvedAppRepositories {
   if (selection.kind === 'cloud') {
-    return { mode: 'cloud', settings: selection.settings, roster: selection.roster };
+    return {
+      mode: 'cloud',
+      settings: selection.settings,
+      roster: selection.roster,
+      gameSync: selection.gameSync,
+      gameWriterContext: selection.gameWriterContext,
+    };
   }
   return {
     mode: 'local',
     settings: new LocalAsyncSettingsRepository(new LocalStorageSettingsRepository(storage)),
     roster: new LocalAsyncRosterRepository(new LocalStorageRosterRepository(storage)),
+    gameSync: null,
+    gameWriterContext: null,
   };
 }

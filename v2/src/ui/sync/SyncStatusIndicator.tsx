@@ -10,6 +10,14 @@ export interface SyncStatusIndicatorProps {
   lang: Lang;
   status: SyncStatus;
   fromCache?: boolean;
+  /**
+   * PR 7.1c: SessionBar's settings/roster-indicator en App's nieuwe
+   * wedstrijd-syncindicator delen dit component — een vaste testid zou de
+   * twee in e2e-tests niet meer laten onderscheiden wanneer beide
+   * tegelijk zichtbaar zijn (cloud-modus, tab 'game' met een lopende
+   * wedstrijd).
+   */
+  testId?: string;
 }
 
 const KEY_BY_STATUS: Record<SyncStatus, StringKey> = {
@@ -19,11 +27,16 @@ const KEY_BY_STATUS: Record<SyncStatus, StringKey> = {
   'actie-nodig': 'syncStatusActionNeeded',
 };
 
-export function SyncStatusIndicator({ lang, status, fromCache = false }: SyncStatusIndicatorProps) {
+export function SyncStatusIndicator({
+  lang,
+  status,
+  fromCache = false,
+  testId = 'sync-status-indicator',
+}: SyncStatusIndicatorProps) {
   return (
     <span
       className={`sync-status-indicator sync-status-indicator--${status}`}
-      data-testid="sync-status-indicator"
+      data-testid={testId}
       data-status={status}
     >
       {translate(lang, KEY_BY_STATUS[status])}
