@@ -128,8 +128,13 @@ en zou de accept-actie alsnog moeten laten slagen.
 **Gevonden via**: `docs/pr-5.5-handmatig-protocol.md` §B.2 stap 8, staging
 — account B, `basketball-tracker-staging`-Deploy Preview, 15 aug. 2026.
 
-**Status**: open, nog niet gefixt. Root cause bevestigd via codeonderzoek;
-workaround nog niet bevestigd door de eigenaar.
+**Status**: open, nog niet gefixt. Root cause bevestigd via codeonderzoek
+én empirisch: uitloggen en met een verse login opnieuw inloggen (nieuw
+ID-token) liet "Uitnodiging accepteren" alsnog slagen — account B kwam
+daarna via "Lidmaatschap voltooien" succesvol tot bij de context-
+wisselaar ("ROBA test"). Structurele fix (bijv. een expliciete
+`getIdToken(true)`-refresh na e-mailverificatie, vóór de accept-write)
+nog niet toegepast.
 
 ## Nog te doen
 
