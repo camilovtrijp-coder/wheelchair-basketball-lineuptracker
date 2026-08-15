@@ -63,6 +63,33 @@ praktijk wel, de gebruiker weet het alleen niet zeker.
 
 **Status**: open, nog niet gefixt.
 
+### 3. Geen feedback bij "Verificatiemail opnieuw versturen" op het uitnodigingsscherm
+
+**Symptoom**: op `AcceptInvitationScreen` (het "Bevestig je e-mailadres"-
+scherm dat verschijnt zodra een uitnodiging pending is en het account nog
+niet geverifieerd is) geeft de knop "Verificatiemail opnieuw versturen"
+geen enkele terugkoppeling — geen laadstatus, geen bevestiging, geen
+foutmelding.
+
+**Oorzaak**: `AcceptInvitationScreen.tsx` regel 158:
+`onClick={() => void onResendVerification()}` — de `void` gooit het
+`Promise<boolean>`-resultaat van `sendVerificationEmail()`
+(`FirebaseAuthGateway.ts`) volledig weg. Dezelfde bugklasse als bug 2, maar
+zonder zelfs een `disabled`-status tijdens versturen (de accept-/claim-
+knoppen op ditzelfde scherm hebben wél `disabled={submitting}`) — deze
+knop is dus ook meerdere keren snel achter elkaar klikbaar, wat Firebase's
+eigen rate-limit (`auth/too-many-requests`) kan raken zonder dat de
+gebruiker dat ooit te zien krijgt.
+
+**Impact**: UX-gebrek zoals bug 2, met een extra risico: herhaald klikken
+kan de daadwerkelijke verzending laten mislukken (rate-limit) zonder enig
+signaal, wat de gebruiker juist aanzet tot nóg meer klikken.
+
+**Gevonden via**: `docs/pr-5.5-handmatig-protocol.md` §B.2 stap 7, staging
+— account B, `basketball-tracker-staging`-Deploy Preview, 15 aug. 2026.
+
+**Status**: open, nog niet gefixt.
+
 ## Nog te doen
 
 - Meer bugs toevoegen naarmate het 5.5c-protocol verder wordt uitgevoerd
