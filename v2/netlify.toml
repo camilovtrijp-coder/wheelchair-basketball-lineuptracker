@@ -9,17 +9,21 @@
 # leest dit bestand (`v2/netlify.toml`) in plaats van het root-bestand, en
 # alle paden hieronder (`publish`, redirects) zijn dan relatief aan `v2/`.
 #
-# Dit bestand doet op zichzelf niets — er bestaat nog geen Netlify-site die
-# hem leest. Eigenaarsbesluit 12 augustus 2026 (zie docs/pr-5.5-plan.md §E.6):
-# de v2-Netlify-site wordt bewust pas later aangemaakt en aan GitHub gekoppeld,
-# op een moment dat de eigenaar kiest. Zie docs/pr-5.5-plan.md §E.7 voor de
-# gecorrigeerde activatiechecklist (Deploy Previews mogen vanaf het begin aan
-# staan — die kosten 0 Netlify-credits; alleen een productie-branch-deploy
-# kost credits) en docs/pr-5.5-handmatig-protocol.md voor de stappen ná
-# activatie.
+# Site-koppeling (5.5b-activatie, aug. 2026): Netlify's monorepo-detectie
+# ("Project to deploy: v2" in de site-wizard) verandert de working directory
+# van het build-commando NIET naar `v2/` — die blijft de repository-root,
+# ondanks de projectkeuze (bevestigd via een mislukte eerste deploy: `Current
+# directory: /opt/build/repo`, met `packagePath: v2` als losse metadata).
+# Omdat de root ook npm-workspaces gebruikt (`v2`/`firebase`), zoekt kaal
+# `npm run build` vanaf de root in het root-`package.json` (geen `build`-
+# script daar) i.p.v. in `v2/package.json` (die wél een `build`-script heeft).
+# `--workspace=v2` dwingt npm om vanaf de root alsnog naar de `v2`-workspace
+# te routeren, ongeacht welke cwd Netlify daadwerkelijk gebruikt. `publish`
+# blijft `dist` (packagePath-relatief aan `v2/`, dat deel van Netlify's
+# monorepo-detectie werkte al wél correct).
 
 [build]
-  command = "npm run build"
+  command = "npm run build --workspace=v2"
   publish = "dist"
 
 # VITE_DEPLOY_CONTEXT stuurt resolveWebConfig()/resolveDeployContext()
