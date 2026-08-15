@@ -3,7 +3,6 @@ import { GameSyncCoordinator } from '../../src/application/game/GameSyncCoordina
 import { LocalStorageGameSyncCheckpointRepository } from '../../src/infrastructure/game/LocalStorageGameSyncCheckpointRepository';
 import type {
   CompletedGameSnapshotProjection,
-  CompletedGameWriteResult,
   GameActionUploadOutcome,
   GameCloudGateway,
   GameSnapshotProjection,
@@ -100,10 +99,11 @@ interface GatewayScript {
     patch: Partial<GameSnapshotProjection>,
     expectedRevision: number,
   ) => GameSnapshotWriteResult | Promise<GameSnapshotWriteResult>;
-  ensureCompletedGame?: (
+  finalizeCompletedGame?: (
     completedGameId: string,
     snapshot: CompletedGameSnapshotProjection,
-  ) => CompletedGameWriteResult | Promise<CompletedGameWriteResult>;
+    expectedRevision: number,
+  ) => GameSnapshotWriteResult | Promise<GameSnapshotWriteResult>;
 }
 
 function mockGateway(script: GatewayScript): GameCloudGateway & {
@@ -111,11 +111,11 @@ function mockGateway(script: GatewayScript): GameCloudGateway & {
     ensureGame: number;
     uploadActions: number;
     patchSnapshot: number;
-    ensureCompletedGame: number;
+    finalizeCompletedGame: number;
   };
   uploadedActionIds: string[][];
 } {
-  const calls = { ensureGame: 0, uploadActions: 0, patchSnapshot: 0, ensureCompletedGame: 0 };
+  const calls = { ensureGame: 0, uploadActions: 0, patchSnapshot: 0, finalizeCompletedGame: 0 };
   const uploadedActionIds: string[][] = [];
   return {
     calls,
@@ -139,11 +139,11 @@ function mockGateway(script: GatewayScript): GameCloudGateway & {
         ? script.patchSnapshot(patch, expectedRevision)
         : { ok: true, revision: expectedRevision + 1 };
     },
-    async ensureCompletedGame(_org, _team, completedGameId, snapshot) {
-      calls.ensureCompletedGame += 1;
-      return script.ensureCompletedGame
-        ? script.ensureCompletedGame(completedGameId, snapshot)
-        : { ok: true };
+    async finalizeCompletedGame(_org, _team, _gameId, completedGameId, snapshot, expectedRevision) {
+      calls.finalizeCompletedGame += 1;
+      return script.finalizeCompletedGame
+        ? script.finalizeCompletedGame(completedGameId, snapshot, expectedRevision)
+        : { ok: true, revision: expectedRevision + 1, completedGameId };
     },
   };
 }
@@ -393,24 +393,24 @@ describe('application/game/GameSyncCoordinator (PR 7.1c)', () => {
         revision: rev + 1,
       }),
     );
-    const ensureCompletedGame = vi.fn(async () => ({ ok: true }));
+    const finalizeCompletedGame = vi.fn(async () => ({ ok: true }));
     const gateway: GameCloudGateway = {
       ensureGame,
       uploadActions,
       patchSnapshot,
-      ensureCompletedGame,
+      finalizeCompletedGame,
     };
     const coordinator = new GameSyncCoordinator({ gateway, checkpoints });
     await coordinator.sync(gameWithActions(['a1']), writer);
     expect(ensureGame).toHaveBeenCalledTimes(1);
     expect(uploadActions).toHaveBeenCalledTimes(1);
     expect(patchSnapshot).toHaveBeenCalledTimes(2);
-    expect(ensureCompletedGame).not.toHaveBeenCalled();
+    expect(finalizeCompletedGame).not.toHaveBeenCalled();
   });
 });
 
 describe('application/game/GameSyncCoordinator.finalize() (PR 7.2a)', () => {
-  it('happy path: syncet de wedstrijd, schrijft de completed-snapshot en patcht completedGameId', async () => {
+  it('happy path: syncet de wedstrijd en rondt de afronding atomisch af (completedGameId gezet)', async () => {
     const checkpoints = new LocalStorageGameSyncCheckpointRepository(new MemoryStorage());
     const gateway = mockGateway({
       ensureGame: () => ({
@@ -433,9 +433,41 @@ describe('application/game/GameSyncCoordinator.finalize() (PR 7.2a)', () => {
     // eigen interne ensureGame()-stap.
     expect(gateway.calls.ensureGame).toBe(2);
     expect(gateway.calls.uploadActions).toBe(1);
-    expect(gateway.calls.patchSnapshot).toBe(2); // veldpatch (sync) + finalize-patch
-    expect(gateway.calls.ensureCompletedGame).toBe(1);
+    expect(gateway.calls.patchSnapshot).toBe(1); // uitsluitend sync()'s veldpatch
+    expect(gateway.calls.finalizeCompletedGame).toBe(1);
     expect(checkpoints.read('game-1')).toEqual(result);
+  });
+
+  it('roept finalizeCompletedGame() precies één keer aan met de complete snapshot en de verse revisie uit sync()', async () => {
+    const checkpoints = new LocalStorageGameSyncCheckpointRepository(new MemoryStorage());
+    const calls: Array<[string, unknown, number]> = [];
+    const gateway = mockGateway({
+      ensureGame: () => ({
+        ok: true,
+        revision: 7,
+        writerUid: writer.authorUid,
+        deviceId: writer.deviceId,
+        completedGameId: null,
+      }),
+      finalizeCompletedGame: (completedGameId, snapshot, expectedRevision) => {
+        calls.push([completedGameId, snapshot, expectedRevision]);
+        return { ok: true, revision: expectedRevision + 1, completedGameId };
+      },
+    });
+    const coordinator = new GameSyncCoordinator({ gateway, checkpoints, now: fixedClock() });
+    const game = gameWithActions(['a1']);
+    const completed = completedGameFor(game);
+
+    await coordinator.finalize(game, completed, writer);
+
+    expect(calls).toHaveLength(1);
+    const [completedGameId, snapshot, expectedRevision] = calls[0]!;
+    expect(completedGameId).toBe('completed-1');
+    expect(snapshot).toMatchObject({ sourceGameId: 'game-1', scoreFor: 10, scoreAgainst: 8 });
+    // 7 (ensureGame) + 1 (sync()'s veldpatch) = 8: de coordinator geeft de
+    // atomische afrondstap altijd de ACTUELE revisie ná sync(), nooit de
+    // verouderde waarde van vóór die stap.
+    expect(expectedRevision).toBe(8);
   });
 
   it('dezelfde finalize tweemaal: de tweede aanroep is een lokale no-op zonder netwerk', async () => {
@@ -477,13 +509,13 @@ describe('application/game/GameSyncCoordinator.finalize() (PR 7.2a)', () => {
     expect(result.status).toBe('actie-nodig');
     expect(result.lastError).toBe('offline');
     expect(result.completedGameId).toBeUndefined();
-    expect(gateway.calls.ensureCompletedGame).toBe(0);
+    expect(gateway.calls.finalizeCompletedGame).toBe(0);
     expect(gateway.calls.patchSnapshot).toBe(0);
   });
 
-  it('crash na sync(): de actieset/snapshot is bevestigd, maar ensureCompletedGame() faalt — geen completedGameId gezet', async () => {
+  it('crash na sync(): de actieset/snapshot is bevestigd, maar de atomische afronding faalt — geen completedGameId gezet', async () => {
     const checkpoints = new LocalStorageGameSyncCheckpointRepository(new MemoryStorage());
-    let ensureCompletedGameCalls = 0;
+    let finalizeCalls = 0;
     const gateway = mockGateway({
       ensureGame: () => ({
         ok: true,
@@ -492,12 +524,12 @@ describe('application/game/GameSyncCoordinator.finalize() (PR 7.2a)', () => {
         deviceId: writer.deviceId,
         completedGameId: null,
       }),
-      ensureCompletedGame: () => {
-        ensureCompletedGameCalls += 1;
-        if (ensureCompletedGameCalls === 1) {
+      finalizeCompletedGame: (completedGameId, _snapshot, expectedRevision) => {
+        finalizeCalls += 1;
+        if (finalizeCalls === 1) {
           return { ok: false, error: new Error('rules-afwijzing') };
         }
-        return { ok: true };
+        return { ok: true, revision: expectedRevision + 1, completedGameId };
       },
     });
     const coordinator = new GameSyncCoordinator({ gateway, checkpoints, now: fixedClock() });
@@ -511,55 +543,25 @@ describe('application/game/GameSyncCoordinator.finalize() (PR 7.2a)', () => {
     expect(result.completedGameId).toBeUndefined();
     // de acties zijn wél al bevestigd (sync() liep door tot het eind):
     expect(result.confirmedActionIds).toEqual(['a1']);
-    expect(gateway.calls.patchSnapshot).toBe(1); // alleen de veldpatch uit sync(), nog geen finalize-patch
+    expect(gateway.calls.patchSnapshot).toBe(1); // uitsluitend de veldpatch uit sync()
 
-    // Retry: ensureCompletedGame() slaagt nu alsnog — idempotent hervat vanaf
-    // de mislukte stap, sync() hoeft de al bevestigde actie niet te herhalen.
+    // Retry: de atomische afronding slaagt nu alsnog — sync() hoeft de al
+    // bevestigde actie niet te herhalen.
     const retry = await coordinator.finalize(game, completed, writer);
     expect(retry.status).toBe('idle');
     expect(retry.completedGameId).toBe('completed-1');
     expect(gateway.uploadedActionIds).toHaveLength(1); // geen tweede upload-poging voor 'a1'
+    expect(finalizeCalls).toBe(2); // geen partiële staat: elke poging is een volledig nieuwe atomische aanroep
   });
 
-  it('crash na ensureCompletedGame(): de finalize-patch faalt — retry hervat zonder een tweede snapshot te maken', async () => {
-    const checkpoints = new LocalStorageGameSyncCheckpointRepository(new MemoryStorage());
-    let completedGameCalls = 0;
-    let failPatchOnce = true;
-    const gateway = mockGateway({
-      ensureGame: () => ({
-        ok: true,
-        revision: 0,
-        writerUid: writer.authorUid,
-        deviceId: writer.deviceId,
-        completedGameId: null,
-      }),
-      ensureCompletedGame: () => {
-        completedGameCalls += 1;
-        return { ok: true, alreadyConfirmed: completedGameCalls > 1 };
-      },
-      patchSnapshot: (patch, expectedRevision) => {
-        if ('completedGameId' in patch && failPatchOnce) {
-          failPatchOnce = false;
-          return { ok: false, error: new Error('verouderde revisie') };
-        }
-        return { ok: true, revision: expectedRevision + 1 };
-      },
-    });
-    const coordinator = new GameSyncCoordinator({ gateway, checkpoints, now: fixedClock() });
-    const game = gameWithActions(['a1']);
-    const completed = completedGameFor(game);
-
-    const result = await coordinator.finalize(game, completed, writer);
-    expect(result.status).toBe('actie-nodig');
-    expect(result.completedGameId).toBeUndefined();
-
-    const retry = await coordinator.finalize(game, completed, writer);
-    expect(retry.status).toBe('idle');
-    expect(retry.completedGameId).toBe('completed-1');
-    expect(completedGameCalls).toBe(2); // idempotente herhaling, geen tweede ECHTE snapshot
-  });
-
-  it('afwijkende bestaande payload: ensureCompletedGame() ziet een conflict en faalt zichtbaar', async () => {
+  // P1-fix (externe review PR #61): completedGames-create en de
+  // parent-finalize-patch zijn nu ÉÉN atomische aanroep
+  // (`GameCloudGateway.finalizeCompletedGame()`, geïmplementeerd als een
+  // Firestore-`WriteBatch`) — er bestaat dus geen "de snapshot staat er al,
+  // maar de parentpatch faalde nog" tussentoestand meer om apart te
+  // simuleren; een mislukte batch levert altijd exact hetzelfde
+  // retrybare `ok:false` op als hierboven, nooit een orphan-snapshot.
+  it('afwijkende bestaande payload / een reeds bestaande, conflicterende snapshot: de atomische afronding faalt zichtbaar', async () => {
     const checkpoints = new LocalStorageGameSyncCheckpointRepository(new MemoryStorage());
     const gateway = mockGateway({
       ensureGame: () => ({
@@ -569,7 +571,7 @@ describe('application/game/GameSyncCoordinator.finalize() (PR 7.2a)', () => {
         deviceId: writer.deviceId,
         completedGameId: null,
       }),
-      ensureCompletedGame: () => ({
+      finalizeCompletedGame: () => ({
         ok: false,
         error: new Error('completed-1 bestaat al met een afwijkende payload'),
       }),
@@ -626,11 +628,11 @@ describe('application/game/GameSyncCoordinator.finalize() (PR 7.2a)', () => {
     expect(result.status).toBe('idle');
     expect(result.completedGameId).toBe('completed-1');
     expect(result.serverRevision).toBe(4);
-    // sync()/ensureCompletedGame()/de finalize-patch worden helemaal niet
-    // meer geprobeerd — de server-kortsluiting in stap 2 volstaat.
+    // sync()/de atomische afronding worden helemaal niet meer geprobeerd —
+    // de server-kortsluiting in stap 2 volstaat.
     expect(gateway.calls.uploadActions).toBe(0);
     expect(gateway.calls.patchSnapshot).toBe(0);
-    expect(gateway.calls.ensureCompletedGame).toBe(0);
+    expect(gateway.calls.finalizeCompletedGame).toBe(0);
     expect(checkpoints.read('game-1')).toEqual(result);
   });
 
@@ -653,7 +655,7 @@ describe('application/game/GameSyncCoordinator.finalize() (PR 7.2a)', () => {
 
     expect(result.status).toBe('actie-nodig');
     expect(result.lastError).toContain('completed-ANDER');
-    expect(gateway.calls.ensureCompletedGame).toBe(0);
+    expect(gateway.calls.finalizeCompletedGame).toBe(0);
   });
 
   it('een lokaal checkpoint met een ANDERE completedGameId (dubbele/gecorrumpeerde toestand) faalt zichtbaar zonder netwerk', async () => {

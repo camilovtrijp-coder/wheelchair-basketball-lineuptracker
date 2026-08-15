@@ -159,6 +159,14 @@ rules_version = '2';
 //      exact hoe punt 11 een action-envelope aan de huidige claim bindt).
 //      Zoals bij `players`/`onCourt` (punt 13) blijft `segments` alleen op
 //      `list`-type gecontroleerd, geen element-voor-elementvalidatie.
+//      [P1, externe review PR #61] De create-regel eist BOVENDIEN
+//      `getAfter(gameRef(...)).data.completedGameId == completedGameId` —
+//      deze create moet altijd in dezelfde atomische `WriteBatch` staan als
+//      de punt-15-finalize-patch op het parentdocument
+//      (`FirestoreGameCloudGateway.finalizeCompletedGame()`). Zonder deze
+//      binding kon dezelfde writer meerdere completed-snapshots voor één
+//      `sourceGameId` aanmaken, of een orphan-snapshot achterlaten na een
+//      crash tussen de twee (voorheen losse) writes.
 //  17. Geen recursieve-wildcard match voor `completedGames` (zelfde
 //      argumentatie als punt 12 voor `games`/`actions`): nog geen
 //      cross-team-querybehoefte, dus elke `collectionGroup`-query blijft
@@ -700,11 +708,33 @@ service cloud.firestore {
           // pad-/payloadcontext, en de aanroeper moet de ACTUELE writer zijn
           // van het sourceGameId-parentdocument — spiegelt exact hoe punt 11
           // een action-envelope aan de huidige claim bindt.
+          //
+          // [P1, externe review PR #61] Dit alleen was géén integriteitscontract:
+          // dezelfde writer kon zonder deze regel meerdere completed-snapshots
+          // voor ÉÉN sourceGameId aanmaken, en een crash tussen deze create en
+          // de finalize-patch op het parentdocument (10c hierboven) kon een
+          // orphan-snapshot achterlaten. `getAfter()` bindt deze create nu aan
+          // de UITKOMST van dezelfde atomische Firestore-batch (`WriteBatch`,
+          // zie `FirestoreGameCloudGateway.finalizeCompletedGame()` —
+          // `getAfter()` is expliciet ondersteund binnen zowel transacties als
+          // batched writes): het parentdocument moet er ONMIDDELLIJK NA deze
+          // batch precies `completedGameId == completedGameId` (dit pad-ID)
+          // uitzien. Een standalone create zonder de bijbehorende parentpatch
+          // in dezelfde batch faalt dus altijd (`getAfter()` toont dan de
+          // ONGEWIJZIGDE — mogelijk nog `null`, of een ANDERE — bestaande
+          // waarde). Een tweede create-poging voor een AL afgeronde wedstrijd
+          // faalt eveneens: de bijbehorende finalize-patch (10c) eist zelf al
+          // `resource.data.completedGameId == null` vóór de batch, dus zodra
+          // één batch succesvol `completedGameId` heeft gezet, faalt een
+          // volgende batch (met een ANDER ID) atomisch in zijn geheel — nooit
+          // een tweede snapshot, nooit een orphan.
           allow create: if canWriteGameData(orgId, teamId) &&
             isValidCompletedGamePayload(request.resource.data) &&
             request.resource.data.organizationId == orgId &&
             request.resource.data.teamId == teamId &&
-            gameData(orgId, teamId, request.resource.data.sourceGameId).writerUid == request.auth.uid;
+            gameData(orgId, teamId, request.resource.data.sourceGameId).writerUid == request.auth.uid &&
+            getAfter(gameRef(orgId, teamId, request.resource.data.sourceGameId)).data.completedGameId
+              == completedGameId;
 
           // Onveranderlijk en onverwijderbaar in fase 7 (docs/pr-7.2-plan.md
           // §B/§D) — een tombstone-fieldpatch is bewust PR 7.2c-scope.

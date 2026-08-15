@@ -225,25 +225,24 @@ export class GameSyncCoordinator {
    *      serverbevestigd" is). Faalt deze stap, dan stopt `finalize()` hier
    *      met exact dat resultaat — geen van de twee stappen hieronder wordt
    *      geprobeerd.
-   *   4. `ensureCompletedGame()` — create-only en idempotent (net als
-   *      `uploadActions()`): een retry na crash/timeout maakt nooit een
-   *      tweede snapshot, en een bestaande snapshot met een AFWIJKENDE
-   *      payload faalt zichtbaar i.p.v. vals te slagen.
-   *   5. `patchSnapshot({completedGameId: completed.id}, revision)` — de
-   *      eenmalige finalize-patch (firestore.rules punt 15); `revision` komt
-   *      vers uit stap 3's eigen resultaat, nooit een verouderde lokale
-   *      waarde.
+   *   4. `finalizeCompletedGame()` — P1-fix (externe review PR #61): schrijft
+   *      de completed-snapshot ÉN patcht `completedGameId` op het
+   *      parentdocument als ÉÉN atomische Firestore-`WriteBatch` (nooit twee
+   *      losse writes — dat liet voorheen een dubbele-snapshot/orphan-gat
+   *      open, zie `GameCloudGateway.finalizeCompletedGame()`'s docstring).
+   *      `expectedRevision` komt vers uit stap 3's eigen resultaat, nooit een
+   *      verouderde lokale waarde. Faalt de batch, dan is GEEN van beide
+   *      writes doorgekomen — een latere `finalize()`-aanroep begint gewoon
+   *      opnieuw bij stap 1/2.
    *
-   * Bekende grens (bewust, net als PR 7.1c's eigen gedocumenteerde gaten):
-   * een browsercrash tussen "lokaal archiveren" (`handleFinishGame()`) en
-   * een voltooide `finalize()` kan de raw `ActiveGame.actions` van DIT
-   * apparaat niet meer hervatten na een paginareload — v2 kent maar één
-   * actieve-wedstrijdslot, dus `gameRepo` is dan al naar een verse opzet
-   * gereset. De lokale `CompletedGame` (CSV/Historie) blijft in dat geval
-   * altijd beschikbaar; alleen de cloud-sync van precies dát device blijft
-   * dan op `'actie-nodig'` staan totdat een gebruiker de app open heeft
-   * tijdens een online moment (`app/App.tsx` bewaart een sessie-ref en
-   * herprobeert op reconnect, exact zoals de bestaande tracking-sync doet).
+   * Hervatbaarheid over een paginareload heen (P1-fix, externe review PR
+   * #61): `app/App.tsx` bewaart het `(ActiveGame, CompletedGame)`-paar dat
+   * deze functie nodig heeft in een DUURZAME lokale outbox
+   * (`PendingFinalizeRepository`, geschreven vóórdat het actieve-wedstrijdslot
+   * naar een verse opzet wordt gereset) — niet alleen in een in-memory `Ref`.
+   * Een crash tussen "lokaal archiveren" en een voltooide `finalize()`
+   * verliest zo geen retrybron meer: bij de volgende app-load worden alle nog
+   * openstaande outbox-items opnieuw aan `finalize()` aangeboden.
    */
   async finalize(
     game: ActiveGame,
@@ -292,27 +291,20 @@ export class GameSyncCoordinator {
     if (synced.status !== 'idle') return synced;
     checkpoint = synced;
 
-    const completedResult = await this.gateway.ensureCompletedGame(
-      game.organizationId,
-      game.teamId,
-      completed.id,
-      projectCompletedGameSnapshot(completed),
-    );
-    if (!completedResult.ok) return this.fail(checkpoint, completedResult.error);
-
-    const patchResult = await this.gateway.patchSnapshot(
+    const finalizeResult = await this.gateway.finalizeCompletedGame(
       game.organizationId,
       game.teamId,
       game.id,
-      { completedGameId: completed.id },
+      completed.id,
+      projectCompletedGameSnapshot(completed),
       checkpoint.serverRevision,
     );
-    if (!patchResult.ok) return this.fail(checkpoint, patchResult.error);
+    if (!finalizeResult.ok) return this.fail(checkpoint, finalizeResult.error);
 
     const finalized: GameSyncCheckpoint = {
       ...checkpoint,
       completedGameId: completed.id,
-      serverRevision: patchResult.revision ?? checkpoint.serverRevision + 1,
+      serverRevision: finalizeResult.revision ?? checkpoint.serverRevision + 1,
       status: 'idle',
       lastError: undefined,
       updatedAt: this.now(),

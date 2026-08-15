@@ -69,13 +69,6 @@ export interface GameActionUploadOutcome {
  */
 export type CompletedGameSnapshotProjection = Omit<CompletedGameDocument, 'syncedAt'>;
 
-export interface CompletedGameWriteResult {
-  ok: boolean;
-  /** `true` wanneer het document al bestond met een semantisch gelijke payload. */
-  alreadyConfirmed?: boolean;
-  error?: unknown;
-}
-
 export interface GameCloudGateway {
   /**
    * Maakt het parentdocument aan als het nog niet bestaat; een bestaand
@@ -112,16 +105,28 @@ export interface GameCloudGateway {
     expectedRevision: number,
   ): Promise<GameSnapshotWriteResult>;
   /**
-   * PR 7.2a: maakt de bevroren completed-snapshot aan als
-   * `completedGameId` nog niet bestaat. Create-only en idempotent (zelfde
-   * patroon als `uploadActions()`): een retry met dezelfde `completedGameId`
-   * mag nooit een afwijkende payload accepteren — `alreadyConfirmed`
-   * onderscheidt "al aanwezig, semantisch gelijk" van een echt conflict.
+   * PR 7.2a, P1-fix (externe review PR #61): rondt een wedstrijd atomisch af
+   * — schrijft de completed-snapshot ÉN patcht `completedGameId` op het
+   * parentdocument in dezelfde Firestore-`WriteBatch`, nooit als twee losse
+   * writes. Zonder deze atomiciteit kon dezelfde writer meerdere
+   * completed-snapshots voor één `gameId` aanmaken, of een crash tussen de
+   * twee writes een orphan-snapshot achterlaten (een snapshot zonder
+   * bijbehorende parentverwijzing). firestore.rules' `getAfter()`-check op
+   * de `completedGames`-createregel (punt 16) dwingt af dat beide writes
+   * altijd samen slagen of samen falen — dit is dus geen client-only
+   * garantie. Faalt de batch (bijv. een verouderde `expectedRevision`, een
+   * Rules-afwijzing, of — idempotent — een wedstrijd die server-side al
+   * naar deze of een andere `completedGameId` is afgerond), dan is GEEN van
+   * beide writes doorgekomen; de aanroeper retryt via een volledig nieuwe
+   * `finalize()`-cyclus (die eerst opnieuw controleert of de wedstrijd
+   * intussen al afgerond is, zie `GameSyncCoordinator.finalize()`).
    */
-  ensureCompletedGame(
+  finalizeCompletedGame(
     organizationId: string,
     teamId: string,
+    gameId: string,
     completedGameId: string,
     snapshot: CompletedGameSnapshotProjection,
-  ): Promise<CompletedGameWriteResult>;
+    expectedRevision: number,
+  ): Promise<GameSnapshotWriteResult>;
 }
