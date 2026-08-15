@@ -4,6 +4,7 @@ import { MAX_CLOCK_SECONDS } from '../../src/domain/game/types';
 import {
   projectGameActions,
   projectGameSnapshot,
+  projectGameSnapshotPatch,
   type GameCloudWriterContext,
 } from '../../src/application/game/projectGameForCloud';
 
@@ -198,6 +199,56 @@ describe('projectGameActions (PR 7.1a)', () => {
     expect(delta?.action).toEqual({ type: 'score-delta', team: 'for', delta: 2 });
     expect(set?.action).toEqual({ type: 'score-set', team: 'against', value: 10 });
     expect(deleted?.action).toEqual({ type: 'segment-deleted', segmentId: 'seg-x' });
+  });
+});
+
+describe('projectGameSnapshotPatch (PR 7.1c)', () => {
+  it('bevat exact de draaivelden-/afgeleide-snapshot-subset, nooit de onveranderlijke kernvelden', () => {
+    const patch = projectGameSnapshotPatch(fullGameFixture());
+    expect(Object.keys(patch).sort()).toEqual(
+      [
+        'beginSec',
+        'curQuarter',
+        'endSec',
+        'onCourt',
+        'pendingSwapLineup',
+        'phase',
+        'scoreFor',
+        'scoreAgainst',
+        'segmentCount',
+        'startedAt',
+      ].sort(),
+    );
+    expect(patch).not.toHaveProperty('organizationId');
+    expect(patch).not.toHaveProperty('teamId');
+    expect(patch).not.toHaveProperty('players');
+    expect(patch).not.toHaveProperty('opponent');
+    expect(patch).not.toHaveProperty('competition');
+    expect(patch).not.toHaveProperty('clockDown');
+    expect(patch).not.toHaveProperty('limitStr');
+    expect(patch).not.toHaveProperty('createdAt');
+    expect(patch).not.toHaveProperty('writerUid');
+    expect(patch).not.toHaveProperty('deviceId');
+    expect(patch).not.toHaveProperty('writerEpoch');
+    expect(patch).not.toHaveProperty('revision');
+  });
+
+  it('spiegelt exact de afgeleide/draaivelden uit projectGameSnapshot', () => {
+    const game = fullGameFixture();
+    const snapshot = projectGameSnapshot(game);
+    const patch = projectGameSnapshotPatch(game);
+    expect(patch).toEqual({
+      phase: snapshot.phase,
+      onCourt: snapshot.onCourt,
+      curQuarter: snapshot.curQuarter,
+      beginSec: snapshot.beginSec,
+      endSec: snapshot.endSec,
+      pendingSwapLineup: snapshot.pendingSwapLineup,
+      scoreFor: snapshot.scoreFor,
+      scoreAgainst: snapshot.scoreAgainst,
+      segmentCount: snapshot.segmentCount,
+      startedAt: snapshot.startedAt,
+    });
   });
 });
 

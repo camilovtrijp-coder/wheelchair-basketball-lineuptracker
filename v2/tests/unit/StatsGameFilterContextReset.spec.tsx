@@ -94,6 +94,8 @@ const repositories = {
   mode: 'cloud' as const,
   settings: new StaticSettingsRepository(),
   roster: new StaticRosterRepository(),
+  gameSync: null,
+  gameWriterContext: null,
 };
 
 describe('app/App — statsGameIds reset bij organisatie/teamwissel (externe PR-6.5-review)', () => {

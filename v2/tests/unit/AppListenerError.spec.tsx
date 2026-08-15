@@ -144,6 +144,8 @@ const repositories = {
   mode: 'cloud' as const,
   settings: new ControlledAsyncSettingsRepository(),
   roster: new ControlledAsyncRosterRepository(),
+  gameSync: null,
+  gameWriterContext: null,
 };
 
 describe('app/App — listener-fout-detectie na initiële load (PR 5.4a)', () => {
@@ -186,6 +188,8 @@ describe('app/App — listener-fout-detectie na initiële load (PR 5.4a)', () =>
       mode: 'cloud' as const,
       settings: settingsRepo,
       roster: new ControlledAsyncRosterRepository(),
+      gameSync: null,
+      gameWriterContext: null,
     };
     const { queryByTestId } = render(
       <App

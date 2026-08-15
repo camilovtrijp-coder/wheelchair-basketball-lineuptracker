@@ -275,6 +275,7 @@ export function AuthGate({ authGateway }: AuthGateProps) {
         selectedContext,
         trustedDevice,
         firestoreDb: getFirestoreDb(),
+        storage: browserStorage,
       }),
       browserStorage,
     );
