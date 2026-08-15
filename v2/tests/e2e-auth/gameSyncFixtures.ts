@@ -80,6 +80,28 @@ export async function forgetLocalSyncCheckpoint(page: Page, gameId: string): Pro
   await page.evaluate((key) => localStorage.removeItem(key), gameSyncCheckpointStorageKey(gameId));
 }
 
+/** Leest het lokale synccheckpoint rechtstreeks uit localStorage (JSON, geen typegarantie hier nodig). */
+export async function readLocalCheckpoint(
+  page: Page,
+  gameId: string,
+): Promise<{ confirmedActionIds: string[]; status: string } | null> {
+  const raw = await page.evaluate(
+    (key) => localStorage.getItem(key),
+    gameSyncCheckpointStorageKey(gameId),
+  );
+  if (!raw) return null;
+  return JSON.parse(raw) as { confirmedActionIds: string[]; status: string };
+}
+
+/** Leest de lokale ActiveGame.actions-array (client-ID's) rechtstreeks uit localStorage. */
+export async function readLocalActionIds(page: Page, team: PilotTeam): Promise<string[]> {
+  const key = activeGameStorageKey(team.orgId, team.teamId);
+  const raw = await page.evaluate((storageKey) => localStorage.getItem(storageKey), key);
+  if (!raw) throw new Error('geen actieve wedstrijd gevonden in localStorage');
+  const game = JSON.parse(raw) as { actions: Array<{ id: string }> };
+  return game.actions.map((a) => a.id);
+}
+
 export async function waitForGameSyncStatus(
   page: Page,
   status: string,

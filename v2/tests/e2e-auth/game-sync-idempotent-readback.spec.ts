@@ -6,12 +6,25 @@
 // correct herkent). Beide tests "vergeten" via `forgetLocalSyncCheckpoint()`
 // een al bevestigde actie lokaal, zodat de eerstvolgende sync 'm opnieuw
 // probeert te uploaden en zo tegen een document botst dat al bestaat.
+//
+// De tweede test hieronder is TEGELIJK het "gedeeltelijke uploadfout"-
+// acceptatiescenario uit docs/pr-7.1-plan.md §C 7.1c werk 5: X en Y worden
+// in ÉÉN uploadActions()-aanroep meegegeven (unconfirmed = [X, Y]) en X
+// faalt terwijl Y slaagt — mechanisch dus al een echte gedeeltelijke
+// batchfout. De tamper-truc is uitsluitend het deterministische middel om
+// die situatie reproduceerbaar te forceren (in de praktijk is dit
+// onbereikbaar via de client — create-only laat een update nooit toe); wat
+// getest wordt is of GameSyncCoordinator na zo'n gedeeltelijke fout de
+// geslaagde actie bevestigd houdt, de gefaalde actie lokaal behoudt (nooit
+// verwijdert) en dit zichtbaar als 'actie-nodig' meldt.
 import { test, expect } from '@playwright/test';
 import { openPilotTeam, registerPilotCoach, seedPilotTeam } from './twoDeviceFixtures';
 import {
   forgetLocalSyncCheckpoint,
   gameActionsCollection,
   gameDoc,
+  readLocalActionIds,
+  readLocalCheckpoint,
   readLocalGameId,
   seedPilotRoster,
   startTrackedGame,
@@ -56,7 +69,7 @@ test('identieke payload op een "vergeten" bevestigde actie: alreadyConfirmed, no
   expect(finalGame.data()?.scoreAgainst).toBe(1);
 });
 
-test('afwijkende payload op een "vergeten" bevestigde actie-ID: actie-nodig, serverdocument blijft ongewijzigd', async ({
+test('gedeeltelijke uploadfout (afwijkende payload op één van twee acties in dezelfde batch): de geslaagde actie blijft bevestigd, de gefaalde actie blijft lokaal bestaan, actie-nodig zichtbaar, serverdocument van de gefaalde actie blijft ongewijzigd', async ({
   page,
 }) => {
   const identity = await registerPilotCoach(page, 'game-sync-conflict-payload');
@@ -81,6 +94,9 @@ test('afwijkende payload op een "vergeten" bevestigde actie-ID: actie-nodig, ser
   // via de echte readback-vergelijking).
   await gameDoc(team, gameId).collection('actions').doc(actionXId).update({ 'action.delta': 999 });
 
+  // X "vergeten" + Y scoren: de eerstvolgende sync stuurt [X, Y] in ÉÉN
+  // uploadActions()-aanroep — X faalt (conflict), Y slaagt. Een echte
+  // gedeeltelijke batchfout, geen twee losse sync-cycli.
   await forgetLocalSyncCheckpoint(page, gameId);
   await page.getByTestId('score-plus1-against').click();
   await waitForGameSyncStatus(page, 'actie-nodig', 20_000);
@@ -92,4 +108,20 @@ test('afwijkende payload op een "vergeten" bevestigde actie-ID: actie-nodig, ser
   expect(finalActions.size).toBe(2);
   const finalXDoc = finalActions.docs.find((d) => d.id === actionXId);
   expect(finalXDoc?.data().action).toEqual({ type: 'score-delta', team: 'for', delta: 999 });
+
+  // Lokaal checkpoint: Y is bevestigd, X (het conflict) NIET — dus bij een
+  // volgende sync wordt X terecht opnieuw geprobeerd, nooit stilzwijgend
+  // als "klaar" beschouwd.
+  const checkpoint = await readLocalCheckpoint(page, gameId);
+  expect(checkpoint?.status).toBe('actie-nodig');
+  expect(checkpoint?.confirmedActionIds).not.toContain(actionXId);
+  expect(checkpoint?.confirmedActionIds.length).toBe(1);
+
+  // De lokale ActiveGame.actions-array verliest NOOIT een actie door een
+  // mislukte upload — X en Y staan beide nog gewoon lokaal, ongeacht hun
+  // server-uitkomst (ADR-002: de lokale actielog blijft de bron van
+  // waarheid, een gefaalde sync mag 'm nooit inkorten).
+  const localActionIds = await readLocalActionIds(page, team);
+  expect(localActionIds).toContain(actionXId);
+  expect(localActionIds.length).toBe(2);
 });
