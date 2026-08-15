@@ -90,6 +90,47 @@ signaal, wat de gebruiker juist aanzet tot nóg meer klikken.
 
 **Status**: open, nog niet gefixt.
 
+### 4. "Uitnodiging accepteren" mislukt direct na e-mailverificatie (verouderd ID-token)
+
+**Symptoom**: account B doorloopt e-mailverificatie succesvol en bereikt
+het "Uitnodiging accepteren"-scherm (rol correct getoond:
+`organizationAdmin`), maar het klikken op **"Uitnodiging accepteren"**
+faalt met de generieke melding "Er ging iets mis. Probeer het opnieuw."
+
+**Oorzaak**: twee samenhangende problemen.
+- **Hoofdoorzaak**: `firebase/firestore.rules`' accept-regel controleert
+  `request.auth.token.email_verified == true` — dat is een claim in het
+  **ID-token (JWT)**, niet hetzelfde als `user.emailVerified` (het lokale,
+  direct bijgewerkte SDK-veld waar `AcceptInvitationScreen` zelf op
+  gate't om dit scherm te tonen). Nergens in `v2/src` wordt na de
+  verificatielink een expliciete ID-token-refresh (`getIdToken(true)` /
+  opnieuw inloggen) afgedwongen — de Firebase SDK ververst het token pas
+  automatisch na ca. een uur. Het accept-verzoek gebruikt dus
+  hoogstwaarschijnlijk nog een verouderd token waarin `email_verified`
+  nog `false` staat, en Firestore Rules wijzen de write af
+  (`permission-denied`).
+- **Secundair, gerelateerd probleem**: `FirestoreOrganizationGateway.acceptInvitation()`
+  geeft de echte Firestore-foutcode wél door in `OperationResult.errorCode`,
+  maar `AcceptInvitationScreen.handleAccept()` gebruikt alleen `result.ok`
+  en negeert `errorCode` volledig — dus deze faalmodus was zonder
+  codeonderzoek niet te diagnosticeren vanuit de UI of de browserconsole.
+
+**Waarom dit niet eerder opviel**: de bestaande Rules-tests
+(`firebase/tests/rules/bootstrap-and-invitation-flow.spec.ts`) bakken
+`email_verified` altijd statisch in bij het aanmaken van de testcontext
+(`authCtx(env, uid, { email_verified: true })`) — het scenario "eerst
+`false`, dan geverifieerd, dan schrijven met het oude token" is in die
+testopzet structureel onmogelijk om te reproduceren.
+
+**Workaround**: uitloggen en opnieuw inloggen forceert een vers ID-token
+en zou de accept-actie alsnog moeten laten slagen.
+
+**Gevonden via**: `docs/pr-5.5-handmatig-protocol.md` §B.2 stap 8, staging
+— account B, `basketball-tracker-staging`-Deploy Preview, 15 aug. 2026.
+
+**Status**: open, nog niet gefixt. Root cause bevestigd via codeonderzoek;
+workaround nog niet bevestigd door de eigenaar.
+
 ## Nog te doen
 
 - Meer bugs toevoegen naarmate het 5.5c-protocol verder wordt uitgevoerd
