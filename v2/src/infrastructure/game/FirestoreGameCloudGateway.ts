@@ -43,11 +43,14 @@ import {
   type Firestore,
 } from 'firebase/firestore';
 import {
+  completedGameConverter,
   gameActionConverter,
   gameConverter,
   type GameActionEnvelopeDocument,
 } from 'firebase-base/documents';
 import type {
+  CompletedGameSnapshotProjection,
+  CompletedGameWriteResult,
   GameActionUploadOutcome,
   GameCloudGateway,
   GameSnapshotProjection,
@@ -143,6 +146,22 @@ export class FirestoreGameCloudGateway implements GameCloudGateway {
     );
   }
 
+  private completedGameRef(
+    organizationId: string,
+    teamId: string,
+    completedGameId: string,
+  ): DocumentReference {
+    return doc(
+      this.db,
+      'organizations',
+      organizationId,
+      'teams',
+      teamId,
+      'completedGames',
+      completedGameId,
+    );
+  }
+
   async ensureGame(
     organizationId: string,
     teamId: string,
@@ -163,6 +182,7 @@ export class FirestoreGameCloudGateway implements GameCloudGateway {
           revision: data.revision,
           writerUid: data.writerUid,
           deviceId: data.deviceId,
+          completedGameId: data.completedGameId,
         };
       }
       await withTimeout(
@@ -175,6 +195,7 @@ export class FirestoreGameCloudGateway implements GameCloudGateway {
         revision: snapshot.revision,
         writerUid: snapshot.writerUid,
         deviceId: snapshot.deviceId,
+        completedGameId: snapshot.completedGameId,
       };
     } catch (createError) {
       // Race met een ander apparaat dat het document tussen onze getDoc() en
@@ -196,6 +217,7 @@ export class FirestoreGameCloudGateway implements GameCloudGateway {
             revision: data.revision,
             writerUid: data.writerUid,
             deviceId: data.deviceId,
+            completedGameId: data.completedGameId,
           };
         }
       } catch {
@@ -281,6 +303,7 @@ export class FirestoreGameCloudGateway implements GameCloudGateway {
           revision: data.revision,
           writerUid: data.writerUid,
           deviceId: data.deviceId,
+          completedGameId: data.completedGameId,
         };
       }
     } catch {
@@ -291,6 +314,47 @@ export class FirestoreGameCloudGateway implements GameCloudGateway {
       revision: nextRevision,
       writerUid: patch.writerUid,
       deviceId: patch.deviceId,
+      completedGameId: patch.completedGameId,
     };
+  }
+
+  async ensureCompletedGame(
+    organizationId: string,
+    teamId: string,
+    completedGameId: string,
+    snapshot: CompletedGameSnapshotProjection,
+  ): Promise<CompletedGameWriteResult> {
+    const ref = this.completedGameRef(organizationId, teamId, completedGameId);
+    try {
+      await withTimeout(
+        setDoc(ref, { ...snapshot, syncedAt: serverTimestamp() }),
+        this.timeoutMs,
+        'ensureCompletedGame:setDoc',
+      );
+      return { ok: true };
+    } catch (createError) {
+      // Zelfde patroon als uploadActions(): firestore.rules staat alleen
+      // `create` toe op completedGames (nooit `update`), dus een retry met
+      // dezelfde completedGameId botst altijd op een permission-denied als
+      // het document al bestaat. Readback onderscheidt "al aanwezig met
+      // identieke payload" (alreadyConfirmed) van een echt conflict.
+      try {
+        const existing = await withTimeout(
+          getDoc(ref.withConverter(completedGameConverter)),
+          this.timeoutMs,
+          'ensureCompletedGame:readback',
+        );
+        if (existing.exists()) {
+          const { syncedAt: _syncedAt, ...rest } = existing.data();
+          void _syncedAt;
+          if (deepEqual(rest, snapshot)) {
+            return { ok: true, alreadyConfirmed: true };
+          }
+        }
+      } catch {
+        /* geen bruikbare readback — val door naar het oorspronkelijke faalresultaat */
+      }
+      return { ok: false, error: createError };
+    }
   }
 }

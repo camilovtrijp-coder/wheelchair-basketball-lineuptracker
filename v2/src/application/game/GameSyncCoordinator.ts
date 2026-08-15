@@ -31,7 +31,8 @@
 // blijft de enige bron van waarheid voor historie) en een latere `sync()`-
 // aanroep (nieuwe actie, reconnect, handmatige retry) probeert gewoon
 // opnieuw vanaf de eerste nog-niet-voltooide stap.
-import type { ActiveGame } from '../../domain/game/types';
+import type { ActiveGame, CompletedGame } from '../../domain/game/types';
+import type { SyncStatus } from '../../domain/syncState';
 import {
   createEmptyGameSyncCheckpoint,
   isActionConfirmed,
@@ -46,6 +47,7 @@ import {
   projectGameSnapshotPatch,
   type GameCloudWriterContext,
 } from './projectGameForCloud';
+import { projectCompletedGameSnapshot } from './projectCompletedGameForCloud';
 
 export interface GameSyncCoordinatorDeps {
   gateway: GameCloudGateway;
@@ -191,5 +193,161 @@ export class GameSyncCoordinator {
     };
     this.checkpoints.write(settled);
     return settled;
+  }
+
+  /**
+   * Rondt `game` af naar de cloud (PR 7.2a, docs/pr-7.2-plan.md §C 7.2a werk
+   * 2). Aangeroepen ná `finishGame()`/`completedGameRepo.add()` (die de
+   * lokale, altijd-beschikbare bron blijven — zie `app/App.tsx`
+   * `handleFinishGame()`); `game` is de zojuist afgeronde `ActiveGame`
+   * (nog met zijn volledige `actions`-log), `completed` de daaruit
+   * afgeleide, al lokaal opgeslagen `CompletedGame`.
+   *
+   * Eén `finalize()`-aanroep doorloopt, in volgorde:
+   *   1. Lokale kortsluiting — als dit checkpoint al `completedGameId ===
+   *      completed.id` draagt, is er niets te doen (idempotent tegen een
+   *      herhaalde aanroep binnen dezelfde sessie, geen netwerk nodig).
+   *   2. Server-kortsluiting — `ensureGame()` (idempotent, ook een pure
+   *      lezing als het document al bestaat) levert de ACTUELE
+   *      `completedGameId` op. Nodig omdat de normale/finalize-patchpaden in
+   *      firestore.rules (punt 10a/15) een reeds `completedGameId != null`
+   *      parentdocument categorisch weigeren: zonder deze voorcontrole zou
+   *      een retry na een crash — server al bevestigd, lokaal checkpoint nog
+   *      niet bijgewerkt — permanent op `sync()`'s eigen patchstap
+   *      vastlopen. Bij een afwijkende `completedGameId` (een andere
+   *      snapshot dan verwacht) stopt dit zichtbaar; dat kan legitiem alleen
+   *      als er ooit een dubbele/gecorrumpeerde lokale toestand ontstaat.
+   *   3. `sync(game, writer)` — hergebruikt de volledige bestaande
+   *      finalize-onafhankelijke flow (ensure/claim/upload/patch) zodat de
+   *      actieset en de parentsnapshot server-bevestigd zijn vóórdat er een
+   *      completed-snapshot ontstaat (docs/pr-7.2-plan.md §B: "een completed
+   *      snapshot mag alleen ontstaan als de bijbehorende actionset ...
+   *      serverbevestigd" is). Faalt deze stap, dan stopt `finalize()` hier
+   *      met exact dat resultaat — geen van de twee stappen hieronder wordt
+   *      geprobeerd.
+   *   4. `ensureCompletedGame()` — create-only en idempotent (net als
+   *      `uploadActions()`): een retry na crash/timeout maakt nooit een
+   *      tweede snapshot, en een bestaande snapshot met een AFWIJKENDE
+   *      payload faalt zichtbaar i.p.v. vals te slagen.
+   *   5. `patchSnapshot({completedGameId: completed.id}, revision)` — de
+   *      eenmalige finalize-patch (firestore.rules punt 15); `revision` komt
+   *      vers uit stap 3's eigen resultaat, nooit een verouderde lokale
+   *      waarde.
+   *
+   * Bekende grens (bewust, net als PR 7.1c's eigen gedocumenteerde gaten):
+   * een browsercrash tussen "lokaal archiveren" (`handleFinishGame()`) en
+   * een voltooide `finalize()` kan de raw `ActiveGame.actions` van DIT
+   * apparaat niet meer hervatten na een paginareload — v2 kent maar één
+   * actieve-wedstrijdslot, dus `gameRepo` is dan al naar een verse opzet
+   * gereset. De lokale `CompletedGame` (CSV/Historie) blijft in dat geval
+   * altijd beschikbaar; alleen de cloud-sync van precies dát device blijft
+   * dan op `'actie-nodig'` staan totdat een gebruiker de app open heeft
+   * tijdens een online moment (`app/App.tsx` bewaart een sessie-ref en
+   * herprobeert op reconnect, exact zoals de bestaande tracking-sync doet).
+   */
+  async finalize(
+    game: ActiveGame,
+    completed: CompletedGame,
+    writer: GameCloudWriterContext,
+  ): Promise<GameSyncCheckpoint> {
+    let checkpoint = this.readCheckpoint(game);
+
+    if (checkpoint.completedGameId === completed.id) {
+      return checkpoint;
+    }
+    if (checkpoint.completedGameId !== undefined) {
+      return this.fail(
+        checkpoint,
+        `wedstrijd is al afgerond naar een andere cloud-snapshot (completedGameId=${checkpoint.completedGameId})`,
+      );
+    }
+
+    const ensure = await this.gateway.ensureGame(
+      game.organizationId,
+      game.teamId,
+      game.id,
+      projectGameSnapshot(game),
+    );
+    if (!ensure.ok) return this.fail(checkpoint, ensure.error);
+    if (ensure.completedGameId != null) {
+      if (ensure.completedGameId !== completed.id) {
+        return this.fail(
+          checkpoint,
+          `wedstrijd is server-side al afgerond naar een andere cloud-snapshot (completedGameId=${ensure.completedGameId})`,
+        );
+      }
+      const alreadyDone: GameSyncCheckpoint = {
+        ...checkpoint,
+        completedGameId: completed.id,
+        serverRevision: ensure.revision ?? checkpoint.serverRevision,
+        status: 'idle',
+        lastError: undefined,
+        updatedAt: this.now(),
+      };
+      this.checkpoints.write(alreadyDone);
+      return alreadyDone;
+    }
+
+    const synced = await this.sync(game, writer);
+    if (synced.status !== 'idle') return synced;
+    checkpoint = synced;
+
+    const completedResult = await this.gateway.ensureCompletedGame(
+      game.organizationId,
+      game.teamId,
+      completed.id,
+      projectCompletedGameSnapshot(completed),
+    );
+    if (!completedResult.ok) return this.fail(checkpoint, completedResult.error);
+
+    const patchResult = await this.gateway.patchSnapshot(
+      game.organizationId,
+      game.teamId,
+      game.id,
+      { completedGameId: completed.id },
+      checkpoint.serverRevision,
+    );
+    if (!patchResult.ok) return this.fail(checkpoint, patchResult.error);
+
+    const finalized: GameSyncCheckpoint = {
+      ...checkpoint,
+      completedGameId: completed.id,
+      serverRevision: patchResult.revision ?? checkpoint.serverRevision + 1,
+      status: 'idle',
+      lastError: undefined,
+      updatedAt: this.now(),
+    };
+    this.checkpoints.write(finalized);
+    return finalized;
+  }
+
+  /**
+   * PR 7.2a: synchrone, netwerkloze statuslezing voor de Historie-lijst (elk
+   * afgerond item toont `lokaal`/`wacht op synchronisatie`/`gesynchroniseerd`/
+   * `actie nodig`, docs/pr-7.2-plan.md §C 7.2a werk 4). Leest uitsluitend het
+   * lokale checkpoint — geen `'wacht-op-synchronisatie'`-tussentoestand hier,
+   * die zet de aanroeper zelf terwijl een `finalize()`-aanroep in-flight is
+   * (zelfde patroon als `app/App.tsx`'s bestaande `gameSyncStatus` voor de
+   * actieve wedstrijd).
+   */
+  readFinalizeStatus(
+    sourceGameId: string,
+    organizationId: string,
+    teamId: string,
+    completedGameId: string,
+  ): SyncStatus {
+    const checkpoint = this.checkpoints.read(sourceGameId);
+    if (
+      !checkpoint ||
+      checkpoint.organizationId !== organizationId ||
+      checkpoint.teamId !== teamId
+    ) {
+      return 'lokaal-beschikbaar';
+    }
+    if (checkpoint.completedGameId === completedGameId && checkpoint.status === 'idle') {
+      return 'gesynchroniseerd';
+    }
+    if (checkpoint.status === 'actie-nodig') return 'actie-nodig';
+    return 'lokaal-beschikbaar';
   }
 }

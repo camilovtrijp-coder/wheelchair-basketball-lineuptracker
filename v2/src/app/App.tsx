@@ -347,6 +347,77 @@ export function App({
     return () => window.removeEventListener('online', handleOnline);
   }, [runGameSync]);
 
+  /**
+   * PR 7.2a (docs/pr-7.2-plan.md §C 7.2a werk 4): per-`CompletedGame.id`
+   * cloudsyncstatus voor de Historie-lijst. `pendingFinalizesRef` bewaart per
+   * nog-niet-bevestigde afronding het paar `(ActiveGame, CompletedGame)` dat
+   * `finalize()` nodig heeft — alleen beschikbaar voor wedstrijden die
+   * DEZE sessie zijn afgerond (`handleFinishGame` hieronder), zie de
+   * uitgebreide toelichting bij `GameSyncCoordinator.finalize()` over de
+   * bewuste grens op hervatbaarheid over een paginareload heen. Een reconnect
+   * probeert daarom alleen déze sessie's nog openstaande afrondingen opnieuw
+   * — exact zoals `runGameSync`/`handleOnline` hierboven voor de actieve
+   * wedstrijd doen.
+   */
+  const [finalizeStatuses, setFinalizeStatuses] = useState<Record<string, SyncStatus>>({});
+  const pendingFinalizesRef = useRef(
+    new Map<string, { game: ActiveGame; completed: CompletedGame }>(),
+  );
+
+  const runFinalize = useCallback(
+    (finishedGame: ActiveGame, completed: CompletedGame) => {
+      const coordinator = repositories.gameSync;
+      const writerContext = repositories.gameWriterContext;
+      if (!coordinator || !writerContext) return;
+      pendingFinalizesRef.current.set(completed.id, { game: finishedGame, completed });
+      setFinalizeStatuses((prev) => ({ ...prev, [completed.id]: 'wacht-op-synchronisatie' }));
+      coordinator.finalize(finishedGame, completed, writerContext).then(
+        (checkpoint) => {
+          if (checkpoint.status === 'idle') pendingFinalizesRef.current.delete(completed.id);
+          setFinalizeStatuses((prev) => ({
+            ...prev,
+            [completed.id]: checkpoint.status === 'idle' ? 'gesynchroniseerd' : 'actie-nodig',
+          }));
+        },
+        () => setFinalizeStatuses((prev) => ({ ...prev, [completed.id]: 'actie-nodig' })),
+      );
+    },
+    [repositories.gameSync, repositories.gameWriterContext],
+  );
+
+  // Ververst de volledige statuskaart wanneer de historielijst zelf wijzigt
+  // (initieel laden, verwijderen, back-up-import) — behalve voor items die
+  // `runFinalize` deze sessie nog aan het afhandelen is (`wacht-op-
+  // synchronisatie`/`actie-nodig` uit een in-flight of net mislukte poging
+  // blijft staan tot die `finalize()`-aanroep zelf resolvet, i.p.v. hier
+  // voortijdig overschreven te worden door een verouderde checkpointlezing).
+  useEffect(() => {
+    const coordinator = repositories.gameSync;
+    if (!coordinator) {
+      setFinalizeStatuses({});
+      return;
+    }
+    setFinalizeStatuses((prev) => {
+      const next: Record<string, SyncStatus> = {};
+      for (const g of completedGames) {
+        next[g.id] = pendingFinalizesRef.current.has(g.id)
+          ? (prev[g.id] ?? 'wacht-op-synchronisatie')
+          : coordinator.readFinalizeStatus(g.sourceGameId, organizationId, teamId, g.id);
+      }
+      return next;
+    });
+  }, [completedGames, repositories.gameSync, organizationId, teamId]);
+
+  useEffect(() => {
+    function handleOnline() {
+      for (const { game: g, completed: c } of pendingFinalizesRef.current.values()) {
+        runFinalize(g, c);
+      }
+    }
+    window.addEventListener('online', handleOnline);
+    return () => window.removeEventListener('online', handleOnline);
+  }, [runFinalize]);
+
   function handleConfirmV1Migration() {
     if (v1MigrationCandidate === null) return;
     const ok = gameRepo.confirmV1Migration(v1MigrationCandidate);
@@ -397,6 +468,14 @@ export function App({
       setCompletedGames((prev) => [completed, ...prev]);
     }
 
+    // PR 7.2a: fire-and-forget cloud-finalize, met dezelfde `game` (nog met
+    // zijn volledige `actions`-log) waaruit `archived` zojuist is afgeleid —
+    // ná deze functie wordt `gameRepo`/`game`-state naar `fresh` gereset, dus
+    // dit is de laatste plek waar de coordinator nog bij de bronacties kan
+    // (zie de uitgebreide toelichting bij `GameSyncCoordinator.finalize()`).
+    // `runFinalize` is zelf een no-op in lokale modus.
+    runFinalize(game, archived);
+
     const fresh = createGameFromRoster(roster, organizationId, teamId, settings.classBaseLimit);
     const resetOk = gameRepo.write(fresh);
     setGameSaveError(!resetOk);
@@ -411,6 +490,13 @@ export function App({
     if (!ok) return;
     setCompletedGames((prev) => prev.filter((g) => g.id !== id));
     setHistoryOpenId((prev) => (prev === id ? null : prev));
+    pendingFinalizesRef.current.delete(id);
+    setFinalizeStatuses((prev) => {
+      if (!(id in prev)) return prev;
+      const { [id]: _removed, ...rest } = prev;
+      void _removed;
+      return rest;
+    });
   }
 
   /**
@@ -752,6 +838,7 @@ export function App({
             // niet de bredere `canWriteGame` (die ook 'scorer' toelaat).
             canWrite={canWrite}
             saveError={gameSaveError}
+            syncStatuses={repositories.gameSync ? finalizeStatuses : undefined}
           />
         ) : tab === 'stats' ? (
           // PR 6.4: Stats-tab. Lees-only — geen write-flow, geen extra

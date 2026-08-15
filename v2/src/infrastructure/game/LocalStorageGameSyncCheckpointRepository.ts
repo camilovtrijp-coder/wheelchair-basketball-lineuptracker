@@ -29,7 +29,8 @@ function isGameSyncCheckpointShape(value: unknown): value is GameSyncCheckpoint 
     v.confirmedActionIds.every((id) => typeof id === 'string') &&
     typeof v.serverRevision === 'number' &&
     (v.status === 'idle' || v.status === 'actie-nodig') &&
-    typeof v.updatedAt === 'string'
+    typeof v.updatedAt === 'string' &&
+    (v.completedGameId === undefined || typeof v.completedGameId === 'string')
   );
 }
 

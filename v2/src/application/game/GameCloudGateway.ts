@@ -1,4 +1,8 @@
-import type { GameActionEnvelopeDocument, GameDocument } from 'firebase-base/documents';
+import type {
+  CompletedGameDocument,
+  GameActionEnvelopeDocument,
+  GameDocument,
+} from 'firebase-base/documents';
 
 /**
  * Application-poort voor de cloudkant van het wedstrijdmodel (PR 7.1a,
@@ -37,6 +41,15 @@ export interface GameSnapshotWriteResult {
    */
   writerUid?: string | null;
   deviceId?: string | null;
+  /**
+   * PR 7.2a: aanwezig bij `ok: true`; de actuele `completedGameId` op het
+   * serverdocument NA deze operatie. `GameSyncCoordinator.finalize()`
+   * gebruikt dit om een reeds server-side afgeronde wedstrijd te herkennen
+   * (bijv. na een crash die het lokale checkpoint niet meer bijwerkte vóórdat
+   * de vorige finalize-poging server-bevestigd raakte) zonder daarvoor een
+   * aparte leesoperatie nodig te hebben.
+   */
+  completedGameId?: string | null;
   error?: unknown;
 }
 
@@ -44,6 +57,21 @@ export interface GameActionUploadOutcome {
   actionId: string;
   ok: boolean;
   /** `true` wanneer het action-document al bestond met een semantisch gelijke payload. */
+  alreadyConfirmed?: boolean;
+  error?: unknown;
+}
+
+/**
+ * PR 7.2a: projectie van een `CompletedGame` naar de cloudvorm — zie
+ * `application/game/projectCompletedGameForCloud.ts`. `syncedAt` is
+ * server-bijgehouden bookkeeping (net als `GameSnapshotProjection`'s
+ * ontbrekende `updatedAt`), dus hier ook uitgesloten.
+ */
+export type CompletedGameSnapshotProjection = Omit<CompletedGameDocument, 'syncedAt'>;
+
+export interface CompletedGameWriteResult {
+  ok: boolean;
+  /** `true` wanneer het document al bestond met een semantisch gelijke payload. */
   alreadyConfirmed?: boolean;
   error?: unknown;
 }
@@ -83,4 +111,17 @@ export interface GameCloudGateway {
     patch: Partial<GameSnapshotProjection>,
     expectedRevision: number,
   ): Promise<GameSnapshotWriteResult>;
+  /**
+   * PR 7.2a: maakt de bevroren completed-snapshot aan als
+   * `completedGameId` nog niet bestaat. Create-only en idempotent (zelfde
+   * patroon als `uploadActions()`): een retry met dezelfde `completedGameId`
+   * mag nooit een afwijkende payload accepteren — `alreadyConfirmed`
+   * onderscheidt "al aanwezig, semantisch gelijk" van een echt conflict.
+   */
+  ensureCompletedGame(
+    organizationId: string,
+    teamId: string,
+    completedGameId: string,
+    snapshot: CompletedGameSnapshotProjection,
+  ): Promise<CompletedGameWriteResult>;
 }
