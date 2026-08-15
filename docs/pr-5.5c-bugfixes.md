@@ -43,25 +43,58 @@ emulator) — account A, `basketball-tracker-staging`-Deploy Preview,
 
 **Status**: open, nog niet gefixt.
 
-### 2. Geen zichtbare bevestiging bij "Opslaan" op Roster/Settings
+### 2. Geen zichtbare bevestiging bij opslaan — systemisch, niet Roster-only
 
-**Symptoom**: na het klikken op "Opslaan" op de Team-tab (en vermoedelijk
-Instellingen) verschijnt geen duidelijke succes- of foutmelding.
+**Symptoom**: na het klikken op "Opslaan" (of een score-/wedstrijdactie)
+verschijnt nergens in de app een duidelijke succesmelding. Op verzoek van
+de eigenaar breder uitgezocht (16 aug. 2026): dit is **geen Roster-
+specifiek probleem, maar een systemisch patroon** dat vrijwel de hele app
+raakt.
 
-**Oorzaak**: `RosterPanel.handleSave()` (`v2/src/ui/roster/RosterPanel.tsx`)
-roept `onSave()` aan, die optimistisch `{ ok: true }` teruggeeft vóórdat de
-Firestore-serverbevestiging binnen is (`FirestoreRosterRepository.write()`).
-Een écht mislukte schrijfactie wordt pas zichtbaar via een aparte, globale
-"actie-nodig"-indicator — niet inline op de Roster-tab zelf. De inline
-foutmelding (`rosterSaveError`) triggert in de praktijk vrijwel nooit voor
-Firestore-writes.
+**Oorzaak, per gebied**:
+- **Roster (`RosterPanel.handleSave()`) en Settings
+  (`SettingsPanel.handleSave()`)**: beide gebruiken exact hetzelfde
+  `useSyncStatus`-contract (`v2/src/application/sync/useSyncStatus.ts`,
+  `saveRoster`/`saveSettings`) — een optimistische lokale write die
+  meteen `ok: true` teruggeeft, terwijl de Firestore-serverbevestiging
+  (`settled`) los, fire-and-forget, op de achtergrond afloopt. Geen
+  enkele positieve bevestiging; een écht mislukte serverwrite wordt pas
+  zichtbaar via de aparte, globale "actie-nodig"-indicator
+  (`ActionNeededPanel`), niet inline bij de knop zelf.
+- **Wedstrijdopzet (`GameSetupPanel`) en live-scoren
+  (`LiveTrackingPanel`: score, blokjes opslaan/bewerken, wedstrijd
+  afronden)**: geen expliciete "Opslaan"-knop per actie, maar elke
+  wijziging schrijft direct lokaal (`gameRepo.write()`, synchroon). Hier
+  wél een inline foutmelding bij een mislukte lokale write
+  (`data-testid="game-save-error"`), maar **nooit een positieve
+  bevestiging** — de gebruiker ziet alleen "geen foutmelding", niet
+  "opgeslagen". De achtergrond-cloudsync van een lopende wedstrijd
+  (`GameSyncCoordinator`) is alleen zichtbaar via de algemene
+  `SyncStatusIndicator`-badge, niet inline per actie.
+- **Historie (`HistoryPanel`)**: alleen een foutmelding bij mislukt
+  verwijderen, nooit een succesbevestiging.
+- **Uitzondering die het wél goed doet**: `BackupPanel.handleConfirmImport()`
+  heeft een echte, afgewachte `idle → running → done`-statusmachine met
+  een zichtbaar `role="status"`-succesblok (`data-testid="backup-success"`,
+  vertaalstring `backupImportSuccess`) én een apart faalblok. Dit is het
+  enige positieve-bevestigingspatroon dat al in de app bestaat.
 
-**Impact**: UX-gebrek, geen functioneel dataverlies — de save lukt in de
-praktijk wel, de gebruiker weet het alleen niet zeker.
+**Ontbrekende infrastructuur**: er bestaat nergens in `v2/src` een gedeeld
+Toast-/Snackbar-/StatusBanner-component — elk paneel implementeert zijn
+eigen lokale `error`/`state`-afhandeling los van de rest. Een structurele
+fix vereist dus waarschijnlijk een nieuw, herbruikbaar component (naar het
+voorbeeld van `BackupPanel`'s bestaande succes-/faalblok), in plaats van
+een simpele aanpassing van bestaande code.
 
-**Gevonden via**: zelfde sessie als bug 1.
+**Impact**: UX-gebrek over vrijwel de hele app, geen functioneel
+dataverlies — saves lukken in de praktijk meestal wel, de gebruiker weet
+het alleen nooit zeker.
 
-**Status**: open, nog niet gefixt.
+**Gevonden via**: bug 1 (Roster, 15 aug. 2026); breder uitgezocht op
+expliciet verzoek van de eigenaar (16 aug. 2026).
+
+**Status**: open, nog niet gefixt. Scope nu vastgesteld — fix vereist een
+nieuw gedeeld bevestigingscomponent, geen losse per-scherm patches.
 
 ### 3. Geen feedback bij "Verificatiemail opnieuw versturen" op het uitnodigingsscherm
 
