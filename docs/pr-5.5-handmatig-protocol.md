@@ -32,12 +32,13 @@ stap hieronder is optioneel.
 4. Je hebt **geen** Firebase-service-accountkey nodig voor dit protocol — zie
    §B hieronder voor hoe testaccounts/data zonder zo'n sleutel ontstaan.
 5. Je hebt toegang tot de Firebase Console voor het staging-project (als
-   owner/editor) en tot `firebase login` op je eigen machine (voor de
-   opruimstap in §B, punt 8) — dat vereist geen service-accountkey, alleen
-   een interactieve browser-login.
-6. Je hebt **twee echt bereikbare e-mailadressen** die jij zelf kunt lezen
-   (bijv. twee adres-aliassen van hetzelfde account, zoals
-   `jouwnaam+5.5c-a@gmail.com` en `jouwnaam+5.5c-b@gmail.com`). Zie §B voor
+   owner/editor) en kunt op je eigen machine vanuit `firebase/` interactief
+   `npx firebase-tools login` uitvoeren. Dat is alleen nodig voor de begrensde
+   delete-meting en vereist geen service-accountkey.
+6. Je hebt **drie echt bereikbare e-mailadressen** die jij zelf kunt lezen
+   (bijv. drie `+`-aliassen van hetzelfde testaccount). Account A wordt owner,
+   account B organizationAdmin voor de tweede-client-readback, en account C
+   expliciet team-viewer voor de negatieve role-matrix-test. Zie §B voor
    waarom `@example.test` hier niet volstaat.
 
 ## B. Testaccounts en fictieve stagingdata aanmaken — zonder service-accountkey
@@ -48,43 +49,39 @@ het staging-project draaien — het script weigert dit nu ook expliciet (zie
 `firebase/tests/unit/assertEmulatorEnv.spec.ts`): het genereert bij elke run
 een wegwerp-zelfondertekend sleutelpaar dat alleen de Emulator Suite
 accepteert (die verifieert geen handtekeningen); een echte Google-backend
-zou dat sowieso afwijzen. Een variant die wél tegen staging zou werken,
-vereist een gedownloade Firebase-service-accountkey (JSON) — een gevoelig
-credential dat we bewust niet in deze sessie/repo willen aanmaken, opslaan
-of hanteren (zie AGENTS.md over geheimen).
+zou dat sowieso afwijzen. Een Admin-seeder voor staging zou verhoogde
+beheerrechten en bijbehorende credentials vereisen. Die route gebruiken we
+bewust niet: er wordt geen service-accountkey aangemaakt, opgeslagen of
+gehanteerd (zie AGENTS.md over geheimen).
 
-In plaats daarvan: gebruik de app zelf, precies zoals een echte gebruiker
-dat zou doen — met twee accounts, want role-matrix- en tweede-client-
-validatie (§C) hebben een owner/coach-account (A) én een tweede account met
-een andere rol (B) nodig.
+In plaats daarvan: gebruik de app zelf waar daarvoor een productpad bestaat,
+en leg de ontbrekende staging-fixtures expliciet via de Firebase Console aan.
+Er zijn drie accounts nodig: owner A, organizationAdmin B en team-viewer C.
+Dat onderscheid is verplicht: alleen organizationOwner/organizationAdmin
+hebben impliciet toegang tot ieder team; coach/scorer/viewer hebben volgens
+`firebase/firestore.rules` en `v2/src/domain/organizations/teamAccess.ts`
+een expliciet `teamMembers/{uid}`-document nodig.
 
 ### B.1 — Account A (owner) aanmaken
 
 1. Open de staging-deploy-URL in een gewone browser (desktop mag voor deze
    stap, hoeft niet het mobiele apparaat te zijn).
-2. Registreer een testaccount met een **echt door jou leesbaar**
-   e-mailadres (zie §A punt 6) — géén `@example.test`: dat domein kan geen
-   echte mail ontvangen, en de Firestore Rules eisen voor zowel het
-   accepteren als het claimen van een uitnodiging expliciet
-   `request.auth.token.email_verified == true` (zie
-   `firebase/firestore.rules`, `invitations/{invitationId}`-sectie). Een
-   niet-geverifieerd of onverifieerbaar account kan dus geen tweede rol
-   claimen — "verificatie tijdelijk uitschakelen" is geen geldige omweg,
-   want dat test een ander codepad dan wat écht gebruikt wordt.
-3. Open de link die de verificatiemail bevat (Firebase Authentication
-   verstuurt deze automatisch bij signup met e-mail/wachtwoord via de
-   standaard e-mailtemplate — geen aparte configuratie nodig) en bevestig
-   het e-mailadres.
-4. Doorloop de onboardingflow: eerste organisatie + team aanmaken via de UI
+2. Registreer een testaccount met een **echt door jou leesbaar** e-mailadres
+   (zie §A punt 6). Gebruik geen `@example.test` en geen echte spelers- of
+   klantdata. De huidige `signUp()`-implementatie verstuurt niet automatisch
+   een verificatiemail; voor owner A is verificatie niet nodig om de eerste
+   organisatie en het eerste team aan te maken. Account B wordt hieronder
+   via het uitnodigingsscherm wél aantoonbaar geverifieerd.
+3. Doorloop de onboardingflow: eerste organisatie + team aanmaken via de UI
    (`onboarding-org-name`/`onboarding-team-name`-formulier, hetzelfde pad
    als `bootstrap-first-org.spec.ts` in de e2e-suite). Dit account is
    automatisch `organizationOwner`.
-5. Vul via de Roster-tab een paar fictieve spelers in (naam, rugnummer,
+4. Vul via de Roster-tab een paar fictieve spelers in (naam, rugnummer,
    klasse) — expliciet gemarkeerd als fictief in de naam, bijv. "Fictief
    Speler Eén", zodat niemand deze data ooit voor echt aanziet.
-6. Vul via de Settings-tab een teamnaam en de overige instellingen in.
+5. Vul via de Settings-tab een teamnaam en de overige instellingen in.
 
-### B.2 — Uitnodiging aanmaken (er bestaat geen UI hiervoor) en account B laten claimen
+### B.2 — Account B als organizationAdmin uitnodigen en laten claimen
 
 De app heeft géén scherm of knop om een uitnodiging te *versturen* — alleen
 `AcceptInvitationScreen` (accepteren/claimen) bestaat client-side; het
@@ -96,17 +93,19 @@ Console doen, als bewuste, gedocumenteerde uitzondering:
 
 1. Noteer het `uid` van account A: Firebase Console → Authentication →
    Users-tabblad → kopieer het "User UID" van account A.
-2. Noteer het `orgId`: zichtbaar in de URL van de contextwisselaar
-   (`?orgId=...`) of via Firebase Console → Firestore Database →
-   `organizations`-collectie → het documentnaam is het `orgId`.
+2. Noteer `orgId` en `teamId` via Firebase Console → Firestore Database:
+   het document-ID onder `organizations` is `orgId`; het document-ID onder
+   `organizations/<orgId>/teams` is `teamId`. De gewone contextwisselaar zet
+   deze IDs niet in de URL; neem ze dus niet over uit een veronderstelde URL.
 3. Firebase Console → Firestore Database → navigeer naar
    `organizations/<orgId>/invitations` → **Document toevoegen** met een
    zelfgekozen document-ID (bijv. `inv-pilot-b`) en exact deze velden (zie
    `firebase/src/documents/invitation.ts` `InvitationDocument` voor het
    schema):
    - `email` (string) = het echte e-mailadres van account B (zie §A punt 6);
-   - `role` (string) = bijv. `"coach"` of `"viewer"`, afhankelijk van welke
-     rolgrens je wilt testen (zie §C.2);
+   - `role` (string) = `"organizationAdmin"`; deze rol heeft impliciet
+     toegang tot het team en kan daardoor in iedere §C.1-run als onafhankelijke
+     tweede client de gewijzigde teamnaam teruglezen;
    - `status` (string) = `"pending"`;
    - `invitedBy` (string) = het uid van account A uit stap 1;
    - `invitedAt` (timestamp) = nu;
@@ -115,7 +114,7 @@ Console doen, als bewuste, gedocumenteerde uitzondering:
    volledig (zoals elke Console-write) — dit bewijst dus NIET dat
    `invitations`-`create` via de Rules werkt voor een owner/admin. Dat is al
    afzonderlijk gedekt door geautomatiseerde Rules-tests
-   (`firebase/tests/rules/membership-and-roles.spec.ts`, tegen de
+   (`firebase/tests/rules/bootstrap-and-invitation-flow.spec.ts`, tegen de
    emulator). Deze stap is uitsluitend testfixture-voorbereiding — het punt
    dat dit protocol wél test, is of *accepteren en claimen* via de echte
    staging-Rules werkt, wat vanaf hier via de gewone app-UI gebeurt.
@@ -123,38 +122,62 @@ Console doen, als bewuste, gedocumenteerde uitzondering:
    `<staging-deploy-URL>/?orgId=<orgId>&invitationId=<document-ID uit stap 3>`
    (zie `v2/src/infrastructure/invitations/invitationLink.ts` voor het
    parameterformaat).
-6. Registreer account B (op een ANDER apparaat/browserprofiel, of een
-   incognitovenster) met het e-mailadres uit stap 3, en verifieer dat adres
-   net als bij account A (stap B.1.3).
-7. Open de accept-link uit stap 5 als account B. De normale
-   `AcceptInvitationScreen`-flow accepteert en claimt de uitnodiging nu via
-   de echte Rules (`email == token.email`, `email_verified == true`) — dit
-   is het daadwerkelijke, geautomatiseerd-onbewezen pad dat dit protocol
-   verifieert.
-8. **Opruimen na afloop — kies één van beide, expliciet, geen impliciete
-   "verwijder het document maar"**:
-   - **Voorkeur: laat de fixtures staan** als vaste, herbruikbare
-     staging-testdata voor een volgende 5.5c-of-latere-ronde. Documenteer
-     die keuze in `docs/pr-5.5-onderzoeksrapport.md` §B.1 (org-ID,
-     account-uid's, welke rollen).
-   - **Als opruimen toch gewenst is**: een los Firestore-parentdocument
-     verwijderen via de Console cascadeert NIET naar subcollecties (teams,
-     invitations, teamMembers, settings, roster blijven dan als wees-
-     documenten achter). Gebruik in plaats daarvan de Firebase CLI (`firebase
-     login` volstaat, geen service-accountkey nodig):
-     `firebase firestore:delete organizations/<orgId> --recursive --project staging`.
-     Verifieer daarna met een **readback** dat het document en al zijn
-     subcollecties echt weg zijn: `firebase firestore:get organizations/<orgId> --project staging`
-     hoort een "not found" te geven, of controleer handmatig in de Console
-     dat `organizations/<orgId>` niet meer bestaat. Verwijder de
-     testaccounts zelf apart via Authentication → Users → verwijderen (dat
-     cascadeert niet automatisch mee met de Firestore-delete).
+6. Open de accept-link uit stap 5 in een ander browserprofiel terwijl je niet
+   als A bent ingelogd. Registreer account B daar met exact het e-mailadres
+   uit het invitation-document.
+7. `AcceptInvitationScreen` ziet dat B nog niet geverifieerd is. Druk daar
+   expliciet op **Verificatiemail opnieuw versturen**; alleen die knop roept
+   in de huidige app `sendVerificationEmail()` aan. Open de ontvangen link,
+   keer terug naar staging en herlaad de app of log opnieuw in zodat het
+   vernieuwde `email_verified`-token wordt gelezen.
+8. Open zo nodig de accept-link opnieuw en accepteer/claim de uitnodiging.
+   Controleer daarna dat B dezelfde organisatie en hetzelfde team kan kiezen.
+   Deze normale app-flow bewijst accept+claim tegen de echte staging-Rules.
+
+### B.3 — Account C als expliciete team-viewer aanmaken
+
+Een organization-brede rol `viewer` is niet genoeg om het team in de
+contextwisselaar te activeren. Maak daarom een echte team-only fixture:
+
+1. Registreer account C in een derde browserprofiel met het derde adres uit
+   §A. Maak in het onboarding-scherm geen nieuwe organisatie aan.
+2. Noteer C's UID via Firebase Console → Authentication → Users.
+3. Voeg via Firebase Console exact dit document toe:
+   `organizations/<orgId>/teams/<teamId>/teamMembers/<uid-van-C>`.
+4. Gebruik exact deze velden, conform
+   `firebase/src/documents/teamMember.ts` `TeamMemberDocument`:
+   - `role` (string) = `"viewer"`;
+   - `email` (string) = het e-mailadres van C;
+   - `uid` (string) = exact C's UID en exact gelijk aan het document-ID;
+   - `addedAt` (timestamp) = nu.
+5. Herlaad als C. Controleer dat uitsluitend het bedoelde team verschijnt en
+   voer daarmee de negatieve test uit §C.2 uit. Deze Console-write is opnieuw
+   alleen fixturevoorbereiding en geen bewijs van een client-side create.
+
+### B.4 — Fixtures bewaren en veilig opruimen
+
+1. Bewaar A/B/C en de hoofdorganisatie bij voorkeur als vaste, fictieve
+   staging-fixtures. Noteer org-ID, team-ID, UID's en rollen in het rapport,
+   maar nooit wachtwoorden of verificatielinks.
+2. Meet deletes met een **apart, herkenbaar wegwerppad** en niet door de
+   herbruikbare hoofdorganisatie te verwijderen; zie §D punt 5.
+3. Als later toch recursief wordt opgeruimd: gebruik nooit de alias `staging`.
+   Die wijst in de repository naar de placeholder
+   `demo-lineup-tracker-staging`. Kopieer eerst de echte project-ID uit de
+   Firebase Console en bevestig hem met `npx firebase-tools projects:list`.
+4. Controleer vóór uitvoering letterlijk zowel de echte project-ID als het
+   volledige documentpad. Voer daarna vanuit `firebase/` uit:
+   `npx firebase-tools firestore:delete organizations/<orgId> --recursive --project <ECHTE-STAGING-PROJECT-ID>`.
+5. De gebruikte Firebase CLI heeft geen opdracht `firestore:get`. Verifieer
+   daarom handmatig in de Firebase Console dat het parentdocument én de
+   verwachte subcollections niet meer bestaan. Verwijder testaccounts apart
+   via Authentication → Users; een Firestore-delete verwijdert Auth-users
+   niet automatisch.
 
 Dit levert dezelfde soort fictieve, duidelijk gelabelde data op als
-`firebase/scripts/seed.ts` doet voor de emulator — alleen via de UI (en één
-bewust gedocumenteerde Console-uitzondering voor de uitnodiging zelf) in
-plaats van via een script, en zonder dat er ooit een service-accountkey
-nodig is geweest.
+`firebase/scripts/seed.ts` doet voor de emulator — via normale appflows waar
+die bestaan en via expliciet gemarkeerde Console-fixtures waar de app nog
+geen beheer-UI heeft, zonder dat er ooit een service-accountkey nodig is.
 
 ## C. Handmatig reproductieprotocol — echt mobiel apparaat, tegen staging
 
@@ -175,8 +198,8 @@ op een Android-apparaat (4 volledige runs in totaal)** — dat is exact wat
 run per platform is onvoldoende om consistentie aan te tonen.
 
 1. Open de staging-deploy-URL op het mobiele apparaat.
-2. Log in met account A uit §B.1 (of registreer/verifieer opnieuw op dít
-   apparaat als je een vers account per platform wilt). Beantwoord
+2. Log in met het bestaande account A uit §B.1. Maak voor deze rondes geen
+   nieuw owneraccount of nieuwe organisatie aan. Beantwoord
    "vertrouwd apparaat" met **ja**, zodat settings/roster persistent
    gecachet worden. Open het team zodat settings/roster daadwerkelijk
    gecachet raken.
@@ -208,16 +231,15 @@ echt apparaat/echte backend niet automatisch hetzelfde hoeft te zijn.
 ### C.2 — Role-matrix-UI op staging (verplicht onderdeel van 5.5c)
 
 `docs/pr-5.5-plan.md` §D noemt role-matrix-UI expliciet als acceptatie-
-criterium — dit is niet optioneel naast §C.1. Hergebruikt de rolindeling van
+criterium — dit is niet optioneel naast §C.1. Dit hergebruikt de rolindeling van
 `v2/tests/e2e-auth/role-matrix-ui.spec.ts` (emulator), nu tegen staging:
 
-1. **Positieve test**: log in met een account dat `organizationOwner`,
-   `organizationAdmin` of `coach` is (account A, of nodig via §B.2 een
-   derde account uit met rol `coach`) en bevestig dat Settings/Roster/
+1. **Positieve test**: log in als owner A (of organizationAdmin B) en
+   bevestig dat Settings/Roster/
    Game-opzet-velden daadwerkelijk opslaan (niet alleen "geen foutmelding"
    — herlaad en controleer dat de wijziging beklijft).
-2. **Negatieve test**: nodig via §B.2 een account uit met rol `viewer` (of
-   hergebruik account B als je die rol daar al koos) en bevestig dat
+2. **Negatieve test**: log in als de expliciete team-viewer C uit §B.3 en
+   bevestig dat
    Settings/Roster-opslaan **uitgeschakeld** is en de read-only-indicator
    zichtbaar is — een viewer mag géén schrijfactie kunnen voltooien, ook
    niet per ongeluk via een niet-uitgeschakelde knop.
@@ -241,10 +263,19 @@ volledige run):
 2. twee verschillende organisaties parallel;
 3. bewust conflict op hetzelfde veld;
 4. niet-conflicterende veldpatches;
-5. **deletes** — expliciet niet in de emulator-proxy meegenomen: voer de
-   opruimstap uit §B.2 punt 8 (`firebase firestore:delete --recursive`) uit
-   en noteer het aantal verwijderde documenten (zichtbaar in de
-   CLI-uitvoer) plus de daaropvolgende readback-bevestiging.
+5. **deletes** — expliciet niet in de emulator-proxy meegenomen:
+   - maak via de Firebase Console een apart, uniek wegwerppad aan, bijvoorbeeld
+     `organizations/delete-measurement-<datum-tijd>`, met minstens één
+     fictief childdocument eronder; gebruik nooit de A/B/C-hoofdorganisatie;
+   - noteer vóór uitvoering de letterlijke echte staging-project-ID en het
+     volledige wegwerppad en bevestig de project-ID met
+     `npx firebase-tools projects:list`;
+   - voer vanuit `firebase/` uit:
+     `npx firebase-tools firestore:delete organizations/delete-measurement-<datum-tijd> --recursive --project <ECHTE-STAGING-PROJECT-ID>`;
+   - noteer het aantal verwijderde documenten uit de CLI-uitvoer en verifieer
+     daarna in de Firebase Console dat het wegwerppad en zijn subcollections
+     verdwenen zijn. Gebruik niet de placeholderalias `staging` en niet de
+     niet-bestaande opdracht `firebase firestore:get`.
 
 Meet **vóór** en **na** elke flow (niet alleen achteraf in totaal) via de
 Firebase Console (Firestore → Gebruik-tab) of Google Cloud Console

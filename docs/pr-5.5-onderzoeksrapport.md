@@ -30,10 +30,10 @@ Verwacht hier: het staging-Firebase-project-ID, de eerste Deploy Preview-URL,
 bevestiging dat de console de staging-webconfig toont (niet
 `demo-lineup-tracker-dev`), PWA-verificatie (laadt, `sw.js` correcte
 MIME/cache-header, offline reload werkt), de org-ID/account-uid's/rollen van
-de fixtures uit `docs/pr-5.5-handmatig-protocol.md` §B, en de keuze rond
-opruimen-of-bewaren (§B.2, punt 8: bij bewaren de identificatiegegevens
-hier vastleggen; bij opruimen de `firebase firestore:delete --recursive`-
-uitvoer + readback-bevestiging hier vastleggen).
+de drie fixtures uit `docs/pr-5.5-handmatig-protocol.md` §B (owner A,
+organizationAdmin B en expliciete team-viewer C), inclusief org-ID, team-ID,
+UID's en rollen. Leg geen wachtwoorden of verificatielinks vast. Noteer ook
+of de hoofdfixtures als herbruikbare stagingdata bewaard blijven.
 
 ### B.2 — Werkelijke Firestore-verbruiksmeting (inclusief deletes)
 
@@ -41,11 +41,14 @@ _Nog niet ingevuld._
 
 Verwacht hier: gemeten reads/writes/deletes/opslag vóór en ná elke
 synthetische pilotflow (`docs/pr-5.5-handmatig-protocol.md` §D, inclusief
-flow 5 "deletes"), vergeleken met de emulator-extrapolatie uit
+flow 5 "deletes" op een apart wegwerppad), vergeleken met de emulator-extrapolatie uit
 `docs/pr-5.4-onderzoeksrapport.md` §B (15 reads/7 writes per volledige run,
 1.500/700 bij 100 runs — die extrapolatie bevat zelf geen deletes, dus de
 deletemeting hier heeft geen emulator-referentiewaarde om tegen te
-vergelijken, alleen een absolute telling). Bij overschrijding van het
+vergelijken, alleen een absolute telling). Leg voor de delete vast: de
+letterlijk gecontroleerde echte staging-project-ID, het volledige
+`organizations/delete-measurement-...`-pad, de CLI-telling en de handmatige
+Console-readback. Bij overschrijding van het
 gratis Spark-quotum bij één doorloop: hier documenteren en escaleren naar
 PR 8.3.
 
@@ -76,9 +79,10 @@ onvolledige of afwijkende run hier expliciet vermelden welke actie volgt
 _Nog niet ingevuld._
 
 Verwacht hier: de uitkomst van `docs/pr-5.5-handmatig-protocol.md` §C.2 —
-de positieve test (owner/admin/coach kan daadwerkelijk opslaan, bevestigd
-na herlaad) en de negatieve test (viewer kan niet opslaan, read-only-
-indicator zichtbaar), met vermelding van welk platform/apparaat gebruikt is.
+de positieve test (owner A of organizationAdmin B kan daadwerkelijk opslaan,
+bevestigd na herlaad) en de negatieve test (expliciete team-viewer C kan niet
+opslaan, read-only-indicator zichtbaar), met vermelding van welk
+platform/apparaat gebruikt is.
 
 ## C. Open punten
 
