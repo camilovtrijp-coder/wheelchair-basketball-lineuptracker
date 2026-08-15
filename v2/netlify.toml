@@ -4,27 +4,26 @@
 # Waarom een apart bestand i.p.v. één gedeeld root-`netlify.toml` met twee
 # `[build]`-blokken: dat laatste is niet geldig — TOML staat geen twee
 # top-level `[build]`-tabellen in één bestand toe, en v1/v2 hebben elk hun
-# eigen build-command/publish-map nodig. Netlify's eigen mechanisme hiervoor
-# is een site-specifieke "Base directory": een site met base directory `v2`
-# leest dit bestand (`v2/netlify.toml`) in plaats van het root-bestand, en
-# alle paden hieronder (`publish`, redirects) zijn dan relatief aan `v2/`.
+# eigen build-command/publish-map nodig. Deze site is gekoppeld via Netlify's
+# monorepo-wizard ("Project to deploy: v2"), die dit bestand herkent.
 #
-# Site-koppeling (5.5b-activatie, aug. 2026): Netlify's monorepo-detectie
-# ("Project to deploy: v2" in de site-wizard) verandert de working directory
-# van het build-commando NIET naar `v2/` — die blijft de repository-root,
-# ondanks de projectkeuze (bevestigd via een mislukte eerste deploy: `Current
-# directory: /opt/build/repo`, met `packagePath: v2` als losse metadata).
-# Omdat de root ook npm-workspaces gebruikt (`v2`/`firebase`), zoekt kaal
-# `npm run build` vanaf de root in het root-`package.json` (geen `build`-
-# script daar) i.p.v. in `v2/package.json` (die wél een `build`-script heeft).
-# `--workspace=v2` dwingt npm om vanaf de root alsnog naar de `v2`-workspace
-# te routeren, ongeacht welke cwd Netlify daadwerkelijk gebruikt. `publish`
-# blijft `dist` (packagePath-relatief aan `v2/`, dat deel van Netlify's
-# monorepo-detectie werkte al wél correct).
+# Belangrijk, bevestigd via twee mislukte eerste deploys (5.5b-activatie,
+# aug. 2026): ondanks de "Project to deploy: v2"-keuze verandert Netlify de
+# working directory van het build-commando NIET naar `v2/` — die blijft de
+# repository-root (`Current directory: /opt/build/repo`), én `publish`
+# resolvet ook relatief aan die root, niet aan dit bestand of aan `v2/`
+# (bevestigd door `publish: /opt/build/repo/dist` in de mislukte deploy-log
+# toen hier nog `publish = "dist"` stond). Beide paden hieronder houden
+# daar bewust rekening mee:
+# - `command` gebruikt `--workspace=v2`, want de root gebruikt npm-workspaces
+#   (`v2`/`firebase`) en kaal `npm run build` vanaf de root zoekt anders in
+#   het root-`package.json` (geen `build`-script daar) i.p.v. in
+#   `v2/package.json` (die wél een `build`-script heeft).
+# - `publish` is expliciet `v2/dist` (root-relatief), niet `dist`.
 
 [build]
   command = "npm run build --workspace=v2"
-  publish = "dist"
+  publish = "v2/dist"
 
 # VITE_DEPLOY_CONTEXT stuurt resolveWebConfig()/resolveDeployContext()
 # (v2/src/infrastructure/firebase/webConfig.ts, PR 5.5a). De daadwerkelijke
@@ -38,7 +37,8 @@
 # BEWUST "staging" i.p.v. "production" voor de production-context (PR
 # 5.5b-activatievoorbereiding, aug. 2026): er bestaat nog geen productie-
 # Firebase-project en er is nog geen productie-cutover geautoriseerd. Deze
-# site (v2-staging, "Base directory" = v2) dient tot PR 8.5 uitsluitend als
+# v2-staging-site (zie de `[build]`-toelichting hierboven voor hoe die
+# gekoppeld is) dient tot PR 8.5 uitsluitend als
 # staging-omgeving — óók haar eerste deploy vanaf `main`. Zonder deze regel
 # zou de allereerste `main`-deploy VITE_FIREBASE_*_PRODUCTION vereisen (niet
 # gezet → harde fout in webConfig.ts) of, erger, per ongeluk tegen een later
