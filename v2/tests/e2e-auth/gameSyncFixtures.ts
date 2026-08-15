@@ -102,11 +102,42 @@ export async function readLocalActionIds(page: Page, team: PilotTeam): Promise<s
   return game.actions.map((a) => a.id);
 }
 
+/**
+ * Wacht tot de sync-statusindicator `status` toont — maar NIET via één kale
+ * gelijkheidscheck. `App.tsx`'s `runGameSync()` zet de indicator pas op
+ * 'wacht-op-synchronisatie' zodra het `useEffect` ná de React-commit vuurt —
+ * er zit dus een (doorgaans submilliseconde) venster tussen een klik en die
+ * overgang. Een test die precies in dát venster samplet ziet nog de vorige
+ * cyclus' 'gesynchroniseerd' en concludeert dan ten onrechte dat de NIEUWE
+ * actie al klaar is, terwijl de upload nog moet beginnen — reproduceerbaar
+ * geworden onder belasting (binnen de volledige e2e-auth-suite, niet
+ * geïsoleerd). Fase 1 vangt daarom eerst (best-effort, kort) de
+ * overgangstoestand 'wacht-op-synchronisatie' af — bewijst dat er
+ * daadwerkelijk een NIEUWE cyclus gestart is — vóórdat op het einddoel
+ * gewacht wordt.
+ */
 export async function waitForGameSyncStatus(
   page: Page,
   status: string,
   timeoutMs = 20_000,
 ): Promise<void> {
+  if (status !== 'wacht-op-synchronisatie') {
+    await page
+      .waitForFunction(
+        ({ testId }) => {
+          const el = document.querySelector(`[data-testid="${testId}"]`);
+          return el?.getAttribute('data-status') === 'wacht-op-synchronisatie';
+        },
+        { testId: 'game-sync-status-indicator' },
+        { timeout: 2_000 },
+      )
+      .catch(() => {
+        /* kan al voorbij zijn vóór deze aanroep begon (zeer snelle emulator-
+         * roundtrip) — geen probleem, fase 2 hieronder dekt het einddoel
+         * hoe dan ook af. */
+      });
+  }
+
   await page.waitForFunction(
     ({ testId, expected }) => {
       const el = document.querySelector(`[data-testid="${testId}"]`);
