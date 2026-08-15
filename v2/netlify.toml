@@ -12,9 +12,11 @@
 # Dit bestand doet op zichzelf niets — er bestaat nog geen Netlify-site die
 # hem leest. Eigenaarsbesluit 12 augustus 2026 (zie docs/pr-5.5-plan.md §E.6):
 # de v2-Netlify-site wordt bewust pas later aangemaakt en aan GitHub gekoppeld,
-# om het Free-plan-creditverbruik te sparen totdat dat gewenst is. Zie
-# docs/pr-5.5-plan.md §E.6 voor de activatiestappen (o.a. Deploy Previews
-# aanvankelijk uitgezet, alleen production-branch-builds).
+# op een moment dat de eigenaar kiest. Zie docs/pr-5.5-plan.md §E.7 voor de
+# gecorrigeerde activatiechecklist (Deploy Previews mogen vanaf het begin aan
+# staan — die kosten 0 Netlify-credits; alleen een productie-branch-deploy
+# kost credits) en docs/pr-5.5-handmatig-protocol.md voor de stappen ná
+# activatie.
 
 [build]
   command = "npm run build"
@@ -28,14 +30,25 @@
 # Netlify-omgevingsvariabelen in de site-UI gezet (publieke projectidentificatie,
 # geen geheim — zie AGENTS.md regel 26-27 — maar toch niet hardcoded hier,
 # want nog niet bekend en per site-omgeving instelbaar zonder rebuild-diff).
+#
+# BEWUST "staging" i.p.v. "production" voor de production-context (PR
+# 5.5b-activatievoorbereiding, aug. 2026): er bestaat nog geen productie-
+# Firebase-project en er is nog geen productie-cutover geautoriseerd. Deze
+# site (v2-staging, "Base directory" = v2) dient tot PR 8.5 uitsluitend als
+# staging-omgeving — óók haar eerste deploy vanaf `main`. Zonder deze regel
+# zou de allereerste `main`-deploy VITE_FIREBASE_*_PRODUCTION vereisen (niet
+# gezet → harde fout in webConfig.ts) of, erger, per ongeluk tegen een later
+# wél aangemaakt productieproject aanpraten vóórdat PR 8.5 dat toestaat. Pas
+# wanneer PR 8.5 de productie-cutover expliciet uitvoert, wordt deze regel
+# teruggezet naar "production" (en pas dán moeten de Netlify-omgevings-
+# variabelen `VITE_FIREBASE_*_PRODUCTION` gezet worden).
 [context.production]
   [context.production.environment]
-    VITE_DEPLOY_CONTEXT = "production"
+    VITE_DEPLOY_CONTEXT = "staging"
 
-# Deploy Previews (per pull request) wijzen naar staging-Firebase, nooit naar
-# productie — dit blijft zo staan ook terwijl Deploy Previews in de Netlify-
-# site-instellingen voorlopig uitgeschakeld zijn; het schrijft alleen voor
-# wat er moet gebeuren zodra ze aangezet worden.
+# Deploy Previews (per pull request) en overige branch-deploys wijzen naar
+# staging-Firebase, nooit naar productie — hetzelfde uitgangspunt als
+# hierboven, hier al vóór PR 5.5b-activatievoorbereiding zo vastgelegd.
 [context.deploy-preview]
   [context.deploy-preview.environment]
     VITE_DEPLOY_CONTEXT = "staging"
