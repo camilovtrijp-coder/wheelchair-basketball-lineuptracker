@@ -2,7 +2,7 @@
   "projects": {
     "default": "demo-lineup-tracker-dev",
     "development": "demo-lineup-tracker-dev",
-    "staging": "demo-lineup-tracker-staging",
+    "staging": "wheelchair-basketball-tracker",
     "production": "demo-lineup-tracker-prod"
   }
 }
