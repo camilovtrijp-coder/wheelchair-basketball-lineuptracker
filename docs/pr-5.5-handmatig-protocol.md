@@ -161,13 +161,18 @@ contextwisselaar te activeren. Maak daarom een echte team-only fixture:
    maar nooit wachtwoorden of verificatielinks.
 2. Meet deletes met een **apart, herkenbaar wegwerppad** en niet door de
    herbruikbare hoofdorganisatie te verwijderen; zie §D punt 5.
-3. Als later toch recursief wordt opgeruimd: gebruik nooit de alias `staging`.
-   Die wijst in de repository naar de placeholder
-   `demo-lineup-tracker-staging`. Kopieer eerst de echte project-ID uit de
-   Firebase Console en bevestig hem met `npx firebase-tools projects:list`.
-4. Controleer vóór uitvoering letterlijk zowel de echte project-ID als het
+3. Als later toch recursief wordt opgeruimd: de alias `staging` in
+   `firebase/.firebaserc` wijst inmiddels naar het echte staging-project
+   (`wheelchair-basketball-tracker`, sinds de 5.5b-activatie). Bevestig dat
+   vóór uitvoering ter controle alsnog met `npx firebase-tools projects:list`
+   en vergelijk met de project-ID in de Firebase Console — een verkeerd
+   ingerichte alias mag nooit stilzwijgend worden vertrouwd bij een
+   destructieve operatie.
+4. Controleer vóór uitvoering letterlijk zowel de project-ID als het
    volledige documentpad. Voer daarna vanuit `firebase/` uit:
-   `npx firebase-tools firestore:delete organizations/<orgId> --recursive --project <ECHTE-STAGING-PROJECT-ID>`.
+   `npx firebase-tools firestore:delete organizations/<orgId> --recursive --project staging`
+   (of expliciet `--project wheelchair-basketball-tracker` als extra
+   controle op de alias).
 5. De gebruikte Firebase CLI heeft geen opdracht `firestore:get`. Verifieer
    daarom handmatig in de Firebase Console dat het parentdocument én de
    verwachte subcollections niet meer bestaan. Verwijder testaccounts apart
@@ -267,15 +272,16 @@ volledige run):
    - maak via de Firebase Console een apart, uniek wegwerppad aan, bijvoorbeeld
      `organizations/delete-measurement-<datum-tijd>`, met minstens één
      fictief childdocument eronder; gebruik nooit de A/B/C-hoofdorganisatie;
-   - noteer vóór uitvoering de letterlijke echte staging-project-ID en het
+   - noteer vóór uitvoering de letterlijke staging-project-ID en het
      volledige wegwerppad en bevestig de project-ID met
-     `npx firebase-tools projects:list`;
+     `npx firebase-tools projects:list` — de alias `staging` in
+     `firebase/.firebaserc` wijst naar `wheelchair-basketball-tracker`;
    - voer vanuit `firebase/` uit:
-     `npx firebase-tools firestore:delete organizations/delete-measurement-<datum-tijd> --recursive --project <ECHTE-STAGING-PROJECT-ID>`;
+     `npx firebase-tools firestore:delete organizations/delete-measurement-<datum-tijd> --recursive --project staging`;
    - noteer het aantal verwijderde documenten uit de CLI-uitvoer en verifieer
      daarna in de Firebase Console dat het wegwerppad en zijn subcollections
-     verdwenen zijn. Gebruik niet de placeholderalias `staging` en niet de
-     niet-bestaande opdracht `firebase firestore:get`.
+     verdwenen zijn. Gebruik niet de niet-bestaande opdracht
+     `firebase firestore:get`.
 
 Meet **vóór** en **na** elke flow (niet alleen achteraf in totaal) via de
 Firebase Console (Firestore → Gebruik-tab) of Google Cloud Console
