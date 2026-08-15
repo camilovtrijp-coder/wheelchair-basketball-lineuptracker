@@ -216,6 +216,44 @@ describe('application/game/GameSyncCoordinator (PR 7.1c)', () => {
     expect(result.status).toBe('idle');
   });
 
+  it('REGRESSIE (P1, externe review PR #56): verwerpt een checkpoint dat bij een ANDER organisatie/team hoort — bijv. na een backup-import die dezelfde gameId naar een ander team retagt (domain/backup/migrateV1.ts retagWithContext())', async () => {
+    const storage = new MemoryStorage();
+    const checkpoints = new LocalStorageGameSyncCheckpointRepository(storage);
+    // Checkpoint van team A: actie 'a1' is daar al bevestigd.
+    checkpoints.write({
+      gameId: 'game-1',
+      organizationId: 'org-A',
+      teamId: 'team-A',
+      confirmedActionIds: ['a1'],
+      serverRevision: 7,
+      status: 'idle',
+      updatedAt: '2026-01-01T00:00:00.000Z',
+    });
+    const gateway = mockGateway({
+      ensureGame: () => ({ ok: true, revision: 0, writerUid: null, deviceId: null }),
+    });
+    const coordinator = new GameSyncCoordinator({ gateway, checkpoints, now: fixedClock() });
+    // Dezelfde gameId, maar via backup-retag nu onderdeel van team B.
+    const game = gameWithActions(['a1'], { organizationId: 'org-B', teamId: 'team-B' });
+
+    const result = await coordinator.sync(game, writer);
+
+    // 'a1' moet WEL geüpload worden voor team B — het team-A-checkpoint mag
+    // dit nooit als "al bevestigd" filteren.
+    expect(gateway.uploadedActionIds[0]).toEqual(['a1']);
+    expect(result.organizationId).toBe('org-B');
+    expect(result.teamId).toBe('team-B');
+    expect(result.confirmedActionIds).toEqual(['a1']);
+    expect(result.status).toBe('idle');
+
+    // Het opgeslagen checkpoint draagt nu ook echt team B's context, niet
+    // langer team A's — een volgende sync voor team A blijft ongemoeid
+    // (ander gameId zou in de praktijk gelden, maar dit bewijst dat het
+    // bewaarde checkpoint zelf is bijgewerkt naar de huidige context).
+    expect(checkpoints.read('game-1')?.organizationId).toBe('org-B');
+    expect(checkpoints.read('game-1')?.teamId).toBe('team-B');
+  });
+
   it('een gedeeltelijk mislukte upload bevestigt de geslaagde acties, meldt actie-nodig en patcht de snapshot niet', async () => {
     const checkpoints = new LocalStorageGameSyncCheckpointRepository(new MemoryStorage());
     const gateway = mockGateway({

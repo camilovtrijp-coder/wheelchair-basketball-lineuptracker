@@ -71,11 +71,25 @@ export class GameSyncCoordinator {
     this.now = deps.now ?? (() => new Date().toISOString());
   }
 
+  /**
+   * P1-fix (externe review op PR #56): `GameSyncCheckpointRepository.read()`
+   * kent alleen `gameId` als sleutel (die is op zichzelf al globaal uniek,
+   * zie LocalStorageGameSyncCheckpointRepository.ts), maar een backup-import
+   * kan diezelfde `gameId` naar een ANDER organisatie/team retaggen
+   * (`domain/backup/migrateV1.ts` `retagWithContext()` behoudt bewust
+   * `ActiveGame.id`, wijzigt alleen `organizationId`/`teamId`). Zonder deze
+   * check zou een checkpoint uit team A ("actie X is al bevestigd") team B's
+   * upload van diezelfde lokale actie-ID stilzwijgend overslaan — team B's
+   * Firestore-actielog blijft dan onvolledig terwijl de UI 'gesynchroniseerd'
+   * toont. Een checkpoint dat niet bij déze organisatie/team hoort wordt
+   * daarom behandeld als "nog geen checkpoint", nooit hergebruikt.
+   */
   private readCheckpoint(game: ActiveGame): GameSyncCheckpoint {
-    return (
-      this.checkpoints.read(game.id) ??
-      createEmptyGameSyncCheckpoint(game.id, game.organizationId, game.teamId, this.now())
-    );
+    const stored = this.checkpoints.read(game.id);
+    if (stored && stored.organizationId === game.organizationId && stored.teamId === game.teamId) {
+      return stored;
+    }
+    return createEmptyGameSyncCheckpoint(game.id, game.organizationId, game.teamId, this.now());
   }
 
   private fail(checkpoint: GameSyncCheckpoint, error: unknown): GameSyncCheckpoint {

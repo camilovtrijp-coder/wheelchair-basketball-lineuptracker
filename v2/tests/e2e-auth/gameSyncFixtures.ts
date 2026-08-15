@@ -6,6 +6,7 @@ import type { Page } from '@playwright/test';
 import { adminDb } from './adminFixtures';
 import type { PilotTeam } from './twoDeviceFixtures';
 import { activeGameStorageKey } from '../../src/infrastructure/game/LocalStorageGameRepository';
+import { gameSyncCheckpointStorageKey } from '../../src/infrastructure/game/LocalStorageGameSyncCheckpointRepository';
 
 /** Minimale, geldige 5-spelersroster — genoeg om canStart()/startGame() te halen. */
 export function fivePlayerRoster() {
@@ -64,6 +65,19 @@ export async function readGameSyncStatus(page: Page): Promise<string | null> {
   const el = page.getByTestId('game-sync-status-indicator');
   if ((await el.count()) === 0) return null;
   return el.getAttribute('data-status');
+}
+
+/**
+ * Wist alleen het lokale synccheckpoint (niet de ActiveGame zelf) — laat de
+ * coordinator "vergeten" dat een al server-bevestigde actie bevestigd was,
+ * zodat de eerstvolgende sync 'm opnieuw probeert te uploaden. Dat dwingt
+ * `FirestoreGameCloudGateway.uploadActions()`'s echte readback-/
+ * alreadyConfirmed-pad af (create-only-afwijzing op een reeds bestaand
+ * document), i.p.v. dat het lokale checkpoint de actie al filtert vóórdat
+ * er ook maar een Firestore-aanroep gebeurt.
+ */
+export async function forgetLocalSyncCheckpoint(page: Page, gameId: string): Promise<void> {
+  await page.evaluate((key) => localStorage.removeItem(key), gameSyncCheckpointStorageKey(gameId));
 }
 
 export async function waitForGameSyncStatus(
