@@ -169,6 +169,34 @@ wisselaar ("ROBA test"). Structurele fix (bijv. een expliciete
 `getIdToken(true)`-refresh na e-mailverificatie, vóór de accept-write)
 nog niet toegepast.
 
+### 5. Alleen-lezen-status voor viewers onvoldoende zichtbaar/verklaard
+
+**Symptoom**: account C (expliciete team-`viewer`, §B.3) opent de Team-tab
+en klikt op knoppen ("+ Speler toevoegen", invoervelden) zonder dat er
+iets gebeurt — voelt aan als een kapotte app, niet als een bewust
+beperkte rol.
+
+**Oorzaak**: geen bug in de autorisatie zelf — `RosterPanel.tsx` past
+`canWrite` wel degelijk correct toe (`readOnly` op alle invoervelden,
+`disabled` op alle knoppen inclusief "Opslaan" en "+ Speler toevoegen",
+regels 106-211) en toont een `role="status"`-tekst `rosterReadOnly`
+("Alleen-lezen"). Het probleem is **plaatsing en duidelijkheid**: die
+tekst staat helemaal onderaan het paneel, vlak boven de "Opslaan"-knop
+(regel 200-204) — een gebruiker die als eerste bovenaan op
+"+ Speler toevoegen" klikt, heeft de verklaring dus nog niet gezien. Er
+staat bovendien nergens uitgelegd wát de rol "viewer" concreet betekent
+of waarom deze gebruiker geen wijzigingen mag maken.
+
+**Impact**: UX-gebrek, geen functionele/autorisatiefout — de Rules/UI
+blokkeren schrijven terecht, maar de gebruiker begrijpt niet waarom en
+denkt dat de app niet werkt.
+
+**Gevonden via**: `docs/pr-5.5-handmatig-protocol.md` §B.3/§C.2
+(negatieve role-matrix-test), staging — account C, 16 aug. 2026.
+
+**Status**: open, nog niet gefixt. Waarschijnlijk hetzelfde patroon op
+Settings-tab (zelfde `canWrite`-aanpak, niet apart geverifieerd).
+
 ## Nog te doen
 
 - Meer bugs toevoegen naarmate het 5.5c-protocol verder wordt uitgevoerd
