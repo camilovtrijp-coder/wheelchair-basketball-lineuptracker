@@ -1,10 +1,12 @@
-import { useRef, useState } from 'preact/hooks';
+import { useRef } from 'preact/hooks';
 import { LOGO_MAX_BYTES, type Settings, type SettingsKey } from '../../domain/settings/types';
 import { translate, type Lang, type StringKey } from '../../i18n/strings';
 import type { KeyValueStorage } from '../../i18n/persistence';
 import { updateSetting } from '../../application/settings/usecases';
 import { CloudImportBanner } from '../cloud/CloudImportBanner';
 import { LastModified } from '../sync/LastModified';
+import { useSaveStatus } from '../sync/useSaveStatus';
+import { SaveStatusMessage } from '../sync/SaveStatusMessage';
 
 const COLOR_PRESETS = [
   '#22c55e',
@@ -64,7 +66,7 @@ export function SettingsPanel({
   updatedAt,
 }: SettingsPanelProps) {
   const fileInputRef = useRef<HTMLInputElement | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  const { status: saveStatus, notifySuccess, notifyError, reset: resetSaveStatus } = useSaveStatus();
   const changedKeysRef = useRef(new Set<SettingsKey>());
 
   function handleField<K extends keyof Settings>(field: K, value: Settings[K]) {
@@ -76,10 +78,10 @@ export function SettingsPanel({
   function handleLogoFile(file: File | undefined) {
     if (!file) return;
     if (file.size > LOGO_MAX_BYTES) {
-      setError(t(lang, 'logoTooLargeError'));
+      notifyError(t(lang, 'logoTooLargeError'));
       return;
     }
-    setError(null);
+    resetSaveStatus();
     const reader = new FileReader();
     reader.onload = () => {
       if (typeof reader.result === 'string') {
@@ -92,21 +94,25 @@ export function SettingsPanel({
   async function handleReset() {
     const defaults = await onReset();
     onSettingsChange(defaults);
-    setError(null);
+    resetSaveStatus();
     changedKeysRef.current.clear();
   }
 
   async function handleRefresh() {
     onSettingsChange(await onRefresh());
-    setError(null);
+    resetSaveStatus();
     changedKeysRef.current.clear();
   }
 
   async function handleSave() {
     const changedKeys = [...changedKeysRef.current];
     const ok = await onSave(settings, changedKeys);
-    if (ok) changedKeysRef.current.clear();
-    setError(ok ? null : t(lang, 'settingsSaveError'));
+    if (ok) {
+      changedKeysRef.current.clear();
+      notifySuccess();
+    } else {
+      notifyError(t(lang, 'settingsSaveError'));
+    }
   }
 
   const useClass = settings.useClassLimit === true;
@@ -119,6 +125,12 @@ export function SettingsPanel({
       <LastModified lang={lang} updatedAt={updatedAt} testId="settings-last-modified" />
 
       <CloudImportBanner lang={lang} storage={storage} kind="settings" onMigrate={onCloudMigrate} />
+
+      {canWrite ? null : (
+        <p className="settings-read-only" data-testid="settings-read-only" role="status">
+          {t(lang, 'settingsReadOnly')}
+        </p>
+      )}
 
       <fieldset className="settings-section">
         <legend>{t(lang, 'settingsSectionClub')}</legend>
@@ -355,17 +367,7 @@ export function SettingsPanel({
         ) : null}
       </fieldset>
 
-      {error ? (
-        <p className="settings-error" role="alert" data-testid="settings-error">
-          {error}
-        </p>
-      ) : null}
-
-      {canWrite ? null : (
-        <p className="settings-read-only" data-testid="settings-read-only" role="status">
-          {t(lang, 'settingsReadOnly')}
-        </p>
-      )}
+      <SaveStatusMessage lang={lang} status={saveStatus} testIdPrefix="settings" />
 
       <div className="settings-actions">
         <button

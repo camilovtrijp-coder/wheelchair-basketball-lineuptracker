@@ -24,7 +24,7 @@ import type { SyncStatusApi } from '../application/sync/useSyncStatus';
 import { LocalStorageGameRepository } from '../infrastructure/game/LocalStorageGameRepository';
 import { LocalStorageCompletedGameRepository } from '../infrastructure/game/LocalStorageCompletedGameRepository';
 import { LocalStorageLangRepository } from '../infrastructure/i18n/LocalStorageLangRepository';
-import { createGameFromRoster } from '../domain/game/setup';
+import { createGameFromRoster, syncGamePlayersWithRoster } from '../domain/game/setup';
 import { finishGame } from '../domain/game/finish';
 import type { ActiveGame, CompletedGame } from '../domain/game/types';
 import { GameSetupPanel } from '../ui/game/GameSetupPanel';
@@ -170,6 +170,13 @@ export function App({
     [organizationId, teamId],
   );
   const [game, setGame] = useState<ActiveGame | null>(null);
+  // Meespiegeld op elke render (i.p.v. als effect-dependency) zodat het
+  // hieronder staande roster-synceffect uitsluitend op een echte
+  // roster-wijziging reageert — niet op elke `game`-wijziging (dat zou een
+  // lus riskeren: de sync zelf roept ook `setGame()` aan) en niet op een
+  // participate/start-toggle die niets met de roster te maken heeft.
+  const gameForRosterSyncRef = useRef<ActiveGame | null>(null);
+  gameForRosterSyncRef.current = game;
   const [gameSaveError, setGameSaveError] = useState(false);
   // PR 6.1-review (aug. 2026): een gedetecteerde, nog niet bevestigde
   // v1-actieve-wedstrijd (zie GameRepository.detectV1Migration()) — v1 kende
@@ -269,6 +276,36 @@ export function App({
     setGame(fresh);
     gameRepo.write(fresh);
   }, [game, v1MigrationCandidate, settings, roster, gameRepo, organizationId, teamId]);
+
+  // PR 5.5c-bugfixes bug 1: het effect hierboven derived de opzet maar één
+  // keer, bij `game === null` — een latere roster-wijziging (naam, rugnummer,
+  // nieuwe/verwijderde speler) binnen dezelfde sessie bereikte de Wedstrijd-
+  // tab daarna nooit meer zonder herladen. Dit effect houdt `game.players`
+  // synchroon met de roster zolang de opzet nog in `'setup'`-fase is (ná
+  // `'tracking'` — de wedstrijd is dan al gestart — blijft dit effect bewust
+  // buiten werking, zie `syncGamePlayersWithRoster()`).
+  //
+  // Bewust gedebounced (i.p.v. direct bij elke `roster`-wijziging): `roster`
+  // verandert ook bij elke toetsaanslag in RosterPanel (`onRosterChange`,
+  // vóór een expliciete save), niet alleen bij een daadwerkelijk opgeslagen
+  // wijziging. Zonder debounce riep dit effect `setGame()` bij elke
+  // toetsaanslag aan — een extra App-brede re-render per toetsaanslag die,
+  // empirisch bevestigd tegen de echte browser, kon interfereren met een
+  // vlak daarna plaatsvindende invoerhandeling op een ANDERE gecontroleerde
+  // input (Preact's controlled-input-reconciliatie kan die dan terugzetten
+  // naar de oude waarde — een race, geen dataverlies, maar wel een reëel
+  // UI-risico). Synced pas nadat de roster 400ms stabiel is gebleven.
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      const current = gameForRosterSyncRef.current;
+      if (current === null || current.phase !== 'setup' || roster === null) return;
+      const synced = syncGamePlayersWithRoster(current, roster);
+      if (synced === current) return;
+      setGame(synced);
+      gameRepo.write(synced);
+    }, 400);
+    return () => clearTimeout(timer);
+  }, [roster, gameRepo]);
 
   function handleGameChange(next: ActiveGame) {
     setGame(next);

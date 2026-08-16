@@ -54,6 +54,54 @@ export function createGameFromRoster(
   };
 }
 
+/**
+ * Herstemt `game.players` met de actuele `roster` terwijl de opzet nog in
+ * `'setup'`-fase is (PR 5.5c-bugfixes bug 1): zonder dit blijft de
+ * Wedstrijd-tab de roster-snapshot van het moment van `createGameFromRoster()`
+ * tonen — een latere naam/rugnummer-wijziging of nieuwe/verwijderde speler op
+ * de Team-tab bereikte de opzet voorheen nooit zonder herladen. Matcht op
+ * `rosterId` en behoudt de al gekozen `participate`/`start`-keuzes voor
+ * spelers die nog bestaan (die zijn per-wedstrijd, geen teamgegevens — zie
+ * `createGameFromRoster()`); nieuwe rosterspelers krijgen de standaardkeuzes,
+ * verwijderde rosterspelers vervallen uit de opzet. Retourneert bewust
+ * dezelfde `game`-referentie wanneer er niets wijzigt, zodat de aanroeper
+ * (App.tsx) een onnodige re-render/write kan overslaan.
+ */
+export function syncGamePlayersWithRoster(game: ActiveGame, roster: Roster): ActiveGame {
+  const sorted = sortRoster(roster);
+  const existingByRosterId = new Map(game.players.map((p) => [p.rosterId, p]));
+  let changed = sorted.length !== game.players.length;
+  const players: GamePlayer[] = sorted.map((p, index) => {
+    const existing = existingByRosterId.get(p.id);
+    const next: GamePlayer = {
+      id: existing?.id ?? newId(),
+      rosterId: p.id,
+      nr: p.nr,
+      naam: p.naam,
+      kl: p.kl,
+      vrouw: p.vrouw,
+      jeugd: p.jeugd,
+      participate: existing?.participate ?? true,
+      start: existing?.start ?? false,
+    };
+    const prev = game.players[index];
+    if (
+      !existing ||
+      !prev ||
+      prev.rosterId !== next.rosterId ||
+      prev.nr !== next.nr ||
+      prev.naam !== next.naam ||
+      prev.kl !== next.kl ||
+      prev.vrouw !== next.vrouw ||
+      prev.jeugd !== next.jeugd
+    ) {
+      changed = true;
+    }
+    return next;
+  });
+  return changed ? { ...game, players } : game;
+}
+
 /** Spelers met een ingevulde naam (v1: `validPlayers`). */
 export function validPlayers(game: ActiveGame): GamePlayer[] {
   return game.players.filter((p) => p.naam.trim() !== '');

@@ -1,9 +1,9 @@
 # Bugfixes — gevonden tijdens 5.5c-handmatige staging-validatie
 
-Status: **fixes in uitvoering (PR 60).** Bugs 3, 4, 6 en 9 zijn gefixt (zie
-hun statusregels hieronder); bugs 1, 2, 5, 7, 8 volgen in dezelfde PR. Bug 10
-blijft bewust uitgesteld naar de toekomstige Fase 8-thema/personal-settings-
-implementatie. Dit document verzamelt
+Status: **bugs 1-9 gefixt (PR 60).** Zie de statusregel per bug hieronder
+voor de details en regressietests. Bug 10 (team-kleuren) blijft bewust
+uitgesteld naar de toekomstige Fase 8-thema/personal-settings-implementatie.
+Dit document verzamelt
 applicatiebugs die tijdens het handmatige protocol
 (`docs/pr-5.5-handmatig-protocol.md`) tegen de échte staging-Firebase-
 omgeving (`wheelchair-basketball-tracker`, niet de emulator) aan het licht
@@ -44,7 +44,22 @@ dat een nieuwe gebruiker/coach als eerste bewandelt.
 emulator) — account A, `basketball-tracker-staging`-Deploy Preview,
 15 aug. 2026.
 
-**Status**: open, nog niet gefixt.
+**Status**: gefixt (PR 60). Nieuwe `syncGamePlayersWithRoster()`
+(`domain/game/setup.ts`) herstemt `game.players` met de actuele roster zolang
+de opzet nog in `'setup'`-fase is — matcht op `rosterId`, behoudt de al
+gekozen `participate`/`start`-keuzes voor spelers die nog bestaan, voegt
+nieuwe rosterspelers toe met de standaardkeuzes en laat verwijderde
+rosterspelers vervallen; retourneert dezelfde referentie als er niets
+wijzigt. `App.tsx` roept dit aan in een nieuw, gedebounced effect (400ms) —
+niet direct bij elke `roster`-wijziging: `roster` verandert ook bij elke
+toetsaanslag (vóór een save), en zonder debounce bleek een extra App-brede
+re-render per toetsaanslag empirisch (tegen de echte browser) te kunnen
+interfereren met een invoerhandeling op een ANDERE gecontroleerde input
+(Preact's controlled-input-reconciliatie kon die dan terugzetten naar de
+oude waarde) — ontdekt via een regressie in `tests/e2e/roster.spec.ts` tijdens
+het verifiëren van deze fix, opgelost met de debounce. Regressietest:
+`tests/e2e/game-setup.spec.ts` (nieuw scenario, roster wijzigen zonder reload
+en zonder de Wedstrijd-tab tussentijds te bezoeken).
 
 ### 2. Geen zichtbare bevestiging bij opslaan — systemisch, niet Roster-only
 
@@ -96,8 +111,20 @@ het alleen nooit zeker.
 **Gevonden via**: bug 1 (Roster, 15 aug. 2026); breder uitgezocht op
 expliciet verzoek van de eigenaar (16 aug. 2026).
 
-**Status**: open, nog niet gefixt. Scope nu vastgesteld — fix vereist een
-nieuw gedeeld bevestigingscomponent, geen losse per-scherm patches.
+**Status**: gefixt voor Roster/Instellingen (PR 60) — het gedeelde
+bevestigingscomponent is gebouwd: `useSaveStatus()`
+(`v2/src/ui/sync/useSaveStatus.ts`, een `idle`/`success`/`error`-status met
+automatisch verdwijnende succesmelding) + `<SaveStatusMessage>`
+(`v2/src/ui/sync/SaveStatusMessage.tsx`, de gedeelde weergave). `RosterPanel`/
+`SettingsPanel.handleSave()` gebruiken dit nu i.p.v. hun eigen losse
+`error`-state; SettingsPanel's logo-validatiefout loopt voortaan ook via
+`notifyError()`, zodat de bestaande `settings-error`-testid en -tests
+ongewijzigd blijven werken. GameSetupPanel/LiveTrackingPanel/HistoryPanel
+gebruiken dit component nog niet — die schrijven synchroon lokaal en tonen nu
+al inline foutmeldingen (`saveError`), dus vielen buiten de scope van deze
+ronde; kunnen in een vervolg-PR op hetzelfde gedeelde component overstappen.
+Regressietest: `tests/unit/useSaveStatus.spec.ts` (nieuw), geverifieerd via de
+volledige `tests/e2e/settings.spec.ts`/`roster.spec.ts`-suites.
 
 ### 3. Geen feedback bij "Verificatiemail opnieuw versturen" op het uitnodigingsscherm
 
@@ -209,8 +236,13 @@ denkt dat de app niet werkt.
 **Gevonden via**: `docs/pr-5.5-handmatig-protocol.md` §B.3/§C.2
 (negatieve role-matrix-test), staging — account C, 16 aug. 2026.
 
-**Status**: open, nog niet gefixt. Waarschijnlijk hetzelfde patroon op
-Settings-tab (zelfde `canWrite`-aanpak, niet apart geverifieerd).
+**Status**: gefixt (PR 60). De `rosterReadOnly`/`settingsReadOnly`-melding
+(`data-testid="roster-read-only"`/`"settings-read-only"`) staat nu direct
+onder de intro/vóór de eerste invoerbare rij op zowel Roster- als
+Instellingen-tab (bevestigd: het Settings-tab had exact hetzelfde
+onderaan-patroon), i.p.v. helemaal onderaan bij de "Opslaan"-knop. De tekst
+zelf legt nu ook uit WAT "alleen-lezen" betekent ("je rol geeft geen
+bewerkrechten voor deze gegevens") i.p.v. alleen het label te tonen.
 
 ### 6. Herladen terwijl offline toont altijd "geen lokale kopie", ook als het team wél gecachet is
 
@@ -297,7 +329,10 @@ account ze zitten vóór het uitvoeren van een actie.
 
 **Gevonden via**: eigenaarfeedback tijdens §C.1, staging, 16 aug. 2026.
 
-**Status**: open, nog niet gefixt.
+**Status**: gefixt (PR 60). `SessionBar` accepteert nu een optionele `email`-
+prop (`AuthGate.tsx` geeft `authUser?.email` door) en toont die in een nieuwe
+`session-bar__left`-groep samen met de syncstatus-indicator
+(`data-testid="session-account-email"`).
 
 ### 8. Syncstatus-badge afgesneden/overlapt door knoppen op mobiele breedte
 
@@ -323,7 +358,13 @@ bevestiging enigszins zou moeten compenseren — in de praktijk onleesbaar.
 (vliegtuigmodus + wifi-uit, beide sub-runs), echt toestel, staging,
 16 aug. 2026.
 
-**Status**: open, nog niet gefixt.
+**Status**: gefixt (PR 60). `.session-bar` heeft nu `flex-wrap: wrap`; de
+syncstatus-indicator (en de nieuwe account-e-mailindicator uit bug 7) zitten
+samen in een `.session-bar__left`-groep met `margin-right: auto`, zodat ze
+als geheel naar een eigen regel wrappen i.p.v. verdrongen te worden.
+Regressie-assertie toegevoegd aan
+`tests/e2e-auth/action-needed-panel.spec.ts` (mobiele viewport, controleert
+`.session-bar`'s `scrollWidth`/`clientWidth`).
 
 ### 9. "Geen toegang meer/ingetrokken" direct na het aanmaken van een gloednieuwe organisatie
 
@@ -417,10 +458,12 @@ de meeste andere bugs hierboven.
 
 - Meer bugs toevoegen naarmate het 5.5c-protocol verder wordt uitgevoerd
   (§C.1 resterende 3 rondes, §D verbruiksmeting).
-- Zodra er genoeg verzameld is of het protocol een pauzepunt bereikt: de
-  bugs hierboven daadwerkelijk fixen in deze PR, met regressietests (unit
-  en/of e2e tegen de emulator, zodat toekomstige reloads-tussen-stappen
-  deze klasse van bug niet opnieuw kunnen maskeren).
+- Bug 10 (team-kleuren) implementeren als onderdeel van de toekomstige
+  Fase 8-thema/personal-settings-werkstroom (bewust niet in deze PR).
+- Bug 2's gedeelde `useSaveStatus()`/`<SaveStatusMessage>`-infrastructuur is
+  nu alleen op Roster/Instellingen aangesloten; GameSetupPanel/
+  LiveTrackingPanel/HistoryPanel kunnen in een vervolgstap overstappen van
+  hun eigen `saveError`-afhandeling naar hetzelfde gedeelde component.
 
 ## Cross-references
 

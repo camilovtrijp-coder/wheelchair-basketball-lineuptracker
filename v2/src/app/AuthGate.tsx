@@ -448,6 +448,7 @@ export function AuthGate({ authGateway }: AuthGateProps) {
             onSwitchContext={handleBackToSwitcher}
             syncStatus={repositories.mode === 'cloud' ? syncStatus.status : undefined}
             syncFromCache={repositories.mode === 'cloud' ? syncStatus.fromCache : undefined}
+            email={authUser?.email}
           />
           {repositories.mode === 'cloud' && syncStatus.pending.length > 0 ? (
             <ActionNeededPanel

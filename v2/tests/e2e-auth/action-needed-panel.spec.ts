@@ -43,6 +43,20 @@ test.describe('PR 5.3c-2: syncstatus-indicator en Actie-nodig-paneel', () => {
     await expect(page.getByTestId('sync-status-indicator')).toBeVisible();
     await expect(page.getByTestId('action-needed-panel')).toHaveCount(0);
 
+    // PR 5.5c-bugfixes bug 7: het ingelogde account moet zichtbaar zijn.
+    await expect(page.getByTestId('session-account-email')).toHaveText(email);
+
+    // PR 5.5c-bugfixes bug 8: de syncstatus-badge mag niet worden afgesneden/overlapt
+    // door de knoppen op een mobiele breedte — het abonnement-blok wrapt i.p.v. te clippen.
+    const sessionBarOverflow = await page.evaluate(() => {
+      const bar = document.querySelector('.session-bar');
+      return bar ? bar.scrollWidth - bar.clientWidth : 0;
+    });
+    expect(
+      sessionBarOverflow,
+      'session-bar heeft horizontale overflow op mobiele viewport',
+    ).toBeLessThanOrEqual(1);
+
     // Membership intrekken terwijl de gebruiker nog actief in de context zit
     // (geen reload — dat zou naar het aparte "toegang ingetrokken"-scherm
     // springen, wat een ander scenario is dan een geweigerde write).
