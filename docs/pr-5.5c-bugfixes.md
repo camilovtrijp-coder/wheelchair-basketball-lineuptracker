@@ -197,11 +197,70 @@ denkt dat de app niet werkt.
 **Status**: open, nog niet gefixt. Waarschijnlijk hetzelfde patroon op
 Settings-tab (zelfde `canWrite`-aanpak, niet apart geverifieerd).
 
+### 6. Herladen terwijl offline toont altijd "geen lokale kopie", ook als het team wél gecachet is
+
+**Symptoom**: tijdens §C.1 (iOS, ronde 1, zowel bij vliegtuigmodus als bij
+wifi-uit): direct na het wijzigen van de teamnaam offline toont de app kort
+"Lokaal beschikbaar - uit cache" met de aangepaste naam zichtbaar en
+bruikbaar. Herlaad je de pagina terwijl nog steeds offline, dan verschijnt
+in plaats daarvan **"Geen verbinding" / "Er is nog geen lokale kopie van je
+organisaties op dit apparaat. Ga online om verder te gaan."** — ook al was
+het team een moment eerder aantoonbaar uit cache beschikbaar.
+
+**Oorzaak**: `FirestoreOrganizationGateway.listMyMemberships()` en
+`listMyTeamOnlyContexts()` (`v2/src/infrastructure/organizations/FirestoreOrganizationGateway.ts`,
+regel 70-92 resp. 105+) gebruiken een **eenmalige `getDocs()`**-aanroep op
+een `collectionGroup`-query, geen `onSnapshot()` met persistente cache
+zoals de team-roster/settings-data dat wel heeft
+(`initializeFirestore(..., { localCache: resolveLocalCacheMode(trusted) })`
+in `firebaseClient.ts`). `deriveAppState()`
+(`v2/src/domain/organizations/deriveAppState.ts` regel 49-50) toont
+`uncached-offline` zodra `memberships === null` én offline — en die
+membershiplijst kan door het `getDocs()`-eenmalige-fetch-patroon
+structureel niet uit cache komen bij een volledige paginaherlaad, ook al
+staat het onderliggende teamdocument zelf wél degelijk in de persistente
+Firestore-cache. Dit is dus geen incidentele flake maar **elke keer
+reproduceerbaar** bij offline herladen, ongeacht vliegtuigmodus of
+wifi-uit (beide bevestigd identiek gedrag).
+
+**Impact**: functioneel — geen dataverlies (de wijziging staat nog steeds
+lokaal/wacht op sync zodra online), maar het weerhoudt de gebruiker ervan
+om na een offline herlaad zijn/haar reeds-gecachete team te blijven zien
+en bewerken, precies het scenario dat §C.1 test. Geen "onverwacht
+vastgelopen laadscherm" (er verschijnt direct een duidelijke, niet-hangende
+melding), dus dit hoeft een "schone run" volgens de letterlijke
+protocoldefinitie niet te blokkeren — maar het is een structurele
+beperking die het rapport (§B.4) expliciet moet vermelden, niet als
+toevallige afwijking.
+
+**Gevonden via**: `docs/pr-5.5-handmatig-protocol.md` §C.1, iOS-ronde 1,
+staging — 16 aug. 2026.
+
+**Status**: open, nog niet gefixt. Root cause bevestigd via codeonderzoek.
+
+### 7. Geen zichtbare aanduiding van het ingelogde account
+
+**Symptoom**: nergens in de app is te zien met welk e-mailadres/account je
+bent ingelogd — alleen de knoppen "Wissel van organisatie/team" en
+"Uitloggen" zijn zichtbaar.
+
+**Oorzaak**: `SessionBar` (`v2/src/ui/context/SessionBar.tsx`) accepteert
+geen `email`/`authUser`-prop en rendert dus nooit het ingelogde account;
+`SessionBarProps` bevat alleen `onSignOut`/`onSwitchContext`/`syncStatus`.
+
+**Impact**: UX-gebrek — met name lastig tijdens multi-account-testen
+(A/B/C in verschillende browserprofielen) en voor eindgebruikers die
+tussen meerdere teams/organisaties wisselen en willen bevestigen op welk
+account ze zitten vóór het uitvoeren van een actie.
+
+**Gevonden via**: eigenaarfeedback tijdens §C.1, staging, 16 aug. 2026.
+
+**Status**: open, nog niet gefixt.
+
 ## Nog te doen
 
 - Meer bugs toevoegen naarmate het 5.5c-protocol verder wordt uitgevoerd
-  (§B.2/§B.3 account B/C, §C.1 offline/reload, §C.2 role-matrix-UI, §D
-  verbruiksmeting).
+  (§C.1 resterende 3 rondes, §D verbruiksmeting).
 - Zodra er genoeg verzameld is of het protocol een pauzepunt bereikt: de
   bugs hierboven daadwerkelijk fixen in deze PR, met regressietests (unit
   en/of e2e tegen de emulator, zodat toekomstige reloads-tussen-stappen
