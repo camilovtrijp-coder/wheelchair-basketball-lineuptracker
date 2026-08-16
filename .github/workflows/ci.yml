@@ -1,6 +1,10 @@
 name: CI
 # no-op: force a fresh CI run after a GitHub Actions webhook-delivery incident
 # swallowed the event for 04e4c37 (githubstatus.com confirmed, 6 aug 2026)
+#
+# no-op: same failure mode recurred for e5e7a55 (16 aug 2026) — all four jobs
+# completed in ~5s with no runner ever assigned (runner_id 0), across three
+# re-run attempts on the same run. Forcing a fresh push/run instead.
 
 on:
   push:
