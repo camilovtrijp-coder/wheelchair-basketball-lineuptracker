@@ -159,3 +159,57 @@ describe('ui/game/HistoryPanel (PR 7.2a: syncStatuses-badge)', () => {
     expect(getByTestId('history-sync-status-g1').dataset.status).toBe('lokaal-beschikbaar');
   });
 });
+
+// PR 7.2a, P1-fix (externe review PR #61, derde ronde): een geblokkeerde
+// verwijderpoging (nog niet server-bevestigd) krijgt een eigen, van
+// `saveError` onderscheiden banner — zie App.handleDeleteCompletedGame().
+describe('ui/game/HistoryPanel (PR 7.2a: deleteBlocked-banner, derde ronde)', () => {
+  it('toont een geblokkeerd-banner op zowel de lijst- als detailweergave bij deleteBlocked', () => {
+    const list = render(
+      <HistoryPanel
+        lang="nl"
+        games={[completedGame()]}
+        teamName="Team"
+        openId={null}
+        onOpenChange={vi.fn()}
+        onDeleteGame={vi.fn()}
+        canWrite={true}
+        saveError={false}
+        deleteBlocked={true}
+      />,
+    );
+    expect(list.getByTestId('history-delete-blocked')).toBeTruthy();
+    list.unmount();
+
+    const detail = render(
+      <HistoryPanel
+        lang="nl"
+        games={[completedGame()]}
+        teamName="Team"
+        openId="g1"
+        onOpenChange={vi.fn()}
+        onDeleteGame={vi.fn()}
+        canWrite={true}
+        saveError={false}
+        deleteBlocked={true}
+      />,
+    );
+    expect(detail.getByTestId('history-delete-blocked')).toBeTruthy();
+  });
+
+  it('toont geen geblokkeerd-banner zonder deleteBlocked', () => {
+    const { queryByTestId } = render(
+      <HistoryPanel
+        lang="nl"
+        games={[completedGame()]}
+        teamName="Team"
+        openId="g1"
+        onOpenChange={vi.fn()}
+        onDeleteGame={vi.fn()}
+        canWrite={true}
+        saveError={false}
+      />,
+    );
+    expect(queryByTestId('history-delete-blocked')).toBeNull();
+  });
+});

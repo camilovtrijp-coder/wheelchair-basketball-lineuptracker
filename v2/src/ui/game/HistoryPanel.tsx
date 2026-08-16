@@ -21,6 +21,14 @@ export interface HistoryPanelProps {
    * LiveTrackingPanel getoond). */
   saveError: boolean;
   /**
+   * PR 7.2a, P1-fix (externe review PR #61, derde ronde): `true` wanneer de
+   * laatste verwijderpoging is afgewezen omdat de afronding nog niet
+   * server-bevestigd is (cloud-modus) — zie `App.handleDeleteCompletedGame()`.
+   * Aparte banner van `saveError`: dit is geen mislukte opslag, maar een
+   * bewust geblokkeerde actie.
+   */
+  deleteBlocked?: boolean;
+  /**
    * PR 7.2a: per-`CompletedGame.id` cloudsyncstatus, uitsluitend gevuld door
    * `App` in cloud-modus (net als `SyncStatusIndicator` elders — "gesynchro-
    * niseerd" tonen zonder cloud zou misleidend zijn, zie de eigen docstring
@@ -68,6 +76,7 @@ export function HistoryPanel({
   onDeleteGame,
   canWrite,
   saveError,
+  deleteBlocked,
   syncStatuses,
 }: HistoryPanelProps) {
   const open = openId != null ? games.find((g) => g.id === openId) : undefined;
@@ -78,11 +87,18 @@ export function HistoryPanel({
     </p>
   ) : null;
 
+  const deleteBlockedBanner = deleteBlocked ? (
+    <p className="settings-error" role="status" data-testid="history-delete-blocked">
+      {t(lang, 'deleteBlockedPendingSync')}
+    </p>
+  ) : null;
+
   if (open) {
     const byId = new Map(open.players.map((p) => [p.id, p]));
     return (
       <section className="history-panel" aria-label={t(lang, 'historyTitle')}>
         {errorBanner}
+        {deleteBlockedBanner}
         <div className="history-detail__actions">
           <button
             type="button"
@@ -158,6 +174,7 @@ export function HistoryPanel({
   return (
     <section className="history-panel" aria-label={t(lang, 'historyTitle')}>
       {errorBanner}
+      {deleteBlockedBanner}
       {games.length === 0 ? (
         <p className="history-empty" data-testid="history-empty">
           {t(lang, 'historyEmpty')}

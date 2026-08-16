@@ -213,6 +213,12 @@ export function App({
   );
   const [completedGames, setCompletedGames] = useState<CompletedGame[]>([]);
   const [historyOpenId, setHistoryOpenId] = useState<string | null>(null);
+  // PR 7.2a, P1-fix (externe review PR #61, derde ronde): zie
+  // `handleDeleteCompletedGame` hieronder — toont waarom een verwijderpoging
+  // is geblokkeerd (nog geen serverbevestiging) zonder de eerder gestelde
+  // `gameSaveError`-banner te misbruiken (dat is specifiek "opslaan is
+  // mislukt", geen "actie geblokkeerd").
+  const [deleteBlocked, setDeleteBlocked] = useState(false);
   // PR 6.5 §C.2/§F: het wedstrijdfilter is gedeeld tussen Stats en Trends —
   // één "welke wedstrijden tellen mee"-instelling voor de hele app, i.p.v.
   // twee aparte filters die uit de pas kunnen lopen (v1-pariteit). `null` =
@@ -379,6 +385,23 @@ export function App({
   const pendingFinalizesRef = useRef(
     new Map<string, { game: ActiveGame; completed: CompletedGame }>(),
   );
+  // PR 7.2a, P1-fix (externe review PR #61, derde ronde): `runFinalize()`
+  // wordt vanuit drie onafhankelijke plekken voor hetzelfde `completed.id`
+  // aangeroepen — `handleFinishGame()`, het hervat-op-load-effect hieronder,
+  // en de online-reconnect-handler — en die konden elkaar zonder guard
+  // overlappen (bijv. een online-event terwijl de eerste
+  // `coordinator.finalize()`-aanroep nog loopt). Twee gelijktijdige cycli
+  // racen dan op dezelfde revisie: als de eerste slaagt (en de outbox al
+  // verwijdert) terwijl de tweede nog loopt, kan die tweede alsnog laat
+  // falen en de status terugzetten naar `actie-nodig` — zonder dat er nog
+  // een outbox-entry is om vandaan te hervatten. Spiegelt daarom exact het
+  // bestaande in-flight/queued-patroon van `runGameSync` hierboven: een
+  // aanroep tijdens een lopende cyclus voor hetzelfde ID wordt niet genegeerd
+  // maar gemarkeerd voor precies één hernieuwde poging zodra de lopende
+  // cyclus afrondt — nooit twee gelijktijdige gateway-aanroepen voor
+  // hetzelfde ID.
+  const finalizeInFlightRef = useRef(new Set<string>());
+  const finalizeQueuedRef = useRef(new Set<string>());
 
   const runFinalize = useCallback(
     (finishedGame: ActiveGame, completed: CompletedGame) => {
@@ -386,20 +409,34 @@ export function App({
       const writerContext = repositories.gameWriterContext;
       if (!coordinator || !writerContext) return;
       pendingFinalizesRef.current.set(completed.id, { game: finishedGame, completed });
+      if (finalizeInFlightRef.current.has(completed.id)) {
+        finalizeQueuedRef.current.add(completed.id);
+        return;
+      }
+      finalizeInFlightRef.current.add(completed.id);
       setFinalizeStatuses((prev) => ({ ...prev, [completed.id]: 'wacht-op-synchronisatie' }));
-      coordinator.finalize(finishedGame, completed, writerContext).then(
-        (checkpoint) => {
-          if (checkpoint.status === 'idle') {
-            pendingFinalizesRef.current.delete(completed.id);
-            pendingFinalizeRepo.remove(completed.id);
+      coordinator
+        .finalize(finishedGame, completed, writerContext)
+        .then(
+          (checkpoint) => {
+            if (checkpoint.status === 'idle') {
+              pendingFinalizesRef.current.delete(completed.id);
+              pendingFinalizeRepo.remove(completed.id);
+            }
+            setFinalizeStatuses((prev) => ({
+              ...prev,
+              [completed.id]: checkpoint.status === 'idle' ? 'gesynchroniseerd' : 'actie-nodig',
+            }));
+          },
+          () => setFinalizeStatuses((prev) => ({ ...prev, [completed.id]: 'actie-nodig' })),
+        )
+        .finally(() => {
+          finalizeInFlightRef.current.delete(completed.id);
+          if (finalizeQueuedRef.current.delete(completed.id)) {
+            const queued = pendingFinalizesRef.current.get(completed.id);
+            if (queued) runFinalize(queued.game, queued.completed);
           }
-          setFinalizeStatuses((prev) => ({
-            ...prev,
-            [completed.id]: checkpoint.status === 'idle' ? 'gesynchroniseerd' : 'actie-nodig',
-          }));
-        },
-        () => setFinalizeStatuses((prev) => ({ ...prev, [completed.id]: 'actie-nodig' })),
-      );
+        });
     },
     [repositories.gameSync, repositories.gameWriterContext, pendingFinalizeRepo],
   );
@@ -533,7 +570,27 @@ export function App({
     setTab('history');
   }
 
+  /**
+   * PR 7.2a, P1-fix (externe review PR #61, derde ronde): in cloud-modus is
+   * een nog niet server-bevestigde afronding voor `id` uitsluitend nog te
+   * vinden via de lokale `CompletedGame` en de duurzame `pendingFinalizeRepo`
+   * (er bestaat nog geen 7.2c-tombstone-flow om een cloudkant "dit is
+   * verwijderd" te melden). Vóór serverbevestiging verwijderen zou dus de
+   * enige retrybron vernietigen — in strijd met 7.2a's acceptatiecriterium
+   * "geen bronverwijdering" — of, als de fire-and-forget cloudfinalize
+   * ondertussen alsnog slaagt, een orphan cloudsnapshot zonder lokaal
+   * tegenhanger achterlaten. Daarom hier geblokkeerd totdat de status
+   * `gesynchroniseerd` is (server-bevestigd); `finalizeStatuses[id]` is
+   * `undefined` vlak na afronden totdat het statuseffect hierboven voor het
+   * eerst draait, en wordt dan bewust ook als "nog niet bevestigd"
+   * behandeld (fail-closed, niet fail-open).
+   */
   function handleDeleteCompletedGame(id: string) {
+    if (repositories.gameSync && finalizeStatuses[id] !== 'gesynchroniseerd') {
+      setDeleteBlocked(true);
+      return;
+    }
+    setDeleteBlocked(false);
     const ok = completedGameRepo.remove(id);
     setGameSaveError(!ok);
     if (!ok) return;
@@ -880,7 +937,10 @@ export function App({
             games={completedGames}
             teamName={(settings.teamName as string) || ''}
             openId={historyOpenId}
-            onOpenChange={setHistoryOpenId}
+            onOpenChange={(id) => {
+              setHistoryOpenId(id);
+              setDeleteBlocked(false);
+            }}
             onDeleteGame={handleDeleteCompletedGame}
             // Externe PR-6.3-review (aug. 2026): verwijderen van historie is een
             // beheeractie (ADR-003: "wedstrijden beheren" is coach/owner/admin),
@@ -888,6 +948,7 @@ export function App({
             // niet de bredere `canWriteGame` (die ook 'scorer' toelaat).
             canWrite={canWrite}
             saveError={gameSaveError}
+            deleteBlocked={deleteBlocked}
             syncStatuses={repositories.gameSync ? finalizeStatuses : undefined}
           />
         ) : tab === 'stats' ? (

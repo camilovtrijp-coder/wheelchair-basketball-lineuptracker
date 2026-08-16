@@ -424,3 +424,243 @@ describe('app/App — een mislukte outbox-write is een echte precondition (PR 7.
     }
   });
 });
+
+describe('app/App — verwijderen van een nog niet cloud-bevestigde afronding blijft geblokkeerd (PR 7.2a, P1-fix derde ronde PR #61)', () => {
+  it('blokkeert de verwijdering zolang de finalize-status niet gesynchroniseerd is; de bron blijft daarna hervatbaar', async () => {
+    window.localStorage.setItem(
+      activeGameStorageKey(ORG_ID, TEAM_ID),
+      JSON.stringify(trackingGameReadyToFinish()),
+    );
+    vi.spyOn(window, 'confirm').mockReturnValue(true);
+
+    // Ronde 1: een gateway die de finalize altijd laat mislukken — simuleert
+    // een offline/mislukte cloudfinalize direct na het lokaal afronden.
+    const failingGateway = alwaysSucceedsGateway();
+    vi.spyOn(failingGateway, 'finalizeCompletedGame').mockRejectedValue(
+      new Error('offline (test)'),
+    );
+    const coordinator1 = new GameSyncCoordinator({
+      gateway: failingGateway,
+      checkpoints: new LocalStorageGameSyncCheckpointRepository(window.localStorage),
+    });
+    const repositories1 = {
+      mode: 'cloud' as const,
+      settings: new ImmediateSettingsRepository(),
+      roster: new ImmediateRosterRepository(),
+      gameSync: coordinator1,
+      gameWriterContext: writer,
+    };
+
+    const { getByTestId, unmount } = render(
+      <App
+        repositories={repositories1}
+        syncStatus={fakeSyncStatusApi()}
+        canWrite={true}
+        canWriteGame={true}
+        organizationId={ORG_ID}
+        teamId={TEAM_ID}
+        organizationName="Org Resume Test"
+      />,
+    );
+
+    await waitFor(() => expect(getByTestId('nav-settings')).toBeTruthy());
+    getByTestId('nav-game').click();
+    const finishBtn = await waitFor(() => getByTestId('finish-game-btn') as HTMLButtonElement);
+    finishBtn.click();
+
+    // "Afronden" schakelt automatisch naar Historie met het net afgeronde item
+    // open — de status staat hier nog niet op `gesynchroniseerd` (in eerste
+    // instantie `wacht-op-synchronisatie`, en na de mislukking `actie-nodig`;
+    // in beide gevallen moet verwijderen geblokkeerd worden).
+    const deleteBtn = await waitFor(() => getByTestId('history-delete-btn') as HTMLButtonElement);
+    deleteBtn.click();
+
+    await waitFor(() => expect(getByTestId('history-delete-blocked')).toBeTruthy());
+
+    // De bron is NIET verwijderd: zowel de lokale CompletedGame als de
+    // duurzame finalize-outbox staan nog gewoon in localStorage.
+    const completedRaw = window.localStorage.getItem(completedGamesStorageKey(ORG_ID, TEAM_ID));
+    expect(completedRaw).not.toBeNull();
+    expect(JSON.parse(completedRaw!)).toHaveLength(1);
+    const pendingRaw = window.localStorage.getItem(pendingFinalizeStorageKey(ORG_ID, TEAM_ID));
+    expect(pendingRaw).not.toBeNull();
+    expect(JSON.parse(pendingRaw!)).toHaveLength(1);
+
+    // Laat de mislukte cloudfinalize-poging daadwerkelijk settelen voordat
+    // deze instantie wordt afgebroken (voorkomt een unhandled rejection ná
+    // unmount).
+    await waitFor(() => expect(vi.mocked(failingGateway.finalizeCompletedGame)).toHaveBeenCalled());
+    unmount();
+
+    // Ronde 2 (simuleert reload/reconnect): een VERSE App/coordinator-
+    // instantie met een gateway die nu wél slaagt — bewijst dat de bron door
+    // de geblokkeerde verwijderpoging niet is aangetast en gewoon hervat kan
+    // worden.
+    const succeedingGateway = alwaysSucceedsGateway();
+    const finalizeSpy = vi.spyOn(succeedingGateway, 'finalizeCompletedGame');
+    const coordinator2 = new GameSyncCoordinator({
+      gateway: succeedingGateway,
+      checkpoints: new LocalStorageGameSyncCheckpointRepository(window.localStorage),
+    });
+    const repositories2 = {
+      mode: 'cloud' as const,
+      settings: new ImmediateSettingsRepository(),
+      roster: new ImmediateRosterRepository(),
+      gameSync: coordinator2,
+      gameWriterContext: writer,
+    };
+
+    render(
+      <App
+        repositories={repositories2}
+        syncStatus={fakeSyncStatusApi()}
+        canWrite={true}
+        canWriteGame={true}
+        organizationId={ORG_ID}
+        teamId={TEAM_ID}
+        organizationName="Org Resume Test"
+      />,
+    );
+
+    await waitFor(() => expect(finalizeSpy).toHaveBeenCalledTimes(1));
+    await waitFor(() => {
+      const raw = window.localStorage.getItem(pendingFinalizeStorageKey(ORG_ID, TEAM_ID));
+      expect(raw === null || JSON.parse(raw).length === 0).toBe(true);
+    });
+  });
+});
+
+/** Een expliciet stuurbare `finalizeCompletedGame()`-belofte — laat de test
+ * exact bepalen wanneer een gatewayaanroep settelt, nodig om een écht
+ * gelijktijdige/overlappende `runFinalize()`-aanroep te kunnen simuleren
+ * (PR 7.2a, P1-fix derde ronde, in-flight-guard). */
+function deferred<T>(): {
+  promise: Promise<T>;
+  resolve: (value: T) => void;
+  reject: (reason: unknown) => void;
+} {
+  let resolve!: (value: T) => void;
+  let reject!: (reason: unknown) => void;
+  const promise = new Promise<T>((res, rej) => {
+    resolve = res;
+    reject = rej;
+  });
+  return { promise, resolve, reject };
+}
+
+function controlledFinalizeGateway(): {
+  gateway: GameCloudGateway;
+  finalizeCalls: ReturnType<typeof deferred<GameSnapshotWriteResult>>[];
+} {
+  const finalizeCalls: ReturnType<typeof deferred<GameSnapshotWriteResult>>[] = [];
+  const gateway: GameCloudGateway = {
+    async ensureGame(): Promise<GameSnapshotWriteResult> {
+      return {
+        ok: true,
+        revision: 0,
+        writerUid: writer.authorUid,
+        deviceId: writer.deviceId,
+        completedGameId: null,
+      };
+    },
+    async uploadActions(
+      _o: string,
+      _t: string,
+      _g: string,
+      actions: readonly GameActionEnvelopeDocument[],
+    ): Promise<GameActionUploadOutcome[]> {
+      return actions.map((a) => ({ actionId: a.actionId, ok: true }));
+    },
+    async patchSnapshot(
+      _o: string,
+      _t: string,
+      _g: string,
+      _patch: Partial<GameSnapshotProjection>,
+      expectedRevision: number,
+    ): Promise<GameSnapshotWriteResult> {
+      return { ok: true, revision: expectedRevision + 1 };
+    },
+    async finalizeCompletedGame(
+      _o: string,
+      _t: string,
+      _g: string,
+      completedGameId: string,
+    ): Promise<GameSnapshotWriteResult> {
+      const call = deferred<GameSnapshotWriteResult>();
+      finalizeCalls.push(call);
+      const result = await call.promise;
+      return { ...result, completedGameId };
+    },
+  };
+  return { gateway, finalizeCalls };
+}
+
+describe('app/App — runFinalize() start nooit twee gelijktijdige gatewaycycli voor hetzelfde item (PR 7.2a, P1-fix derde ronde PR #61)', () => {
+  it('negeert online-events tijdens een lopende finalize; hernieuwt precies één keer na settelen, tot gesynchroniseerd', async () => {
+    window.localStorage.setItem(
+      activeGameStorageKey(ORG_ID, TEAM_ID),
+      JSON.stringify(trackingGameReadyToFinish()),
+    );
+    vi.spyOn(window, 'confirm').mockReturnValue(true);
+
+    const { gateway, finalizeCalls } = controlledFinalizeGateway();
+    const coordinator = new GameSyncCoordinator({
+      gateway,
+      checkpoints: new LocalStorageGameSyncCheckpointRepository(window.localStorage),
+    });
+    const repositories = {
+      mode: 'cloud' as const,
+      settings: new ImmediateSettingsRepository(),
+      roster: new ImmediateRosterRepository(),
+      gameSync: coordinator,
+      gameWriterContext: writer,
+    };
+
+    const { getByTestId } = render(
+      <App
+        repositories={repositories}
+        syncStatus={fakeSyncStatusApi()}
+        canWrite={true}
+        canWriteGame={true}
+        organizationId={ORG_ID}
+        teamId={TEAM_ID}
+        organizationName="Org Resume Test"
+      />,
+    );
+
+    await waitFor(() => expect(getByTestId('nav-settings')).toBeTruthy());
+    getByTestId('nav-game').click();
+    const finishBtn = await waitFor(() => getByTestId('finish-game-btn') as HTMLButtonElement);
+    finishBtn.click();
+
+    // De eerste `finalizeCompletedGame()`-aanroep blijft bewust hangen.
+    await waitFor(() => expect(finalizeCalls).toHaveLength(1));
+
+    // Meerdere `online`-events tijdens die lopende aanroep mogen GEEN tweede,
+    // overlappende gatewayaanroep starten — de in-flight-guard moet ze
+    // markeren voor precies één hernieuwde poging ná settelen, niet meteen
+    // uitvoeren.
+    window.dispatchEvent(new Event('online'));
+    window.dispatchEvent(new Event('online'));
+    window.dispatchEvent(new Event('online'));
+    expect(finalizeCalls).toHaveLength(1);
+
+    // De lopende poging faalt alsnog laat (bijv. een netwerkfout die pas na
+    // de online-events binnenkomt) — dit triggert de queued hernieuwde
+    // poging, niet een derde aanroep vanuit de al afgehandelde online-events.
+    finalizeCalls[0]!.reject(new Error('netwerk mislukt (test)'));
+    await waitFor(() => expect(finalizeCalls).toHaveLength(2));
+    expect(finalizeCalls).toHaveLength(2);
+
+    // De hernieuwde poging slaagt — de outbox wordt pas NU opgeruimd, nooit
+    // vóór een definitief succes.
+    finalizeCalls[1]!.resolve({ ok: true, revision: 1 });
+    await waitFor(() => {
+      const raw = window.localStorage.getItem(pendingFinalizeStorageKey(ORG_ID, TEAM_ID));
+      expect(raw === null || JSON.parse(raw).length === 0).toBe(true);
+    });
+
+    // Nooit een derde, overbodige gatewaycyclus.
+    expect(finalizeCalls).toHaveLength(2);
+  });
+});
