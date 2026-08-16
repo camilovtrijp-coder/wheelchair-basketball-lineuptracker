@@ -24,6 +24,18 @@ export interface GameSyncCheckpoint {
   status: 'idle' | 'actie-nodig';
   lastError?: string;
   updatedAt: string;
+  /**
+   * PR 7.2a (docs/pr-7.2-plan.md §C 7.2a): aanwezig zodra deze wedstrijd
+   * succesvol is afgerond naar de cloud — `CompletedGame.id` van de
+   * bevestigde snapshot. Hergebruikt hetzelfde per-`gameId`-checkpoint als de
+   * tracking-sync hierboven (geen apart finalize-checkpoint nodig): een
+   * afgeronde `ActiveGame` wordt na afronding toch niet meer als 'tracking'
+   * hervat (zie `app/App.tsx` `handleFinishGame()`), dus dit veld en
+   * `confirmedActionIds`/`serverRevision` conflicteren nooit met elkaar.
+   * Ontbrekend/`undefined` betekent "nog niet (succesvol) afgerond naar de
+   * cloud" — niet hetzelfde als "geen wedstrijd om af te ronden".
+   */
+  completedGameId?: string;
 }
 
 export function createEmptyGameSyncCheckpoint(

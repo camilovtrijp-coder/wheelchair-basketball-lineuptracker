@@ -33,12 +33,19 @@
 //    PR 7.1b punt 10a/10b): een niet-transactionele `updateDoc()` op een
 //    verouderde `expectedRevision` wordt simpelweg geweigerd. Zie
 //    docs/pr-7.1-plan.md §C 7.1c werk 2.
+// 4. `finalizeCompletedGame()` (PR 7.2a, P1-fix externe review PR #61) is de
+//    ENIGE methode hier die wél een `WriteBatch` gebruikt: de completed-
+//    snapshot-create en de parent-finalize-patch moeten atomisch samen
+//    slagen of samen falen (firestore.rules' `getAfter()`-binding, zie
+//    firestore.rules punt 16) — twee losse writes lieten voorheen een
+//    dubbele-snapshot/orphan-snapshot-gat open.
 import {
   doc,
   getDoc,
   serverTimestamp,
   setDoc,
   updateDoc,
+  writeBatch,
   type DocumentReference,
   type Firestore,
 } from 'firebase/firestore';
@@ -48,6 +55,7 @@ import {
   type GameActionEnvelopeDocument,
 } from 'firebase-base/documents';
 import type {
+  CompletedGameSnapshotProjection,
   GameActionUploadOutcome,
   GameCloudGateway,
   GameSnapshotProjection,
@@ -143,6 +151,22 @@ export class FirestoreGameCloudGateway implements GameCloudGateway {
     );
   }
 
+  private completedGameRef(
+    organizationId: string,
+    teamId: string,
+    completedGameId: string,
+  ): DocumentReference {
+    return doc(
+      this.db,
+      'organizations',
+      organizationId,
+      'teams',
+      teamId,
+      'completedGames',
+      completedGameId,
+    );
+  }
+
   async ensureGame(
     organizationId: string,
     teamId: string,
@@ -163,6 +187,7 @@ export class FirestoreGameCloudGateway implements GameCloudGateway {
           revision: data.revision,
           writerUid: data.writerUid,
           deviceId: data.deviceId,
+          completedGameId: data.completedGameId,
         };
       }
       await withTimeout(
@@ -175,6 +200,7 @@ export class FirestoreGameCloudGateway implements GameCloudGateway {
         revision: snapshot.revision,
         writerUid: snapshot.writerUid,
         deviceId: snapshot.deviceId,
+        completedGameId: snapshot.completedGameId,
       };
     } catch (createError) {
       // Race met een ander apparaat dat het document tussen onze getDoc() en
@@ -196,6 +222,7 @@ export class FirestoreGameCloudGateway implements GameCloudGateway {
             revision: data.revision,
             writerUid: data.writerUid,
             deviceId: data.deviceId,
+            completedGameId: data.completedGameId,
           };
         }
       } catch {
@@ -281,6 +308,7 @@ export class FirestoreGameCloudGateway implements GameCloudGateway {
           revision: data.revision,
           writerUid: data.writerUid,
           deviceId: data.deviceId,
+          completedGameId: data.completedGameId,
         };
       }
     } catch {
@@ -291,6 +319,71 @@ export class FirestoreGameCloudGateway implements GameCloudGateway {
       revision: nextRevision,
       writerUid: patch.writerUid,
       deviceId: patch.deviceId,
+      completedGameId: patch.completedGameId,
     };
+  }
+
+  /**
+   * P1-fix (externe review PR #61) op de eerdere PR 7.2a-poort: schrijft de
+   * completed-snapshot ÉN patcht `completedGameId` op het parentdocument als
+   * ÉÉN atomische `WriteBatch` — nooit de twee losse `setDoc()`/`updateDoc()`-
+   * aanroepen van eerst. Firestore's batched writes zijn all-or-nothing (en
+   * `getAfter()` in firestore.rules' `completedGames`-createregel, punt 16,
+   * ziet de UITKOMST van deze batch — dat werkt zowel binnen transacties als
+   * batched writes): als de finalize-patch op het parentdocument faalt (bijv.
+   * een verouderde `expectedRevision`, of `completedGameId` is server-side
+   * intussen al door een eerdere poging gezet), wordt de completed-snapshot
+   * NOOIT aangemaakt, en omgekeerd. Geen readback/alreadyConfirmed-dans meer
+   * nodig zoals bij `uploadActions()` — idempotentie bij een retry loopt via
+   * `GameSyncCoordinator.finalize()`'s eigen server-kortsluitingscheck
+   * (`ensureGame()` vóóraf), niet via deze methode zelf.
+   */
+  async finalizeCompletedGame(
+    organizationId: string,
+    teamId: string,
+    gameId: string,
+    completedGameId: string,
+    snapshot: CompletedGameSnapshotProjection,
+    expectedRevision: number,
+  ): Promise<GameSnapshotWriteResult> {
+    const completedRef = this.completedGameRef(organizationId, teamId, completedGameId);
+    const gameRef = this.gameRef(organizationId, teamId, gameId);
+    const nextRevision = expectedRevision + 1;
+    const batch = writeBatch(this.db);
+    batch.set(completedRef, { ...snapshot, syncedAt: serverTimestamp() });
+    batch.update(gameRef, {
+      completedGameId,
+      revision: nextRevision,
+      updatedAt: serverTimestamp(),
+    });
+    try {
+      await withTimeout(batch.commit(), this.timeoutMs, 'finalizeCompletedGame:commit');
+    } catch (error) {
+      // Faalt altijd atomisch: geen partiële staat om op terug te vallen.
+      // Retrybaar/zichtbaar via een nieuwe finalize()-cyclus.
+      return { ok: false, error };
+    }
+    // Best-effort readback, zelfde redenering als patchSnapshot() hierboven:
+    // de voorgaande batch.commit() is zelf al de serverbevestiging.
+    try {
+      const readback = await withTimeout(
+        getDoc(gameRef.withConverter(gameConverter)),
+        this.timeoutMs,
+        'finalizeCompletedGame:readback',
+      );
+      if (readback.exists()) {
+        const data = readback.data();
+        return {
+          ok: true,
+          revision: data.revision,
+          writerUid: data.writerUid,
+          deviceId: data.deviceId,
+          completedGameId: data.completedGameId,
+        };
+      }
+    } catch {
+      /* zie toelichting hierboven — de write zelf staat al vast */
+    }
+    return { ok: true, revision: nextRevision, completedGameId };
   }
 }

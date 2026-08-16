@@ -83,6 +83,7 @@ export function sampleGame(overrides: Record<string, unknown> = {}) {
     revision: 0,
     createdAt: '2026-01-01T00:00:00.000Z',
     startedAt: null,
+    completedGameId: null,
     updatedAt: Timestamp.now(),
     ...overrides,
   };
@@ -104,6 +105,53 @@ export function sampleGameAction(overrides: Record<string, unknown> = {}) {
     occurredAt: '2026-01-01T00:10:00.000Z',
     schemaVersion: 1,
     action: { type: 'score-delta', team: 'for', delta: 2 },
+    ...overrides,
+  };
+}
+
+// PR 7.2a — bevroren completed-snapshot (zie firebase/src/documents/completedGame.ts).
+export function sampleCompletedGame(overrides: Record<string, unknown> = {}) {
+  return {
+    organizationId: ORG_A,
+    teamId: TEAM_A1,
+    sourceGameId: 'game-1',
+    opponent: 'Fictieve Tegenstander',
+    competition: 'Fictieve Competitie',
+    date: '2026-01-01T01:30:00.000Z',
+    players: [
+      {
+        id: 'gp-1',
+        rosterId: 1,
+        nr: '7',
+        naam: 'Fictief Speler',
+        kl: '3.0',
+        vrouw: false,
+        jeugd: false,
+        participate: true,
+        start: true,
+      },
+    ],
+    segments: [
+      {
+        id: 'seg-1',
+        quarter: 1,
+        beginSec: 600,
+        endSec: 480,
+        durSec: 120,
+        lineup: ['gp-1', 'gp-2', 'gp-3', 'gp-4', 'gp-5'],
+        pf: 4,
+        pa: 2,
+        classSum: 14.0,
+        allowed: 14.5,
+        over: false,
+      },
+    ],
+    scoreFor: 40,
+    scoreAgainst: 32,
+    quarterCount: 4,
+    periodLabel: 'kwart',
+    useClassLimit: true,
+    syncedAt: Timestamp.now(),
     ...overrides,
   };
 }

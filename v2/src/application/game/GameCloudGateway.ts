@@ -1,4 +1,8 @@
-import type { GameActionEnvelopeDocument, GameDocument } from 'firebase-base/documents';
+import type {
+  CompletedGameDocument,
+  GameActionEnvelopeDocument,
+  GameDocument,
+} from 'firebase-base/documents';
 
 /**
  * Application-poort voor de cloudkant van het wedstrijdmodel (PR 7.1a,
@@ -37,6 +41,15 @@ export interface GameSnapshotWriteResult {
    */
   writerUid?: string | null;
   deviceId?: string | null;
+  /**
+   * PR 7.2a: aanwezig bij `ok: true`; de actuele `completedGameId` op het
+   * serverdocument NA deze operatie. `GameSyncCoordinator.finalize()`
+   * gebruikt dit om een reeds server-side afgeronde wedstrijd te herkennen
+   * (bijv. na een crash die het lokale checkpoint niet meer bijwerkte vóórdat
+   * de vorige finalize-poging server-bevestigd raakte) zonder daarvoor een
+   * aparte leesoperatie nodig te hebben.
+   */
+  completedGameId?: string | null;
   error?: unknown;
 }
 
@@ -47,6 +60,14 @@ export interface GameActionUploadOutcome {
   alreadyConfirmed?: boolean;
   error?: unknown;
 }
+
+/**
+ * PR 7.2a: projectie van een `CompletedGame` naar de cloudvorm — zie
+ * `application/game/projectCompletedGameForCloud.ts`. `syncedAt` is
+ * server-bijgehouden bookkeeping (net als `GameSnapshotProjection`'s
+ * ontbrekende `updatedAt`), dus hier ook uitgesloten.
+ */
+export type CompletedGameSnapshotProjection = Omit<CompletedGameDocument, 'syncedAt'>;
 
 export interface GameCloudGateway {
   /**
@@ -81,6 +102,31 @@ export interface GameCloudGateway {
     teamId: string,
     gameId: string,
     patch: Partial<GameSnapshotProjection>,
+    expectedRevision: number,
+  ): Promise<GameSnapshotWriteResult>;
+  /**
+   * PR 7.2a, P1-fix (externe review PR #61): rondt een wedstrijd atomisch af
+   * — schrijft de completed-snapshot ÉN patcht `completedGameId` op het
+   * parentdocument in dezelfde Firestore-`WriteBatch`, nooit als twee losse
+   * writes. Zonder deze atomiciteit kon dezelfde writer meerdere
+   * completed-snapshots voor één `gameId` aanmaken, of een crash tussen de
+   * twee writes een orphan-snapshot achterlaten (een snapshot zonder
+   * bijbehorende parentverwijzing). firestore.rules' `getAfter()`-check op
+   * de `completedGames`-createregel (punt 16) dwingt af dat beide writes
+   * altijd samen slagen of samen falen — dit is dus geen client-only
+   * garantie. Faalt de batch (bijv. een verouderde `expectedRevision`, een
+   * Rules-afwijzing, of — idempotent — een wedstrijd die server-side al
+   * naar deze of een andere `completedGameId` is afgerond), dan is GEEN van
+   * beide writes doorgekomen; de aanroeper retryt via een volledig nieuwe
+   * `finalize()`-cyclus (die eerst opnieuw controleert of de wedstrijd
+   * intussen al afgerond is, zie `GameSyncCoordinator.finalize()`).
+   */
+  finalizeCompletedGame(
+    organizationId: string,
+    teamId: string,
+    gameId: string,
+    completedGameId: string,
+    snapshot: CompletedGameSnapshotProjection,
     expectedRevision: number,
   ): Promise<GameSnapshotWriteResult>;
 }

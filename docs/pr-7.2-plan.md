@@ -1,6 +1,8 @@
 # Voorbereidingsplan PR 7.2 — afgeronde wedstrijden synchroniseren
 
-Status: goedgekeurde bouwrichting; start na 7.1a–7.1c. Implementatie nog niet
+Status: goedgekeurde bouwrichting; start na 7.1a–7.1c. PR 7.2a geïmplementeerd
+en in review (zie `docs/IMPLEMENTATION_PLAN.md` §17-statustabel voor het
+volledige overzicht van geraakte bestanden en testdekking); 7.2b/7.2c nog niet
 gestart.
 
 ## A. Doel en grenzen

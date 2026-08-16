@@ -22,7 +22,10 @@ export interface GameCloudWriterContext {
   writerEpoch: number;
 }
 
-function projectGamePlayer(player: GamePlayer) {
+/** Geëxporteerd voor hergebruik door `projectCompletedGameForCloud.ts` (PR
+ * 7.2a) — dezelfde `GamePlayer`-projectie wordt bevroren op een
+ * `CompletedGame`-snapshot, geen tweede, divergerende mapping. */
+export function projectGamePlayer(player: GamePlayer) {
   return {
     id: player.id,
     rosterId: player.rosterId,
@@ -36,7 +39,8 @@ function projectGamePlayer(player: GamePlayer) {
   };
 }
 
-function projectSegment(segment: Segment) {
+/** Geëxporteerd voor hergebruik door `projectCompletedGameForCloud.ts` (PR 7.2a). */
+export function projectSegment(segment: Segment) {
   return {
     id: segment.id,
     quarter: segment.quarter,
@@ -87,6 +91,11 @@ export function projectGameSnapshot(game: ActiveGame): GameSnapshotProjection {
     revision: 0,
     createdAt: game.createdAt,
     startedAt: game.startedAt,
+    // PR 7.2a: `null` totdat GameSyncCoordinator.finalize() de eenmalige
+    // finalize-patch uitvoert (zie firebase/src/documents/game.ts). Deze
+    // functie levert alleen de vorm voor een eerste ensureGame()-create,
+    // dus altijd `null` — een game wordt nooit "al afgerond" aangemaakt.
+    completedGameId: null,
   };
 }
 

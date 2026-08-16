@@ -119,4 +119,26 @@ describe('infrastructure/game/LocalStorageGameSyncCheckpointRepository (PR 7.1c)
     const repo = new LocalStorageGameSyncCheckpointRepository(new ThrowingStorage());
     expect(repo.read('game-1')).toBeNull();
   });
+
+  // PR 7.2a: completedGameId is een optioneel veld op hetzelfde checkpoint.
+  it('rondt een checkpoint met completedGameId gezet correct af', () => {
+    const repo = new LocalStorageGameSyncCheckpointRepository(new FakeStorage());
+    const checkpoint = {
+      ...createEmptyGameSyncCheckpoint('game-1', 'org-1', 'team-1', '2026-01-01T00:00:00.000Z'),
+      completedGameId: 'completed-1',
+    };
+    expect(repo.write(checkpoint)).toBe(true);
+    expect(repo.read('game-1')).toEqual(checkpoint);
+  });
+
+  it('verwerpt een checkpoint met een niet-string completedGameId (behandeld als "geen checkpoint")', () => {
+    const storage = new FakeStorage();
+    const malformed = {
+      ...createEmptyGameSyncCheckpoint('game-1', 'org-1', 'team-1', '2026-01-01T00:00:00.000Z'),
+      completedGameId: 42,
+    };
+    storage.setItem(gameSyncCheckpointStorageKey('game-1'), JSON.stringify(malformed));
+    const repo = new LocalStorageGameSyncCheckpointRepository(storage);
+    expect(repo.read('game-1')).toBeNull();
+  });
 });

@@ -134,6 +134,8 @@ const nl = {
   historyTitle: 'Historie',
   historyEmpty: 'Nog geen afgeronde wedstrijden.',
   confirmDeleteGame: 'Deze wedstrijd definitief verwijderen? Dit kan niet ongedaan worden gemaakt.',
+  deleteBlockedPendingSync:
+    'Deze wedstrijd is nog niet naar de cloud gesynchroniseerd en kan daarom nog niet verwijderd worden. Wacht tot de status "gesynchroniseerd" toont en probeer het opnieuw.',
   exportShareBtn: 'Exporteren/Delen',
   // PR 6.4: Stats-tab. Strings gespiegeld van v1 (index.html
   // `stats[A-Z]*`-verten) zodat een vertaler beide talen tegelijk kan
@@ -440,6 +442,8 @@ const en = {
   historyTitle: 'History',
   historyEmpty: 'No finished games yet.',
   confirmDeleteGame: 'Permanently delete this game? This cannot be undone.',
+  deleteBlockedPendingSync:
+    'This game hasn\'t synced to the cloud yet, so it can\'t be deleted yet. Wait until the status shows "synced" and try again.',
   exportShareBtn: 'Export/Share',
 
   // PR 6.4: Stats-tab. See NL block for rationale; v1 parity.

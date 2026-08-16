@@ -515,6 +515,108 @@ describe('games/{gameId}: overname van een AL geclaimd document via update wordt
   });
 });
 
+// PR 7.2a, punt 15 (docs/pr-7.2-plan.md §C 7.2a) — de eenmalige
+// finalize-patch die completedGameId van null naar een niet-lege string zet.
+describe('games/{gameId}: finalize-patch (completedGameId, PR 7.2a)', () => {
+  beforeEach(async () => {
+    await withAdmin(env, async (db) => {
+      await db
+        .collection('organizations')
+        .doc(ORG_A)
+        .collection('teams')
+        .doc(TEAM_A1)
+        .collection('games')
+        .doc('game-1')
+        .set(sampleGame({ writerUid: USERS.dave.uid, deviceId: 'device-dave' }));
+    });
+  });
+
+  it('de huidige writer mag completedGameId zetten met revision+1', async () => {
+    const db = authCtx(env, USERS.dave.uid, { email: USERS.dave.email, email_verified: true });
+    await assertSucceeds(
+      updateDoc(gameRef(db, ORG_A, TEAM_A1, 'game-1'), {
+        completedGameId: 'completed-1',
+        revision: 1,
+      }),
+    );
+  });
+
+  it('een andere bevoegde gebruiker dan de huidige writer mag NIET finalizen', async () => {
+    const db = authCtx(env, USERS.carol.uid, { email: USERS.carol.email, email_verified: true });
+    await assertFails(
+      updateDoc(gameRef(db, ORG_A, TEAM_A1, 'game-1'), {
+        completedGameId: 'completed-1',
+        revision: 1,
+      }),
+    );
+  });
+
+  it('mag GEEN lege string als completedGameId zetten', async () => {
+    const db = authCtx(env, USERS.dave.uid, { email: USERS.dave.email, email_verified: true });
+    await assertFails(
+      updateDoc(gameRef(db, ORG_A, TEAM_A1, 'game-1'), { completedGameId: '', revision: 1 }),
+    );
+  });
+
+  it('mag naast completedGameId geen ander veld meesturen (bv. onCourt)', async () => {
+    const db = authCtx(env, USERS.dave.uid, { email: USERS.dave.email, email_verified: true });
+    await assertFails(
+      updateDoc(gameRef(db, ORG_A, TEAM_A1, 'game-1'), {
+        completedGameId: 'completed-1',
+        onCourt: ['gp-1'],
+        revision: 1,
+      }),
+    );
+  });
+
+  it('mag revision niet overslaan tijdens finalizen', async () => {
+    const db = authCtx(env, USERS.dave.uid, { email: USERS.dave.email, email_verified: true });
+    await assertFails(
+      updateDoc(gameRef(db, ORG_A, TEAM_A1, 'game-1'), {
+        completedGameId: 'completed-1',
+        revision: 2,
+      }),
+    );
+  });
+
+  it('een reeds afgeronde wedstrijd mag NIET nogmaals finalizen (geen tweede completedGameId)', async () => {
+    await withAdmin(env, async (db) => {
+      await db
+        .collection('organizations')
+        .doc(ORG_A)
+        .collection('teams')
+        .doc(TEAM_A1)
+        .collection('games')
+        .doc('game-1')
+        .update({ completedGameId: 'completed-1', revision: 1 });
+    });
+    const db = authCtx(env, USERS.dave.uid, { email: USERS.dave.email, email_verified: true });
+    await assertFails(
+      updateDoc(gameRef(db, ORG_A, TEAM_A1, 'game-1'), {
+        completedGameId: 'completed-2',
+        revision: 2,
+      }),
+    );
+  });
+
+  it('een afgeronde wedstrijd accepteert ook geen normale draaiveldpatch meer', async () => {
+    await withAdmin(env, async (db) => {
+      await db
+        .collection('organizations')
+        .doc(ORG_A)
+        .collection('teams')
+        .doc(TEAM_A1)
+        .collection('games')
+        .doc('game-1')
+        .update({ completedGameId: 'completed-1', revision: 1 });
+    });
+    const db = authCtx(env, USERS.dave.uid, { email: USERS.dave.email, email_verified: true });
+    await assertFails(
+      updateDoc(gameRef(db, ORG_A, TEAM_A1, 'game-1'), { onCourt: ['gp-1'], revision: 2 }),
+    );
+  });
+});
+
 // Review-opvolging (externe review, aug. 2026, P1): Rules controleerden
 // voorheen slechts enkele context-/writervelden, niet de volledige
 // sleutelset/veldtypen — een document zonder verplicht veld (bv. `updatedAt`,
@@ -558,6 +660,13 @@ describe('games/{gameId}: schema-/typevalidatie (create)', () => {
     const db = authCtx(env, USERS.alice.uid, { email: USERS.alice.email, email_verified: true });
     await assertFails(
       setDoc(gameRef(db, ORG_A, TEAM_A1, 'game-1'), sampleGame({ createdAt: 'niet-een-tijdstip' })),
+    );
+  });
+
+  it('mag GEEN niet-null/niet-string completedGameId aanmaken (PR 7.2a)', async () => {
+    const db = authCtx(env, USERS.alice.uid, { email: USERS.alice.email, email_verified: true });
+    await assertFails(
+      setDoc(gameRef(db, ORG_A, TEAM_A1, 'game-1'), sampleGame({ completedGameId: 42 })),
     );
   });
 });

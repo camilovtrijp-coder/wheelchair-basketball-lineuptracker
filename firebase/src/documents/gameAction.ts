@@ -50,7 +50,9 @@ export interface SegmentDocument {
   over: boolean;
 }
 
-function assertSegment(field: string, value: unknown): SegmentDocument {
+/** Geëxporteerd voor hergebruik door `completedGame.ts` (PR 7.2a) — dezelfde
+ * `Segment`-vorm wordt bevroren op een `CompletedGame`-snapshot. */
+export function assertSegment(field: string, value: unknown): SegmentDocument {
   if (!isPlainObject(value)) {
     throw new DocumentValidationError(TYPE, field, 'moet een object zijn');
   }

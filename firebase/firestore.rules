@@ -130,6 +130,47 @@ rules_version = '2';
 //      `canWriteGameData`-rollen beperkt is en de PR 7.1c-schrijfpad
 //      uitsluitend `projectGameForCloud()`-afgeleide payloads schrijft; de
 //      PR 7.1a-converter blijft fail-closed bij het lezen.
+//
+// Nieuw in PR 7.2a — afgeronde wedstrijden synchroniseren (docs/pr-7.2-plan.md §C 7.2a):
+//  14. `games/{gameId}` krijgt een nieuw veld `completedGameId` (nullable string):
+//      `null` totdat de wedstrijd is afgerond, daarna `CompletedGame.id`. Bewust
+//      GEEN `phase: 'completed'` — `phase` spiegelt exact `ActiveGame.phase`
+//      (`'setup'|'tracking'`, nooit `'completed'`), zie `firebase/src/documents/
+//      game.ts`. Zodra `completedGameId` gezet is, is het parentdocument
+//      bevroren: het normale patchpad (punt 10a hierboven) eist nu ook
+//      `resource.data.completedGameId == null` en laat `completedGameId` zelf
+//      ongewijzigd — een afgeronde wedstrijd accepteert geen draaiveldpatches
+//      meer.
+//  15. Nieuw update-pad (10c): de eenmalige "finalize-patch" die
+//      `completedGameId` van `null` naar een niet-lege string zet — uitsluitend
+//      de ACTUELE writer, alleen als nog niet eerder afgerond, en raakt verder
+//      niets dan `completedGameId`/`revision`/`updatedAt` (dezelfde
+//      optimistische-concurrencycontrole als punt 10a/10b: `revision` moet
+//      exact met 1 omhoog).
+//  16. Nieuwe collectie `completedGames/{completedGameId}`, zusje van `games`
+//      onder hetzelfde team (zie `firebase/src/documents/completedGame.ts`):
+//      create-only en daarna
+//      volledig onveranderlijk (`allow update, delete: if false` — PR 7.2c
+//      voegt pas een tombstone-pad toe). Create vereist `canWriteGameData` +
+//      volledige schema-/typevalidatie (`isValidCompletedGamePayload`,
+//      zelfde `hasAll`+`hasOnly`-patroon als punt 13) + pad-/payloadcontext
+//      + dat de aanroeper de ACTUELE writer is van het `sourceGameId`-parent-
+//      document (`gameData(...).writerUid == request.auth.uid` — spiegelt
+//      exact hoe punt 11 een action-envelope aan de huidige claim bindt).
+//      Zoals bij `players`/`onCourt` (punt 13) blijft `segments` alleen op
+//      `list`-type gecontroleerd, geen element-voor-elementvalidatie.
+//      [P1, externe review PR #61] De create-regel eist BOVENDIEN
+//      `getAfter(gameRef(...)).data.completedGameId == completedGameId` —
+//      deze create moet altijd in dezelfde atomische `WriteBatch` staan als
+//      de punt-15-finalize-patch op het parentdocument
+//      (`FirestoreGameCloudGateway.finalizeCompletedGame()`). Zonder deze
+//      binding kon dezelfde writer meerdere completed-snapshots voor één
+//      `sourceGameId` aanmaken, of een orphan-snapshot achterlaten na een
+//      crash tussen de twee (voorheen losse) writes.
+//  17. Geen recursieve-wildcard match voor `completedGames` (zelfde
+//      argumentatie als punt 12 voor `games`/`actions`): nog geen
+//      cross-team-querybehoefte, dus elke `collectionGroup`-query blijft
+//      default-deny.
 
 service cloud.firestore {
   match /databases/{database}/documents {
@@ -209,7 +250,8 @@ service cloud.firestore {
         'organizationId', 'teamId', 'phase', 'players', 'opponent', 'competition',
         'clockDown', 'limitStr', 'onCourt', 'curQuarter', 'beginSec', 'endSec',
         'pendingSwapLineup', 'scoreFor', 'scoreAgainst', 'segmentCount',
-        'writerUid', 'deviceId', 'writerEpoch', 'revision', 'createdAt', 'startedAt', 'updatedAt'
+        'writerUid', 'deviceId', 'writerEpoch', 'revision', 'createdAt', 'startedAt',
+        'completedGameId', 'updatedAt'
       ];
     }
 
@@ -253,6 +295,8 @@ service cloud.firestore {
         data.revision is int &&
         data.createdAt is string && isIsoTimestampShape(data.createdAt) &&
         (data.startedAt == null || (data.startedAt is string && isIsoTimestampShape(data.startedAt))) &&
+        (data.completedGameId == null ||
+          (data.completedGameId is string && data.completedGameId.size() > 0)) &&
         data.updatedAt is timestamp;
     }
 
@@ -341,6 +385,38 @@ service cloud.firestore {
         data.occurredAt is string && isIsoTimestampShape(data.occurredAt) &&
         data.schemaVersion == 1 &&
         data.action is map && isValidActionPayload(data.action);
+    }
+
+    // Exacte sleutelset van CompletedGameDocument (firebase/src/documents/completedGame.ts).
+    function completedGameKeys() {
+      return [
+        'organizationId', 'teamId', 'sourceGameId', 'opponent', 'competition', 'date',
+        'players', 'segments', 'scoreFor', 'scoreAgainst', 'quarterCount', 'periodLabel',
+        'useClassLimit', 'syncedAt'
+      ];
+    }
+
+    // PR 7.2a, punt 16: volledige schema-/typevalidatie voor de bevroren
+    // completed-snapshot, zelfde `hasAll`+`hasOnly`-patroon als punt 13.
+    // `segments`/`players` blijven, net als bij `games` hierboven, alleen op
+    // `list`-type gecontroleerd — dezelfde taalgrens (geen lus-/`.all()`-
+    // constructie voor element-voor-elementvalidatie).
+    function isValidCompletedGamePayload(data) {
+      return data.keys().hasAll(completedGameKeys()) && data.keys().hasOnly(completedGameKeys()) &&
+        data.organizationId is string &&
+        data.teamId is string &&
+        data.sourceGameId is string && data.sourceGameId.size() > 0 &&
+        data.opponent is string &&
+        data.competition is string &&
+        data.date is string && isIsoTimestampShape(data.date) &&
+        data.players is list &&
+        data.segments is list &&
+        data.scoreFor is int &&
+        data.scoreAgainst is int &&
+        data.quarterCount is int &&
+        data.periodLabel is string &&
+        data.useClassLimit is bool &&
+        data.syncedAt is timestamp;
     }
 
     function invRef(orgId, invId) {
@@ -513,6 +589,7 @@ service cloud.firestore {
             request.resource.data.teamId == teamId &&
             request.resource.data.revision == 0 &&
             request.resource.data.writerEpoch == 0 &&
+            request.resource.data.completedGameId == null &&
             ((request.resource.data.writerUid == null && request.resource.data.deviceId == null) ||
               (request.resource.data.writerUid == request.auth.uid &&
                 request.resource.data.deviceId is string && request.resource.data.deviceId.size() > 0));
@@ -522,43 +599,78 @@ service cloud.firestore {
           // overname via dit pad). Kernvelden staan niet in de allowlist en
           // zijn dus impliciet onveranderlijk; isValidGamePayload() dwingt
           // bovendien af dat het resulterende document altijd volledig en
-          // typegeldig blijft.
+          // typegeldig blijft. PR 7.2a, punt 14: geweigerd zodra de wedstrijd
+          // al is afgerond (`completedGameId != null`) — een bevroren
+          // historie-item accepteert geen draaiveldpatches meer.
+          //
+          // Punt 15 (PR 7.2a) en punt 10b hieronder — de finalize-patch en de
+          // initiële claim — staan bewust in DEZELFDE `allow update`-regel als
+          // de normale patch (in plaats van drie losse `allow update`-regels):
+          // Firestore Rules evalueert bij een update-request elke matchende
+          // `allow update`-regel apart, en `isValidGamePayload()` (~25
+          // veldchecks) bleek drie keer per request te duur — de
+          // Rules-emulator sloeg om bij "maximum of 1000 expressions to
+          // evaluate" zodra alle drie de paden apart stonden (empirisch
+          // ontdekt via `tests/rules/completed-games.spec.ts`/
+          // `games-and-actions.spec.ts`, aug. 2026). Eén gedeelde
+          // `isValidGamePayload()`-aanroep plus een OR van de drie
+          // padspecifieke voorwaarden houdt hetzelfde autorisatiecontract
+          // aan tegen ongeveer een derde van de evaluatiekosten.
           allow update: if canWriteGameData(orgId, teamId) &&
             isValidGamePayload(request.resource.data) &&
-            resource.data.writerUid != null &&
-            request.auth.uid == resource.data.writerUid &&
-            request.resource.data.writerUid == resource.data.writerUid &&
-            request.resource.data.deviceId == resource.data.deviceId &&
-            request.resource.data.writerEpoch == resource.data.writerEpoch &&
-            request.resource.data.diff(resource.data).affectedKeys().hasOnly([
-              'phase', 'onCourt', 'curQuarter', 'beginSec', 'endSec',
-              'pendingSwapLineup', 'scoreFor', 'scoreAgainst', 'segmentCount',
-              'revision', 'startedAt', 'updatedAt'
-            ]) &&
             request.resource.data.organizationId == resource.data.organizationId &&
             request.resource.data.teamId == resource.data.teamId &&
-            (request.resource.data.phase == resource.data.phase ||
-              (resource.data.phase == 'setup' && request.resource.data.phase == 'tracking')) &&
-            request.resource.data.revision == resource.data.revision + 1;
-
-          // Punt 10b: initiële claim — alleen als het document nog GEEN
-          // writer heeft; de aanroeper claimt uitsluitend zichzelf, en
-          // writerEpoch blijft ongewijzigd (geen sprong). Een latere
-          // OVERNAME (bestaande writer vervangen) heeft bewust geen pad hier
-          // — dat is PR 7.3-scope (transactioneel, met epoch-increment).
-          allow update: if canWriteGameData(orgId, teamId) &&
-            isValidGamePayload(request.resource.data) &&
-            resource.data.writerUid == null &&
-            resource.data.deviceId == null &&
-            request.resource.data.writerUid == request.auth.uid &&
-            request.resource.data.deviceId is string && request.resource.data.deviceId.size() > 0 &&
-            request.resource.data.writerEpoch == resource.data.writerEpoch &&
-            request.resource.data.diff(resource.data).affectedKeys()
-              .hasOnly(['writerUid', 'deviceId', 'revision', 'updatedAt']) &&
-            request.resource.data.organizationId == resource.data.organizationId &&
-            request.resource.data.teamId == resource.data.teamId &&
-            request.resource.data.phase == resource.data.phase &&
-            request.resource.data.revision == resource.data.revision + 1;
+            (
+              // 10a: normale patch — uitsluitend de ACTUELE writer, writer-/
+              // epochvelden en completedGameId blijven exact ongewijzigd.
+              (resource.data.writerUid != null &&
+                request.auth.uid == resource.data.writerUid &&
+                resource.data.completedGameId == null &&
+                request.resource.data.writerUid == resource.data.writerUid &&
+                request.resource.data.deviceId == resource.data.deviceId &&
+                request.resource.data.writerEpoch == resource.data.writerEpoch &&
+                request.resource.data.completedGameId == resource.data.completedGameId &&
+                request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+                  'phase', 'onCourt', 'curQuarter', 'beginSec', 'endSec',
+                  'pendingSwapLineup', 'scoreFor', 'scoreAgainst', 'segmentCount',
+                  'revision', 'startedAt', 'updatedAt'
+                ]) &&
+                (request.resource.data.phase == resource.data.phase ||
+                  (resource.data.phase == 'setup' && request.resource.data.phase == 'tracking')) &&
+                request.resource.data.revision == resource.data.revision + 1)
+              ||
+              // Punt 15: eenmalige finalize-patch — uitsluitend de ACTUELE
+              // writer, alleen als nog niet eerder afgerond, raakt verder
+              // niets dan completedGameId/revision/updatedAt. Geen pad om
+              // een eenmaal gezette completedGameId te wijzigen/terugzetten.
+              (resource.data.writerUid != null &&
+                request.auth.uid == resource.data.writerUid &&
+                resource.data.completedGameId == null &&
+                request.resource.data.completedGameId is string &&
+                request.resource.data.completedGameId.size() > 0 &&
+                request.resource.data.writerUid == resource.data.writerUid &&
+                request.resource.data.deviceId == resource.data.deviceId &&
+                request.resource.data.writerEpoch == resource.data.writerEpoch &&
+                request.resource.data.diff(resource.data).affectedKeys()
+                  .hasOnly(['completedGameId', 'revision', 'updatedAt']) &&
+                request.resource.data.phase == resource.data.phase &&
+                request.resource.data.revision == resource.data.revision + 1)
+              ||
+              // 10b: initiële claim — alleen als het document nog GEEN writer
+              // heeft; de aanroeper claimt uitsluitend zichzelf, writerEpoch
+              // blijft ongewijzigd. Een latere OVERNAME (bestaande writer
+              // vervangen) heeft bewust geen pad hier — dat is PR 7.3-scope
+              // (transactioneel, met epoch-increment).
+              (resource.data.writerUid == null &&
+                resource.data.deviceId == null &&
+                request.resource.data.writerUid == request.auth.uid &&
+                request.resource.data.deviceId is string && request.resource.data.deviceId.size() > 0 &&
+                request.resource.data.writerEpoch == resource.data.writerEpoch &&
+                request.resource.data.diff(resource.data).affectedKeys()
+                  .hasOnly(['writerUid', 'deviceId', 'revision', 'updatedAt']) &&
+                request.resource.data.phase == resource.data.phase &&
+                request.resource.data.revision == resource.data.revision + 1)
+            );
 
           allow delete: if false;
 
@@ -583,6 +695,50 @@ service cloud.firestore {
 
             allow update, delete: if false;
           }
+        }
+
+        // ---- completedGames/{completedGameId}: PR 7.2a — bevroren snapshot ----
+        // van een afgeronde wedstrijd (zusje van games/{gameId}, geen
+        // subcollectie — zie firebase/src/documents/completedGame.ts en punt
+        // 16 hierboven).
+        match /completedGames/{completedGameId} {
+          allow read: if canReadTeam(orgId, teamId);
+
+          // Create-only, volledig schema/type (isValidCompletedGamePayload),
+          // pad-/payloadcontext, en de aanroeper moet de ACTUELE writer zijn
+          // van het sourceGameId-parentdocument — spiegelt exact hoe punt 11
+          // een action-envelope aan de huidige claim bindt.
+          //
+          // [P1, externe review PR #61] Dit alleen was géén integriteitscontract:
+          // dezelfde writer kon zonder deze regel meerdere completed-snapshots
+          // voor ÉÉN sourceGameId aanmaken, en een crash tussen deze create en
+          // de finalize-patch op het parentdocument (10c hierboven) kon een
+          // orphan-snapshot achterlaten. `getAfter()` bindt deze create nu aan
+          // de UITKOMST van dezelfde atomische Firestore-batch (`WriteBatch`,
+          // zie `FirestoreGameCloudGateway.finalizeCompletedGame()` —
+          // `getAfter()` is expliciet ondersteund binnen zowel transacties als
+          // batched writes): het parentdocument moet er ONMIDDELLIJK NA deze
+          // batch precies `completedGameId == completedGameId` (dit pad-ID)
+          // uitzien. Een standalone create zonder de bijbehorende parentpatch
+          // in dezelfde batch faalt dus altijd (`getAfter()` toont dan de
+          // ONGEWIJZIGDE — mogelijk nog `null`, of een ANDERE — bestaande
+          // waarde). Een tweede create-poging voor een AL afgeronde wedstrijd
+          // faalt eveneens: de bijbehorende finalize-patch (10c) eist zelf al
+          // `resource.data.completedGameId == null` vóór de batch, dus zodra
+          // één batch succesvol `completedGameId` heeft gezet, faalt een
+          // volgende batch (met een ANDER ID) atomisch in zijn geheel — nooit
+          // een tweede snapshot, nooit een orphan.
+          allow create: if canWriteGameData(orgId, teamId) &&
+            isValidCompletedGamePayload(request.resource.data) &&
+            request.resource.data.organizationId == orgId &&
+            request.resource.data.teamId == teamId &&
+            gameData(orgId, teamId, request.resource.data.sourceGameId).writerUid == request.auth.uid &&
+            getAfter(gameRef(orgId, teamId, request.resource.data.sourceGameId)).data.completedGameId
+              == completedGameId;
+
+          // Onveranderlijk en onverwijderbaar in fase 7 (docs/pr-7.2-plan.md
+          // §B/§D) — een tombstone-fieldpatch is bewust PR 7.2c-scope.
+          allow update, delete: if false;
         }
       }
     }

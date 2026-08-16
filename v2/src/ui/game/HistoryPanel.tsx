@@ -2,6 +2,8 @@ import type { CompletedGame } from '../../domain/game/types';
 import { combinedCsvForGame, csvFilenameFor } from '../../domain/game/csv';
 import { shareOrDownloadCsv } from '../../infrastructure/game/shareOrDownloadCsv';
 import { translate, type Lang, type StringKey } from '../../i18n/strings';
+import { SyncStatusIndicator } from '../sync/SyncStatusIndicator';
+import type { SyncStatus } from '../../domain/syncState';
 
 export interface HistoryPanelProps {
   lang: Lang;
@@ -18,6 +20,24 @@ export interface HistoryPanelProps {
    * navigeerde (`gameSaveError` werd alleen door GameSetupPanel/
    * LiveTrackingPanel getoond). */
   saveError: boolean;
+  /**
+   * PR 7.2a, P1-fix (externe review PR #61, derde ronde): `true` wanneer de
+   * laatste verwijderpoging is afgewezen omdat de afronding nog niet
+   * server-bevestigd is (cloud-modus) — zie `App.handleDeleteCompletedGame()`.
+   * Aparte banner van `saveError`: dit is geen mislukte opslag, maar een
+   * bewust geblokkeerde actie.
+   */
+  deleteBlocked?: boolean;
+  /**
+   * PR 7.2a: per-`CompletedGame.id` cloudsyncstatus, uitsluitend gevuld door
+   * `App` in cloud-modus (net als `SyncStatusIndicator` elders — "gesynchro-
+   * niseerd" tonen zonder cloud zou misleidend zijn, zie de eigen docstring
+   * bij dat component). `undefined` (lokale modus, geen `gameSync`-coordinator
+   * geïnstantieerd) betekent: toon geen syncbadge; een ontbrekende sleutel
+   * binnen een wél meegegeven map (cloud-modus, nog geen status bekend voor
+   * dit specifieke item) valt terug op `'lokaal-beschikbaar'`.
+   */
+  syncStatuses?: Record<string, SyncStatus>;
 }
 
 function t(lang: Lang, key: StringKey): string {
@@ -56,6 +76,8 @@ export function HistoryPanel({
   onDeleteGame,
   canWrite,
   saveError,
+  deleteBlocked,
+  syncStatuses,
 }: HistoryPanelProps) {
   const open = openId != null ? games.find((g) => g.id === openId) : undefined;
 
@@ -65,11 +87,18 @@ export function HistoryPanel({
     </p>
   ) : null;
 
+  const deleteBlockedBanner = deleteBlocked ? (
+    <p className="settings-error" role="status" data-testid="history-delete-blocked">
+      {t(lang, 'deleteBlockedPendingSync')}
+    </p>
+  ) : null;
+
   if (open) {
     const byId = new Map(open.players.map((p) => [p.id, p]));
     return (
       <section className="history-panel" aria-label={t(lang, 'historyTitle')}>
         {errorBanner}
+        {deleteBlockedBanner}
         <div className="history-detail__actions">
           <button
             type="button"
@@ -97,6 +126,13 @@ export function HistoryPanel({
           {gameDateLabel(open, lang)}
           {open.competition ? ` · ${open.competition}` : ''} · {open.scoreFor} - {open.scoreAgainst}
         </p>
+        {syncStatuses ? (
+          <SyncStatusIndicator
+            lang={lang}
+            status={syncStatuses[open.id] ?? 'lokaal-beschikbaar'}
+            testId={`history-sync-status-${open.id}`}
+          />
+        ) : null}
         <div className="segment-list">
           {open.segments.map((s) => {
             const pm = s.pf - s.pa;
@@ -138,6 +174,7 @@ export function HistoryPanel({
   return (
     <section className="history-panel" aria-label={t(lang, 'historyTitle')}>
       {errorBanner}
+      {deleteBlockedBanner}
       {games.length === 0 ? (
         <p className="history-empty" data-testid="history-empty">
           {t(lang, 'historyEmpty')}
@@ -166,6 +203,13 @@ export function HistoryPanel({
                 <span className={`history-item__score ${pmColor(pm)}`}>
                   {g.scoreFor} - {g.scoreAgainst}
                 </span>
+                {syncStatuses ? (
+                  <SyncStatusIndicator
+                    lang={lang}
+                    status={syncStatuses[g.id] ?? 'lokaal-beschikbaar'}
+                    testId={`history-sync-status-${g.id}`}
+                  />
+                ) : null}
               </button>
             );
           })}
