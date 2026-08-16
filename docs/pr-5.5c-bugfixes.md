@@ -290,6 +290,42 @@ bevestiging enigszins zou moeten compenseren — in de praktijk onleesbaar.
 
 **Status**: open, nog niet gefixt.
 
+### 9. "Geen toegang meer/ingetrokken" direct na het aanmaken van een gloednieuwe organisatie
+
+**Symptoom**: direct na het succesvol aanmaken van een eerste organisatie +
+team (`NoOrganizationsScreen`) toont de app kort **"Geen toegang meer" /
+"Je toegang tot deze organisatie of dit team is ingetrokken."** — een
+alarmerende melding voor een organisatie die letterlijk nog geen minuut
+oud is en waarvan de gebruiker zelf net owner is geworden. Op
+"Terug naar organisatie-overzicht" klikken lost het meteen op: de nieuwe
+organisatie/team verschijnt daarna gewoon en werkt normaal.
+
+**Vermoedelijke oorzaak** (nog niet 100% herleid tot de exacte
+race-volgorde, wel goed onderbouwd): `NoOrganizationsScreen.handleSubmit()`
+roept `onCreated()` pas aan ná een geslaagde org- én team-write
+(`AuthGate.tsx` regel 357: `onCreated={() => setMembershipsRefreshKey(...)}`),
+wat een herfetch van `memberships` triggert via dezelfde eenmalige
+`listMyMemberships()`-`getDocs()`-aanroep als bug 6. `deriveAppState()`
+evalueert `selectedContext`/`memberships`/`selectedContextTeamValid`
+(regel 181-209, apart async-effect) — in het korte venster tussen het
+zetten/selecteren van de nieuwe context en het daadwerkelijk binnenkomen
+van de ververste membershiplijst kan de validatie momenteel geen geldig
+lidmaatschap vinden en concludeert het (onterecht) "ingetrokken" in plaats
+van "nog aan het laden". Zodra de membershiplijst alsnog binnenkomt,
+herstelt de status vanzelf.
+
+**Impact**: geen dataverlies, volledig herstelbaar — maar zeer verwarrend/
+beangstigend voor een net-geregistreerde gebruiker die exact op dit moment
+voor het eerst een organisatie aanmaakt (elke nieuwe klant/coach dus).
+
+**Gevonden via**: aanmaken van account D / "Verbruikmeting Org B" voor
+§D-verbruiksmeting, staging, 16 aug. 2026.
+
+**Status**: open, nog niet gefixt. Mogelijk dezelfde onderliggende
+oorzaak als bug 6 (membershiplijst zonder persistente cache/listener) —
+bij het fixen van bug 6 (bijv. overstappen op `onSnapshot()`) in dezelfde
+sessie heronderzoeken of dit vanzelf meegefixt is.
+
 ## Nog te doen
 
 - Meer bugs toevoegen naarmate het 5.5c-protocol verder wordt uitgevoerd
