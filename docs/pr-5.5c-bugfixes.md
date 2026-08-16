@@ -264,6 +264,32 @@ account ze zitten vóór het uitvoeren van een actie.
 
 **Status**: open, nog niet gefixt.
 
+### 8. Syncstatus-badge afgesneden/overlapt door knoppen op mobiele breedte
+
+**Symptoom**: op een echt Android-toestel (portret, smalle viewport) wordt
+de syncstatus-badge in de sessiebalk ("Lokaal beschikbaar - uit cache",
+"Gesynchroniseerd") links afgesneden en overlapt door de knoppen "Wissel
+van organisatie/team" en "Uitloggen" — alleen het staartje van de tekst
+(bijv. "...okaal beschikbaar uit cache") is nog leesbaar.
+
+**Oorzaak**: `.session-bar` (`v2/src/index.css` regel 409-416) is
+`display: flex; justify-content: flex-end;` **zonder `flex-wrap: wrap`**.
+`.sync-status-indicator` (regel 418-426) krijgt `margin-right: auto` om
+naar links te duwen, maar met twee vaste-breedte-knoppen ernaast en geen
+wrap-regel is er op smalle schermen te weinig ruimte — de badge klapt niet
+naar een eigen regel, maar wordt simpelweg buiten beeld/onder de knoppen
+geduwd.
+
+**Impact**: op mobiel (waar dit paneel het vaakst gebruikt wordt) is de
+syncstatus — juist de indicator die bug 2's ontbrekende opslaan-
+bevestiging enigszins zou moeten compenseren — in de praktijk onleesbaar.
+
+**Gevonden via**: `docs/pr-5.5-handmatig-protocol.md` §C.1, Android-ronde 1
+(vliegtuigmodus + wifi-uit, beide sub-runs), echt toestel, staging,
+16 aug. 2026.
+
+**Status**: open, nog niet gefixt.
+
 ## Nog te doen
 
 - Meer bugs toevoegen naarmate het 5.5c-protocol verder wordt uitgevoerd
