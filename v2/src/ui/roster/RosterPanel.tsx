@@ -1,4 +1,3 @@
-import { useState } from 'preact/hooks';
 import type { Player, Roster } from '../../domain/roster/types';
 import {
   addPlayer,
@@ -10,6 +9,8 @@ import { translate, type Lang, type StringKey } from '../../i18n/strings';
 import type { KeyValueStorage } from '../../i18n/persistence';
 import { CloudImportBanner } from '../cloud/CloudImportBanner';
 import { LastModified } from '../sync/LastModified';
+import { useSaveStatus } from '../sync/useSaveStatus';
+import { SaveStatusMessage } from '../sync/SaveStatusMessage';
 
 export interface RosterPanelProps {
   lang: Lang;
@@ -55,7 +56,12 @@ export function RosterPanel({
   canWrite,
   updatedAt,
 }: RosterPanelProps) {
-  const [error, setError] = useState<string | null>(null);
+  const {
+    status: saveStatus,
+    notifySuccess,
+    notifyError,
+    reset: resetSaveStatus,
+  } = useSaveStatus();
   const dupNrs = findDuplicateNumbers(roster);
 
   function handleField<K extends keyof Player>(id: number, field: K, value: Player[K]) {
@@ -73,12 +79,16 @@ export function RosterPanel({
 
   async function handleSave() {
     const ok = await onSave(roster);
-    setError(ok ? null : t(lang, 'rosterSaveError'));
+    if (ok) {
+      notifySuccess();
+    } else {
+      notifyError(t(lang, 'rosterSaveError'));
+    }
   }
 
   async function handleRefresh() {
     onRosterChange(await onRefresh());
-    setError(null);
+    resetSaveStatus();
   }
 
   return (
@@ -89,6 +99,12 @@ export function RosterPanel({
       <LastModified lang={lang} updatedAt={updatedAt} testId="roster-last-modified" />
       <CloudImportBanner lang={lang} storage={storage} kind="roster" onMigrate={onCloudMigrate} />
       <p className="settings-explainer">{t(lang, 'rosterIntro')}</p>
+
+      {canWrite ? null : (
+        <p className="settings-read-only" data-testid="roster-read-only" role="status">
+          {t(lang, 'rosterReadOnly')}
+        </p>
+      )}
 
       <ul className="roster-list">
         {roster.map((p) => {
@@ -191,17 +207,7 @@ export function RosterPanel({
         {t(lang, 'addPlayerBtn')}
       </button>
 
-      {error ? (
-        <p className="settings-error" role="alert" data-testid="roster-error">
-          {error}
-        </p>
-      ) : null}
-
-      {canWrite ? null : (
-        <p className="settings-read-only" data-testid="roster-read-only" role="status">
-          {t(lang, 'rosterReadOnly')}
-        </p>
-      )}
+      <SaveStatusMessage lang={lang} status={saveStatus} testIdPrefix="roster" />
 
       <div className="settings-actions">
         <button

@@ -39,10 +39,10 @@ class DeferredTeamsGateway implements OrganizationGateway {
     };
   }
 
-  listMyMemberships(): never {
+  subscribeMyMemberships(): never {
     throw new Error('niet gebruikt in deze test');
   }
-  listMyTeamOnlyContexts(): never {
+  subscribeMyTeamOnlyContexts(): never {
     throw new Error('niet gebruikt in deze test');
   }
   createOrganizationWithOwner(): never {
