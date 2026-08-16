@@ -13,11 +13,23 @@ browser beschikbaar) zodra die met de sessie gedeeld is, voor een
 systematischer, zelf-uitgevoerd onderzoek naast de aangeleverde
 screenshots.
 
+## Expliciet criterium (eigenaarsbesluit)
+
+**Licht/donker als instelbare modus, niet als vervanging.** v1's
+donkere thema mag niet zomaar v2's huidige lichte thema overschrijven —
+de uiteindelijke app moet **beide** bieden, gebruikersinstelbaar (zelfde
+soort losstaande instelling als de bestaande NL/EN-taalwissel in de
+header). Vereist dus een eigen thema-token-laag (licht + donker
+kleurenschema, geen hardcoded kleuren per component) met een
+gebruikersinstelling die het gekozen thema onthoudt — niet alleen
+"volg systeeminstelling" zonder eigen toggle.
+
 ## Algemene waarnemingen (uit meerdere screenshots)
 
-1. **Donker thema als standaard** — v1 is overal donkerblauw/zwart met
-   groen/teal/oranje accenten. v2 is in alle tot nu toe geziene schermen
-   licht/wit.
+1. **Donker thema als standaard in v1** — v1 is overal donkerblauw/zwart
+   met groen/teal/oranje accenten. v2 is in alle tot nu toe geziene
+   schermen licht/wit. Zie het expliciete criterium hierboven: dit wordt
+   een instelbare modus, geen simpele vervanging van v2's huidige thema.
 2. **Kleuren worden functioneel gebruikt, niet alleen decoratief**: groen
    = eigen team/positief, oranje = tegenstander, rood/roze = negatief,
    teal/cyaan = secundaire metriek (minuten). Dit is precies waarom bug
