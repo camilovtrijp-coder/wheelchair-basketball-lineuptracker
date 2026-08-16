@@ -1,6 +1,9 @@
 # Bugfixes — gevonden tijdens 5.5c-handmatige staging-validatie
 
-Status: **verzamelfase, nog geen fixes toegepast.** Dit document verzamelt
+Status: **fixes in uitvoering (PR 60).** Bugs 3, 4, 6 en 9 zijn gefixt (zie
+hun statusregels hieronder); bugs 1, 2, 5, 7, 8 volgen in dezelfde PR. Bug 10
+blijft bewust uitgesteld naar de toekomstige Fase 8-thema/personal-settings-
+implementatie. Dit document verzamelt
 applicatiebugs die tijdens het handmatige protocol
 (`docs/pr-5.5-handmatig-protocol.md`) tegen de échte staging-Firebase-
 omgeving (`wheelchair-basketball-tracker`, niet de emulator) aan het licht
@@ -121,7 +124,14 @@ signaal, wat de gebruiker juist aanzet tot nóg meer klikken.
 **Gevonden via**: `docs/pr-5.5-handmatig-protocol.md` §B.2 stap 7, staging
 — account B, `basketball-tracker-staging`-Deploy Preview, 15 aug. 2026.
 
-**Status**: open, nog niet gefixt.
+**Status**: gefixt (PR 60). `handleResendVerification()` in
+`AcceptInvitationScreen.tsx` verwerkt nu het `Promise<boolean>`-resultaat: de
+knop krijgt `disabled` tijdens het versturen, en toont daarna een zichtbare
+succes- (`invitation-resend-success`) of foutmelding
+(`invitation-resend-error`, nieuwe i18n-strings `authResendVerificationSuccess`/
+`-Error`). Regressietest: `tests/e2e-auth/invitation-accept-and-claim.spec.ts`
+(jack-scenario, uitgebreid) — geverifieerd tegen de echte Firebase Auth-
+emulator.
 
 ### 4. "Uitnodiging accepteren" mislukt direct na e-mailverificatie (verouderd ID-token)
 
@@ -161,13 +171,18 @@ en zou de accept-actie alsnog moeten laten slagen.
 **Gevonden via**: `docs/pr-5.5-handmatig-protocol.md` §B.2 stap 8, staging
 — account B, `basketball-tracker-staging`-Deploy Preview, 15 aug. 2026.
 
-**Status**: open, nog niet gefixt. Root cause bevestigd via codeonderzoek
-én empirisch: uitloggen en met een verse login opnieuw inloggen (nieuw
-ID-token) liet "Uitnodiging accepteren" alsnog slagen — account B kwam
-daarna via "Lidmaatschap voltooien" succesvol tot bij de context-
-wisselaar ("ROBA test"). Structurele fix (bijv. een expliciete
-`getIdToken(true)`-refresh na e-mailverificatie, vóór de accept-write)
-nog niet toegepast.
+**Status**: gefixt (PR 60). Nieuwe `AuthGateway.refreshIdToken()` (roept
+`user.getIdToken(true)` aan) wordt nu altijd aangeroepen in
+`AcceptInvitationScreen.handleAccept()`/`handleClaim()`, vlak vóór de
+accept-/claim-write — dwingt een vers ID-token af zodat de
+`email_verified`-claim in de Rules altijd overeenkomt met de actuele
+`authUser.emailVerified`. Als secundaire verbetering wordt `result.errorCode`
+nu ook zichtbaar meegegeven aan de foutmelding
+(`data-error-code` op `invitation-error`), zodat een eventuele resterende
+afwijzing voortaan wél diagnosticeerbaar is vanuit de UI/DOM. Geverifieerd via
+de volledige `tests/e2e-auth/invitation-accept-and-claim.spec.ts`-suite tegen
+de echte Firebase Auth-/Firestore-emulator (alle vier de uitnodigings-
+randgevallen, inclusief grace's accept+claim-flow).
 
 ### 5. Alleen-lezen-status voor viewers onvoldoende zichtbaar/verklaard
 
@@ -243,7 +258,27 @@ onafhankelijk van het platform geldt (`getDocs()` vs. `onSnapshot()` is
 platformonafhankelijk), maar de formele "2/2 schone runs"-telling begint
 pas bij de eerste échte mobiele ronde.
 
-**Status**: open, nog niet gefixt. Root cause bevestigd via codeonderzoek.
+**Status**: gefixt (PR 60). `listMyMemberships()`/`listMyTeamOnlyContexts()`
+zijn vervangen door `subscribeMyMemberships()`/`subscribeMyTeamOnlyContexts()`
+(`onSnapshot()` i.p.v. een eenmalige `getDocs()`) — deze bedienen zich net als
+team-roster/settings-data uit Firestores persistente lokale cache, dus een
+offline paginaherlaad toont de gecachete membershiplijst direct i.p.v.
+"Geen verbinding". `AuthGate.tsx`'s membership-effect is herschreven naar dit
+live abonnement (zie ook bug 9 hieronder, dezelfde wijziging). Bijwerking
+ontdekt tijdens het testen tegen de echte emulator: een live abonnement zou
+een intrekking (of rolwijziging) ook DIRECT tijdens een al-actieve sessie
+laten doorwerken — in strijd met het bestaande, bewust zo ontworpen gedrag
+("intrekking wordt pas zichtbaar via een afgewezen write of een expliciete
+reload", zie `action-needed-panel.spec.ts`, `backup-cloud-reject.spec.ts`,
+`game-sync-real-rules-rejection.spec.ts`). Opgelost door het abonnement
+additief te laten samenvoegen en te bevriezen zodra een context al actief
+gekozen is (zie `AuthGate.tsx`'s `selectedContextRef`/`hasPublishedOnce`) —
+alleen de allereerste publicatie en updates vóór contextselectie komen live
+door; intrekking/rolwijziging tijdens een actieve sessie blijft zoals
+voorheen pas zichtbaar via reload of een afgewezen write. Geverifieerd via de
+volledige `tests/e2e-auth`-suite (52 tests) tegen de echte Firebase
+Auth-/Firestore-emulator, inclusief alle offline/reload- en
+intrekkingsscenario's.
 
 ### 7. Geen zichtbare aanduiding van het ingelogde account
 
@@ -321,10 +356,31 @@ voor het eerst een organisatie aanmaakt (elke nieuwe klant/coach dus).
 **Gevonden via**: aanmaken van account D / "Verbruikmeting Org B" voor
 §D-verbruiksmeting, staging, 16 aug. 2026.
 
-**Status**: open, nog niet gefixt. Mogelijk dezelfde onderliggende
-oorzaak als bug 6 (membershiplijst zonder persistente cache/listener) —
-bij het fixen van bug 6 (bijv. overstappen op `onSnapshot()`) in dezelfde
-sessie heronderzoeken of dit vanzelf meegefixt is.
+**Status**: gefixt (PR 60), zelfde onderliggende oorzaak als bug 6 bevestigd.
+Met `subscribeMyMemberships()` (zie bug 6) komt een net aangemaakt membership
+via Firestores lokale-schrijf-echo vrijwel direct door, i.p.v. via het oude
+`membershipsRefreshKey`-refreshrondje — het venster waarin "ingetrokken" ten
+onrechte kon verschijnen is daarmee weg. `NoOrganizationsScreen`'s
+`onCreated`-callback (de refresh-trigger) is overbodig geworden en verwijderd.
+Tijdens het testen bleek de org+team-aanmaakflow zelf ook een tweede, nauw
+verwante race te hebben — behandeld als onderdeel van dezelfde fix:
+1. Doordat de membership-write nu live doorkomt vóórdat `createTeam()` (de
+   daaropvolgende, afhankelijke write) is voltooid, kon de contextwisselaar
+   heel even een organisatie zonder enig team tonen. Opgelost met een
+   `bootstrapInFlight`-signaal (`NoOrganizationsScreen` → `AuthGate`) dat het
+   onboardingscherm zichtbaar houdt totdat zowel de organisatie- als de
+   team-write voltooid zijn.
+2. Empirisch (tegen de echte Firestore-emulator) bleek `createTeam()`'s Rule-
+   evaluatie (`isOrgOwnerOrAdmin`) de zojuist bevestigde owner-membership-write
+   soms nog niet te zien — een kort, `permission-denied`-gevend venster. Een
+   kleine automatische retry (`createTeamWithRetry`, tot 3 pogingen met
+   oplopende backoff) lost dit op i.p.v. de gebruiker een generieke foutmelding
+   te tonen voor iets dat een fractie van een seconde later gewoon lukt.
+
+Regressietest: `tests/e2e-auth/bootstrap-first-org.spec.ts` (uitgebreid met een
+expliciete MutationObserver-check dat het "ingetrokken"-scherm nooit
+verschijnt tijdens de bootstrap-flow), geverifieerd tegen de echte
+Firebase Auth-/Firestore-emulator.
 
 ### 10. Team-kleuren (primaire/accentkleur) worden nergens visueel toegepast — v1-regressie
 

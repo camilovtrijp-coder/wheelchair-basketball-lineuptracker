@@ -266,6 +266,8 @@ const nl = {
   authVerifyEmailBody:
     'We hebben een bevestigingslink naar je e-mailadres gestuurd. Bevestig je e-mailadres om deze uitnodiging te accepteren.',
   authResendVerificationBtn: 'Verificatiemail opnieuw versturen',
+  authResendVerificationSuccess: 'Verificatiemail verstuurd. Controleer je inbox.',
+  authResendVerificationError: 'Versturen van de verificatiemail is mislukt. Probeer het later opnieuw.',
 
   invitationLoginHint:
     'Log in of maak een account aan met het e-mailadres waarop je bent uitgenodigd.',
@@ -563,6 +565,8 @@ const en = {
   authVerifyEmailBody:
     "We've sent a verification link to your email address. Verify it to accept this invitation.",
   authResendVerificationBtn: 'Resend verification email',
+  authResendVerificationSuccess: 'Verification email sent. Check your inbox.',
+  authResendVerificationError: 'Failed to send the verification email. Please try again later.',
 
   invitationLoginHint: 'Log in or create an account with the email address you were invited with.',
   invitationNotFoundTitle: 'Invitation not found',

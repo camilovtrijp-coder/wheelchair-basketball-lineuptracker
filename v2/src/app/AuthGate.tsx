@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'preact/hooks';
+import { useEffect, useMemo, useRef, useState } from 'preact/hooks';
 import { browserStorage } from '../i18n/browserStorage';
 import { readLang, writeLang } from '../i18n/persistence';
 import { resolveInitialLang } from '../i18n/detect';
@@ -85,7 +85,6 @@ export function AuthGate({ authGateway }: AuthGateProps) {
   const [organizationGateway, setOrganizationGateway] = useState<OrganizationGateway | null>(null);
   const [memberships, setMemberships] = useState<Membership[] | null>(null);
   const [teamOnlyContexts, setTeamOnlyContexts] = useState<TeamOnlyContext[]>([]);
-  const [membershipsRefreshKey, setMembershipsRefreshKey] = useState(0);
   const [justSignedUp, setJustSignedUp] = useState(false);
   const [selectedContext, setSelectedContext] = useState<SelectedContext | null>(() =>
     readSelectedContext(browserStorage),
@@ -106,6 +105,21 @@ export function AuthGate({ authGateway }: AuthGateProps) {
   const [pendingInvitationLink, setPendingInvitationLink] = useState<InvitationLinkParams | null>(
     initialInvitationLink,
   );
+  // Zie NoOrganizationsScreenProps.onBootstrapInFlightChange: houdt dat scherm zichtbaar
+  // zolang de org+team-aanmaakflow bezig is, ook als het live subscribeMyMemberships()-
+  // abonnement de afgeleide state al naar 'context-switcher' laat springen op basis van
+  // alleen de (eerdere) membership-write.
+  const [bootstrapInFlight, setBootstrapInFlight] = useState(false);
+  const lastNoOrganizationsReason = useRef<'fresh-signup' | 'lost-all-memberships'>(
+    'fresh-signup',
+  );
+  // Zie de toelichting bij het membership-abonnement hieronder: laat de subscribeMyMemberships/
+  // subscribeMyTeamOnlyContexts-effect lezen of er al een context actief gekozen is, zonder dat
+  // effect zelf opnieuw te hoeven laten draaien bij elke contextwissel.
+  const selectedContextRef = useRef<SelectedContext | null>(selectedContext);
+  useEffect(() => {
+    selectedContextRef.current = selectedContext;
+  }, [selectedContext]);
 
   useEffect(() => {
     document.documentElement.lang = lang;
@@ -153,23 +167,58 @@ export function AuthGate({ authGateway }: AuthGateProps) {
       authUser.email ?? '',
     );
     setOrganizationGateway(gateway);
-    let cancelled = false;
-    // Beide toegestane membershipbronnen (issue #31) samen ophalen en pas daarna samenvoegen —
-    // net als bij de enkele query hieronder blijft `memberships` bij een netwerkfout op `null`
-    // staan ("nog niet geladen"/ongecacht), i.p.v. een onvolledige gedeeltelijke lijst te tonen.
-    Promise.all([gateway.listMyMemberships(), gateway.listMyTeamOnlyContexts()])
-      .then(([orgMemberships, teamOnly]) => {
-        if (cancelled) return;
-        setMemberships(mergeMemberships(orgMemberships, teamOnly));
-        setTeamOnlyContexts(teamOnly);
-      })
-      .catch(() => {
-        // Netwerkfout: memberships blijft null ("nog niet geladen"/ongecacht).
-      });
+    // Beide toegestane membershipbronnen (issue #31) live volgen en pas samenvoegen zodra
+    // beide minstens één keer geleverd hebben (PR 5.5c-bugfixes bug 6/9): `onSnapshot`
+    // i.p.v. een eenmalige fetch levert bij een offline paginaherlaad direct de gecachete
+    // lijst (i.p.v. `memberships` op `null` te laten staan), en een net aangemaakt/geclaimd
+    // membership komt via Firestores lokale-schrijf-echo meteen door.
+    //
+    // Bevriest zodra een context al actief gekozen is (op één uitzondering na, zie
+    // hasPublishedOnce hieronder): elke wijziging in het lidmaatschap/de teamrol van de
+    // gebruiker terwijl die al actief in een context zit — intrekking, maar bijv. ook een
+    // live rolverlaging (game-sync-real-rules-rejection.spec.ts) — mag niet live de sessie
+    // verstoren (canWrite/canWriteGame herberekenen, of de hele app naar een ander scherm laten
+    // springen). Dat blijft, zoals vóór dit live-abonnement, pas zichtbaar via een afgewezen
+    // write of een expliciete reload (action-needed-panel.spec.ts, backup-cloud-reject.spec.ts,
+    // game-sync-real-rules-rejection.spec.ts, en de reload-gebaseerde
+    // revoke-access-isolation.spec.ts/team-level-authorization.spec.ts/team-only-membership.spec.ts).
+    // Een reload maakt dit effect opnieuw aan (verse maps, `hasPublishedOnce` weer `false`), dus
+    // wijzigingen blijven daar wél meteen zichtbaar.
+    const seenMemberships = new Map<string, Membership>();
+    const seenTeamOnly = new Map<string, TeamOnlyContext>();
+    let membershipsLoaded = false;
+    let teamOnlyLoaded = false;
+    // De EERSTE publicatie moet altijd doorkomen, ook als er (uit localStorage herstelde) al
+    // een selectedContext is — anders blijft de app bij een reload met een reeds gekozen
+    // context voor altijd op 'loading'/'uncached-offline' hangen (PR 5.5c-bugfixes bug 6).
+    let hasPublishedOnce = false;
+    function publish() {
+      if (!membershipsLoaded || !teamOnlyLoaded) return;
+      if (hasPublishedOnce && selectedContextRef.current !== null) return;
+      hasPublishedOnce = true;
+      const teamOnly = Array.from(seenTeamOnly.values());
+      setMemberships(mergeMemberships(Array.from(seenMemberships.values()), teamOnly));
+      setTeamOnlyContexts(teamOnly);
+    }
+    const unsubscribeMemberships = gateway.subscribeMyMemberships((result) => {
+      for (const membership of result) {
+        seenMemberships.set(membership.orgId, membership);
+      }
+      membershipsLoaded = true;
+      publish();
+    });
+    const unsubscribeTeamOnly = gateway.subscribeMyTeamOnlyContexts((result) => {
+      for (const context of result) {
+        seenTeamOnly.set(context.teamId, context);
+      }
+      teamOnlyLoaded = true;
+      publish();
+    });
     return () => {
-      cancelled = true;
+      unsubscribeMemberships();
+      unsubscribeTeamOnly();
     };
-  }, [authUser, trustedDeviceAnswered, membershipsRefreshKey]);
+  }, [authUser, trustedDeviceAnswered]);
 
   // Hervalideert de TEAM-kant van een geselecteerde context (zie deriveAppState's
   // selectedContextTeamValid): puur organisatielidmaatschap miste een ingetrokken,
@@ -252,9 +301,9 @@ export function AuthGate({ authGateway }: AuthGateProps) {
   function handleInvitationResolved() {
     clearInvitationLinkFromUrl();
     setPendingInvitationLink(null);
-    // Nieuw membership erbij: forceer een verse listMyMemberships()-call zodat
-    // de contextwisselaar de zojuist geclaimde organisatie direct toont.
-    setMembershipsRefreshKey((key) => key + 1);
+    // Het net geclaimde membership komt vanzelf door via het live
+    // subscribeMyMemberships()-abonnement (zie de organizationGateway-effect
+    // hierboven) — geen handmatige refresh meer nodig.
   }
 
   // Alleen relevant in de 'active'-state hieronder, maar als Hook vóór elke
@@ -301,6 +350,7 @@ export function AuthGate({ authGateway }: AuthGateProps) {
         onResolved={handleInvitationResolved}
         onDismiss={handleInvitationDismiss}
         onResendVerification={() => authGateway.sendVerificationEmail()}
+        onRefreshIdToken={() => authGateway.refreshIdToken()}
       />
     );
   }
@@ -314,6 +364,22 @@ export function AuthGate({ authGateway }: AuthGateProps) {
     selectedContextTeamValid,
     hasEverHadMemberships: !justSignedUp,
   });
+
+  // Zie de toelichting bij bootstrapInFlight hierboven: het live membership-abonnement mag de
+  // org+team-aanmaakflow niet preemptief afbreken zodra alleen de membership-write lokaal
+  // geëchood is — createTeam() kan op dat moment nog steeds bezig zijn, en zonder deze gate
+  // zou de contextwisselaar een organisatie zonder enig team tonen (ContextSwitcher's
+  // listTeams() is geen live abonnement, dus dat team zou daar nooit meer vanzelf verschijnen).
+  if (bootstrapInFlight && appState.kind !== 'no-organizations') {
+    return (
+      <NoOrganizationsScreen
+        lang={lang}
+        reason={lastNoOrganizationsReason.current}
+        organizationGateway={organizationGateway!}
+        onBootstrapInFlightChange={setBootstrapInFlight}
+      />
+    );
+  }
 
   switch (appState.kind) {
     case 'not-logged-in': {
@@ -349,12 +415,13 @@ export function AuthGate({ authGateway }: AuthGateProps) {
       return <OfflineUncachedScreen lang={lang} />;
 
     case 'no-organizations':
+      lastNoOrganizationsReason.current = appState.reason;
       return (
         <NoOrganizationsScreen
           lang={lang}
           reason={appState.reason}
           organizationGateway={organizationGateway!}
-          onCreated={() => setMembershipsRefreshKey((key) => key + 1)}
+          onBootstrapInFlightChange={setBootstrapInFlight}
         />
       );
 

@@ -59,4 +59,10 @@ export class FirebaseAuthGateway implements AuthGateway {
       return false;
     }
   }
+
+  async refreshIdToken(): Promise<void> {
+    const user = this.auth.currentUser;
+    if (!user) return;
+    await user.getIdToken(true);
+  }
 }
