@@ -24,6 +24,20 @@ kleurenschema, geen hardcoded kleuren per component) met een
 gebruikersinstelling die het gekozen thema onthoudt — niet alleen
 "volg systeeminstelling" zonder eigen toggle.
 
+**Plek: persoonlijke instellingen, niet team-instellingen** (eigenaars-
+verduidelijking). Dit hoort dus **niet** thuis in het bestaande
+Instellingen-scherm (`SettingsPanel`/`Settings`-document — dat is
+team-gedeelde data, zoals teamnaam en de primaire/accentkleur uit bug 10).
+Licht/donker is een **per-account voorkeur**: elke gebruiker kiest zijn
+eigen modus, onafhankelijk van welk team/organisatie hij net geopend
+heeft. Dat impliceert een **nieuw concept "persoonlijke instellingen"**
+in v2 — dat bestaat momenteel nog niet; de taalwissel (NL/EN) is voor
+zover bekend ook niet per account gepersisteerd, alleen sessie-lokaal.
+Bij de implementatie hoort dus ook uitgezocht te worden of de taalkeuze
+in dezelfde nieuwe "persoonlijke instellingen"-laag hoort (consistente
+UX: één plek voor alle per-gebruiker-voorkeuren) in plaats van twee
+verschillende mechanismen.
+
 ## Algemene waarnemingen (uit meerdere screenshots)
 
 1. **Donker thema als standaard in v1** — v1 is overal donkerblauw/zwart
