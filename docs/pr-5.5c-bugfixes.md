@@ -199,8 +199,10 @@ Settings-tab (zelfde `canWrite`-aanpak, niet apart geverifieerd).
 
 ### 6. Herladen terwijl offline toont altijd "geen lokale kopie", ook als het team wél gecachet is
 
-**Symptoom**: tijdens §C.1 (iOS, ronde 1, zowel bij vliegtuigmodus als bij
-wifi-uit): direct na het wijzigen van de teamnaam offline toont de app kort
+**Symptoom**: tijdens een proefronde van het §C.1-protocol op **desktop
+Chrome** (nog geen formele mobiele ronde — zie toelichting onderaan), zowel
+bij vliegtuigmodus als bij wifi-uit: direct na het wijzigen van de
+teamnaam offline toont de app kort
 "Lokaal beschikbaar - uit cache" met de aangepaste naam zichtbaar en
 bruikbaar. Herlaad je de pagina terwijl nog steeds offline, dan verschijnt
 in plaats daarvan **"Geen verbinding" / "Er is nog geen lokale kopie van je
@@ -233,8 +235,13 @@ protocoldefinitie niet te blokkeren — maar het is een structurele
 beperking die het rapport (§B.4) expliciet moet vermelden, niet als
 toevallige afwijking.
 
-**Gevonden via**: `docs/pr-5.5-handmatig-protocol.md` §C.1, iOS-ronde 1,
-staging — 16 aug. 2026.
+**Gevonden via**: `docs/pr-5.5-handmatig-protocol.md` §C.1-stappen
+doorlopen op desktop Chrome, staging — 16 aug. 2026. **Telt niet mee als
+één van de vereiste mobiele §C.1-rondes** (die vereisen een fysiek
+Android-/iOS-apparaat, zie §A punt 3) — de bug is een codebevinding die
+onafhankelijk van het platform geldt (`getDocs()` vs. `onSnapshot()` is
+platformonafhankelijk), maar de formele "2/2 schone runs"-telling begint
+pas bij de eerste échte mobiele ronde.
 
 **Status**: open, nog niet gefixt. Root cause bevestigd via codeonderzoek.
 
