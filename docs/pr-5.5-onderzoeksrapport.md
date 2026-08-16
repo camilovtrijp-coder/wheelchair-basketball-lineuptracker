@@ -1,9 +1,11 @@
 # Onderzoeksrapport — PR 5.5 (staging-activatie en handmatige validatie)
 
-Status: **ingevuld, 5.5b-activatie en het grootste deel van 5.5c
-uitgevoerd.** Eén bewust open punt: de iOS-poot van het 2/2-protocol (§B.4)
-ontbreekt — de eigenaar heeft geen iOS-apparaat; zie §C voor het
-vervolgbesluit. Uitgevoerd 15–16 augustus 2026, door de eigenaar
+Status: **afgerond — 5.5's acceptatiefase is door de eigenaar gesloten
+verklaard (16 aug. 2026).** Eén bewust, expliciet open punt: de iOS-poot
+van het 2/2-protocol (§B.4) is niet uitgevoerd — de eigenaar heeft geen
+Apple-apparaat beschikbaar. Dit blokkeert de sluiting van 5.5 niet; het
+blijft apart bijgehouden totdat er alsnog een iOS-apparaat beschikbaar is
+(zie §C). Uitgevoerd 15–16 augustus 2026, door de eigenaar
 (camilovtrijp-coder) met begeleiding van Claude, op de échte staging-
 Firebase-backend (`wheelchair-basketball-tracker`) en de échte v2-Netlify-
 staging-site — geen emulator.
@@ -222,14 +224,17 @@ uitleg wat "viewer" betekent) is een aparte, apart vastgelegde bevinding
 Van de drie punten die `docs/pr-5.4-onderzoeksrapport.md` §C aan 5.5
 overdroeg:
 
-1. **Handmatige iOS/Android-validatie** — **gedeeltelijk gesloten.**
-   Android: 2/2 schoon bewezen op een echt apparaat, geen reload-hang.
-   iOS: **blijft open** — geen apparaat beschikbaar bij de eigenaar,
-   bewust uitgesteld i.p.v. via een geleend apparaat of cloud-dienst
-   opgelost. Vervolgbesluit nodig: alsnog een iOS-ronde draaien zodra er
-   een apparaat beschikbaar is (bijv. gecombineerd met PR 8.1's
-   Safari/iPadOS-onderzoek), of het acceptatiecriterium expliciet
-   herzien richting "Android bewezen, iOS volgt bij PR 8.1".
+1. **Handmatige iOS/Android-validatie** — **gedeeltelijk gesloten, en zo
+   geaccepteerd (eigenaarsbesluit 16 aug. 2026).** Android: 2/2 schoon
+   bewezen op een echt apparaat, geen reload-hang. iOS: **blijft
+   expliciet, apart open** — geen Apple-apparaat beschikbaar bij de
+   eigenaar; bewust niet opgelost via een geleend apparaat of
+   cloud-devicetestdienst. De eigenaar heeft besloten dat dit de
+   sluiting van 5.5's acceptatiefase niet blokkeert: 5.5 geldt als
+   afgerond met dit ene, met naam genoemde openstaande punt. Vervolg:
+   alsnog een iOS-ronde draaien zodra er een apparaat beschikbaar is
+   (bijv. gecombineerd met PR 8.1's Safari/iPadOS-onderzoek) — geen
+   vaste datum, geen blokkade voor verder werk.
 2. **Werkelijke Firestore-verbruiksmeting** — **gesloten**, met de
    kanttekening dat de meting een bovengrens is (Console-rapportage-
    vertraging, geen per-flow-isolatie) — zie §B.2. Ruim binnen het gratis
