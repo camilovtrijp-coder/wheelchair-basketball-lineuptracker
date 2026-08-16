@@ -1,0 +1,166 @@
+# v1 look-and-feel-pariteit — criteria voor de uiteindelijke v2-uitrol
+
+Status: **verzamelfase, groeit met elke aangeleverde batch v1-screenshots.**
+Dit document verzamelt bewuste ontwerp-/UX-verschillen tussen de nog
+live v1-app en de huidige v2-opbouw — geen bugs (die staan in
+`docs/pr-5.5c-bugfixes.md`), maar **criteria voor de uiteindelijke
+v2-app**, omdat de eigenaar v1's look-and-feel expliciet goed vond en
+als referentie wil gebruiken. Losstaand van 5.5/5.5c; dit werk loopt
+door terwijl v2 verder ontwikkeld en getest wordt.
+
+**Screenshots**: `docs/v1-screenshots/` bevat zelf-gemaakte v1-referentie-
+screenshots (zie §"Eigen live-onderzoek" hieronder) plus, indien
+geüpload, de eigenaars eigen telefoonscreenshots in een submap.
+
+## Expliciet criterium (eigenaarsbesluit)
+
+**Licht/donker als instelbare modus, niet als vervanging.** v1's
+donkere thema mag niet zomaar v2's huidige lichte thema overschrijven —
+de uiteindelijke app moet **beide** bieden, gebruikersinstelbaar (zelfde
+soort losstaande instelling als de bestaande NL/EN-taalwissel in de
+header). Vereist dus een eigen thema-token-laag (licht + donker
+kleurenschema, geen hardcoded kleuren per component) met een
+gebruikersinstelling die het gekozen thema onthoudt — niet alleen
+"volg systeeminstelling" zonder eigen toggle.
+
+**Plek: persoonlijke instellingen, niet team-instellingen** (eigenaars-
+verduidelijking). Dit hoort dus **niet** thuis in het bestaande
+Instellingen-scherm (`SettingsPanel`/`Settings`-document — dat is
+team-gedeelde data, zoals teamnaam en de primaire/accentkleur uit bug 10).
+Licht/donker is een **per-account voorkeur**: elke gebruiker kiest zijn
+eigen modus, onafhankelijk van welk team/organisatie hij net geopend
+heeft. Dat impliceert een **nieuw concept "persoonlijke instellingen"**
+in v2 — dat bestaat momenteel nog niet; de taalwissel (NL/EN) is voor
+zover bekend ook niet per account gepersisteerd, alleen sessie-lokaal.
+Bij de implementatie hoort dus ook uitgezocht te worden of de taalkeuze
+in dezelfde nieuwe "persoonlijke instellingen"-laag hoort (consistente
+UX: één plek voor alle per-gebruiker-voorkeuren) in plaats van twee
+verschillende mechanismen.
+
+## Algemene waarnemingen (uit meerdere screenshots)
+
+1. **Donker thema als standaard in v1** — v1 is overal donkerblauw/zwart
+   met groen/teal/oranje accenten. v2 is in alle tot nu toe geziene
+   schermen licht/wit. Zie het expliciete criterium hierboven: dit wordt
+   een instelbare modus, geen simpele vervanging van v2's huidige thema.
+2. **Kleuren worden functioneel gebruikt, niet alleen decoratief**: groen
+   = eigen team/positief, oranje = tegenstander, rood/roze = negatief,
+   teal/cyaan = secundaire metriek (minuten). Dit is precies waarom bug
+   10 (teamkleuren zonder visueel effect) een echte regressie is — v1
+   toont dat kleurgebruik het hele scherm doortrekt, niet alleen de
+   score-knoppen.
+3. **Onderaan een vaste navigatiebalk** (Team/Wedstrijd/Stats/Trends/
+   Historie, met pictogram + label, actieve tab groen gemarkeerd) i.p.v.
+   v2's bovenaan-tabs.
+4. **Ronde, "gloeiende" knopstijl** met een lichte gloed/schaduw rond
+   primaire acties (Opslaan, Start wedstrijd, Segment opslaan) — v2's
+   knoppen zijn vlakker.
+5. **Instellingen als modal-overlay** (met X-sluitknop, dus expliciet
+   "sluiten" i.p.v. terugnavigeren) i.p.v. een eigen volledige-pagina-tab.
+
+## Per scherm
+
+### Team-tab (roster)
+- Kaartlayout per speler: rugnummer + naam op één regel, klasse-waarde en
+  twee classificatie-toggles (bijv. "Vrouw"/"Jeugd") op de regel eronder.
+- **Classificatie-toggles hebben een eigen kleur per actieve categorie**
+  (bijv. roze/magenta-rand voor "Vrouw" actief, teal-rand voor "Jeugd"
+  actief) — in v2 zagen we tot nu toe alleen neutrale grijze
+  outline-knoppen voor deze toggles, geen categoriegebonden kleur.
+- "+ Speler toevoegen" onderaan de lijst, buiten de kaarten.
+
+### Instellingen (modal)
+- Club-sectie: teamnaam, logo (kiezen + verwijderen als los knoppenpaar),
+  primaire/accentkleur als kleurenpalet (7 presets + 2 recent-gebruikte
+  "geheugen"-swatches + een "Aangepast"-knop) — v2 heeft 10 presets maar
+  geen recent-gebruikte-geheugenswatches.
+- Wedstrijd-sectie (aantal periodes/naam periode) en Classificatie-sectie
+  qua velden functioneel gelijk aan v2.
+
+### Wedstrijdopzet
+- Per speler één rij met **twee losse toggleknoppen naast elkaar**:
+  "Meedoen" (groen met vinkje wanneer actief) en "Start" (voor starters
+  kiezen) — compacter dan wat we tot nu toe van v2's opzetscherm zagen.
+- Tegenstander/Competitie als losse, duidelijk "Optioneel"-gelabelde
+  velden.
+- Een aparte **"Wedstrijdklok telt af (10:00 → 0:00)"-toggle** (aftellen
+  vs. aflopen) zichtbaar vóór het starten.
+- Groot, fel-groen "Start wedstrijd"-knop.
+
+### Live wedstrijd (scoren/wisselen)
+- Score-knoppen (+1/+2/+3) in de eigen teamkleur (groen) resp.
+  tegenstanderkleur (oranje) — zie bug 10.
+- **Wissel-flow met directe visuele feedback**: de gekozen speler krijgt
+  een groene gloeirand, een groene banner verschijnt ("Ilias #10
+  gekozen — tik de speler om mee te ruilen"), met expliciete
+  "✓ Klaar met wisselen — kloktijd"/"Annuleer"-knoppen. Nog niet
+  vergeleken met hoe v2's wisselflow er live uitziet (nog niet apart
+  getest/gescreenshot in deze sessie).
+- "Segment vastleggen": kwartselectie als knoppenrij (actief kwart groen
+  omrand), begin-/eindtijd als getalvelden, live "Speeltijd dit segment"-
+  berekening, groene "Segment opslaan (+/- ±N)"-knop die het effect al in
+  het label toont.
+
+### Historie
+- Lijst: naam tegenstander, datum + competitie, eindstand met een groene
+  bolletje-indicator, chevron.
+- Detail: chronologische segmentenlijst in het formaat
+  "Q1 <opstelling> <tijd> <±delta>" met delta groen/rood gekleurd, rode
+  "Verwijderen"-knop rechtsboven, groene "Deel/download CSV"-knop
+  onderaan.
+
+### Trends
+- Per-speler-kaarten met een **gekleurde lijngrafiek** ("+/- per
+  wedstrijd", groen) en een **gekleurde staafgrafiek** ("Minuten per
+  wedstrijd", teal), plus een in-/uitklapbare wedstrijdenlijst eronder.
+- Filter-/sorteerknoppenrij bovenaan (kwartselectie 1-5, "+/- ↓", "Per 10
+  min", "Wedstrijden (N)", "Sorteer: Nr").
+
+### Stats
+- Lineup-combinaties (2-koppige subsets) met "Met hen"/"Zonder hen" als
+  gekleurde pillen (groen positief, rood/roze negatief), plus Tijd/Pnt/
+  Teg-kolommen.
+- Zelfde filter-/sorteerbalk als Trends (kwartselectie, "+/- ↓", "Per 10
+  min", "Wedstrijden (N)", "Filter spelers").
+
+## Eigen live-onderzoek (16 aug. 2026)
+
+De echte, live v1-URL (`lineuptracker.netlify.app`) is vanuit deze sandbox
+niet bereikbaar — de egress-policy van de sessie blokkeert willekeurige
+externe hosts (bevestigd via de proxy-status, geen omweg geprobeerd/
+gewenst). In plaats daarvan is **exact dezelfde v1-broncode die de live
+site bedient** — `index.html` in de repo-root — lokaal geserveerd en
+met een headless browser (Playwright/Chromium, mobiele viewport)
+doorlopen. Functioneel identiek resultaat, zonder externe netwerktoegang.
+
+Screenshots in `docs/v1-screenshots/` (zelf gemaakt):
+- `wedstrijd-leeg.png` / `team-leeg.png` — beginstatus zonder spelers.
+- `team-roster-ingevuld.png` — rosterkaarten met rugnummer/naam ingevuld.
+- `wedstrijd-opzet-ingevuld.png` — "Meedoen"/"Start"-toggles per speler,
+  bevestigt exact het patroon uit §"Wedstrijdopzet" hierboven.
+- `instellingen-modal.png` — de modal-instellingen, bevestigt §"Instellingen"
+  hierboven.
+- `stats-leeg.png` / `trends-leeg.png` / `historie-leeg.png` — lege
+  statussen (een volledige geautomatiseerde wedstrijdsimulatie tot en met
+  score/afronden bleek te tijdsintensief om te scripten binnen deze sessie
+  — de eigenaars eerder aangeleverde screenshots met echte data blijven
+  daarvoor de referentie, zie §"Per scherm" hierboven).
+
+**Nieuwe bevinding**: een net aangemaakt, ongebrand team (geen custom
+kleur ingesteld) toont **blauw** als accentkleur i.p.v. het groen dat de
+eigenaars eigen (ROBA-)team had — dit bevestigt hard dat v1 de gekozen
+teamkleur daadwerkelijk dynamisch toepast op UI-elementen (knoppen,
+actieve staten), precies het gedrag dat in v2 ontbreekt (bug 10).
+
+**Eigen screenshots van de eigenaar toevoegen**: upload via GitHub's
+"Add file → Upload files" naar `docs/v1-screenshots/eigenaar/` op de
+`docs/v1-look-and-feel-pariteit`-branch (PR #63) — die map staat klaar.
+
+## Cross-references
+
+- `docs/pr-5.5c-bugfixes.md` bug 10 (teamkleuren zonder visueel effect in
+  v2) — direct gerelateerd, mogelijk dezelfde implementatiestap lost
+  meerdere punten hierboven tegelijk op (bijv. een thema-/kleurenlaag op
+  basis van `settings.primaryColor`/`accentColor`).
+- `docs/pr-5.5-onderzoeksrapport.md` — de staging-omgeving waarop v2
+  momenteel getest wordt.

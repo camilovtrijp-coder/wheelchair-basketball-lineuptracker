@@ -14,6 +14,8 @@ export interface AcceptInvitationScreenProps {
   onResolved: () => void;
   onDismiss: () => void;
   onResendVerification: () => Promise<boolean>;
+  /** Zie AuthGateway.refreshIdToken() — vóór elke Rules-write die op `email_verified` steunt. */
+  onRefreshIdToken: () => Promise<void>;
 }
 
 function t(lang: Lang, key: StringKey): string {
@@ -56,10 +58,13 @@ export function AcceptInvitationScreen({
   onResolved,
   onDismiss,
   onResendVerification,
+  onRefreshIdToken,
 }: AcceptInvitationScreenProps) {
   const [invitation, setInvitation] = useState<Invitation | null | undefined>(undefined);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [errorCode, setErrorCode] = useState<string | undefined>(undefined);
+  const [resendStatus, setResendStatus] = useState<'idle' | 'sending' | 'sent' | 'error'>('idle');
 
   useEffect(() => {
     let cancelled = false;
@@ -74,10 +79,17 @@ export function AcceptInvitationScreen({
   async function handleAccept() {
     setSubmitting(true);
     setError(null);
+    setErrorCode(undefined);
+    // De accept-Rule steunt op de `email_verified`-claim in het ID-token, niet op
+    // `authUser.emailVerified` (dat kan al `true` zijn terwijl het gecachete token nog
+    // de oude claim draagt — PR 5.5c-bugfixes bug 4). Forceer daarom altijd een verse
+    // token vóórdat de write geprobeerd wordt.
+    await onRefreshIdToken();
     const result = await organizationGateway.acceptInvitation(link.orgId, link.invitationId);
     if (!result.ok) {
       setSubmitting(false);
       setError(t(lang, 'authGenericError'));
+      setErrorCode(result.errorCode);
       return;
     }
     const refreshed = await organizationGateway.getInvitationByLink(link.orgId, link.invitationId);
@@ -89,13 +101,24 @@ export function AcceptInvitationScreen({
     if (!invitation) return;
     setSubmitting(true);
     setError(null);
+    setErrorCode(undefined);
+    // Zelfde reden als handleAccept hierboven: de claim-Rule steunt ook op de
+    // `email_verified`-tokenclaim.
+    await onRefreshIdToken();
     const result = await organizationGateway.claimInvitation(invitation);
     setSubmitting(false);
     if (!result.ok) {
       setError(t(lang, 'authGenericError'));
+      setErrorCode(result.errorCode);
       return;
     }
     onResolved();
+  }
+
+  async function handleResendVerification() {
+    setResendStatus('sending');
+    const ok = await onResendVerification();
+    setResendStatus(ok ? 'sent' : 'error');
   }
 
   if (invitation === undefined) {
@@ -152,10 +175,21 @@ export function AcceptInvitationScreen({
         </header>
         <main className="app-main">
           <p data-testid="invitation-verify-email-body">{t(lang, 'authVerifyEmailBody')}</p>
+          {resendStatus === 'sent' ? (
+            <p role="status" data-testid="invitation-resend-success">
+              {t(lang, 'authResendVerificationSuccess')}
+            </p>
+          ) : null}
+          {resendStatus === 'error' ? (
+            <p role="alert" data-testid="invitation-resend-error">
+              {t(lang, 'authResendVerificationError')}
+            </p>
+          ) : null}
           <button
             type="button"
             data-testid="invitation-resend-verification"
-            onClick={() => void onResendVerification()}
+            disabled={resendStatus === 'sending'}
+            onClick={() => void handleResendVerification()}
           >
             {t(lang, 'authResendVerificationBtn')}
           </button>
@@ -175,7 +209,12 @@ export function AcceptInvitationScreen({
             {t(lang, 'invitationPendingBody')} {invitation.role}
           </p>
           {error ? (
-            <p className="auth-form__error" role="alert" data-testid="invitation-error">
+            <p
+              className="auth-form__error"
+              role="alert"
+              data-testid="invitation-error"
+              data-error-code={errorCode}
+            >
               {error}
             </p>
           ) : null}

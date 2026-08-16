@@ -14,12 +14,14 @@ async function readActiveGame(page: Page): Promise<unknown> {
 }
 
 /**
- * Voegt 5 spelers toe en herlaadt daarna de pagina. Spiegelt v1's
- * `init()`-gedrag (index.html): een nog-niet-gestarte wedstrijdopzet wordt
- * alleen vers vanaf de roster afgeleid bij het (opnieuw) laden van de app —
- * niet live bij een tabwissel binnen dezelfde sessie (zie de toelichting bij
- * de gameRepo-effects in App.tsx). Zonder deze reload zou de wedstrijdopzet
- * hier de spelerslijst tonen van vóór het toevoegen — precies zoals in v1.
+ * Voegt 5 spelers toe en herlaadt daarna de pagina. Vóór PR 5.5c-bugfixes
+ * bug 1 was deze reload functioneel noodzakelijk (een nog-niet-gestarte
+ * wedstrijdopzet werd toen alleen vers vanaf de roster afgeleid bij het
+ * (opnieuw) laden van de app, niet live bij een tabwissel — zie de
+ * regressietest verderop in dit bestand die dat zonder reload bewijst). De
+ * reload blijft hier staan als simpelste/meest robuuste manier om de opzet
+ * te verversen (werkt ongeacht of de live-sync-debounce al is afgerond),
+ * niet omdat het nog de enige manier is.
  */
 async function addFiveNamedPlayersAndReload(page: Page): Promise<void> {
   // Vastzetten op Nederlands: de assertions hieronder controleren specifieke
@@ -138,5 +140,32 @@ test.describe('v2 wedstrijdopzet (PR 6.1)', () => {
     await expect(page.getByTestId('game-opponent')).toHaveValue('');
     await expect(page.getByTestId('game-competition')).toHaveValue('');
     await expect(page.locator('[data-testid^="game-participate-"]')).toHaveCount(5);
+  });
+
+  test('PR 5.5c-bugfixes bug 1: een roster-wijziging binnen dezelfde sessie bereikt de Wedstrijd-tab zonder reload', async ({
+    page,
+  }) => {
+    await addFiveNamedPlayersAndReload(page);
+    await page.getByTestId('nav-game').click();
+    await expect(page.locator('[data-testid^="game-participate-"]')).toHaveCount(5);
+
+    // Terug naar Team-tab: naam wijzigen, een zesde speler toevoegen, opslaan
+    // — allemaal ZONDER reload en zonder terug te gaan via de Wedstrijd-tab.
+    await page.getByTestId('nav-roster').click();
+    const names = page.locator('[data-testid^="roster-naam-"]');
+    await names.first().fill('Speler 1 Hernoemd');
+    await page.getByTestId('roster-add').click();
+    await expect(names).toHaveCount(6);
+    await names.nth(5).fill('Speler 6');
+    await page.getByTestId('roster-save').click();
+
+    // De sync is gedebounced (400ms) om een invoer-race te voorkomen — even
+    // wachten tot die is afgerond vóór terug te navigeren.
+    await page.waitForTimeout(600);
+
+    await page.getByTestId('nav-game').click();
+    await expect(page.locator('[data-testid^="game-participate-"]')).toHaveCount(6);
+    await expect(page.getByText('Speler 1 Hernoemd')).toBeVisible();
+    await expect(page.getByText('Speler 6')).toBeVisible();
   });
 });

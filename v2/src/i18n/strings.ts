@@ -43,6 +43,7 @@ const nl = {
   settingsResetBtn: 'Standaardinstellingen herstellen',
   logoTooLargeError: 'Logo is te groot (max 500 KB). Kies een kleinere afbeelding.',
   settingsSaveError: 'Opslaan is mislukt. Controleer de opslagruimte van je browser.',
+  saveSuccessMessage: 'Opgeslagen ✓',
 
   rosterTitle: 'Team',
   rosterIntro:
@@ -268,6 +269,9 @@ const nl = {
   authVerifyEmailBody:
     'We hebben een bevestigingslink naar je e-mailadres gestuurd. Bevestig je e-mailadres om deze uitnodiging te accepteren.',
   authResendVerificationBtn: 'Verificatiemail opnieuw versturen',
+  authResendVerificationSuccess: 'Verificatiemail verstuurd. Controleer je inbox.',
+  authResendVerificationError:
+    'Versturen van de verificatiemail is mislukt. Probeer het later opnieuw.',
 
   invitationLoginHint:
     'Log in of maak een account aan met het e-mailadres waarop je bent uitgenodigd.',
@@ -302,8 +306,8 @@ const nl = {
   // PR 5.4a: rol-grens in de UI. Getoond door SettingsPanel/RosterPanel wanneer
   // canWrite=false (scorer/viewer, of een cloud-fail-open default). Bewust kort:
   // de disabled-knoppen + deze mededeling zijn het hele signaal.
-  settingsReadOnly: 'Alleen-lezen',
-  rosterReadOnly: 'Alleen-lezen',
+  settingsReadOnly: 'Alleen-lezen — je rol geeft geen bewerkrechten voor deze gegevens.',
+  rosterReadOnly: 'Alleen-lezen — je rol geeft geen bewerkrechten voor deze gegevens.',
   // Niet-blokkerende indicator wanneer een settings-/roster-listener na de
   // initiële load faalt. De data blijft de laatst geziene waarde; de
   // gebruiker kan handmatig refreshen.
@@ -348,6 +352,7 @@ const en = {
   settingsResetBtn: 'Reset to defaults',
   logoTooLargeError: 'Logo is too large (max 500 KB). Choose a smaller image.',
   settingsSaveError: "Saving failed. Check your browser's storage space.",
+  saveSuccessMessage: 'Saved ✓',
 
   rosterTitle: 'Team',
   rosterIntro:
@@ -567,6 +572,8 @@ const en = {
   authVerifyEmailBody:
     "We've sent a verification link to your email address. Verify it to accept this invitation.",
   authResendVerificationBtn: 'Resend verification email',
+  authResendVerificationSuccess: 'Verification email sent. Check your inbox.',
+  authResendVerificationError: 'Failed to send the verification email. Please try again later.',
 
   invitationLoginHint: 'Log in or create an account with the email address you were invited with.',
   invitationNotFoundTitle: 'Invitation not found',
@@ -597,8 +604,8 @@ const en = {
 
   // PR 5.4a: role-gate read-only indicator and non-blocking cloud-connection-lost
   // signal. See NL block for full rationale.
-  settingsReadOnly: 'Read-only',
-  rosterReadOnly: 'Read-only',
+  settingsReadOnly: "Read-only — your role doesn't have edit permission for this data.",
+  rosterReadOnly: "Read-only — your role doesn't have edit permission for this data.",
   listenerErrorIndicator: 'Cloud connection lost',
 } as const;
 

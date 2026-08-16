@@ -13,6 +13,12 @@ export interface SessionBarProps {
    */
   syncStatus?: SyncStatus;
   syncFromCache?: boolean;
+  /**
+   * E-mailadres van de ingelogde gebruiker (PR 5.5c-bugfixes bug 7) — nergens
+   * anders in de app is te zien met welk account je bent ingelogd. `null`/
+   * `undefined` toont geen indicator (bijv. tijdens een korte overgangsstate).
+   */
+  email?: string | null;
 }
 
 /**
@@ -27,12 +33,20 @@ export function SessionBar({
   onSwitchContext,
   syncStatus,
   syncFromCache,
+  email,
 }: SessionBarProps) {
   return (
     <div className="session-bar">
-      {syncStatus ? (
-        <SyncStatusIndicator lang={lang} status={syncStatus} fromCache={syncFromCache} />
-      ) : null}
+      <div className="session-bar__left">
+        {email ? (
+          <span className="session-bar__account" data-testid="session-account-email">
+            {email}
+          </span>
+        ) : null}
+        {syncStatus ? (
+          <SyncStatusIndicator lang={lang} status={syncStatus} fromCache={syncFromCache} />
+        ) : null}
+      </div>
       <button type="button" data-testid="switch-context" onClick={onSwitchContext}>
         {translate(lang, 'contextSwitcherSwitchBtn')}
       </button>

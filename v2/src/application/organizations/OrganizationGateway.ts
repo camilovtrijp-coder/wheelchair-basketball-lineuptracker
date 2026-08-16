@@ -1,3 +1,4 @@
+import type { Unsubscribe } from 'firebase/firestore';
 import type { Invitation } from '../../domain/invitations/types';
 import type {
   Membership,
@@ -30,14 +31,33 @@ export interface TeamValidationResult {
 }
 
 export interface OrganizationGateway {
-  /** De enige toegestane query voor "al mijn organisatielidmaatschappen" (zie firebase/docs/QUERY_CONTRACT.md). */
-  listMyMemberships(): Promise<Membership[]>;
+  /**
+   * De enige toegestane query voor "al mijn organisatielidmaatschappen" (zie
+   * firebase/docs/QUERY_CONTRACT.md). Live-abonnement (i.p.v. een eenmalige
+   * fetch, PR 5.5c-bugfixes bug 6/9) zodat: (a) een offline paginaherlaad
+   * meteen uit Firestore's persistente lokale cache bediend kan worden i.p.v.
+   * op `null` te blijven staan, en (b) een net aangemaakt/geclaimd membership
+   * direct (via Firestores lokale-schrijf-echo, vóór serverbevestiging)
+   * doorkomt i.p.v. via een handmatige refresh-cyclus — dat laatste voorkwam
+   * eerder een kort venster waarin `deriveAppState()` ten onrechte
+   * "toegang ingetrokken" toonde. `onError` vuurt alleen bij een echte
+   * Firestore-foutmelding (bijv. permission-denied); een offline reload
+   * zonder cache levert een lege array via `onData`, geen `onError`.
+   */
+  subscribeMyMemberships(
+    onData: (memberships: Membership[]) => void,
+    onError?: (error: unknown) => void,
+  ): Unsubscribe;
   /**
    * De andere toegestane query (issue #31): teams waar deze gebruiker via een expliciet
-   * `teamMembers`-document toegang toe heeft, ONAFHANKELIJK van `listMyMemberships()` —
+   * `teamMembers`-document toegang toe heeft, ONAFHANKELIJK van `subscribeMyMemberships()` —
    * nodig voor gebruikers zonder enig `organizationMembers`-document in die organisatie.
+   * Zelfde live-abonnement-rationale als hierboven.
    */
-  listMyTeamOnlyContexts(): Promise<TeamOnlyContext[]>;
+  subscribeMyTeamOnlyContexts(
+    onData: (contexts: TeamOnlyContext[]) => void,
+    onError?: (error: unknown) => void,
+  ): Unsubscribe;
   /**
    * `resumeOrgId`: geef het `orgId` uit een eerder mislukte poging door (zie `value` op een
    * `ok:false`-resultaat) om een weesorganisatie te herstellen i.p.v. een nieuwe aan te maken.

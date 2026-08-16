@@ -226,6 +226,32 @@ Voor iedere v2 release moet worden gecontroleerd:
 - [ ] Touchbediening werkt
 - [ ] PWA installatie werkt
 
+### Visuele/thema-pariteit (toegevoegd 16 aug. 2026 — was tot dan toe geen checklistcategorie)
+
+**Achtergrond**: v1 was in de eerdere ADR's/plannen uitsluitend als
+*gedragsreferentie* aangewezen ("niet regel voor regel vertaald" —
+ADR-000), nooit als visuele referentie. Daardoor viel v1's look-and-feel
+(kleurgebruik, donker thema, navigatiestijl) buiten elke bestaande
+checklist en werd het pas achteraf, via losse screenshotvergelijking,
+als gemis herkend — zie `docs/v1-look-and-feel-pariteit.md` voor de
+volledige, groeiende lijst bevindingen. Deze subsectie voorkomt dat dit
+gat zich herhaalt: voortaan expliciet afvinken, niet pas achteraf
+ontdekken.
+
+- [ ] Team-/organisatiekleuren (`primaryColor`/`accentColor`) worden
+      daadwerkelijk toegepast op UI-elementen (score-knoppen, actieve
+      staten, grafieken) — niet alleen opgeslagen (zie bug 10,
+      `docs/pr-5.5c-bugfixes.md`)
+- [ ] Licht/donker is een gebruikersinstelbare modus (persoonlijke
+      instelling, niet team-instelling), geen eenzijdige vervanging van
+      het bestaande lichte thema
+- [ ] Navigatiestructuur (onderaan met iconen, zoals v1) is bewust
+      overwogen — behouden of gewijzigd, niet stilzwijgend anders
+- [ ] Functioneel kleurgebruik in datavisualisatie (Trends/Stats:
+      positief/negatief/secundaire metriek) is bewust overwogen
+- [ ] Nieuwe schermen/componenten zijn getoetst aan
+      `docs/v1-look-and-feel-pariteit.md` vóórdat ze als "af" gelden
+
 ### Edge Cases
 - [ ] Hervatten van opgeslagen wedstrijd
 - [ ] Import van oude back-up

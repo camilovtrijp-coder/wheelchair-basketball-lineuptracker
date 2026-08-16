@@ -4,6 +4,7 @@ import {
   doc,
   getDoc,
   getDocs,
+  onSnapshot,
   query,
   serverTimestamp,
   setDoc,
@@ -11,6 +12,7 @@ import {
   where,
   writeBatch,
   type Firestore,
+  type Unsubscribe,
 } from 'firebase/firestore';
 import {
   invitationConverter,
@@ -67,28 +69,44 @@ export class FirestoreOrganizationGateway implements OrganizationGateway {
     private readonly ownEmail: string,
   ) {}
 
-  async listMyMemberships(): Promise<Membership[]> {
+  subscribeMyMemberships(
+    onData: (memberships: Membership[]) => void,
+    onError?: (error: unknown) => void,
+  ): Unsubscribe {
     // De enige toegestane query — exact zoals firebase/docs/QUERY_CONTRACT.md
     // voorschrijft. Elke andere vorm wordt door de Rules geweigerd.
     const membershipQuery = query(
       collectionGroup(this.db, 'organizationMembers'),
       where('uid', '==', this.ownUid),
     ).withConverter(organizationMemberConverter);
-    const snapshot = await getDocs(membershipQuery);
-
-    const memberships: Membership[] = [];
-    for (const memberSnapshot of snapshot.docs) {
-      const orgId = memberSnapshot.ref.parent.parent?.id;
-      if (!orgId) continue;
-      const orgSnapshot = await getDoc(orgRef(this.db, orgId).withConverter(organizationConverter));
-      if (!orgSnapshot.exists()) continue;
-      memberships.push({
-        orgId,
-        orgName: orgSnapshot.data().name,
-        role: memberSnapshot.data().role,
-      });
-    }
-    return memberships;
+    return onSnapshot(
+      membershipQuery,
+      (snapshot) => {
+        void (async () => {
+          const memberships: Membership[] = [];
+          for (const memberSnapshot of snapshot.docs) {
+            const orgId = memberSnapshot.ref.parent.parent?.id;
+            if (!orgId) continue;
+            try {
+              const orgSnapshot = await getDoc(
+                orgRef(this.db, orgId).withConverter(organizationConverter),
+              );
+              if (!orgSnapshot.exists()) continue;
+              memberships.push({
+                orgId,
+                orgName: orgSnapshot.data().name,
+                role: memberSnapshot.data().role,
+              });
+            } catch (error) {
+              onError?.(error);
+              return;
+            }
+          }
+          onData(memberships);
+        })();
+      },
+      (error) => onError?.(error),
+    );
   }
 
   /**
@@ -102,29 +120,43 @@ export class FirestoreOrganizationGateway implements OrganizationGateway {
    * een rechtstreekse `organizations/{orgId}`-read — die blijft `isOrgMember`-only (zie
    * firebase/docs/QUERY_CONTRACT.md).
    */
-  async listMyTeamOnlyContexts(): Promise<TeamOnlyContext[]> {
+  subscribeMyTeamOnlyContexts(
+    onData: (contexts: TeamOnlyContext[]) => void,
+    onError?: (error: unknown) => void,
+  ): Unsubscribe {
     const teamMembershipQuery = query(
       collectionGroup(this.db, 'teamMembers'),
       where('uid', '==', this.ownUid),
     ).withConverter(teamMemberConverter);
-    const snapshot = await getDocs(teamMembershipQuery);
-
-    const contexts: TeamOnlyContext[] = [];
-    for (const memberSnapshot of snapshot.docs) {
-      const teamDocRef = memberSnapshot.ref.parent.parent;
-      const orgId = teamDocRef?.parent.parent?.id;
-      if (!teamDocRef || !orgId) continue;
-      const teamSnapshot = await getDoc(teamDocRef.withConverter(teamConverter));
-      if (!teamSnapshot.exists()) continue;
-      contexts.push({
-        orgId,
-        orgName: teamSnapshot.data().orgName,
-        teamId: teamDocRef.id,
-        teamName: teamSnapshot.data().name,
-        role: memberSnapshot.data().role,
-      });
-    }
-    return contexts;
+    return onSnapshot(
+      teamMembershipQuery,
+      (snapshot) => {
+        void (async () => {
+          const contexts: TeamOnlyContext[] = [];
+          for (const memberSnapshot of snapshot.docs) {
+            const teamDocRef = memberSnapshot.ref.parent.parent;
+            const orgId = teamDocRef?.parent.parent?.id;
+            if (!teamDocRef || !orgId) continue;
+            try {
+              const teamSnapshot = await getDoc(teamDocRef.withConverter(teamConverter));
+              if (!teamSnapshot.exists()) continue;
+              contexts.push({
+                orgId,
+                orgName: teamSnapshot.data().orgName,
+                teamId: teamDocRef.id,
+                teamName: teamSnapshot.data().name,
+                role: memberSnapshot.data().role,
+              });
+            } catch (error) {
+              onError?.(error);
+              return;
+            }
+          }
+          onData(contexts);
+        })();
+      },
+      (error) => onError?.(error),
+    );
   }
 
   /**

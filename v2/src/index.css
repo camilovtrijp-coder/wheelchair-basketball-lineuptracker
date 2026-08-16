@@ -225,6 +225,12 @@ button:focus-visible {
   color: var(--lt-color-danger);
 }
 
+.settings-success {
+  margin: 0;
+  font-size: var(--lt-font-size-sm);
+  color: var(--lt-color-success, #166534);
+}
+
 .cloud-import-banner {
   display: flex;
   flex-direction: column;
@@ -408,6 +414,7 @@ button:focus-visible {
 
 .session-bar {
   display: flex;
+  flex-wrap: wrap;
   justify-content: flex-end;
   gap: var(--lt-space-2);
   padding: var(--lt-space-2) var(--lt-space-4);
@@ -415,9 +422,22 @@ button:focus-visible {
   background: var(--lt-color-surface);
 }
 
-.sync-status-indicator {
-  align-self: center;
+.session-bar__left {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--lt-space-2);
   margin-right: auto;
+  min-width: 0;
+}
+
+.session-bar__account {
+  font-size: 0.85rem;
+  color: var(--lt-color-muted);
+  overflow-wrap: anywhere;
+}
+
+.sync-status-indicator {
   padding: 0.15rem var(--lt-space-2);
   border-radius: 999px;
   border: var(--lt-border-thin);

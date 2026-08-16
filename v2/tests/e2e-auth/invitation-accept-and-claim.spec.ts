@@ -58,5 +58,14 @@ test.describe('uitnodiging accepteren/claimen — link-gebaseerd', () => {
     await page.waitForSelector('[data-testid="invitation-verify-email-body"]', { timeout: 10_000 });
     await expect(page.getByTestId('invitation-resend-verification')).toBeVisible();
     await expect(page.getByTestId('invitation-accept')).toHaveCount(0);
+
+    // PR 5.5c-bugfixes bug 3: het klikken op "opnieuw versturen" gaf voorheen geen
+    // enkele terugkoppeling (de Promise<boolean> van sendVerificationEmail() werd
+    // genegeerd) — bevestig hier zowel de disabled-state tijdens het versturen als
+    // de zichtbare succesmelding erna.
+    const resendButton = page.getByTestId('invitation-resend-verification');
+    await resendButton.click();
+    await expect(page.getByTestId('invitation-resend-success')).toBeVisible({ timeout: 10_000 });
+    await expect(resendButton).toBeEnabled();
   });
 });

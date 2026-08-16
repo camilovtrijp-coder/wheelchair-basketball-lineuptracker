@@ -13,6 +13,7 @@ import {
   startBlockReason,
   startCount,
   startGame,
+  syncGamePlayersWithRoster,
   toggleParticipate,
   toggleStart,
   validPlayers,
@@ -109,6 +110,62 @@ describe('domain/game/setup', () => {
       const a = createGameFromRoster(roster, 'org-1', 'team-1', 14.5);
       const b = createGameFromRoster(roster, 'org-1', 'team-1', 14.5);
       expect(a.id).not.toBe(b.id);
+    });
+  });
+
+  describe('syncGamePlayersWithRoster (PR 5.5c-bugfixes bug 1)', () => {
+    it('neemt een naam/rugnummer-wijziging over, met behoud van al gekozen participate/start', () => {
+      const roster = fiveNamedPlayerRoster();
+      const game = createGameFromRoster(roster, 'org-1', 'team-1', 14.5);
+      const started = toggleStart(game, game.players[0]!.id);
+      expect(started.players[0]!.participate).toBe(true);
+      expect(started.players[0]!.start).toBe(true);
+
+      const changedRoster = roster.map((p) =>
+        p.id === 1 ? { ...p, naam: 'Jan Hernoemd', nr: '99' } : p,
+      );
+      const synced = syncGamePlayersWithRoster(started, changedRoster);
+
+      expect(synced).not.toBe(started);
+      const syncedPlayer = synced.players.find((p) => p.rosterId === 1)!;
+      expect(syncedPlayer.naam).toBe('Jan Hernoemd');
+      expect(syncedPlayer.nr).toBe('99');
+      // Per-wedstrijd keuzes blijven behouden, dezelfde game-player-id ook.
+      expect(syncedPlayer.participate).toBe(true);
+      expect(syncedPlayer.start).toBe(true);
+      expect(syncedPlayer.id).toBe(started.players[0]!.id);
+    });
+
+    it('voegt een nieuwe rosterspeler toe met de standaardkeuzes', () => {
+      const roster = fiveNamedPlayerRoster();
+      const game = createGameFromRoster(roster, 'org-1', 'team-1', 14.5);
+      const withNewPlayer = [...roster, rosterPlayer({ id: 6, nr: '6', naam: 'Zes' })];
+
+      const synced = syncGamePlayersWithRoster(game, withNewPlayer);
+
+      expect(synced.players).toHaveLength(6);
+      const newPlayer = synced.players.find((p) => p.rosterId === 6)!;
+      expect(newPlayer.naam).toBe('Zes');
+      expect(newPlayer.participate).toBe(true);
+      expect(newPlayer.start).toBe(false);
+    });
+
+    it('laat een verwijderde rosterspeler uit de opzet vallen', () => {
+      const roster = fiveNamedPlayerRoster();
+      const game = createGameFromRoster(roster, 'org-1', 'team-1', 14.5);
+      const withoutFirst = roster.filter((p) => p.id !== 1);
+
+      const synced = syncGamePlayersWithRoster(game, withoutFirst);
+
+      expect(synced.players).toHaveLength(4);
+      expect(synced.players.some((p) => p.rosterId === 1)).toBe(false);
+    });
+
+    it('retourneert dezelfde referentie als er niets wijzigt (geen onnodige write/re-render)', () => {
+      const roster = fiveNamedPlayerRoster();
+      const game = createGameFromRoster(roster, 'org-1', 'team-1', 14.5);
+      const synced = syncGamePlayersWithRoster(game, roster);
+      expect(synced).toBe(game);
     });
   });
 

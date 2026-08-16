@@ -1,7 +1,10 @@
 import { useState } from 'preact/hooks';
 import type { JSX } from 'preact';
 import { translate, type Lang, type StringKey } from '../../i18n/strings';
-import type { OrganizationGateway } from '../../application/organizations/OrganizationGateway';
+import type {
+  OperationResult,
+  OrganizationGateway,
+} from '../../application/organizations/OrganizationGateway';
 import { browserStorage } from '../../i18n/browserStorage';
 import {
   clearBootstrapOrgId,
@@ -9,12 +12,49 @@ import {
   writeBootstrapOrgId,
 } from '../../infrastructure/onboarding/bootstrapProgress';
 
+function delay(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+/**
+ * `createTeam()`'s Rule (`isOrgOwnerOrAdmin`) doet een verse server-side lezing van het
+ * owner-membership-document dat `createOrganizationWithOwner()` zojuist heeft weggeschreven.
+ * Ondanks dat die eerdere write al door de client als bevestigd is teruggekregen, is empirisch
+ * bevestigd dat de daaropvolgende `createTeam()`-aanroep hier soms nog een `permission-denied`
+ * op kan lopen — een kort venster waarin de Rule-engine het net geschreven document nog niet
+ * ziet (des te waarschijnlijker nu een live `subscribeMyMemberships()`-abonnement extra
+ * leesverkeer genereert in exact datzelfde venster, PR 5.5c-bugfixes bug 6/9). Een paar keer
+ * kort opnieuw proberen is goedkoper en betrouwbaarder dan de gebruiker een generieke foutmelding
+ * te tonen voor iets dat een fractie van een seconde later gewoon lukt.
+ */
+async function createTeamWithRetry(
+  gateway: OrganizationGateway,
+  orgId: string,
+  name: string,
+): Promise<OperationResult<{ teamId: string }>> {
+  let result = await gateway.createTeam(orgId, name);
+  for (const backoffMs of [200, 500, 1000]) {
+    if (result.ok || result.errorCode !== 'permission-denied') break;
+    await delay(backoffMs);
+    result = await gateway.createTeam(orgId, name);
+  }
+  return result;
+}
+
 export interface NoOrganizationsScreenProps {
   lang: Lang;
   /** Waarom de gebruiker hier is: verse registratie zonder org, of alle memberships kwijt. */
   reason: 'fresh-signup' | 'lost-all-memberships';
   organizationGateway: OrganizationGateway;
-  onCreated: () => void;
+  /**
+   * Meldt AuthGate wanneer de org+team-aanmaakflow bezig is (`true`) resp. afgerond of gestopt
+   * is (`false`). Nodig omdat het live `subscribeMyMemberships()`-abonnement (PR 5.5c-bugfixes
+   * bug 9) de contextwisselaar al toont zodra de EERSTE van de twee schrijfacties (de
+   * organisatie/membership) lokaal geëchood is — dus mogelijk vóórdat `createTeam()` hieronder
+   * zelfs maar gestart is. Zolang deze flag `true` is, blijft AuthGate dit scherm tonen, ook als
+   * de afgeleide state intussen al 'context-switcher' zou zijn.
+   */
+  onBootstrapInFlightChange: (inFlight: boolean) => void;
 }
 
 function t(lang: Lang, key: StringKey): string {
@@ -25,7 +65,7 @@ export function NoOrganizationsScreen({
   lang,
   reason,
   organizationGateway,
-  onCreated,
+  onBootstrapInFlightChange,
 }: NoOrganizationsScreenProps) {
   const [orgName, setOrgName] = useState('');
   const [teamName, setTeamName] = useState('');
@@ -60,6 +100,11 @@ export function NoOrganizationsScreen({
     event.preventDefault();
     setSubmitting(true);
     setError(null);
+    // Vóór de eerste write al aanzetten: het live subscribeMyMemberships()-abonnement in
+    // AuthGate kan al op de (nog te starten) membership-write reageren zodra die lokaal
+    // geëchood wordt — deze flag moet dus al aanstaan vóórdat die write onderweg is, niet pas
+    // erna.
+    onBootstrapInFlightChange(true);
 
     let orgId = bootstrapOrgId;
     if (!orgReady) {
@@ -77,6 +122,7 @@ export function NoOrganizationsScreen({
           setBootstrapOrgId(orgResult.value.orgId);
           writeBootstrapOrgId(browserStorage, orgResult.value.orgId);
         }
+        onBootstrapInFlightChange(false);
         return;
       }
       orgId = orgResult.value.orgId;
@@ -85,15 +131,19 @@ export function NoOrganizationsScreen({
       setOrgReady(true);
     }
 
-    const teamResult = await organizationGateway.createTeam(orgId!, teamName.trim());
+    const teamResult = await createTeamWithRetry(organizationGateway, orgId!, teamName.trim());
     setSubmitting(false);
     if (!teamResult.ok) {
       setError(t(lang, 'authGenericError'));
+      onBootstrapInFlightChange(false);
       return;
     }
 
     clearBootstrapOrgId(browserStorage);
-    onCreated();
+    // Het net aangemaakte membership komt vanzelf door via het live
+    // subscribeMyMemberships()-abonnement (PR 5.5c-bugfixes bug 9) — nu het team ook
+    // bestaat, mag AuthGate de contextwisselaar tonen.
+    onBootstrapInFlightChange(false);
   }
 
   return (
