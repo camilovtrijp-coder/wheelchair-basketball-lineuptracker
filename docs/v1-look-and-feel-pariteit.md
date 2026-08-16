@@ -8,10 +8,9 @@ v2-app**, omdat de eigenaar v1's look-and-feel expliciet goed vond en
 als referentie wil gebruiken. Losstaand van 5.5/5.5c; dit werk loopt
 door terwijl v2 verder ontwikkeld en getest wordt.
 
-**Nog te doen**: de v1-URL zelf live doorlopen (deze sandbox heeft een
-browser beschikbaar) zodra die met de sessie gedeeld is, voor een
-systematischer, zelf-uitgevoerd onderzoek naast de aangeleverde
-screenshots.
+**Screenshots**: `docs/v1-screenshots/` bevat zelf-gemaakte v1-referentie-
+screenshots (zie §"Eigen live-onderzoek" hieronder) plus, indien
+geüpload, de eigenaars eigen telefoonscreenshots in een submap.
 
 ## Expliciet criterium (eigenaarsbesluit)
 
@@ -123,6 +122,39 @@ verschillende mechanismen.
   Teg-kolommen.
 - Zelfde filter-/sorteerbalk als Trends (kwartselectie, "+/- ↓", "Per 10
   min", "Wedstrijden (N)", "Filter spelers").
+
+## Eigen live-onderzoek (16 aug. 2026)
+
+De echte, live v1-URL (`lineuptracker.netlify.app`) is vanuit deze sandbox
+niet bereikbaar — de egress-policy van de sessie blokkeert willekeurige
+externe hosts (bevestigd via de proxy-status, geen omweg geprobeerd/
+gewenst). In plaats daarvan is **exact dezelfde v1-broncode die de live
+site bedient** — `index.html` in de repo-root — lokaal geserveerd en
+met een headless browser (Playwright/Chromium, mobiele viewport)
+doorlopen. Functioneel identiek resultaat, zonder externe netwerktoegang.
+
+Screenshots in `docs/v1-screenshots/` (zelf gemaakt):
+- `wedstrijd-leeg.png` / `team-leeg.png` — beginstatus zonder spelers.
+- `team-roster-ingevuld.png` — rosterkaarten met rugnummer/naam ingevuld.
+- `wedstrijd-opzet-ingevuld.png` — "Meedoen"/"Start"-toggles per speler,
+  bevestigt exact het patroon uit §"Wedstrijdopzet" hierboven.
+- `instellingen-modal.png` — de modal-instellingen, bevestigt §"Instellingen"
+  hierboven.
+- `stats-leeg.png` / `trends-leeg.png` / `historie-leeg.png` — lege
+  statussen (een volledige geautomatiseerde wedstrijdsimulatie tot en met
+  score/afronden bleek te tijdsintensief om te scripten binnen deze sessie
+  — de eigenaars eerder aangeleverde screenshots met echte data blijven
+  daarvoor de referentie, zie §"Per scherm" hierboven).
+
+**Nieuwe bevinding**: een net aangemaakt, ongebrand team (geen custom
+kleur ingesteld) toont **blauw** als accentkleur i.p.v. het groen dat de
+eigenaars eigen (ROBA-)team had — dit bevestigt hard dat v1 de gekozen
+teamkleur daadwerkelijk dynamisch toepast op UI-elementen (knoppen,
+actieve staten), precies het gedrag dat in v2 ontbreekt (bug 10).
+
+**Eigen screenshots van de eigenaar toevoegen**: upload via GitHub's
+"Add file → Upload files" naar `docs/v1-screenshots/eigenaar/` op de
+`docs/v1-look-and-feel-pariteit`-branch (PR #63) — die map staat klaar.
 
 ## Cross-references
 
