@@ -66,7 +66,12 @@ export function SettingsPanel({
   updatedAt,
 }: SettingsPanelProps) {
   const fileInputRef = useRef<HTMLInputElement | null>(null);
-  const { status: saveStatus, notifySuccess, notifyError, reset: resetSaveStatus } = useSaveStatus();
+  const {
+    status: saveStatus,
+    notifySuccess,
+    notifyError,
+    reset: resetSaveStatus,
+  } = useSaveStatus();
   const changedKeysRef = useRef(new Set<SettingsKey>());
 
   function handleField<K extends keyof Settings>(field: K, value: Settings[K]) {

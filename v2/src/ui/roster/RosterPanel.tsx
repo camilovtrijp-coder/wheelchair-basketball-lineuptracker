@@ -56,7 +56,12 @@ export function RosterPanel({
   canWrite,
   updatedAt,
 }: RosterPanelProps) {
-  const { status: saveStatus, notifySuccess, notifyError, reset: resetSaveStatus } = useSaveStatus();
+  const {
+    status: saveStatus,
+    notifySuccess,
+    notifyError,
+    reset: resetSaveStatus,
+  } = useSaveStatus();
   const dupNrs = findDuplicateNumbers(roster);
 
   function handleField<K extends keyof Player>(id: number, field: K, value: Player[K]) {

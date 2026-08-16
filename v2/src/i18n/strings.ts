@@ -270,7 +270,8 @@ const nl = {
     'We hebben een bevestigingslink naar je e-mailadres gestuurd. Bevestig je e-mailadres om deze uitnodiging te accepteren.',
   authResendVerificationBtn: 'Verificatiemail opnieuw versturen',
   authResendVerificationSuccess: 'Verificatiemail verstuurd. Controleer je inbox.',
-  authResendVerificationError: 'Versturen van de verificatiemail is mislukt. Probeer het later opnieuw.',
+  authResendVerificationError:
+    'Versturen van de verificatiemail is mislukt. Probeer het later opnieuw.',
 
   invitationLoginHint:
     'Log in of maak een account aan met het e-mailadres waarop je bent uitgenodigd.',

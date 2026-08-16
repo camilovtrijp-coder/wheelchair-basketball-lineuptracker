@@ -110,9 +110,7 @@ export function AuthGate({ authGateway }: AuthGateProps) {
   // abonnement de afgeleide state al naar 'context-switcher' laat springen op basis van
   // alleen de (eerdere) membership-write.
   const [bootstrapInFlight, setBootstrapInFlight] = useState(false);
-  const lastNoOrganizationsReason = useRef<'fresh-signup' | 'lost-all-memberships'>(
-    'fresh-signup',
-  );
+  const lastNoOrganizationsReason = useRef<'fresh-signup' | 'lost-all-memberships'>('fresh-signup');
   // Zie de toelichting bij het membership-abonnement hieronder: laat de subscribeMyMemberships/
   // subscribeMyTeamOnlyContexts-effect lezen of er al een context actief gekozen is, zonder dat
   // effect zelf opnieuw te hoeven laten draaien bij elke contextwissel.

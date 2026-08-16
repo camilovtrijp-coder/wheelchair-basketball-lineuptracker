@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'preact/hooks';
 
-export type SaveStatus = { kind: 'idle' } | { kind: 'success' } | { kind: 'error'; message: string };
+export type SaveStatus =
+  { kind: 'idle' } | { kind: 'success' } | { kind: 'error'; message: string };
 
 /**
  * Gedeelde opslaan-bevestigingsstatus (PR 5.5c-bugfixes bug 2): `handleSave()`
