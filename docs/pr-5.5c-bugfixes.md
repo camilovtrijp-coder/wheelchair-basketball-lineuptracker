@@ -326,6 +326,37 @@ oorzaak als bug 6 (membershiplijst zonder persistente cache/listener) —
 bij het fixen van bug 6 (bijv. overstappen op `onSnapshot()`) in dezelfde
 sessie heronderzoeken of dit vanzelf meegefixt is.
 
+### 10. Team-kleuren (primaire/accentkleur) worden nergens visueel toegepast — v1-regressie
+
+**Symptoom**: op de Instellingen-tab kies je onder "Club" een primaire
+kleur en een accentkleur ("Aangepast" of een van de preset-cirkels),
+slaat op, maar nergens in de rest van de app (Wedstrijd-scherm, knoppen,
+headers) verandert er iets — "alles blijft blauw", inclusief de
+"Opslaan"-knop zelf. In v1 had deze instelling wel een zichtbaar effect.
+
+**Oorzaak**: `primaryColor`/`accentColor` (`domain/settings/types.ts`)
+worden in de hele `v2/src`-codebase **uitsluitend gelezen en geschreven
+binnen het Instellingen-formulier zelf** (`SettingsPanel.tsx`) en
+gevalideerd/genormaliseerd (`domain/settings/normalize.ts`). Nergens
+anders — geen CSS custom property-injectie, geen inline `style`-gebruik,
+geen thema-logica — wordt deze waarde daadwerkelijk toegepast op UI-
+elementen. Alle knoppen (incl. "Opslaan") gebruiken een vaste, hardcoded
+`.btn-primary`-stijl in `index.css`, losstaand van de teaminstelling.
+
+**Impact**: functionele regressie t.o.v. v1, geen dataverlies — de kleur
+wordt wel degelijk correct opgeslagen in Firestore (het is dus geen writes-
+bug), maar de hele branding-functie heeft in v2 op dit moment geen enkel
+zichtbaar effect. Dit is dus geen losse "polish"-bug maar een ontbrekend
+stuk functionaliteit.
+
+**Gevonden via**: eigenaarfeedback tijdens §D-vervolgtesten, staging,
+16 aug. 2026.
+
+**Status**: open, nog niet gefixt. Vereist een aparte implementatiestap
+(bijv. CSS custom properties op basis van `settings.primaryColor`/
+`accentColor` toepassen op de relevante UI-laag), geen kleine patch zoals
+de meeste andere bugs hierboven.
+
 ## Nog te doen
 
 - Meer bugs toevoegen naarmate het 5.5c-protocol verder wordt uitgevoerd
