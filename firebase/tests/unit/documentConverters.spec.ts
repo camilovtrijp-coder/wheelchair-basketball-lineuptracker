@@ -15,6 +15,7 @@ import {
   rosterConverter,
   gameConverter,
   gameActionConverter,
+  completedGameConverter,
   DocumentValidationError,
   type OrganizationDocument,
   type OrganizationMemberDocument,
@@ -25,6 +26,7 @@ import {
   type RosterDocument,
   type GameDocument,
   type GameActionEnvelopeDocument,
+  type CompletedGameDocument,
 } from '../../src/documents/index.js';
 
 // `path` is alleen relevant voor converters die contextvelden tegen het
@@ -42,6 +44,7 @@ function mockSnapshot<T extends Record<string, unknown>>(
 }
 
 const GAME_PATH = 'organizations/org-1/teams/team-1/games/game-1';
+const COMPLETED_GAME_PATH = 'organizations/org-1/teams/team-1/completedGames/completed-1';
 function gameActionPath(actionId: string): string {
   return `organizations/org-1/teams/team-1/games/game-1/actions/${actionId}`;
 }
@@ -199,11 +202,97 @@ describe('documentcontracten: round-trip via toFirestore/fromFirestore', () => {
       revision: 3,
       createdAt: '2026-01-01T00:00:00.000Z',
       startedAt: '2026-01-01T00:05:00.000Z',
+      completedGameId: null,
       updatedAt: Timestamp.now(),
     };
     const stored = gameConverter.toFirestore(doc);
     expect(
       gameConverter.fromFirestore!(mockSnapshot(stored as Record<string, unknown>, GAME_PATH), {}),
+    ).toEqual(doc);
+  });
+
+  it('game met completedGameId gezet (PR 7.2a)', () => {
+    const doc: GameDocument = {
+      organizationId: 'org-1',
+      teamId: 'team-1',
+      phase: 'tracking',
+      players: [],
+      opponent: 'Fictieve Tegenstander',
+      competition: 'Fictieve Competitie',
+      clockDown: true,
+      limitStr: '14.5',
+      onCourt: [],
+      curQuarter: 4,
+      beginSec: 0,
+      endSec: 0,
+      pendingSwapLineup: null,
+      scoreFor: 40,
+      scoreAgainst: 32,
+      segmentCount: 8,
+      writerUid: 'uid-alice',
+      deviceId: 'device-1',
+      writerEpoch: 0,
+      revision: 9,
+      createdAt: '2026-01-01T00:00:00.000Z',
+      startedAt: '2026-01-01T00:05:00.000Z',
+      completedGameId: 'completed-1',
+      updatedAt: Timestamp.now(),
+    };
+    const stored = gameConverter.toFirestore(doc);
+    expect(
+      gameConverter.fromFirestore!(mockSnapshot(stored as Record<string, unknown>, GAME_PATH), {}),
+    ).toEqual(doc);
+  });
+
+  it('completedGame (PR 7.2a)', () => {
+    const doc: CompletedGameDocument = {
+      organizationId: 'org-1',
+      teamId: 'team-1',
+      sourceGameId: 'game-1',
+      opponent: 'Fictieve Tegenstander',
+      competition: 'Fictieve Competitie',
+      date: '2026-01-01T01:30:00.000Z',
+      players: [
+        {
+          id: 'gp-1',
+          rosterId: 1,
+          nr: '7',
+          naam: 'Fictief Speler',
+          kl: '3.0',
+          vrouw: false,
+          jeugd: false,
+          participate: true,
+          start: true,
+        },
+      ],
+      segments: [
+        {
+          id: 'seg-1',
+          quarter: 1,
+          beginSec: 600,
+          endSec: 480,
+          durSec: 120,
+          lineup: ['gp-1', 'gp-2', 'gp-3', 'gp-4', 'gp-5'],
+          pf: 4,
+          pa: 2,
+          classSum: 14.0,
+          allowed: 14.5,
+          over: false,
+        },
+      ],
+      scoreFor: 40,
+      scoreAgainst: 32,
+      quarterCount: 4,
+      periodLabel: 'kwart',
+      useClassLimit: true,
+      syncedAt: Timestamp.now(),
+    };
+    const stored = completedGameConverter.toFirestore(doc);
+    expect(
+      completedGameConverter.fromFirestore!(
+        mockSnapshot(stored as Record<string, unknown>, COMPLETED_GAME_PATH),
+        {},
+      ),
     ).toEqual(doc);
   });
 
@@ -555,6 +644,7 @@ describe('documentcontracten: weigeren malformed serverdata', () => {
     revision: 0,
     createdAt: '2026-01-01T00:00:00.000Z',
     startedAt: null,
+    completedGameId: null,
     updatedAt: Timestamp.now(),
   };
   const validSegment: Record<string, unknown> = {
@@ -880,6 +970,113 @@ describe('documentcontracten: weigeren malformed serverdata', () => {
     expect(() =>
       gameActionConverter.fromFirestore!(
         mockSnapshot(withoutGameId, gameActionPath('action-1')),
+        {},
+      ),
+    ).toThrow(DocumentValidationError);
+  });
+
+  // PR 7.2a: completedGameId is nullable-string, net als writerUid/deviceId.
+  it('game: niet-string completedGameId wordt geweigerd', () => {
+    expect(() =>
+      gameConverter.fromFirestore!(
+        mockSnapshot({ ...validGame, completedGameId: 42 }, GAME_PATH),
+        {},
+      ),
+    ).toThrow(DocumentValidationError);
+  });
+
+  const validCompletedGame: Record<string, unknown> = {
+    organizationId: 'org-1',
+    teamId: 'team-1',
+    sourceGameId: 'game-1',
+    opponent: 'Fictieve Tegenstander',
+    competition: 'Fictieve Competitie',
+    date: '2026-01-01T01:30:00.000Z',
+    players: [validGamePlayer],
+    segments: [validSegment],
+    scoreFor: 40,
+    scoreAgainst: 32,
+    quarterCount: 4,
+    periodLabel: 'kwart',
+    useClassLimit: true,
+    syncedAt: Timestamp.now(),
+  };
+
+  it('completedGame: ontbrekende sourceGameId wordt geweigerd', () => {
+    const { sourceGameId: _sourceGameId, ...withoutSourceGameId } = validCompletedGame;
+    expect(() =>
+      completedGameConverter.fromFirestore!(
+        mockSnapshot(withoutSourceGameId, COMPLETED_GAME_PATH),
+        {},
+      ),
+    ).toThrow(DocumentValidationError);
+  });
+
+  it('completedGame: organizationId die niet overeenkomt met het Firestore-pad wordt geweigerd', () => {
+    expect(() =>
+      completedGameConverter.fromFirestore!(
+        mockSnapshot({ ...validCompletedGame, organizationId: 'org-2' }, COMPLETED_GAME_PATH),
+        {},
+      ),
+    ).toThrow(DocumentValidationError);
+  });
+
+  it('completedGame: teamId die niet overeenkomt met het Firestore-pad wordt geweigerd', () => {
+    expect(() =>
+      completedGameConverter.fromFirestore!(
+        mockSnapshot({ ...validCompletedGame, teamId: 'team-2' }, COMPLETED_GAME_PATH),
+        {},
+      ),
+    ).toThrow(DocumentValidationError);
+  });
+
+  it('completedGame: segments die geen array is wordt geweigerd', () => {
+    expect(() =>
+      completedGameConverter.fromFirestore!(
+        mockSnapshot({ ...validCompletedGame, segments: 'niet-een-array' }, COMPLETED_GAME_PATH),
+        {},
+      ),
+    ).toThrow(DocumentValidationError);
+  });
+
+  it('completedGame: malformed genest segment wordt geweigerd', () => {
+    expect(() =>
+      completedGameConverter.fromFirestore!(
+        mockSnapshot(
+          { ...validCompletedGame, segments: [{ ...validSegment, lineup: 'niet-een-array' }] },
+          COMPLETED_GAME_PATH,
+        ),
+        {},
+      ),
+    ).toThrow(DocumentValidationError);
+  });
+
+  it('completedGame: malformed genest speler wordt geweigerd', () => {
+    expect(() =>
+      completedGameConverter.fromFirestore!(
+        mockSnapshot(
+          { ...validCompletedGame, players: [{ ...validGamePlayer, id: 42 }] },
+          COMPLETED_GAME_PATH,
+        ),
+        {},
+      ),
+    ).toThrow(DocumentValidationError);
+  });
+
+  it('completedGame: niet-ISO-string voor date wordt geweigerd', () => {
+    expect(() =>
+      completedGameConverter.fromFirestore!(
+        mockSnapshot({ ...validCompletedGame, date: 'dit-is-geen-tijdstip' }, COMPLETED_GAME_PATH),
+        {},
+      ),
+    ).toThrow(DocumentValidationError);
+  });
+
+  it('completedGame: ontbrekende syncedAt-timestamp wordt geweigerd', () => {
+    const { syncedAt: _syncedAt, ...withoutSyncedAt } = validCompletedGame;
+    expect(() =>
+      completedGameConverter.fromFirestore!(
+        mockSnapshot(withoutSyncedAt, COMPLETED_GAME_PATH),
         {},
       ),
     ).toThrow(DocumentValidationError);

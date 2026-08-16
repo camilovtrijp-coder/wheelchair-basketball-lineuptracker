@@ -36,7 +36,10 @@ export interface GamePlayerDocument {
   start: boolean;
 }
 
-function assertGamePlayer(field: string, value: unknown): GamePlayerDocument {
+/** Geëxporteerd voor hergebruik door `completedGame.ts` (PR 7.2a) — dezelfde
+ * `GamePlayer`-vorm wordt bevroren op een `CompletedGame`-snapshot, geen
+ * tweede, divergerende validatiekopie. */
+export function assertGamePlayer(field: string, value: unknown): GamePlayerDocument {
   if (!isPlainObject(value)) {
     throw new DocumentValidationError(TYPE, field, 'moet een object zijn');
   }
@@ -53,7 +56,7 @@ function assertGamePlayer(field: string, value: unknown): GamePlayerDocument {
   };
 }
 
-function assertGamePlayers(field: string, value: unknown): GamePlayerDocument[] {
+export function assertGamePlayers(field: string, value: unknown): GamePlayerDocument[] {
   if (!Array.isArray(value)) {
     throw new DocumentValidationError(TYPE, field, 'moet een array zijn');
   }
@@ -87,6 +90,17 @@ function assertGamePlayers(field: string, value: unknown): GamePlayerDocument[] 
  * server-bijgehouden bookkeeping voor sync-/staleness-weergave (zelfde
  * patroon als settings/roster) en wordt pas door de PR 7.1c-adapter gezet,
  * niet door de pure projectiefunctie.
+ *
+ * `completedGameId` (PR 7.2a, docs/pr-7.2-plan.md §C 7.2a): `null` totdat de
+ * wedstrijd is afgerond; daarna `CompletedGame.id` van de bevroren snapshot
+ * in `completedGames/{completedGameId}` (zie `completedGame.ts` hieronder).
+ * Bewust GEEN `phase: 'completed'` — `phase` spiegelt exact
+ * `v2/src/domain/game/types.ts`'s `ActiveGame.phase` (die kent alleen
+ * `'setup'|'tracking'`; een afgeronde wedstrijd is domeinbreed altijd al een
+ * apart `CompletedGame`, geen derde `ActiveGame`-fase). Zodra gezet is dit
+ * parentdocument bevroren: firestore.rules staat geen normale draaiveldpatch
+ * (punt 10a) meer toe zolang `completedGameId != null`, en de eenmalige
+ * overgang zelf (10c) laat verder niets anders wijzigen dan dit veld zelf.
  */
 export interface GameDocument {
   organizationId: string;
@@ -111,6 +125,7 @@ export interface GameDocument {
   revision: number;
   createdAt: string;
   startedAt: string | null;
+  completedGameId: string | null;
   updatedAt: Timestamp;
 }
 
@@ -153,6 +168,7 @@ export const gameConverter: FirestoreDataConverter<GameDocument> = {
       revision: assertInteger(TYPE, 'revision', data.revision),
       createdAt: assertIsoTimestampString(TYPE, 'createdAt', data.createdAt),
       startedAt: assertNullableIsoTimestampString(TYPE, 'startedAt', data.startedAt),
+      completedGameId: assertNullableString(TYPE, 'completedGameId', data.completedGameId),
       updatedAt: assertTimestamp(TYPE, 'updatedAt', data.updatedAt),
     };
   },

@@ -163,6 +163,14 @@ outsider-contextquery die aantoont dat er niets lekt).
   beantwoorden). Zodra een toekomstige fase (bijv. PR 7.2's cloudhistorie of
   een coachdashboard) zo'n query wel nodig heeft, vereist dat een eigen,
   even expliciet vastgelegd en beproefd contract, exact zoals hierboven.
+- `completedGames` (PR 7.2a, `organizations/{orgId}/teams/{teamId}/completedGames/
+  {completedGameId}`): zelfde postuur als `games`/`actions` hierboven — alleen
+  het directe pad is gedefinieerd (create-only, zie `firestore.rules` punt
+  16), geen recursieve-wildcard match, dus elke `collectionGroup`-query blijft
+  default-deny. PR 7.2b voegt de daadwerkelijke, begrensde per-team LIST-query
+  ("Historie/Stats/Trends voor dit team, nieuwste eerst") toe als eigen,
+  expliciet vastgelegd contract — 7.2a schrijft en leest uitsluitend via het
+  directe document-ID.
 - Elke andere toekomstige nieuwe query (bijv. voor statistieken) vereist een
   eigen, even expliciet vastgelegd en beproefd contract — dit document dekt
   uitsluitend de twee contextwisselaar-queries hierboven.
