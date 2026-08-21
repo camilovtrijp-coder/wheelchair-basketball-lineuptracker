@@ -152,6 +152,10 @@ export function sampleCompletedGame(overrides: Record<string, unknown> = {}) {
     periodLabel: 'kwart',
     useClassLimit: true,
     syncedAt: Timestamp.now(),
+    // PR 7.2c: create-aanmaakdefault — de meeste tests overriden deze niet.
+    revision: 0,
+    deletedAt: null,
+    deletedBy: null,
     ...overrides,
   };
 }

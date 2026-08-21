@@ -84,6 +84,9 @@ function completedGameFor(game: ActiveGame, overrides: Partial<CompletedGame> = 
     quarterCount: 4,
     periodLabel: 'kwart',
     useClassLimit: true,
+    revision: 0,
+    deletedAt: null,
+    deletedBy: null,
     ...overrides,
   };
 }
@@ -144,6 +147,9 @@ function mockGateway(script: GatewayScript): GameCloudGateway & {
       return script.finalizeCompletedGame
         ? script.finalizeCompletedGame(completedGameId, snapshot, expectedRevision)
         : { ok: true, revision: expectedRevision + 1, completedGameId };
+    },
+    async tombstoneCompletedGame(_org, _team, _completedGameId, _deletedBy, expectedRevision) {
+      return { ok: true, revision: expectedRevision + 1 };
     },
   };
 }
@@ -394,11 +400,13 @@ describe('application/game/GameSyncCoordinator (PR 7.1c)', () => {
       }),
     );
     const finalizeCompletedGame = vi.fn(async () => ({ ok: true }));
+    const tombstoneCompletedGame = vi.fn(async () => ({ ok: true }));
     const gateway: GameCloudGateway = {
       ensureGame,
       uploadActions,
       patchSnapshot,
       finalizeCompletedGame,
+      tombstoneCompletedGame,
     };
     const coordinator = new GameSyncCoordinator({ gateway, checkpoints });
     await coordinator.sync(gameWithActions(['a1']), writer);

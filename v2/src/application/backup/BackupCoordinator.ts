@@ -251,7 +251,17 @@ function writeCompletedGamesSection(
   deps: BackupCoordinatorDeps,
   games: BackupV2Data['completedGames'],
 ): 'written' | 'failed' {
-  const target = games ?? [];
+  // PR 7.2c: een back-up van vóór PR 7.2c mist `revision`/`deletedAt`/
+  // `deletedBy` (velden bestonden toen nog niet) — normaliseer die hier naar
+  // hun aanmaak-default in plaats van deze runtime-ontbrekende velden tot
+  // een validatiefout te maken (backup-import blijft zo backward-compatibel,
+  // zelfde reden als `migrateV1CompletedGame`'s eigen defaults hieronder).
+  const target = (games ?? []).map((game) => ({
+    ...game,
+    revision: typeof game.revision === 'number' ? game.revision : 0,
+    deletedAt: game.deletedAt ?? null,
+    deletedBy: game.deletedBy ?? null,
+  }));
   try {
     const ok = deps.completedGameRepo.replaceAll(target);
     if (!ok) return 'failed';

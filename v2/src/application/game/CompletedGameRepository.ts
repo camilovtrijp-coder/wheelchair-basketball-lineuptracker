@@ -93,4 +93,24 @@ export interface CompletedGameRepository {
     onNext: (result: CompletedGamesReadResult, cloudSync: SyncState | null) => void,
     onError?: (error: unknown) => void,
   ): () => void;
+  /**
+   * PR 7.2c (docs/pr-7.2-plan.md §C 7.2c): optioneel — alleen geïmplementeerd
+   * door `CompositeCompletedGameRepository`, net als `subscribe()` hierboven.
+   * Verwijdert `id` via een server-side tombstone-fieldpatch in plaats van
+   * `remove()`'s directe lokale verwijdering: nodig zodra een item al een
+   * cloud-tegenhanger heeft (anders zou de eerstvolgende cloud-snapshot-
+   * update de lokale `remove()` ongedaan maken, zie
+   * `CompositeCompletedGameRepository`'s docstring). `deletedBy` is de uid
+   * van de aanroeper (rules herleiden de bevoegdheid zelf opnieuw uit
+   * `request.auth`, dit veld is uitsluitend audit-provenance).
+   *
+   * Resultaat:
+   * - `'ok'`: server-bevestigd getombstoned; verdwijnt uit de zichtbare lijst.
+   * - `'not-synced'`: nog geen cloud-tegenhanger (nog niet server-bevestigd
+   *   afgerond) — er is niets om te patchen; de aanroeper valt terug op de
+   *   bestaande "nog niet gesynchroniseerd, verwijderen geblokkeerd"-tekst.
+   * - `'error'`: de patch is geprobeerd maar afgewezen/gefaald (Rules,
+   *   revisiemismatch, netwerk) — de lokale kopie is ONGEMOEID gelaten.
+   */
+  tombstone?(id: string, deletedBy: string): Promise<'ok' | 'not-synced' | 'error'>;
 }

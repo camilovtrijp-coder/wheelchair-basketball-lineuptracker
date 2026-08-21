@@ -388,11 +388,13 @@ service cloud.firestore {
     }
 
     // Exacte sleutelset van CompletedGameDocument (firebase/src/documents/completedGame.ts).
+    // PR 7.2c: `revision`/`deletedAt`/`deletedBy` toegevoegd voor de
+    // tombstone-fieldpatch (punt 18 hieronder).
     function completedGameKeys() {
       return [
         'organizationId', 'teamId', 'sourceGameId', 'opponent', 'competition', 'date',
         'players', 'segments', 'scoreFor', 'scoreAgainst', 'quarterCount', 'periodLabel',
-        'useClassLimit', 'syncedAt'
+        'useClassLimit', 'syncedAt', 'revision', 'deletedAt', 'deletedBy'
       ];
     }
 
@@ -400,7 +402,9 @@ service cloud.firestore {
     // completed-snapshot, zelfde `hasAll`+`hasOnly`-patroon als punt 13.
     // `segments`/`players` blijven, net als bij `games` hierboven, alleen op
     // `list`-type gecontroleerd — dezelfde taalgrens (geen lus-/`.all()`-
-    // constructie voor element-voor-elementvalidatie).
+    // constructie voor element-voor-elementvalidatie). PR 7.2c: `revision`
+    // moet bij CREATE altijd `0` zijn en `deletedAt`/`deletedBy` altijd
+    // `null` — een nieuwe snapshot kan nooit al getombstoned aankomen.
     function isValidCompletedGamePayload(data) {
       return data.keys().hasAll(completedGameKeys()) && data.keys().hasOnly(completedGameKeys()) &&
         data.organizationId is string &&
@@ -416,7 +420,10 @@ service cloud.firestore {
         data.quarterCount is int &&
         data.periodLabel is string &&
         data.useClassLimit is bool &&
-        data.syncedAt is timestamp;
+        data.syncedAt is timestamp &&
+        data.revision == 0 &&
+        data.deletedAt == null &&
+        data.deletedBy == null;
     }
 
     function invRef(orgId, invId) {
@@ -736,9 +743,41 @@ service cloud.firestore {
             getAfter(gameRef(orgId, teamId, request.resource.data.sourceGameId)).data.completedGameId
               == completedGameId;
 
-          // Onveranderlijk en onverwijderbaar in fase 7 (docs/pr-7.2-plan.md
-          // §B/§D) — een tombstone-fieldpatch is bewust PR 7.2c-scope.
-          allow update, delete: if false;
+          // PR 7.2c, punt 18 (docs/pr-7.2-plan.md §C 7.2c werk 1): de
+          // bevroren wedstrijdinhoud blijft onveranderlijk (§B), maar
+          // verwijderen is nu een toegestane tombstone-fieldpatch — GEEN
+          // hard delete (`allow delete` blijft `false`, geen enkel pad
+          // hierboven staat een echte verwijdering toe, ook niet voor
+          // owner). Conform ADR-003 mogen alleen owner/admin/coach
+          // "wedstrijden beheren" (`canManageTeamData` — bewust NIET de
+          // ruimere `canWriteGameData`: scorer mag wedstrijdacties
+          // schrijven maar geen afgeronde historie verwijderen, viewer
+          // blijft überhaupt buiten elk schrijfpad).
+          //
+          // Voorwaarden, allemaal tegelijk:
+          // - nog niet eerder getombstoned (`resource.data.deletedAt ==
+          //   null`) — geen dubbele tombstone, en geen pad om 'm ooit terug
+          //   te zetten naar `null` (geen "undelete"-API, §D).
+          // - de patch raakt UITSLUITEND `deletedAt`/`deletedBy`/`revision`
+          //   (`diff(...).affectedKeys().hasOnly([...])`) — elk ander veld
+          //   (spelers/segmenten/score/...) blijft dus letterlijk
+          //   byte-identiek, ongeacht wat de patch verder meestuurt.
+          // - `deletedBy` moet de aanroeper zelf zijn — geen tombstone
+          //   "namens" een ander teamlid.
+          // - `deletedAt` moet een `timestamp` zijn (de client stuurt
+          //   `serverTimestamp()`, zie `FirestoreGameCloudGateway
+          //   .tombstoneCompletedGame()`).
+          // - optimistische concurrency, zelfde contract als de
+          //   `games`-paden hierboven: `revision` moet exact met 1 omhoog.
+          allow update: if canManageTeamData(orgId, teamId) &&
+            resource.data.deletedAt == null &&
+            request.resource.data.diff(resource.data).affectedKeys()
+              .hasOnly(['deletedAt', 'deletedBy', 'revision']) &&
+            request.resource.data.deletedAt is timestamp &&
+            request.resource.data.deletedBy == request.auth.uid &&
+            request.resource.data.revision == resource.data.revision + 1;
+
+          allow delete: if false;
         }
       }
     }

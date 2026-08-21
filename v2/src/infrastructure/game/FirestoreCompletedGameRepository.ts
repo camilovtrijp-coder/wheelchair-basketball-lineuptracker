@@ -2,9 +2,13 @@
 // docs/pr-7.2-plan.md §C 7.2b werk 1-2).
 //
 // Leest UITSLUITEND — schrijven/afronden loopt via `GameSyncCoordinator`/
-// `GameCloudGateway.finalizeCompletedGame()` (PR 7.2a), niet via dit pad.
-// Verwijderen/tombstones zijn PR 7.2c-scope; deze klasse biedt daarom geen
-// `remove()`. Om die reden implementeert deze klasse NIET de volledige
+// `GameCloudGateway.finalizeCompletedGame()` (PR 7.2a), tombstone-verwijderen
+// via `GameCloudGateway.tombstoneCompletedGame()` (PR 7.2c) — geen van beide
+// via dit pad. Deze klasse geeft getombstoned items (`deletedAt != null`)
+// gewoon terug zoals ze op de server staan; het FILTEREN uit de zichtbare
+// Historie/Stats/Trends-lijst gebeurt in `CompositeCompletedGameRepository`,
+// niet hier (zelfde scheiding als "lezen vs. samenvoegen" in PR 7.2b). Deze
+// klasse biedt daarom geen `remove()`. Om die reden implementeert deze klasse NIET de volledige
 // `CompletedGameRepository`-poort (die vereist `add`/`remove`/`replaceAll`),
 // maar het smallere `CloudCompletedGameSource`-contract hieronder — precies
 // wat `CompositeCompletedGameRepository` nodig heeft om de cloudkant achter
@@ -83,6 +87,13 @@ export function completedGameFromDocument(id: string, doc: CompletedGameDocument
     quarterCount: doc.quarterCount,
     periodLabel: doc.periodLabel,
     useClassLimit: doc.useClassLimit,
+    revision: doc.revision,
+    // Domeinvorm gebruikt `string | null` (net als `date` hierboven), niet
+    // de rauwe Firestore `Timestamp` — enige plek waar dat nodig is, want
+    // `deletedAt` is (in tegenstelling tot `syncedAt`) een domeinveld: de UI
+    // toont "verwijderd" zichtbaar op basis hiervan (PR 7.2c).
+    deletedAt: doc.deletedAt ? doc.deletedAt.toDate().toISOString() : null,
+    deletedBy: doc.deletedBy,
   };
 }
 

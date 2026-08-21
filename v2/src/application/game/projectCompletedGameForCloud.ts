@@ -28,5 +28,16 @@ export function projectCompletedGameSnapshot(
     quarterCount: completed.quarterCount,
     periodLabel: completed.periodLabel,
     useClassLimit: completed.useClassLimit,
+    // PR 7.2c: create-only payload, dus altijd de aanmaak-default —
+    // firestore.rules' `isValidCompletedGamePayload()` eist exact dit voor
+    // `allow create` (nooit een al-getombstoned item aanmaken). Een
+    // eventuele `completed.deletedAt`/`deletedBy`/`revision` op de lokale
+    // snapshot (bijv. na een backup-import van een reeds getombstoned item,
+    // zie `BackupCoordinator`) is hier niet van toepassing: dit pad
+    // schrijft altijd een NIEUWE cloud-snapshot, geen patch op een
+    // bestaande.
+    revision: 0,
+    deletedAt: null,
+    deletedBy: null,
   };
 }

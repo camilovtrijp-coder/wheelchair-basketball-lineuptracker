@@ -7,6 +7,8 @@ import {
   assertInteger,
   assertIsoTimestampString,
   assertNonEmptyString,
+  assertNullableString,
+  assertNullableTimestamp,
   assertPathContextField,
   assertString,
   assertTimestamp,
@@ -34,8 +36,11 @@ function assertSegments(field: string, value: unknown): SegmentDocument[] {
  * snapshot bevestigd is, zie `game.ts`). Create-only en daarna volledig
  * onveranderlijk (firestore.rules staat geen `update` toe) — een
  * geschiedenis-item is na afronding inhoudelijk onveranderlijk
- * (docs/pr-7.2-plan.md §B). Verwijderen via een tombstone-fieldpatch is
- * bewust PR 7.2c-scope, nog niet geïmplementeerd.
+ * (docs/pr-7.2-plan.md §B). PR 7.2c: verwijderen is een toegestane
+ * tombstone-fieldpatch (`deletedAt`/`deletedBy`/`revision`) — de bevroren
+ * inhoud hierboven blijft daarbij letterlijk ongewijzigd; firestore.rules
+ * dwingt dat af via een `diff(...).affectedKeys().hasOnly([...])`-allowlist
+ * op precies die drie velden (zie firestore.rules, `completedGames`-update).
  *
  * `date`/`players`/`segments`/`scoreFor`/`scoreAgainst`/`quarterCount`/
  * `periodLabel`/`useClassLimit` zijn de exacte, ongewijzigde velden uit
@@ -62,6 +67,12 @@ export interface CompletedGameDocument {
   periodLabel: string;
   useClassLimit: boolean;
   syncedAt: Timestamp;
+  /** PR 7.2c: optimistische-concurrencyteller voor de tombstone-patch. `0` bij create. */
+  revision: number;
+  /** PR 7.2c: `null` tot een tombstone-patch dit zet; nooit teruggezet naar `null`. */
+  deletedAt: Timestamp | null;
+  /** PR 7.2c: uid van de gebruiker die de tombstone-patch zette; `null` tot dan. */
+  deletedBy: string | null;
 }
 
 export const completedGameConverter: FirestoreDataConverter<CompletedGameDocument> = {
@@ -91,6 +102,9 @@ export const completedGameConverter: FirestoreDataConverter<CompletedGameDocumen
       periodLabel: assertString(TYPE, 'periodLabel', data.periodLabel),
       useClassLimit: assertBoolean(TYPE, 'useClassLimit', data.useClassLimit),
       syncedAt: assertTimestamp(TYPE, 'syncedAt', data.syncedAt),
+      revision: assertInteger(TYPE, 'revision', data.revision),
+      deletedAt: assertNullableTimestamp(TYPE, 'deletedAt', data.deletedAt),
+      deletedBy: assertNullableString(TYPE, 'deletedBy', data.deletedBy),
     };
   },
 };

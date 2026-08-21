@@ -210,6 +210,9 @@ export function migrateV1CompletedGame(raw: unknown): CompletedGame | null {
     quarterCount,
     periodLabel,
     useClassLimit,
+    revision: 0,
+    deletedAt: null,
+    deletedBy: null,
   };
 }
 

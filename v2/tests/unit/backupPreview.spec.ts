@@ -39,6 +39,9 @@ const completed: CompletedGame = {
   quarterCount: 4,
   periodLabel: '',
   useClassLimit: false,
+  revision: 0,
+  deletedAt: null,
+  deletedBy: null,
 };
 
 describe('domain/backup/preview — replace-per-onderdeel (eigenaarsbesluit §E.2, plan §C.6)', () => {

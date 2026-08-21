@@ -48,6 +48,9 @@ function sampleDoc(overrides: Partial<CompletedGameDocument> = {}): CompletedGam
     // syncedAt heeft geen domeinequivalent — irrelevant voor deze tests, elke
     // waarde volstaat als stand-in.
     syncedAt: {} as CompletedGameDocument['syncedAt'],
+    revision: 0,
+    deletedAt: null,
+    deletedBy: null,
     ...overrides,
   };
 }
@@ -76,9 +79,27 @@ describe('completedGameFromDocument', () => {
       quarterCount: 4,
       periodLabel: '',
       useClassLimit: false,
+      revision: 0,
+      deletedAt: null,
+      deletedBy: null,
     };
     expect(out).toEqual(expected);
     expect(out).not.toHaveProperty('syncedAt');
+  });
+
+  it('projecteert een Timestamp deletedAt naar een ISO-string', () => {
+    const deletedAtIso = '2026-01-05T00:00:00.000Z';
+    const out = completedGameFromDocument(
+      'completed-1',
+      sampleDoc({
+        revision: 1,
+        deletedAt: { toDate: () => new Date(deletedAtIso) } as CompletedGameDocument['deletedAt'],
+        deletedBy: 'uid-alice',
+      }),
+    );
+    expect(out.revision).toBe(1);
+    expect(out.deletedAt).toBe(deletedAtIso);
+    expect(out.deletedBy).toBe('uid-alice');
   });
 });
 

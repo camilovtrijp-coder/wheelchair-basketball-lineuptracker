@@ -44,5 +44,8 @@ export function finishGame(game: ActiveGame, settings: FinishGameSettings): Comp
     quarterCount: settings.quarterCount,
     periodLabel: settings.periodLabel,
     useClassLimit: settings.useClassLimit,
+    revision: 0,
+    deletedAt: null,
+    deletedBy: null,
   };
 }

@@ -15,7 +15,7 @@
 //   ÉÉN Firestore-`WriteBatch` verstuurt.
 
 import { beforeAll, afterAll, beforeEach, describe, it, expect } from 'vitest';
-import { doc, setDoc, updateDoc, deleteDoc, getDoc, writeBatch } from 'firebase/firestore';
+import { doc, setDoc, updateDoc, deleteDoc, getDoc, writeBatch, Timestamp } from 'firebase/firestore';
 import type { RulesTestEnvironment } from '@firebase/rules-unit-testing';
 import { createTestEnv, assertSucceeds, assertFails, authCtx, withAdmin } from './helpers/testEnv.js';
 import {
@@ -364,5 +364,146 @@ describe('completedGames/{completedGameId}: onveranderlijk (nooit update/delete 
   it('owner mag het NIET verwijderen', async () => {
     const db = authCtx(env, USERS.alice.uid, { email: USERS.alice.email, email_verified: true });
     await assertFails(deleteDoc(completedGameRef(db, ORG_A, TEAM_A1, 'completed-1')));
+  });
+});
+
+// PR 7.2c (docs/pr-7.2-plan.md §C 7.2c werk 1) — de tombstone-fieldpatch:
+// een toegestane `deletedAt`/`deletedBy`/`revision`-update, verder identiek
+// onveranderlijk. `allow delete` blijft `false` (bewezen hierboven, geldt
+// ongewijzigd) — dit hele blok bewijst uitsluitend het NIEUWE `allow
+// update`-pad, spiegelt `FirestoreGameCloudGateway.tombstoneCompletedGame()`.
+describe('completedGames/{completedGameId}: tombstone-fieldpatch (PR 7.2c)', () => {
+  beforeEach(async () => {
+    await withAdmin(env, async (db) => {
+      await db
+        .collection('organizations')
+        .doc(ORG_A)
+        .collection('teams')
+        .doc(TEAM_A1)
+        .collection('completedGames')
+        .doc('completed-1')
+        .set(sampleCompletedGame());
+    });
+  });
+
+  function tombstonePatch(uid: string, overrides: Record<string, unknown> = {}) {
+    return {
+      deletedAt: Timestamp.now(),
+      deletedBy: uid,
+      revision: 1,
+      ...overrides,
+    };
+  }
+
+  it('owner mag tombstonen', async () => {
+    const db = authCtx(env, USERS.alice.uid, { email: USERS.alice.email, email_verified: true });
+    await assertSucceeds(
+      updateDoc(completedGameRef(db, ORG_A, TEAM_A1, 'completed-1'), tombstonePatch(USERS.alice.uid)),
+    );
+  });
+
+  it('coach mag tombstonen', async () => {
+    const db = authCtx(env, USERS.carol.uid, { email: USERS.carol.email, email_verified: true });
+    await assertSucceeds(
+      updateDoc(completedGameRef(db, ORG_A, TEAM_A1, 'completed-1'), tombstonePatch(USERS.carol.uid)),
+    );
+  });
+
+  it('scorer mag NIET tombstonen (mag wedstrijdacties schrijven, geen afgeronde historie verwijderen)', async () => {
+    const db = authCtx(env, USERS.dave.uid, { email: USERS.dave.email, email_verified: true });
+    await assertFails(
+      updateDoc(completedGameRef(db, ORG_A, TEAM_A1, 'completed-1'), tombstonePatch(USERS.dave.uid)),
+    );
+  });
+
+  it('viewer mag NIET tombstonen', async () => {
+    const db = authCtx(env, USERS.erin.uid, { email: USERS.erin.email, email_verified: true });
+    await assertFails(
+      updateDoc(completedGameRef(db, ORG_A, TEAM_A1, 'completed-1'), tombstonePatch(USERS.erin.uid)),
+    );
+  });
+
+  it('cross-org: frank (org B) mag NIET tombstonen', async () => {
+    const db = authCtx(env, USERS.frank.uid, { email: USERS.frank.email, email_verified: true });
+    await assertFails(
+      updateDoc(completedGameRef(db, ORG_A, TEAM_A1, 'completed-1'), tombstonePatch(USERS.frank.uid)),
+    );
+  });
+
+  it('een coach mag GEEN tombstone "namens" een ander teamlid zetten (deletedBy != request.auth.uid)', async () => {
+    const db = authCtx(env, USERS.carol.uid, { email: USERS.carol.email, email_verified: true });
+    await assertFails(
+      updateDoc(
+        completedGameRef(db, ORG_A, TEAM_A1, 'completed-1'),
+        tombstonePatch(USERS.dave.uid),
+      ),
+    );
+  });
+
+  it('een tombstone-patch mag GEEN ander veld meesturen (bevroren inhoud blijft byte-identiek)', async () => {
+    const db = authCtx(env, USERS.alice.uid, { email: USERS.alice.email, email_verified: true });
+    await assertFails(
+      updateDoc(
+        completedGameRef(db, ORG_A, TEAM_A1, 'completed-1'),
+        tombstonePatch(USERS.alice.uid, { scoreFor: 99 }),
+      ),
+    );
+  });
+
+  it('een tombstone-patch met een verouderde revisie wordt geweigerd (optimistische concurrency)', async () => {
+    const db = authCtx(env, USERS.alice.uid, { email: USERS.alice.email, email_verified: true });
+    await assertFails(
+      updateDoc(
+        completedGameRef(db, ORG_A, TEAM_A1, 'completed-1'),
+        tombstonePatch(USERS.alice.uid, { revision: 5 }),
+      ),
+    );
+  });
+
+  it('een dubbele tombstone-poging wordt geweigerd (al getombstoned, geen resurrectie-/re-tombstone-pad)', async () => {
+    const db = authCtx(env, USERS.alice.uid, { email: USERS.alice.email, email_verified: true });
+    await assertSucceeds(
+      updateDoc(completedGameRef(db, ORG_A, TEAM_A1, 'completed-1'), tombstonePatch(USERS.alice.uid)),
+    );
+    await assertFails(
+      updateDoc(
+        completedGameRef(db, ORG_A, TEAM_A1, 'completed-1'),
+        tombstonePatch(USERS.alice.uid, { revision: 2 }),
+      ),
+    );
+  });
+
+  it('een "undelete"-poging (deletedAt terug naar null) wordt geweigerd', async () => {
+    const db = authCtx(env, USERS.alice.uid, { email: USERS.alice.email, email_verified: true });
+    await assertSucceeds(
+      updateDoc(completedGameRef(db, ORG_A, TEAM_A1, 'completed-1'), tombstonePatch(USERS.alice.uid)),
+    );
+    await assertFails(
+      updateDoc(completedGameRef(db, ORG_A, TEAM_A1, 'completed-1'), {
+        deletedAt: null,
+        deletedBy: null,
+        revision: 2,
+      }),
+    );
+  });
+
+  it('een getombstoned item blijft ook onverwijderbaar (allow delete blijft false)', async () => {
+    const db = authCtx(env, USERS.alice.uid, { email: USERS.alice.email, email_verified: true });
+    await assertSucceeds(
+      updateDoc(completedGameRef(db, ORG_A, TEAM_A1, 'completed-1'), tombstonePatch(USERS.alice.uid)),
+    );
+    await assertFails(deleteDoc(completedGameRef(db, ORG_A, TEAM_A1, 'completed-1')));
+  });
+
+  it('viewer mag een getombstoned item nog gewoon lezen (audit/export blijft mogelijk)', async () => {
+    const owner = authCtx(env, USERS.alice.uid, { email: USERS.alice.email, email_verified: true });
+    await assertSucceeds(
+      updateDoc(
+        completedGameRef(owner, ORG_A, TEAM_A1, 'completed-1'),
+        tombstonePatch(USERS.alice.uid),
+      ),
+    );
+    const db = authCtx(env, USERS.erin.uid, { email: USERS.erin.email, email_verified: true });
+    await assertSucceeds(getDoc(completedGameRef(db, ORG_A, TEAM_A1, 'completed-1')));
   });
 });

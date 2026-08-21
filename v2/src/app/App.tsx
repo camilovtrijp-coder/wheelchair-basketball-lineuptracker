@@ -237,6 +237,9 @@ export function App({
   // `gameSaveError`-banner te misbruiken (dat is specifiek "opslaan is
   // mislukt", geen "actie geblokkeerd").
   const [deleteBlocked, setDeleteBlocked] = useState(false);
+  /** PR 7.2c: los van `gameSaveError` — een mislukte tombstone-verwijderpoging
+   * (Rules, revisiemismatch, netwerk), geen mislukte lokale opslag. */
+  const [deleteError, setDeleteError] = useState(false);
   // PR 7.2b: cloudkant van de historie-lijst-actualiteit — los van
   // `finalizeStatuses` (dat is per-item, alleen voor door DIT apparaat
   // afgeronde wedstrijden). `null` = nog geen enkele cloud-snapshot
@@ -679,47 +682,58 @@ export function App({
   /**
    * PR 7.2a, P1-fix (externe review PR #61, derde ronde): in cloud-modus is
    * een nog niet server-bevestigde afronding voor `id` uitsluitend nog te
-   * vinden via de lokale `CompletedGame` en de duurzame `pendingFinalizeRepo`
-   * (er bestaat nog geen 7.2c-tombstone-flow om een cloudkant "dit is
-   * verwijderd" te melden). Vóór serverbevestiging verwijderen zou dus de
-   * enige retrybron vernietigen — in strijd met 7.2a's acceptatiecriterium
-   * "geen bronverwijdering" — of, als de fire-and-forget cloudfinalize
-   * ondertussen alsnog slaagt, een orphan cloudsnapshot zonder lokaal
-   * tegenhanger achterlaten.
+   * vinden via de lokale `CompletedGame` en de duurzame `pendingFinalizeRepo`.
+   * Vóór serverbevestiging verwijderen zou dus de enige retrybron vernietigen
+   * — in strijd met 7.2a's acceptatiecriterium "geen bronverwijdering" — of,
+   * als de fire-and-forget cloudfinalize ondertussen alsnog slaagt, een
+   * orphan cloudsnapshot zonder lokaal tegenhanger achterlaten. Dat pad
+   * blijft dus geblokkeerd (`'not-synced'` hieronder).
    *
-   * PR 7.2b-uitbreiding: zodra de wedstrijd wél server-bevestigd is
-   * (`gesynchroniseerd`), blijft verwijderen ALSNOG geblokkeerd — vóór
-   * PR 7.2b was dit hier al toegestaan, maar dat verwijderde toen alleen de
-   * ENIGE plek waar de wedstrijd zichtbaar was. Sinds
-   * `CompositeCompletedGameRepository` (PR 7.2b) de cloud-`completedGames`-
-   * query meeleest, blijft de server-snapshot na zo'n "geslaagde" lokale
-   * `remove()` gewoon bestaan (firestore.rules staat vóór PR 7.2c geen
-   * `update`/`delete` toe) en verschijnt de wedstrijd bij de eerstvolgende
-   * cloud-snapshot-update — vaak binnen dezelfde sessie — vanzelf weer terug
-   * in de lijst. Een "geslaagde" verwijdering die zichzelf ongedaan maakt is
-   * erger dan een duidelijk geblokkeerde actie, dus blijft dit hier
-   * geblokkeerd tot PR 7.2c een echte tombstone-verwijdering toevoegt. Zelfde
-   * blokkade voor een wedstrijd die alléén cloud-only bestaat (afgerond op
-   * een ánder apparaat, nooit lokaal opgeslagen hier): lokale `remove()` zou
-   * daar sowieso een no-op `true` op teruggeven (geen lokaal item om te
-   * verwijderen) zonder ook maar iets te doen. `finalizeStatuses[id]` is
+   * PR 7.2c: zodra de wedstrijd WÉL server-bevestigd is (`gesynchroniseerd`
+   * of cloud-only), gaat verwijderen voortaan via
+   * `CompositeCompletedGameRepository.tombstone()` — een server-side
+   * `deletedAt`/`deletedBy`-fieldpatch (firestore.rules staat dit nu toe voor
+   * owner/admin/coach, zie firestore.rules' `completedGames`-update-regel),
+   * niet meer alleen een lokale `remove()` die de eerstvolgende cloud-
+   * snapshot-update ongedaan zou maken. `finalizeStatuses[id]` is
    * `undefined` vlak na afronden totdat het statuseffect hierboven voor het
-   * eerst draait, en wordt dan bewust ook als "nog niet bevestigd" behandeld
-   * (fail-closed, niet fail-open).
+   * eerst draait; `tombstone()` valt in dat geval simpelweg terug op
+   * `'not-synced'` (het item heeft dan sowieso nog geen cloud-tegenhanger).
    */
-  function handleDeleteCompletedGame(id: string) {
-    // PR 7.2b: dit dekt zowel de oorspronkelijke 7.2a-reden (nog niet
-    // server-bevestigd — verwijderen zou de enige retrybron vernietigen) als
-    // de nieuwe 7.2b-reden (al wél server-bevestigd, of cloud-only —
-    // verwijderen zou door de eerstvolgende cloud-snapshot-update ongedaan
-    // gemaakt worden, zie de docstring hierboven). Samen dekken die twee
-    // redenen elke mogelijke status, dus is verwijderen in cloud-modus tot
-    // PR 7.2c's tombstone-flow altijd geblokkeerd.
-    if (repositories.gameSync) {
-      setDeleteBlocked(true);
+  async function handleDeleteCompletedGame(id: string) {
+    const writerContext = repositories.gameWriterContext;
+    if (repositories.gameSync && writerContext) {
+      if (!completedGameRepo.tombstone) {
+        setDeleteBlocked(true);
+        return;
+      }
+      const result = await completedGameRepo.tombstone(id, writerContext.authorUid);
+      if (result === 'not-synced') {
+        setDeleteBlocked(true);
+        setDeleteError(false);
+        return;
+      }
+      if (result === 'error') {
+        setDeleteBlocked(false);
+        setDeleteError(true);
+        return;
+      }
+      setDeleteBlocked(false);
+      setDeleteError(false);
+      setCompletedGames((prev) => prev.filter((g) => g.id !== id));
+      setHistoryOpenId((prev) => (prev === id ? null : prev));
+      pendingFinalizesRef.current.delete(id);
+      pendingFinalizeRepo.remove(id);
+      setFinalizeStatuses((prev) => {
+        if (!(id in prev)) return prev;
+        const { [id]: _removed, ...rest } = prev;
+        void _removed;
+        return rest;
+      });
       return;
     }
     setDeleteBlocked(false);
+    setDeleteError(false);
     const ok = completedGameRepo.remove(id);
     setGameSaveError(!ok);
     if (!ok) return;
@@ -1069,6 +1083,7 @@ export function App({
             onOpenChange={(id) => {
               setHistoryOpenId(id);
               setDeleteBlocked(false);
+              setDeleteError(false);
             }}
             onDeleteGame={handleDeleteCompletedGame}
             // Externe PR-6.3-review (aug. 2026): verwijderen van historie is een
@@ -1078,6 +1093,7 @@ export function App({
             canWrite={canWrite}
             saveError={gameSaveError}
             deleteBlocked={deleteBlocked}
+            deleteError={deleteError}
             syncStatuses={repositories.gameSync ? finalizeStatuses : undefined}
             cloudSync={repositories.gameSync ? completedGamesCloudSync : undefined}
             cloudReadError={repositories.gameSync ? completedGamesCloudError : undefined}

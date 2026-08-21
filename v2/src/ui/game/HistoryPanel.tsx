@@ -21,16 +21,21 @@ export interface HistoryPanelProps {
    * LiveTrackingPanel getoond). */
   saveError: boolean;
   /**
-   * PR 7.2a, P1-fix (externe review PR #61, derde ronde); tekst/reikwijdte
-   * uitgebreid in PR 7.2b: `true` wanneer de laatste verwijderpoging is
-   * afgewezen — óf omdat de afronding nog niet server-bevestigd is, óf
-   * (PR 7.2b) omdat de wedstrijd al wél server-bevestigd is en verwijderen
-   * van een gesynchroniseerde/cloud-only wedstrijd pas met de PR 7.2c-
-   * tombstone-flow ondersteund wordt — zie `App.handleDeleteCompletedGame()`.
-   * Aparte banner van `saveError`: dit is geen mislukte opslag, maar een
-   * bewust geblokkeerde actie.
+   * PR 7.2a, P1-fix (externe review PR #61, derde ronde). PR 7.2c: sinds de
+   * tombstone-flow bestaat, betekent dit uitsluitend nog "de afronding is
+   * nog niet server-bevestigd" — een server-bevestigd item gaat voortaan via
+   * `tombstone()` i.p.v. hier geblokkeerd te worden, zie
+   * `App.handleDeleteCompletedGame()`. Aparte banner van `saveError`: dit is
+   * geen mislukte opslag, maar een bewust geblokkeerde actie.
    */
   deleteBlocked?: boolean;
+  /**
+   * PR 7.2c: `true` wanneer de laatste tombstone-verwijderpoging is
+   * geprobeerd maar afgewezen/gefaald (Rules, revisiemismatch, netwerk) —
+   * los van `deleteBlocked` (dat is een bewust GEBLOKKEERDE, niet-geprobeerde
+   * actie). De lokale kopie blijft in dat geval gewoon zichtbaar.
+   */
+  deleteError?: boolean;
   /**
    * PR 7.2b: van de team-brede cloudhistoriequery afgeleide `SyncState` (zie
    * `CompositeCompletedGameRepository`/`FirestoreCompletedGameRepository`),
@@ -98,6 +103,7 @@ export function HistoryPanel({
   canWrite,
   saveError,
   deleteBlocked,
+  deleteError,
   syncStatuses,
   cloudSync,
   cloudReadError,
@@ -113,6 +119,12 @@ export function HistoryPanel({
   const deleteBlockedBanner = deleteBlocked ? (
     <p className="settings-error" role="status" data-testid="history-delete-blocked">
       {t(lang, 'deleteBlockedPendingSync')}
+    </p>
+  ) : null;
+
+  const deleteErrorBanner = deleteError ? (
+    <p className="settings-error" role="alert" data-testid="history-delete-error">
+      {t(lang, 'historyDeleteError')}
     </p>
   ) : null;
 
@@ -145,6 +157,7 @@ export function HistoryPanel({
       <section className="history-panel" aria-label={t(lang, 'historyTitle')}>
         {errorBanner}
         {deleteBlockedBanner}
+        {deleteErrorBanner}
         {cloudReadErrorBanner}
         <div className="history-detail__actions">
           <button
@@ -222,6 +235,7 @@ export function HistoryPanel({
     <section className="history-panel" aria-label={t(lang, 'historyTitle')}>
       {errorBanner}
       {deleteBlockedBanner}
+      {deleteErrorBanner}
       {cloudReadErrorBanner}
       {cloudSyncIndicator}
       {games.length === 0 ? (

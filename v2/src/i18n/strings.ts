@@ -137,7 +137,9 @@ const nl = {
     'De cloudhistorie kon niet geladen worden. De hieronder getoonde wedstrijden zijn mogelijk onvolledig (alleen lokaal beschikbaar); probeer het later opnieuw.',
   confirmDeleteGame: 'Deze wedstrijd definitief verwijderen? Dit kan niet ongedaan worden gemaakt.',
   deleteBlockedPendingSync:
-    'Deze wedstrijd wordt (of is al) naar de cloud gesynchroniseerd. Een gesynchroniseerde wedstrijd verwijderen wordt pas in een latere update ondersteund.',
+    'Deze wedstrijd is nog niet naar de cloud gesynchroniseerd. Wacht tot de synchronisatie is voltooid en probeer het daarna opnieuw.',
+  historyDeleteError:
+    'Verwijderen is niet gelukt. Controleer je verbinding en probeer het opnieuw.',
   exportShareBtn: 'Exporteren/Delen',
   // PR 6.4: Stats-tab. Strings gespiegeld van v1 (index.html
   // `stats[A-Z]*`-verten) zodat een vertaler beide talen tegelijk kan
@@ -448,7 +450,8 @@ const en = {
     "The cloud history couldn't be loaded. Games shown below may be incomplete (local-only); try again later.",
   confirmDeleteGame: 'Permanently delete this game? This cannot be undone.',
   deleteBlockedPendingSync:
-    'This game is syncing (or has already synced) to the cloud. Deleting a synced game will be supported in a later update.',
+    "This game hasn't synced to the cloud yet. Wait for sync to complete and try again.",
+  historyDeleteError: 'Deleting failed. Check your connection and try again.',
   exportShareBtn: 'Export/Share',
 
   // PR 6.4: Stats-tab. See NL block for rationale; v1 parity.

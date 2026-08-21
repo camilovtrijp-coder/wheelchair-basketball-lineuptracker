@@ -157,6 +157,9 @@ describe('combinedCsvForGame / csvFilenameFor (CompletedGame)', () => {
       quarterCount: 2,
       periodLabel: '',
       useClassLimit: false,
+      revision: 0,
+      deletedAt: null,
+      deletedBy: null,
       ...overrides,
     };
   }

@@ -84,6 +84,10 @@ export function selectRepositories(input: {
     completedGames: new CompositeCompletedGameRepository(
       new LocalStorageCompletedGameRepository(strictReadBrowserStorage, orgId, teamId),
       new FirestoreCompletedGameRepository(input.firestoreDb, orgId, teamId),
+      // PR 7.2c: dezelfde gateway-instantie als `gameSync` hierboven — de
+      // tombstone-schrijfmethode leeft op `GameCloudGateway` (`tombstoneCompletedGame()`),
+      // geen aparte cloudverbinding nodig.
+      gateway,
     ),
     gameWriterContext: {
       authorUid: input.authUser.uid,

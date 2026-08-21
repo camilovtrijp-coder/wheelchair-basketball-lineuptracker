@@ -22,6 +22,9 @@ function completedGame(overrides: Partial<CompletedGame> = {}): CompletedGame {
     quarterCount: 4,
     periodLabel: '',
     useClassLimit: false,
+    revision: 0,
+    deletedAt: null,
+    deletedBy: null,
     ...overrides,
   };
 }
@@ -258,5 +261,59 @@ describe('ui/game/HistoryPanel (PR 7.2a: deleteBlocked-banner, derde ronde)', ()
       />,
     );
     expect(queryByTestId('history-delete-blocked')).toBeNull();
+  });
+});
+
+// PR 7.2c: een mislukte tombstone-verwijderpoging krijgt een eigen banner,
+// los van `deleteBlocked` (bewust geblokkeerd) en `saveError` (mislukte
+// lokale opslag) — zie App.handleDeleteCompletedGame().
+describe('ui/game/HistoryPanel (PR 7.2c: deleteError-banner)', () => {
+  it('toont een deleteError-banner op zowel de lijst- als detailweergave', () => {
+    const list = render(
+      <HistoryPanel
+        lang="nl"
+        games={[completedGame()]}
+        teamName="Team"
+        openId={null}
+        onOpenChange={vi.fn()}
+        onDeleteGame={vi.fn()}
+        canWrite={true}
+        saveError={false}
+        deleteError={true}
+      />,
+    );
+    expect(list.getByTestId('history-delete-error')).toBeTruthy();
+    list.unmount();
+
+    const detail = render(
+      <HistoryPanel
+        lang="nl"
+        games={[completedGame()]}
+        teamName="Team"
+        openId="g1"
+        onOpenChange={vi.fn()}
+        onDeleteGame={vi.fn()}
+        canWrite={true}
+        saveError={false}
+        deleteError={true}
+      />,
+    );
+    expect(detail.getByTestId('history-delete-error')).toBeTruthy();
+  });
+
+  it('toont geen deleteError-banner zonder deleteError', () => {
+    const { queryByTestId } = render(
+      <HistoryPanel
+        lang="nl"
+        games={[completedGame()]}
+        teamName="Team"
+        openId="g1"
+        onOpenChange={vi.fn()}
+        onDeleteGame={vi.fn()}
+        canWrite={true}
+        saveError={false}
+      />,
+    );
+    expect(queryByTestId('history-delete-error')).toBeNull();
   });
 });
