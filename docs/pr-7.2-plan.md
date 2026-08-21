@@ -1,9 +1,9 @@
 # Voorbereidingsplan PR 7.2 — afgeronde wedstrijden synchroniseren
 
-Status: goedgekeurde bouwrichting; start na 7.1a–7.1c. PR 7.2a geïmplementeerd
-en in review (zie `docs/IMPLEMENTATION_PLAN.md` §17-statustabel voor het
-volledige overzicht van geraakte bestanden en testdekking); 7.2b/7.2c nog niet
-gestart.
+Status: goedgekeurde bouwrichting; start na 7.1a–7.1c. PR 7.2a gemerged
+(#61). PR 7.2b geïmplementeerd (zie `docs/IMPLEMENTATION_PLAN.md`
+§17-statustabel voor het volledige overzicht van geraakte bestanden en
+testdekking); 7.2c nog niet gestart.
 
 ## A. Doel en grenzen
 
@@ -67,6 +67,130 @@ serverreadback; CSV en lokale historie blijven gelijk.
 
 Acceptatie: apparaat B ziet dezelfde inhoud; cross-org data lekt niet; alle
 afgeleide waarden blijven handmatig narekenbaar uit dezelfde fixture.
+
+**Geïmplementeerd** (zie `docs/IMPLEMENTATION_PLAN.md` §17-statustabel voor
+het volledige bestandenoverzicht):
+
+- `FirestoreCompletedGameRepository` (nieuw): read-only cloudbron,
+  `organizations/{orgId}/teams/{teamId}/completedGames`-query begrensd op
+  orgId/teamId, `orderBy('date','desc')`, vaste bovengrens
+  (`COMPLETED_GAMES_QUERY_LIMIT`), geen nieuwe index nodig.
+- `CompositeCompletedGameRepository` (nieuw): voegt lokaal ∪ cloud samen
+  achter de bestaande `CompletedGameRepository`-poort — gededupliceerd op
+  `CompletedGame.id` (lokale versie wint bij een botsing, zelfde ID als het
+  Firestore-documentnaam-ID uit `GameSyncCoordinator.finalize()`),
+  hersorteerd op datum. `add`/`remove`/`replaceAll` delegeren naar lokaal;
+  cloudschrijven blijft uitsluitend via `GameSyncCoordinator`. Poort kreeg
+  een optionele `subscribe()` (`CompletedGameRepository.ts`) zodat App.tsx op
+  cloud-pushes kan reageren zonder dat Stats/Trends/HistoryPanel wijzigen.
+- `selectRepositories.ts`/`resolveAppRepositories.ts`: bouwen de composite in
+  cloud-modus; `null` in lokale modus (zelfde patroon als `gameSync`).
+- `app/App.tsx`: gebruikt `repositories.completedGames`, abonneert op
+  cloud-pushes voor `completedGames`-state, en scherpt `handleDeleteCompletedGame`
+  aan — verwijderen in cloud-modus blijft nu volledig geblokkeerd (was:
+  toegestaan zodra `gesynchroniseerd`), omdat een cloud-only/gesynchroniseerd
+  item anders via de eerstvolgende cloud-snapshot-update vanzelf terug zou
+  keren (firestore.rules staat nog geen `update`/`delete` toe op
+  `completedGames` — dat is PR 7.2c). `deleteBlockedPendingSync`-tekst is
+  hierop aangepast (belooft niet langer dat verwijderen na sync alsnog lukt).
+- `HistoryPanel`: nieuwe `cloudReadError`-banner (nooit gelijk aan "geen
+  wedstrijden") en een lijstbrede `cloudSync`-indicator (cache-/
+  serveractualiteit, plan-werk 4).
+- Emulator-e2e (`game-sync-second-client-completed-history.spec.ts`, echte
+  Rules via `openSecondDevice()`): bewijst dat een op apparaat A afgeronde
+  wedstrijd zonder reload op apparaat B verschijnt via de echte Historie-UI.
+  **Zijvondst tijdens het schrijven van deze test**: `GameSyncCoordinator
+  .finalize()` roept intern `sync()` aan, volledig los van `app/App.tsx`'s
+  eigen `gameSyncInFlightRef`-serialisatie voor de live trackingsync — een
+  'Afronden'-klik vlak na een score-/segmentactie (vóórdat die actie's eigen
+  sync-cyclus server-bevestigd is) laat zo twee gelijktijdige
+  `patchSnapshot()`-aanroepen op dezelfde verwachte `revision` racen; de
+  verliezer wordt terecht door firestore.rules' optimistische-
+  concurrencycheck afgewezen en het checkpoint valt op `actie-nodig`. Dit is
+  een bestaande coordinator-brede racevoorwaarde (PR 7.1c/7.2a-scope, geen
+  7.2b-regressie) — nooit eerder zichtbaar omdat geen bestaande e2e-test ooit
+  een live actie direct liet volgen door 'Afronden' zonder eerst op
+  `gesynchroniseerd` te wachten. De nieuwe test ontwijkt 'm door dezelfde
+  wacht-tussen-acties-conventie als de rest van de suite te volgen; een
+  eventuele coordinator-brede mutex (bijv. `finalize()` via dezelfde
+  in-flight/queued-serialisatie als `runGameSync()` laten lopen) is nog niet
+  opgelost en verdient een eigen, gerichte PR.
+- 7.2b-uitbreiding op `readFinalizeStatus`-gebruik: een cloud-only item
+  (nooit lokaal op dit apparaat opgeslagen) wordt in `finalizeStatuses`
+  direct als `gesynchroniseerd` behandeld — `readFinalizeStatus()` leest
+  uitsluitend het lokale checkpoint en zou anders ten onrechte
+  `lokaal-beschikbaar` teruggeven voor een wedstrijd die per definitie alleen
+  via een geslaagde serverquery zichtbaar werd.
+
+**Externe review, eerste ronde (PR #64)** — twee code-bevindingen, beide
+opgelost:
+
+- P1: `FirestoreCompletedGameRepository.subscribe()` liet `d.data()` (de
+  converter) ongevangen; een malformed/corrupt cloud-document crashte zo de
+  `onSnapshot`-succescallback in plaats van via `onError` te lopen, waardoor
+  de bedoelde cloudfoutbanner onterecht kon wegblijven. Opgelost: `d.data()`
+  in try/catch, routeert naar `onError`.
+- P2: een cloudfout liet de oude, mogelijk `'gesynchroniseerd'`
+  `completedGamesCloudSync` onaangeroerd staan naast de nieuwe foutbanner —
+  tegenstrijdige UI. Opgelost: `App.tsx` reset 'm naar `null` bij een
+  cloudfout; `HistoryPanel` toont de syncindicator bovendien nooit meer
+  tegelijk met `cloudReadError` (defense-in-depth).
+- Daarnaast: unit-testdekking toegevoegd voor gelijknamige teams, offline
+  gecachte historie (`fromCache`-doorgifte) en ongecachete context/cloudfout
+  — via `FakeCloudSource`/`FakeLocalRepo`, niet tegen de echte emulator.
+
+**Externe review, tweede ronde (PR #64)** — terechte kanttekening dat de
+eerste ronde het acceptatiepoort-werk 5 alleen met unit-testfakes had
+gedekt, niet met echte Firestore-/Playwright-tests. Drie nieuwe
+emulator-e2e-bestanden tegen de échte Firestore-/Auth-emulator lossen dit
+op, met één genuanceerde bevinding onderweg:
+
+- `tests/e2e-auth/completed-history-offline-cache.spec.ts`:
+  1. Server-bevestigde historie overleeft een volledige offline reload
+     (`context.setOffline(true)` + `page.reload()`), met een eerlijke
+     `'lokaal-beschikbaar'`-syncindicator (nooit het misleidende
+     `'gesynchroniseerd'` van vóór het offline gaan).
+  2. **Bevinding**: het door de reviewer beschreven scenario ("settings/
+     roster gecachet, Historie-tab nog nooit bezocht, offline") bleek bij
+     het schrijven van de test NIET reproduceerbaar — `app/App.tsx`
+     abonneert de completedGames-cloudquery in een `useEffect` die
+     uitsluitend van de organisatie/teamcontext afhangt, niet van welk
+     tabblad open staat, dus start 'm altijd GELIJKTIJDIG met settings/
+     roster. Er bestaat dus geen bereikbare toestand waarin settings/roster
+     wél gecachet zijn maar completedGames niet. De test bewijst dit nu
+     positief: een wedstrijd die vóór het eerste bezoek al op de server
+     staat (Admin-geseed) is na een simpel team-bezoek — zonder ooit de
+     Historie-tab te openen — al offline beschikbaar.
+  3. Het WEL bereikbare "nooit-gecachete-context"-equivalent (team zelf nog
+     nooit geopend) is exact gate #27 criterium 4
+     (`offline-reload-cache-write-second-client.spec.ts`); hier expliciet
+     herbevestigd vanuit de completedGames-hoek: `OfflineUncachedScreen`
+     blokkeert de Historie-tab volledig, ook als er een echte
+     serverwedstrijd (Admin-geseed) bestaat die anders misleidend als "geen
+     wedstrijden" getoond had kunnen worden.
+- `tests/e2e-auth/completed-history-same-named-teams-switch.spec.ts`: één
+  apparaat wisselt tussen twee volledig gescheiden teams met IDENTIEKE naam
+  (verschillende orgId/teamId) — bewijst dat elke context uitsluitend zijn
+  eigen historie toont, nooit stale data van het andere team, ook niet
+  kortstondig tijdens de wissel.
+- `finishGameWithOneSegment()`/`readCompletedGameId()` geëxtraheerd naar
+  `gameSyncFixtures.ts` zodat de drie completedGames-e2e-bestanden ze delen.
+
+**Externe review, derde ronde (PR #64)** — terechte false-positive-bevinding:
+de eerste offline-cachetest rondde de wedstrijd op DEZELFDE browser af
+(`finishGameWithOneSegment()` + `readCompletedGameId()` uit localStorage),
+dus kon na de offline reload volledig uit `LocalStorageCompletedGameRepository`
+komen zonder dat Firestore's `persistentLocalCache` ook maar iets had
+gecachet — de test bewees dus niet wat 'ie beweerde te bewijzen. Opgelost:
+de test seedt nu een cloud-only wedstrijd via de Admin SDK (nooit via deze
+browser afgerond, dus per definitie niet in localStorage), bevestigt
+expliciet vóór én ná de offline reload dat het ID afwezig blijft in de
+lokale `completedGames`-opslag, wacht online eerst op een server-bevestigd
+(`'gesynchroniseerd'`) zichtbaar item, en toont pas dán aan dat het na een
+volledige offline reload nog zichtbaar is met een eerlijke
+`'lokaal-beschikbaar'`-indicator. Dat sluit de door de reviewer genoemde
+false-positive uit: als deze test slaagt, kan dat onmogelijk via de lokale
+repository alleen.
 
 ### 7.2c — tombstones en pilotbewijs
 

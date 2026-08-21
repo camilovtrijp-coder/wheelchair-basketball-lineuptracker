@@ -208,6 +208,7 @@ describe('app/App — hervat een openstaande afronding na reload (PR 7.2a, P1-fi
       roster: new ImmediateRosterRepository(),
       gameSync: coordinator,
       gameWriterContext: writer,
+      completedGames: null,
     };
 
     render(
@@ -250,6 +251,7 @@ describe('app/App — hervat een openstaande afronding na reload (PR 7.2a, P1-fi
       roster: new ImmediateRosterRepository(),
       gameSync: null,
       gameWriterContext: null,
+      completedGames: null,
     };
 
     const { queryByTestId } = render(
@@ -377,6 +379,7 @@ describe('app/App — een mislukte outbox-write is een echte precondition (PR 7.
         roster: new ImmediateRosterRepository(),
         gameSync: coordinator,
         gameWriterContext: writer,
+        completedGames: null,
       };
 
       const { getByTestId } = render(
@@ -449,6 +452,7 @@ describe('app/App — verwijderen van een nog niet cloud-bevestigde afronding bl
       roster: new ImmediateRosterRepository(),
       gameSync: coordinator1,
       gameWriterContext: writer,
+      completedGames: null,
     };
 
     const { getByTestId, unmount } = render(
@@ -508,6 +512,7 @@ describe('app/App — verwijderen van een nog niet cloud-bevestigde afronding bl
       roster: new ImmediateRosterRepository(),
       gameSync: coordinator2,
       gameWriterContext: writer,
+      completedGames: null,
     };
 
     render(
@@ -614,6 +619,7 @@ describe('app/App — runFinalize() start nooit twee gelijktijdige gatewaycycli 
       roster: new ImmediateRosterRepository(),
       gameSync: coordinator,
       gameWriterContext: writer,
+      completedGames: null,
     };
 
     const { getByTestId } = render(

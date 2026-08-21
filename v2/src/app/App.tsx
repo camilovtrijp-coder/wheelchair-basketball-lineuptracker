@@ -23,6 +23,7 @@ import type { ResolvedAppRepositories } from '../infrastructure/repositories/res
 import type { SyncStatusApi } from '../application/sync/useSyncStatus';
 import { LocalStorageGameRepository } from '../infrastructure/game/LocalStorageGameRepository';
 import { LocalStorageCompletedGameRepository } from '../infrastructure/game/LocalStorageCompletedGameRepository';
+import type { CompletedGameRepository } from '../application/game/CompletedGameRepository';
 import { LocalStoragePendingFinalizeRepository } from '../infrastructure/game/LocalStoragePendingFinalizeRepository';
 import { LocalStorageLangRepository } from '../infrastructure/i18n/LocalStorageLangRepository';
 import { createGameFromRoster, syncGamePlayersWithRoster } from '../domain/game/setup';
@@ -36,7 +37,7 @@ import { StatsPanel } from '../ui/stats/StatsPanel';
 import { TrendsPanel } from '../ui/trends/TrendsPanel';
 import { BackupPanel } from '../ui/backup/BackupPanel';
 import { SyncStatusIndicator } from '../ui/sync/SyncStatusIndicator';
-import type { SyncStatus } from '../domain/syncState';
+import type { SyncState, SyncStatus } from '../domain/syncState';
 
 export interface AppProps {
   repositories: ResolvedAppRepositories;
@@ -199,10 +200,20 @@ export function App({
   // historie" — en `add()`/`remove()` zouden zo'n readfout dan alsnog als
   // lege lijst behandelen en de bestaande historie overschrijven. Zie
   // `i18n/browserStorage.ts` voor het volledige contract.
-  const completedGameRepo = useMemo(
+  const localCompletedGameRepo = useMemo(
     () => new LocalStorageCompletedGameRepository(strictReadBrowserStorage, organizationId, teamId),
     [organizationId, teamId],
   );
+  // PR 7.2b (docs/pr-7.2-plan.md §C 7.2b): in cloud-modus levert
+  // `repositories.completedGames` een `CompositeCompletedGameRepository` die
+  // dezelfde lokale sleutel samenvoegt met een live cloudquery (zie
+  // `selectRepositories.ts`) — zelfde `null`-in-lokale-modus-patroon als
+  // `repositories.gameSync`/`gameWriterContext` hierboven. Elke bestaande
+  // aanroeper (`add`/`remove`/`list`/`safeList`, `StatsPanel`/`TrendsPanel`)
+  // blijft ongewijzigd: beide varianten implementeren dezelfde
+  // `CompletedGameRepository`-poort.
+  const completedGameRepo: CompletedGameRepository =
+    repositories.completedGames ?? localCompletedGameRepo;
   // PR 7.2a, P1-fix (externe review PR #61, tweede ronde): duurzame outbox
   // voor `GameSyncCoordinator.finalize()`'s invoer — zie
   // `application/game/PendingFinalizeRepository.ts`. Gebruikt bewust
@@ -226,6 +237,20 @@ export function App({
   // `gameSaveError`-banner te misbruiken (dat is specifiek "opslaan is
   // mislukt", geen "actie geblokkeerd").
   const [deleteBlocked, setDeleteBlocked] = useState(false);
+  // PR 7.2b: cloudkant van de historie-lijst-actualiteit — los van
+  // `finalizeStatuses` (dat is per-item, alleen voor door DIT apparaat
+  // afgeronde wedstrijden). `null` = nog geen enkele cloud-snapshot
+  // binnengekomen sinds de laatste contextwissel/(re)mount; blijft `null` in
+  // lokale modus (het `completedGameRepo.subscribe`-effect hieronder is dan
+  // een no-op, zie de `typeof ... === 'function'`-guard).
+  const [completedGamesCloudSync, setCompletedGamesCloudSync] = useState<SyncState | null>(null);
+  // PR 7.2b: `true` wanneer de laatste cloud-historiequery is afgewezen
+  // (Rules-afwijzing, ingetrokken membership) — een aparte banner, want een
+  // leesfout op de cloudkant mag NOOIT gelijk getoond worden aan "geen
+  // wedstrijden" (plan §C 7.2b werk 4) terwijl de lokale historie (die
+  // `completedGames` hieronder intussen nog steeds toont) verder gewoon
+  // bruikbaar blijft.
+  const [completedGamesCloudError, setCompletedGamesCloudError] = useState(false);
   // PR 6.5 §C.2/§F: het wedstrijdfilter is gedeeld tussen Stats en Trends —
   // één "welke wedstrijden tellen mee"-instelling voor de hele app, i.p.v.
   // twee aparte filters die uit de pas kunnen lopen (v1-pariteit). `null` =
@@ -242,6 +267,37 @@ export function App({
     // voor, dus Stats/Trends toonden dan ten onrechte "0 wedstrijden" i.p.v.
     // het v1-standaardgedrag "alles geselecteerd" (`null`).
     setStatsGameIds(null);
+    setCompletedGamesCloudSync(null);
+    setCompletedGamesCloudError(false);
+  }, [completedGameRepo]);
+
+  // PR 7.2b: abonneert op cloud-gedreven historie-updates (bijv. een
+  // wedstrijd die op een ANDER apparaat is afgerond) — de effect hierboven
+  // ziet zulke updates niet, die draait alleen bij een contextwissel.
+  // `completedGameRepo.subscribe` bestaat alleen op de cloud-composite (zie
+  // `application/game/CompletedGameRepository.ts`'s poort-docstring); in
+  // lokale modus is dit een no-op. De eerste `onNext`-aanroep is synchroon
+  // en levert dezelfde data als de `.list()`-aanroep hierboven al zette —
+  // onschuldig dubbel, geen zichtbare flicker.
+  useEffect(() => {
+    if (typeof completedGameRepo.subscribe !== 'function') return undefined;
+    return completedGameRepo.subscribe(
+      (result, cloudSync) => {
+        setCompletedGames(result.games);
+        setCompletedGamesCloudSync(cloudSync);
+        if (result.status !== 'error') setCompletedGamesCloudError(false);
+      },
+      () => {
+        // Externe review op PR #64: een oude, mogelijk 'gesynchroniseerd'-
+        // `completedGamesCloudSync` bleef hier eerder onaangeroerd staan bij
+        // een cloudfout (bijv. een ingetrokken membership) — de UI toonde dan
+        // tegelijk de foutbanner ÉN een verouderde groene syncindicator.
+        // `null` is hier correct, niet misleidend: sinds de laatste succesvolle
+        // snapshot is de actualiteit van de cloudkant per definitie onbekend.
+        setCompletedGamesCloudError(true);
+        setCompletedGamesCloudSync(null);
+      },
+    );
   }, [completedGameRepo]);
 
   // Spiegelt v1's init() precies: een opgeslagen wedstrijd wordt alleen
@@ -505,16 +561,29 @@ export function App({
       setFinalizeStatuses({});
       return;
     }
+    // PR 7.2b: `completedGames` kan nu ook cloud-only items bevatten — een
+    // wedstrijd die op een ANDER apparaat is afgerond en hier nooit lokaal
+    // is opgeslagen (zie `CompositeCompletedGameRepository`). Zo'n item
+    // heeft geen lokaal checkpoint; `readFinalizeStatus()` leest UITSLUITEND
+    // het lokale checkpoint en zou dan ten onrechte 'lokaal-beschikbaar'
+    // teruggeven (misleidend voor een wedstrijd die per definitie alleen via
+    // een geslaagde serverquery zichtbaar werd). Zulke items zijn per
+    // constructie al 'gesynchroniseerd'.
+    const localIds = new Set(localCompletedGameRepo.list().map((g) => g.id));
     setFinalizeStatuses((prev) => {
       const next: Record<string, SyncStatus> = {};
       for (const g of completedGames) {
+        if (!localIds.has(g.id)) {
+          next[g.id] = 'gesynchroniseerd';
+          continue;
+        }
         next[g.id] = pendingFinalizesRef.current.has(g.id)
           ? (prev[g.id] ?? 'wacht-op-synchronisatie')
           : coordinator.readFinalizeStatus(g.sourceGameId, organizationId, teamId, g.id);
       }
       return next;
     });
-  }, [completedGames, repositories.gameSync, organizationId, teamId]);
+  }, [completedGames, repositories.gameSync, organizationId, teamId, localCompletedGameRepo]);
 
   useEffect(() => {
     function handleOnline() {
@@ -616,14 +685,37 @@ export function App({
    * enige retrybron vernietigen — in strijd met 7.2a's acceptatiecriterium
    * "geen bronverwijdering" — of, als de fire-and-forget cloudfinalize
    * ondertussen alsnog slaagt, een orphan cloudsnapshot zonder lokaal
-   * tegenhanger achterlaten. Daarom hier geblokkeerd totdat de status
-   * `gesynchroniseerd` is (server-bevestigd); `finalizeStatuses[id]` is
+   * tegenhanger achterlaten.
+   *
+   * PR 7.2b-uitbreiding: zodra de wedstrijd wél server-bevestigd is
+   * (`gesynchroniseerd`), blijft verwijderen ALSNOG geblokkeerd — vóór
+   * PR 7.2b was dit hier al toegestaan, maar dat verwijderde toen alleen de
+   * ENIGE plek waar de wedstrijd zichtbaar was. Sinds
+   * `CompositeCompletedGameRepository` (PR 7.2b) de cloud-`completedGames`-
+   * query meeleest, blijft de server-snapshot na zo'n "geslaagde" lokale
+   * `remove()` gewoon bestaan (firestore.rules staat vóór PR 7.2c geen
+   * `update`/`delete` toe) en verschijnt de wedstrijd bij de eerstvolgende
+   * cloud-snapshot-update — vaak binnen dezelfde sessie — vanzelf weer terug
+   * in de lijst. Een "geslaagde" verwijdering die zichzelf ongedaan maakt is
+   * erger dan een duidelijk geblokkeerde actie, dus blijft dit hier
+   * geblokkeerd tot PR 7.2c een echte tombstone-verwijdering toevoegt. Zelfde
+   * blokkade voor een wedstrijd die alléén cloud-only bestaat (afgerond op
+   * een ánder apparaat, nooit lokaal opgeslagen hier): lokale `remove()` zou
+   * daar sowieso een no-op `true` op teruggeven (geen lokaal item om te
+   * verwijderen) zonder ook maar iets te doen. `finalizeStatuses[id]` is
    * `undefined` vlak na afronden totdat het statuseffect hierboven voor het
-   * eerst draait, en wordt dan bewust ook als "nog niet bevestigd"
-   * behandeld (fail-closed, niet fail-open).
+   * eerst draait, en wordt dan bewust ook als "nog niet bevestigd" behandeld
+   * (fail-closed, niet fail-open).
    */
   function handleDeleteCompletedGame(id: string) {
-    if (repositories.gameSync && finalizeStatuses[id] !== 'gesynchroniseerd') {
+    // PR 7.2b: dit dekt zowel de oorspronkelijke 7.2a-reden (nog niet
+    // server-bevestigd — verwijderen zou de enige retrybron vernietigen) als
+    // de nieuwe 7.2b-reden (al wél server-bevestigd, of cloud-only —
+    // verwijderen zou door de eerstvolgende cloud-snapshot-update ongedaan
+    // gemaakt worden, zie de docstring hierboven). Samen dekken die twee
+    // redenen elke mogelijke status, dus is verwijderen in cloud-modus tot
+    // PR 7.2c's tombstone-flow altijd geblokkeerd.
+    if (repositories.gameSync) {
       setDeleteBlocked(true);
       return;
     }
@@ -987,6 +1079,8 @@ export function App({
             saveError={gameSaveError}
             deleteBlocked={deleteBlocked}
             syncStatuses={repositories.gameSync ? finalizeStatuses : undefined}
+            cloudSync={repositories.gameSync ? completedGamesCloudSync : undefined}
+            cloudReadError={repositories.gameSync ? completedGamesCloudError : undefined}
           />
         ) : tab === 'stats' ? (
           // PR 6.4: Stats-tab. Lees-only — geen write-flow, geen extra

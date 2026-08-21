@@ -133,9 +133,11 @@ const nl = {
     'Wedstrijd afronden? Dit kan niet ongedaan worden gemaakt: de wedstrijd komt onveranderlijk in de historie te staan.',
   historyTitle: 'Historie',
   historyEmpty: 'Nog geen afgeronde wedstrijden.',
+  historyCloudReadError:
+    'De cloudhistorie kon niet geladen worden. De hieronder getoonde wedstrijden zijn mogelijk onvolledig (alleen lokaal beschikbaar); probeer het later opnieuw.',
   confirmDeleteGame: 'Deze wedstrijd definitief verwijderen? Dit kan niet ongedaan worden gemaakt.',
   deleteBlockedPendingSync:
-    'Deze wedstrijd is nog niet naar de cloud gesynchroniseerd en kan daarom nog niet verwijderd worden. Wacht tot de status "gesynchroniseerd" toont en probeer het opnieuw.',
+    'Deze wedstrijd wordt (of is al) naar de cloud gesynchroniseerd. Een gesynchroniseerde wedstrijd verwijderen wordt pas in een latere update ondersteund.',
   exportShareBtn: 'Exporteren/Delen',
   // PR 6.4: Stats-tab. Strings gespiegeld van v1 (index.html
   // `stats[A-Z]*`-verten) zodat een vertaler beide talen tegelijk kan
@@ -442,9 +444,11 @@ const en = {
     'Finish this game? This cannot be undone: the game becomes an immutable history entry.',
   historyTitle: 'History',
   historyEmpty: 'No finished games yet.',
+  historyCloudReadError:
+    "The cloud history couldn't be loaded. Games shown below may be incomplete (local-only); try again later.",
   confirmDeleteGame: 'Permanently delete this game? This cannot be undone.',
   deleteBlockedPendingSync:
-    'This game hasn\'t synced to the cloud yet, so it can\'t be deleted yet. Wait until the status shows "synced" and try again.',
+    'This game is syncing (or has already synced) to the cloud. Deleting a synced game will be supported in a later update.',
   exportShareBtn: 'Export/Share',
 
   // PR 6.4: Stats-tab. See NL block for rationale; v1 parity.

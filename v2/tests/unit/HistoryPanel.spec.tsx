@@ -160,6 +160,53 @@ describe('ui/game/HistoryPanel (PR 7.2a: syncStatuses-badge)', () => {
   });
 });
 
+// Externe review op PR #64: een cloudfout mag nooit tegelijk met een
+// (mogelijk verouderde) 'gesynchroniseerd'-syncbadge getoond worden — dat
+// oogt tegenstrijdig ("mislukt" én "gesynchroniseerd" naast elkaar).
+describe('ui/game/HistoryPanel (externe review PR #64: cloudSync vs. cloudReadError)', () => {
+  const cloudSync = {
+    status: 'gesynchroniseerd' as const,
+    fromCache: false,
+    hasPendingWrites: false,
+  };
+
+  it('toont de lijstbrede syncindicator wanneer er geen cloudfout is', () => {
+    const { getByTestId } = render(
+      <HistoryPanel
+        lang="nl"
+        games={[completedGame()]}
+        teamName="Team"
+        openId={null}
+        onOpenChange={vi.fn()}
+        onDeleteGame={vi.fn()}
+        canWrite={true}
+        saveError={false}
+        cloudSync={cloudSync}
+      />,
+    );
+    expect(getByTestId('history-cloud-sync-status')).toBeTruthy();
+  });
+
+  it('verbergt de syncindicator zodra cloudReadError actief is, ook als cloudSync nog een oude waarde draagt', () => {
+    const { queryByTestId, getByTestId } = render(
+      <HistoryPanel
+        lang="nl"
+        games={[completedGame()]}
+        teamName="Team"
+        openId={null}
+        onOpenChange={vi.fn()}
+        onDeleteGame={vi.fn()}
+        canWrite={true}
+        saveError={false}
+        cloudSync={cloudSync}
+        cloudReadError={true}
+      />,
+    );
+    expect(queryByTestId('history-cloud-sync-status')).toBeNull();
+    expect(getByTestId('history-cloud-read-error')).toBeTruthy();
+  });
+});
+
 // PR 7.2a, P1-fix (externe review PR #61, derde ronde): een geblokkeerde
 // verwijderpoging (nog niet server-bevestigd) krijgt een eigen, van
 // `saveError` onderscheiden banner — zie App.handleDeleteCompletedGame().
