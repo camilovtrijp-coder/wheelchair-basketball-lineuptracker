@@ -1,4 +1,5 @@
 import type { CompletedGame } from '../../domain/game/types';
+import type { SyncState } from '../../domain/syncState';
 
 /**
  * PR 6.4 §A.2 / §C.1: een expliciet leesresultaat voor de
@@ -67,4 +68,29 @@ export interface CompletedGameRepository {
    * of als de opslag faalde — dan blijft de bestaande historie ongewijzigd.
    */
   replaceAll(games: CompletedGame[]): boolean;
+  /**
+   * PR 7.2b (docs/pr-7.2-plan.md §C 7.2b): optioneel — alleen geïmplementeerd
+   * door een adapter die naast deze synchrone lokale bron ook een
+   * asynchrone cloudbron samenvoegt (zie
+   * `infrastructure/game/CompositeCompletedGameRepository.ts`). Een
+   * lokaal-only adapter (`LocalStorageCompletedGameRepository`) implementeert
+   * dit bewust NIET — daar verandert de lijst nooit buiten een expliciete
+   * `add()`/`remove()`/`replaceAll()`-aanroep om, dus is er niets om op te
+   * abonneren.
+   *
+   * Roept `onNext` synchroon en direct aan met de actuele `safeList()`-
+   * uitkomst, en daarna telkens wanneer de samengestelde lijst verandert:
+   * een geslaagde lokale mutatie (`add`/`remove`/`replaceAll`) of een nieuwe
+   * cloud-snapshot van de team-`completedGames`-query (bijv. een wedstrijd
+   * die op een ander apparaat is afgerond). `cloudSync` is `null` zolang er
+   * nog geen enkele cloud-snapshot is binnengekomen sinds dit abonnement
+   * begon (fresh mount/contextwissel) — de UI mag dit tonen als "cloud-
+   * geschiedenis wordt geladen", niet als "gesynchroniseerd" of "leeg".
+   * Geeft een unsubscribe-functie terug (zelfde vorm als
+   * `AsyncSettingsRepository.subscribe()`/`AsyncRosterRepository.subscribe()`).
+   */
+  subscribe?(
+    onNext: (result: CompletedGamesReadResult, cloudSync: SyncState | null) => void,
+    onError?: (error: unknown) => void,
+  ): () => void;
 }

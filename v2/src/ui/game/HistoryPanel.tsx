@@ -3,7 +3,7 @@ import { combinedCsvForGame, csvFilenameFor } from '../../domain/game/csv';
 import { shareOrDownloadCsv } from '../../infrastructure/game/shareOrDownloadCsv';
 import { translate, type Lang, type StringKey } from '../../i18n/strings';
 import { SyncStatusIndicator } from '../sync/SyncStatusIndicator';
-import type { SyncStatus } from '../../domain/syncState';
+import type { SyncState, SyncStatus } from '../../domain/syncState';
 
 export interface HistoryPanelProps {
   lang: Lang;
@@ -21,13 +21,34 @@ export interface HistoryPanelProps {
    * LiveTrackingPanel getoond). */
   saveError: boolean;
   /**
-   * PR 7.2a, P1-fix (externe review PR #61, derde ronde): `true` wanneer de
-   * laatste verwijderpoging is afgewezen omdat de afronding nog niet
-   * server-bevestigd is (cloud-modus) — zie `App.handleDeleteCompletedGame()`.
+   * PR 7.2a, P1-fix (externe review PR #61, derde ronde); tekst/reikwijdte
+   * uitgebreid in PR 7.2b: `true` wanneer de laatste verwijderpoging is
+   * afgewezen — óf omdat de afronding nog niet server-bevestigd is, óf
+   * (PR 7.2b) omdat de wedstrijd al wél server-bevestigd is en verwijderen
+   * van een gesynchroniseerde/cloud-only wedstrijd pas met de PR 7.2c-
+   * tombstone-flow ondersteund wordt — zie `App.handleDeleteCompletedGame()`.
    * Aparte banner van `saveError`: dit is geen mislukte opslag, maar een
    * bewust geblokkeerde actie.
    */
   deleteBlocked?: boolean;
+  /**
+   * PR 7.2b: van de team-brede cloudhistoriequery afgeleide `SyncState` (zie
+   * `CompositeCompletedGameRepository`/`FirestoreCompletedGameRepository`),
+   * uitsluitend gevuld door `App` in cloud-modus. `undefined` (lokale modus)
+   * betekent: toon geen lijstbrede syncbadge. `null` (cloud-modus, nog geen
+   * enkele cloud-snapshot binnengekomen sinds de laatste contextwissel)
+   * betekent: de getoonde lijst is nog uitsluitend lokaal — ook dan geen
+   * badge, want er is nog niets over de cloudkant te zeggen.
+   */
+  cloudSync?: SyncState | null;
+  /**
+   * PR 7.2b: `true` wanneer de laatste cloudhistorielezing is afgewezen
+   * (Rules-afwijzing, ingetrokken membership). Een aparte banner van
+   * `historyEmpty`: een leesfout op de cloudkant mag NOOIT gelijk getoond
+   * worden aan "geen wedstrijden" — de lokale historie in `games` blijft
+   * intussen gewoon zichtbaar/bruikbaar.
+   */
+  cloudReadError?: boolean;
   /**
    * PR 7.2a: per-`CompletedGame.id` cloudsyncstatus, uitsluitend gevuld door
    * `App` in cloud-modus (net als `SyncStatusIndicator` elders — "gesynchro-
@@ -78,6 +99,8 @@ export function HistoryPanel({
   saveError,
   deleteBlocked,
   syncStatuses,
+  cloudSync,
+  cloudReadError,
 }: HistoryPanelProps) {
   const open = openId != null ? games.find((g) => g.id === openId) : undefined;
 
@@ -93,12 +116,32 @@ export function HistoryPanel({
     </p>
   ) : null;
 
+  // PR 7.2b, plan §C 7.2b werk 4: een cloud-leesfout mag nooit gelijk getoond
+  // worden aan "geen wedstrijden" — aparte banner, lokale historie blijft
+  // gewoon zichtbaar in de lijst eronder.
+  const cloudReadErrorBanner = cloudReadError ? (
+    <p className="settings-error" role="alert" data-testid="history-cloud-read-error">
+      {t(lang, 'historyCloudReadError')}
+    </p>
+  ) : null;
+
+  const cloudSyncIndicator =
+    cloudSync != null ? (
+      <SyncStatusIndicator
+        lang={lang}
+        status={cloudSync.status}
+        fromCache={cloudSync.fromCache}
+        testId="history-cloud-sync-status"
+      />
+    ) : null;
+
   if (open) {
     const byId = new Map(open.players.map((p) => [p.id, p]));
     return (
       <section className="history-panel" aria-label={t(lang, 'historyTitle')}>
         {errorBanner}
         {deleteBlockedBanner}
+        {cloudReadErrorBanner}
         <div className="history-detail__actions">
           <button
             type="button"
@@ -175,6 +218,8 @@ export function HistoryPanel({
     <section className="history-panel" aria-label={t(lang, 'historyTitle')}>
       {errorBanner}
       {deleteBlockedBanner}
+      {cloudReadErrorBanner}
+      {cloudSyncIndicator}
       {games.length === 0 ? (
         <p className="history-empty" data-testid="history-empty">
           {t(lang, 'historyEmpty')}

@@ -20,13 +20,18 @@ import type { AuthUser } from '../../domain/auth/types';
 import type { SelectedContext } from '../../domain/organizations/types';
 import type { AsyncRosterRepository } from '../../application/roster/AsyncRosterRepository';
 import type { AsyncSettingsRepository } from '../../application/settings/AsyncSettingsRepository';
+import type { CompletedGameRepository } from '../../application/game/CompletedGameRepository';
 import type { GameCloudWriterContext } from '../../application/game/projectGameForCloud';
 import { GameSyncCoordinator } from '../../application/game/GameSyncCoordinator';
 import { FirestoreRosterRepository } from '../roster/FirestoreRosterRepository';
 import { FirestoreSettingsRepository } from '../settings/FirestoreSettingsRepository';
 import { FirestoreGameCloudGateway } from '../game/FirestoreGameCloudGateway';
+import { FirestoreCompletedGameRepository } from '../game/FirestoreCompletedGameRepository';
+import { CompositeCompletedGameRepository } from '../game/CompositeCompletedGameRepository';
+import { LocalStorageCompletedGameRepository } from '../game/LocalStorageCompletedGameRepository';
 import { LocalStorageGameSyncCheckpointRepository } from '../game/LocalStorageGameSyncCheckpointRepository';
 import { readOrCreateDeviceId } from '../device/deviceId';
+import { strictReadBrowserStorage } from '../../i18n/browserStorage';
 import type { KeyValueStorage } from '../../i18n/persistence';
 import type { Firestore } from 'firebase/firestore';
 
@@ -43,6 +48,17 @@ export interface CloudRepositorySelection {
    */
   gameSync: GameSyncCoordinator;
   gameWriterContext: GameCloudWriterContext;
+  /**
+   * PR 7.2b (docs/pr-7.2-plan.md §C 7.2b): samengestelde lokaal+cloud-
+   * historie, achter dezelfde `CompletedGameRepository`-poort als de
+   * lokale-modus-variant — zie `CompositeCompletedGameRepository`. Gebruikt
+   * bewust `strictReadBrowserStorage` voor de lokale helft, niet
+   * `input.storage` (net als `app/App.tsx`'s bestaande
+   * `LocalStorageCompletedGameRepository`/`LocalStoragePendingFinalizeRepository`
+   * — een onbeschikbare/falende storage-GETTER moet hier een echte leesfout
+   * blijven, geen stille lege lijst, zie `i18n/browserStorage.ts`).
+   */
+  completedGames: CompletedGameRepository;
 }
 
 export type RepositorySelection = CloudRepositorySelection | { kind: 'local' };
@@ -59,19 +75,16 @@ export function selectRepositories(input: {
   }
   const gateway = new FirestoreGameCloudGateway(input.firestoreDb);
   const checkpoints = new LocalStorageGameSyncCheckpointRepository(input.storage);
+  const { orgId, teamId } = input.selectedContext;
   return {
     kind: 'cloud',
-    settings: new FirestoreSettingsRepository(
-      input.firestoreDb,
-      input.selectedContext.orgId,
-      input.selectedContext.teamId,
-    ),
-    roster: new FirestoreRosterRepository(
-      input.firestoreDb,
-      input.selectedContext.orgId,
-      input.selectedContext.teamId,
-    ),
+    settings: new FirestoreSettingsRepository(input.firestoreDb, orgId, teamId),
+    roster: new FirestoreRosterRepository(input.firestoreDb, orgId, teamId),
     gameSync: new GameSyncCoordinator({ gateway, checkpoints }),
+    completedGames: new CompositeCompletedGameRepository(
+      new LocalStorageCompletedGameRepository(strictReadBrowserStorage, orgId, teamId),
+      new FirestoreCompletedGameRepository(input.firestoreDb, orgId, teamId),
+    ),
     gameWriterContext: {
       authorUid: input.authUser.uid,
       // writerEpoch blijft vast op 0 vóór PR 7.3 (epoch-increment is

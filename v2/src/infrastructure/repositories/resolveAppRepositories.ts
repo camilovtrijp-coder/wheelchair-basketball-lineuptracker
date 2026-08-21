@@ -11,6 +11,7 @@
 
 import type { AsyncRosterRepository } from '../../application/roster/AsyncRosterRepository';
 import type { AsyncSettingsRepository } from '../../application/settings/AsyncSettingsRepository';
+import type { CompletedGameRepository } from '../../application/game/CompletedGameRepository';
 import type { GameSyncCoordinator } from '../../application/game/GameSyncCoordinator';
 import type { GameCloudWriterContext } from '../../application/game/projectGameForCloud';
 import type { KeyValueStorage } from '../../i18n/persistence';
@@ -27,6 +28,13 @@ export interface ResolvedAppRepositories {
   /** PR 7.1c: `null` in lokale modus — App roept dan nooit cloud-sync aan voor wedstrijden. */
   gameSync: GameSyncCoordinator | null;
   gameWriterContext: GameCloudWriterContext | null;
+  /**
+   * PR 7.2b: `null` in lokale modus — `app/App.tsx` bouwt dan zelf, net als
+   * vóór deze PR, een kale `LocalStorageCompletedGameRepository` (org/teamId
+   * zijn in lokale modus geen `selectRepositories()`-invoer, zie
+   * `AuthGate.tsx`'s `organizationId={selectedContext?.orgId ?? ''}`).
+   */
+  completedGames: CompletedGameRepository | null;
 }
 
 export function resolveAppRepositories(
@@ -40,6 +48,7 @@ export function resolveAppRepositories(
       roster: selection.roster,
       gameSync: selection.gameSync,
       gameWriterContext: selection.gameWriterContext,
+      completedGames: selection.completedGames,
     };
   }
   return {
@@ -48,5 +57,6 @@ export function resolveAppRepositories(
     roster: new LocalAsyncRosterRepository(new LocalStorageRosterRepository(storage)),
     gameSync: null,
     gameWriterContext: null,
+    completedGames: null,
   };
 }

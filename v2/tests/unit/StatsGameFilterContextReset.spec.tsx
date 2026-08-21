@@ -96,6 +96,7 @@ const repositories = {
   roster: new StaticRosterRepository(),
   gameSync: null,
   gameWriterContext: null,
+  completedGames: null,
 };
 
 describe('app/App — statsGameIds reset bij organisatie/teamwissel (externe PR-6.5-review)', () => {
