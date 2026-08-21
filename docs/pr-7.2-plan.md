@@ -176,6 +176,22 @@ op, met één genuanceerde bevinding onderweg:
 - `finishGameWithOneSegment()`/`readCompletedGameId()` geëxtraheerd naar
   `gameSyncFixtures.ts` zodat de drie completedGames-e2e-bestanden ze delen.
 
+**Externe review, derde ronde (PR #64)** — terechte false-positive-bevinding:
+de eerste offline-cachetest rondde de wedstrijd op DEZELFDE browser af
+(`finishGameWithOneSegment()` + `readCompletedGameId()` uit localStorage),
+dus kon na de offline reload volledig uit `LocalStorageCompletedGameRepository`
+komen zonder dat Firestore's `persistentLocalCache` ook maar iets had
+gecachet — de test bewees dus niet wat 'ie beweerde te bewijzen. Opgelost:
+de test seedt nu een cloud-only wedstrijd via de Admin SDK (nooit via deze
+browser afgerond, dus per definitie niet in localStorage), bevestigt
+expliciet vóór én ná de offline reload dat het ID afwezig blijft in de
+lokale `completedGames`-opslag, wacht online eerst op een server-bevestigd
+(`'gesynchroniseerd'`) zichtbaar item, en toont pas dán aan dat het na een
+volledige offline reload nog zichtbaar is met een eerlijke
+`'lokaal-beschikbaar'`-indicator. Dat sluit de door de reviewer genoemde
+false-positive uit: als deze test slaagt, kan dat onmogelijk via de lokale
+repository alleen.
+
 ### 7.2c — tombstones en pilotbewijs
 
 1. Implementeer verwijderen als toegestane tombstone-fieldpatch; de bevroren

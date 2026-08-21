@@ -12,14 +12,10 @@
 // browser de app-shell zelf al niet meer laden na een reload).
 import { expect, test, type Page } from '@playwright/test';
 import { openPilotTeam, registerPilotCoach, seedPilotTeam } from './twoDeviceFixtures';
-import {
-  finishGameWithOneSegment,
-  readCompletedGameId,
-  seedPilotRoster,
-  startTrackedGame,
-} from './gameSyncFixtures';
+import { seedPilotRoster } from './gameSyncFixtures';
 import { adminDb } from './adminFixtures';
 import type { CompletedGameDocument } from 'firebase-base/documents';
+import { completedGamesStorageKey } from '../../src/infrastructure/game/LocalStorageCompletedGameRepository';
 
 /**
  * Zelfde service-worker-gereedheidspoll als
@@ -54,7 +50,58 @@ async function waitForServiceWorkerReady(page: Page): Promise<void> {
     .toBe(true);
 }
 
-test('gecachte completedGames-historie blijft zichtbaar na een volledige offline reload', async ({
+/**
+ * Zet een `completedGames`-document rechtstreeks via de Admin SDK — simuleert
+ * een wedstrijd die op een ANDER apparaat is afgerond en al server-bevestigd
+ * is, buiten deze browser om. Bewust NOOIT via `finishGameWithOneSegment()`
+ * op DEZE browser: alleen zo'n cloud-only document kan bewijzen dat een
+ * item écht uit Firestore's `persistentLocalCache` komt — een lokaal
+ * afgeronde wedstrijd staat namelijk ook (en sowieso, ongeacht Firestore)
+ * in `LocalStorageCompletedGameRepository`, en zou een offline-cachetest
+ * dus laten slagen zonder ook maar iets over de cloudkant te bewijzen (zie
+ * de externe review op PR #64, tweede ronde).
+ */
+async function seedCompletedGameViaAdmin(
+  team: { orgId: string; teamId: string },
+  opponent: string,
+): Promise<string> {
+  const completedRef = adminDb()
+    .collection(`organizations/${team.orgId}/teams/${team.teamId}/completedGames`)
+    .doc();
+  const doc: Omit<CompletedGameDocument, 'syncedAt'> = {
+    organizationId: team.orgId,
+    teamId: team.teamId,
+    sourceGameId: `admin-seeded-${completedRef.id}`,
+    opponent,
+    competition: '',
+    date: '2026-01-01T12:00:00.000Z',
+    players: [],
+    segments: [],
+    scoreFor: 5,
+    scoreAgainst: 4,
+    quarterCount: 4,
+    periodLabel: '',
+    useClassLimit: false,
+  };
+  await completedRef.set({ ...doc, syncedAt: new Date() });
+  return completedRef.id;
+}
+
+/** Leest de lokale `completedGames`-array voor dit org/team (leeg/`null` als er nog niets staat). */
+async function readLocalCompletedGameIds(
+  page: Page,
+  orgId: string,
+  teamId: string,
+): Promise<string[]> {
+  const raw = await page.evaluate(
+    (key) => localStorage.getItem(key),
+    completedGamesStorageKey(orgId, teamId),
+  );
+  if (!raw) return [];
+  return (JSON.parse(raw) as Array<{ id: string }>).map((g) => g.id);
+}
+
+test('gecachte completedGames-historie blijft zichtbaar na een volledige offline reload (bewezen cloud-only, niet uit LocalStorageCompletedGameRepository)', async ({
   page,
   context,
 }) => {
@@ -63,29 +110,29 @@ test('gecachte completedGames-historie blijft zichtbaar na een volledige offline
   const team = await seedPilotTeam(identity, 'offline-cache');
   await seedPilotRoster(team);
 
-  await openPilotTeam(page, team);
-  await startTrackedGame(page);
-  await finishGameWithOneSegment(page);
-  const completedId = await readCompletedGameId(page, team.orgId, team.teamId);
+  // Cloud-only: nooit via deze browser afgerond, dus nooit in
+  // `LocalStorageCompletedGameRepository` beland — alleen
+  // `CompositeCompletedGameRepository`'s cloudkant kan dit item tonen.
+  const completedId = await seedCompletedGameViaAdmin(team, 'Cloud-only tegenstander');
 
-  // Server-bevestiging afwachten vóórdat we offline gaan — anders testen we
-  // "een offline pending write overleeft een reload" (een ANDER, elders al
-  // bewust NIET geautomatiseerd scenario, zie
-  // offline-reload-cache-write-second-client.spec.ts's uitleg bij test 3),
-  // niet "gecachte, server-bevestigde historie overleeft een reload".
-  await expect(page.getByTestId(`history-sync-status-${completedId}`)).toHaveAttribute(
-    'data-status',
-    'gesynchroniseerd',
-    { timeout: 20_000 },
-  );
-  // Terug naar de lijstweergave: de lijstbrede cloud-syncindicator staat
-  // alleen daar (niet op de detailweergave, zie HistoryPanel.tsx).
-  await page.getByTestId('history-back-btn').click();
+  await openPilotTeam(page, team);
+  await page.getByTestId('nav-history').click();
+
+  // Online, server-bevestigd zichtbaar — bewijst dat de cloudquery de
+  // server daadwerkelijk heeft geraakt (niet enkel een lege/optimistische
+  // cache-snapshot) vóórdat we offline gaan.
+  await expect(page.getByTestId(`history-item-${completedId}`)).toBeVisible({ timeout: 10_000 });
   await expect(page.getByTestId('history-cloud-sync-status')).toHaveAttribute(
     'data-status',
     'gesynchroniseerd',
     { timeout: 20_000 },
   );
+
+  // Expliciete tegenbewijs tegen de externe-reviewbevinding: dit ID staat
+  // NIET in de lokale `completedGames`-opslag van deze browser — als de
+  // test hieronder alsnog slaagt, kan dat dus onmogelijk komen door
+  // `LocalStorageCompletedGameRepository` alleen.
+  expect(await readLocalCompletedGameIds(page, team.orgId, team.teamId)).not.toContain(completedId);
 
   await waitForServiceWorkerReady(page);
 
@@ -117,39 +164,13 @@ test('gecachte completedGames-historie blijft zichtbaar na een volledige offline
     'actie-nodig',
   );
 
+  // Na de offline reload staat het item nog steeds NIET lokaal — het bewijs
+  // hierboven is dus niet stiekem "gerepareerd" door bijv. een
+  // achtergrondmigratie of dubbele opslag.
+  expect(await readLocalCompletedGameIds(page, team.orgId, team.teamId)).not.toContain(completedId);
+
   await context.setOffline(false);
 });
-
-/**
- * Zet een `completedGames`-document rechtstreeks via de Admin SDK — simuleert
- * een wedstrijd die op een ANDER apparaat is afgerond en al server-bevestigd
- * is, buiten deze browser om.
- */
-async function seedCompletedGameViaAdmin(
-  team: { orgId: string; teamId: string },
-  opponent: string,
-): Promise<string> {
-  const completedRef = adminDb()
-    .collection(`organizations/${team.orgId}/teams/${team.teamId}/completedGames`)
-    .doc();
-  const doc: Omit<CompletedGameDocument, 'syncedAt'> = {
-    organizationId: team.orgId,
-    teamId: team.teamId,
-    sourceGameId: `admin-seeded-${completedRef.id}`,
-    opponent,
-    competition: '',
-    date: '2026-01-01T12:00:00.000Z',
-    players: [],
-    segments: [],
-    scoreFor: 5,
-    scoreAgainst: 4,
-    quarterCount: 4,
-    periodLabel: '',
-    useClassLimit: false,
-  };
-  await completedRef.set({ ...doc, syncedAt: new Date() });
-  return completedRef.id;
-}
 
 // Oorspronkelijk scenario zoals de reviewer 'm beschreef ("settings/roster
 // gecachet, Historie-tab nog nooit bezocht, offline"): bleek bij het
