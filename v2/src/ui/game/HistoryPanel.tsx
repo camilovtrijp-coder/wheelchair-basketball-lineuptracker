@@ -21,16 +21,31 @@ export interface HistoryPanelProps {
    * LiveTrackingPanel getoond). */
   saveError: boolean;
   /**
-   * PR 7.2a, P1-fix (externe review PR #61, derde ronde); tekst/reikwijdte
-   * uitgebreid in PR 7.2b: `true` wanneer de laatste verwijderpoging is
-   * afgewezen — óf omdat de afronding nog niet server-bevestigd is, óf
-   * (PR 7.2b) omdat de wedstrijd al wél server-bevestigd is en verwijderen
-   * van een gesynchroniseerde/cloud-only wedstrijd pas met de PR 7.2c-
-   * tombstone-flow ondersteund wordt — zie `App.handleDeleteCompletedGame()`.
-   * Aparte banner van `saveError`: dit is geen mislukte opslag, maar een
-   * bewust geblokkeerde actie.
+   * PR 7.2a, P1-fix (externe review PR #61, derde ronde). PR 7.2c: sinds de
+   * tombstone-flow bestaat, betekent dit uitsluitend nog "de afronding is
+   * nog niet server-bevestigd" — een server-bevestigd item gaat voortaan via
+   * `tombstone()` i.p.v. hier geblokkeerd te worden, zie
+   * `App.handleDeleteCompletedGame()`. Aparte banner van `saveError`: dit is
+   * geen mislukte opslag, maar een bewust geblokkeerde actie.
    */
   deleteBlocked?: boolean;
+  /**
+   * PR 7.2c: `true` wanneer de laatste tombstone-verwijderpoging is
+   * geprobeerd maar afgewezen/gefaald (Rules, revisiemismatch, netwerk) —
+   * los van `deleteBlocked` (dat is een bewust GEBLOKKEERDE, niet-geprobeerde
+   * actie). De lokale kopie blijft in dat geval gewoon zichtbaar.
+   */
+  deleteError?: boolean;
+  /**
+   * PR 7.2c, externe review op PR #65 (P1 — "een late client verliest zijn
+   * lokale bron niet stil"): aantal wedstrijden dat dit apparaat ZOJUIST als
+   * getombstoned leerde terwijl het zelf nog een lokale kopie had (zie
+   * `CompositeCompletedGameRepository`'s "Niet stil"-docstring). `undefined`
+   * (lokale modus) of `0` toont geen banner. `> 0` toont een dismissbare
+   * banner — `onDismissTombstoneNotice` wist 'm.
+   */
+  tombstoneNoticeCount?: number;
+  onDismissTombstoneNotice?: () => void;
   /**
    * PR 7.2b: van de team-brede cloudhistoriequery afgeleide `SyncState` (zie
    * `CompositeCompletedGameRepository`/`FirestoreCompletedGameRepository`),
@@ -98,6 +113,9 @@ export function HistoryPanel({
   canWrite,
   saveError,
   deleteBlocked,
+  deleteError,
+  tombstoneNoticeCount,
+  onDismissTombstoneNotice,
   syncStatuses,
   cloudSync,
   cloudReadError,
@@ -115,6 +133,32 @@ export function HistoryPanel({
       {t(lang, 'deleteBlockedPendingSync')}
     </p>
   ) : null;
+
+  const deleteErrorBanner = deleteError ? (
+    <p className="settings-error" role="alert" data-testid="history-delete-error">
+      {t(lang, 'historyDeleteError')}
+    </p>
+  ) : null;
+
+  const tombstoneNoticeBanner =
+    tombstoneNoticeCount != null && tombstoneNoticeCount > 0 ? (
+      <p className="settings-error" role="status" data-testid="history-tombstone-notice">
+        {tombstoneNoticeCount === 1
+          ? t(lang, 'historyTombstoneNoticeSingular')
+          : t(lang, 'historyTombstoneNoticePlural').replace(
+              '{count}',
+              String(tombstoneNoticeCount),
+            )}{' '}
+        <button
+          type="button"
+          className="btn-outline"
+          data-testid="history-tombstone-notice-dismiss"
+          onClick={onDismissTombstoneNotice}
+        >
+          {t(lang, 'historyTombstoneDismissBtn')}
+        </button>
+      </p>
+    ) : null;
 
   // PR 7.2b, plan §C 7.2b werk 4: een cloud-leesfout mag nooit gelijk getoond
   // worden aan "geen wedstrijden" — aparte banner, lokale historie blijft
@@ -145,6 +189,8 @@ export function HistoryPanel({
       <section className="history-panel" aria-label={t(lang, 'historyTitle')}>
         {errorBanner}
         {deleteBlockedBanner}
+        {deleteErrorBanner}
+        {tombstoneNoticeBanner}
         {cloudReadErrorBanner}
         <div className="history-detail__actions">
           <button
@@ -222,6 +268,8 @@ export function HistoryPanel({
     <section className="history-panel" aria-label={t(lang, 'historyTitle')}>
       {errorBanner}
       {deleteBlockedBanner}
+      {deleteErrorBanner}
+      {tombstoneNoticeBanner}
       {cloudReadErrorBanner}
       {cloudSyncIndicator}
       {games.length === 0 ? (

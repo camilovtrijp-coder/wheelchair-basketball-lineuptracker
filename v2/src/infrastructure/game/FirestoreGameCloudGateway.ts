@@ -56,6 +56,7 @@ import {
 } from 'firebase-base/documents';
 import type {
   CompletedGameSnapshotProjection,
+  CompletedGameTombstoneResult,
   GameActionUploadOutcome,
   GameCloudGateway,
   GameSnapshotProjection,
@@ -385,5 +386,37 @@ export class FirestoreGameCloudGateway implements GameCloudGateway {
       /* zie toelichting hierboven — de write zelf staat al vast */
     }
     return { ok: true, revision: nextRevision, completedGameId };
+  }
+
+  /**
+   * PR 7.2c: niet-transactioneel, net als `patchSnapshot()` hierboven —
+   * firestore.rules dwingt de optimistische-concurrencycheck
+   * (`revision == resource.data.revision + 1`) en het `deletedAt == null`-
+   * vóórwaarde al af, dus een verouderde `expectedRevision` of een dubbele
+   * tombstone-poging wordt simpelweg geweigerd, geen race om te winnen.
+   */
+  async tombstoneCompletedGame(
+    organizationId: string,
+    teamId: string,
+    completedGameId: string,
+    deletedBy: string,
+    expectedRevision: number,
+  ): Promise<CompletedGameTombstoneResult> {
+    const ref = this.completedGameRef(organizationId, teamId, completedGameId);
+    const nextRevision = expectedRevision + 1;
+    try {
+      await withTimeout(
+        updateDoc(ref, {
+          deletedAt: serverTimestamp(),
+          deletedBy,
+          revision: nextRevision,
+        }),
+        this.timeoutMs,
+        'tombstoneCompletedGame:updateDoc',
+      );
+    } catch (error) {
+      return { ok: false, error };
+    }
+    return { ok: true, revision: nextRevision };
   }
 }

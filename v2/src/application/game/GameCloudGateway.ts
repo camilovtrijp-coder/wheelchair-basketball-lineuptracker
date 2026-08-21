@@ -69,6 +69,19 @@ export interface GameActionUploadOutcome {
  */
 export type CompletedGameSnapshotProjection = Omit<CompletedGameDocument, 'syncedAt'>;
 
+/**
+ * PR 7.2c: resultaat van `tombstoneCompletedGame()`. Los van
+ * `GameSnapshotWriteResult` (die is toegesneden op het `games/{gameId}`-
+ * parentdocument met zijn eigen `writerUid`/`deviceId`/`completedGameId`-
+ * velden, die hier niet van toepassing zijn).
+ */
+export interface CompletedGameTombstoneResult {
+  ok: boolean;
+  /** Aanwezig bij `ok: true`: de nieuwe serverrevisie na deze patch. */
+  revision?: number;
+  error?: unknown;
+}
+
 export interface GameCloudGateway {
   /**
    * Maakt het parentdocument aan als het nog niet bestaat; een bestaand
@@ -129,4 +142,24 @@ export interface GameCloudGateway {
     snapshot: CompletedGameSnapshotProjection,
     expectedRevision: number,
   ): Promise<GameSnapshotWriteResult>;
+  /**
+   * PR 7.2c (docs/pr-7.2-plan.md §C 7.2c werk 1/2): patcht uitsluitend
+   * `deletedAt`/`deletedBy`/`revision` op een bestaande completed-snapshot —
+   * een toegestane tombstone-fieldpatch, geen hard delete (`allow delete`
+   * blijft `false` in firestore.rules). De bevroren wedstrijdinhoud
+   * (`players`/`segments`/`scoreFor`/... ) blijft letterlijk ongewijzigd;
+   * firestore.rules dwingt dat af met een `diff(...).affectedKeys()
+   * .hasOnly([...])`-allowlist op precies deze drie velden. Faalt bij een
+   * revisiemismatch (concurrency, zelfde contract als `patchSnapshot()`) of
+   * als het document al eerder getombstoned is (rules eisen
+   * `resource.data.deletedAt == null` vóór de patch) — beide gevallen komen
+   * hier terug als `ok: false`, nooit als partiële/onduidelijke staat.
+   */
+  tombstoneCompletedGame(
+    organizationId: string,
+    teamId: string,
+    completedGameId: string,
+    deletedBy: string,
+    expectedRevision: number,
+  ): Promise<CompletedGameTombstoneResult>;
 }

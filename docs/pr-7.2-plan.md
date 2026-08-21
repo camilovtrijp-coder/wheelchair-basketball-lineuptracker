@@ -1,9 +1,11 @@
 # Voorbereidingsplan PR 7.2 — afgeronde wedstrijden synchroniseren
 
 Status: goedgekeurde bouwrichting; start na 7.1a–7.1c. PR 7.2a gemerged
-(#61). PR 7.2b geïmplementeerd (zie `docs/IMPLEMENTATION_PLAN.md`
-§17-statustabel voor het volledige overzicht van geraakte bestanden en
-testdekking); 7.2c nog niet gestart.
+(#61). PR 7.2b geïmplementeerd. PR 7.2c geïmplementeerd (zie
+`docs/IMPLEMENTATION_PLAN.md` §17-statustabel voor het volledige overzicht
+van geraakte bestanden en testdekking) — verwijderen is nu een toegestane
+tombstone-fieldpatch, rolgebonden via firestore.rules, met resurrectie-
+preventie en emulator-e2e-bewijs.
 
 ## A. Doel en grenzen
 
@@ -209,6 +211,147 @@ repository alleen.
 
 Acceptatie: een verwijderd item keert niet terug, een late client verliest zijn
 lokale bron niet stil en de zichtbare status verklaart wat herstel vraagt.
+
+**Geïmplementeerd** (zie `docs/IMPLEMENTATION_PLAN.md` §17-statustabel voor
+het volledige bestandenoverzicht):
+
+- `firestore.rules`: `completedGameKeys()`/`isValidCompletedGamePayload()`
+  uitgebreid met `revision`/`deletedAt`/`deletedBy` (create eist `revision==0`,
+  `deletedAt==null`, `deletedBy==null`). Nieuwe `allow update` op
+  `completedGames/{completedGameId}` — uitsluitend `canManageTeamData`
+  (owner/admin/coach, bewust NIET de ruimere `canWriteGameData`: scorer mag
+  wedstrijdacties schrijven maar geen afgeronde historie verwijderen), alleen
+  als `resource.data.deletedAt == null` (geen dubbele tombstone, geen
+  undelete-pad), `diff(...).affectedKeys().hasOnly(['deletedAt','deletedBy',
+  'revision'])` (bevroren inhoud blijft byte-identiek), `deletedBy ==
+  request.auth.uid`, en `revision == resource.data.revision + 1`
+  (optimistische concurrency, zelfde contract als de `games`-paden). `allow
+  delete` blijft `false` — een tombstone is en blijft een fieldpatch, nooit
+  een hard delete.
+- `CompletedGame` (domain) / `CompletedGameDocument` (Firestore): nieuwe
+  velden `revision: number`, `deletedAt: string | null` (Timestamp op de
+  Firestore-kant), `deletedBy: string | null`. `finishGame()`,
+  `migrateV1CompletedGame()` en backup-import (`BackupCoordinator.
+  writeCompletedGamesSection()`) normaliseren deze naar hun aanmaak-default
+  voor bestaande/oudere payloads (backward-compatibel, geen migratiepad
+  nodig).
+- `GameCloudGateway.tombstoneCompletedGame()` (nieuw) +
+  `FirestoreGameCloudGateway`-implementatie: niet-transactionele
+  `updateDoc()` (net als `patchSnapshot()`) — rules dwingen concurrency/
+  eenmaligheid al af.
+- `CompositeCompletedGameRepository`: nieuwe async `tombstone(id, deletedBy)`
+  (`'ok' | 'not-synced' | 'error'`) — vindt de cloud-revisie, roept de
+  gateway aan, ruimt bij succes de lokale kopie proactief op.
+  Resurrectie-preventie in `mergeGames()`: een cloud-item met `deletedAt !=
+  null` wordt ALTIJD uit de zichtbare lijst gefilterd, ook als er nog een
+  niet-getombstoned lokale kopie bestaat; het cloud-`subscribe()`-abonnement
+  ruimt zo'n lokale kopie bovendien proactief op zodra de tombstone
+  binnenkomt, zodat een laat/offline apparaat dat de tombstone nog niet kende
+  'm bij het eerste online moment leert i.p.v. het item te blijven
+  "resurrecten".
+- `app/App.tsx` `handleDeleteCompletedGame()`: niet meer onvoorwaardelijk
+  geblokkeerd in cloud-modus. Nog niet server-bevestigd → nog steeds
+  geblokkeerd (`deleteBlocked`, tekst aangepast: belooft nu expliciet "wacht
+  tot synchronisatie voltooid is"). Wél server-bevestigd → roept
+  `tombstone()` aan; een afgewezen/gefaalde patch toont een nieuwe, aparte
+  `deleteError`-banner (los van `deleteBlocked` en `saveError`) en laat het
+  lokale item ongemoeid.
+- Bewaarbesluit (werk 3): geen automatische purge vóór PR 8.3 — een
+  getombstoned document wordt nooit hard verwijderd, blijft dus
+  auditeerbaar/exporteerbaar via de server zelf (Firebase Console/Admin SDK).
+  Er is bewust GEEN nieuwe app-UI voor het exporteren/beheren van tombstones
+  in deze PR — dat is samen met het definitieve bewaarproces PR 8.3-scope.
+- Reads/writes-meting (werk 4): nieuw
+  `firebase/tests/rules/pilot-reads-writes-completed-games.spec.ts` (losstaand
+  van het PR 5.4c-bestand, andere collecties/scenario's) meet tegen de echte
+  emulator: afronden (finalize-batch) = 2 writes; cloudhistoriequery op twee
+  apparaten = 2 reads (1 per apparaat, 1 document elk); tombstone-delete = 1
+  write. Emulatorproxy, geen Firestore-factuurmeting (Rules-interne reads/
+  listener-reconnects niet inbegrepen, zelfde beperking als de PR 5.4c-meting)
+  — vergelijking met de 5.5c-staging-baseline blijft een handmatige
+  staging-stap (zie `docs/pr-5.5-handmatig-protocol.md`), niet geautomatiseerd
+  hier.
+- Emulator-e2e (werk 5): nieuwe
+  `tests/e2e-auth/game-sync-second-client-tombstone.spec.ts` (echte Rules via
+  `openSecondDevice()`) bewijst de volledige cyclus: apparaat A rondt af en
+  verwijdert via de echte 'Verwijderen'-knop (coach-rol); een Admin-SDK-lezing
+  bevestigt server-kant `deletedAt`/`deletedBy` gezet en de bevroren
+  score/segmenten ongewijzigd; apparaat B, GEOPEND NA de tombstone, ziet het
+  item nooit (resurrectie-preventie, ook via de echte UI/query, niet alleen
+  de unit-testfakes). "Upload", "offline reload" en "contextisolatie" bleven
+  al gedekt door de bestaande 7.2b-e2e-specs (ongewijzigd, blijven groen: 58
+  specs in `test:e2e:auth`). "Rule-reject" voor tombstonen is uitputtend
+  gedekt op Rules-niveau (12 nieuwe tests in
+  `firebase/tests/rules/completed-games.spec.ts`: owner/coach mogen,
+  scorer/viewer/cross-org niet, geen namens-een-ander, geen extra
+  velden, geen verouderde revisie, geen dubbele tombstone, geen undelete, nog
+  steeds onverwijderbaar, viewer kan een getombstoned item nog lezen) — een
+  losse e2e-rule-reject-test voor tombstonen specifiek is bewust niet
+  toegevoegd (de bestaande `game-sync-real-rules-rejection.spec.ts` dekt al
+  het algemene patroon "live rolverlaging → echte Rules-afwijzing" voor
+  wedstrijddata). "Late retry" (een laat/offline apparaat dat de tombstone
+  na reconnect leert) is bewezen op unit-niveau
+  (`CompositeCompletedGameRepository.spec.ts`'s resurrectie-preventietests
+  met een gecontroleerde `FakeCloudSource`) — geen apart tweede-apparaat-
+  e2e-scenario hiervoor, want het mechanisme (cloud-tombstone wint altijd in
+  `mergeGames()`, ongeacht lokale staat) is identiek aan wat de nieuwe
+  tombstone-e2e voor apparaat B al bewijst.
+- Tests: firebase — 12 nieuwe rules-tests in `completed-games.spec.ts` (33
+  totaal in dat bestand), 1 nieuwe converter-test in `documentConverters.spec.ts`
+  (70 totaal), nieuw `pilot-reads-writes-completed-games.spec.ts` (3 tests) —
+  volledige `firebase-base`-rules-suite 189 tests groen tegen de echte
+  emulator. v2 — nieuwe/uitgebreide tests in `CompositeCompletedGameRepository
+  .spec.ts` (tombstone()-gedrag + resurrectie-preventie), `HistoryPanel
+  .spec.tsx` (deleteError-banner), nieuw `AppTombstoneDelete.spec.tsx` (3
+  DOM-gedreven App-tests: succesvolle tombstone, afgewezen patch, nog-niet-
+  gesynchroniseerd-blokkade), plus fixture-updates in alle bestaande tests die
+  een `CompletedGame`/`CompletedGameDocument`-literal bouwen — volledige
+  v2-suite (662 tests), typecheck, eslint, prettier en productiebuild groen.
+  Volledige `test:e2e:auth`-suite (58 specs, inclusief de nieuwe tombstone-e2e)
+  groen tegen de echte Firebase Auth-/Firestore-emulator.
+
+**Externe review, eerste ronde (PR #65)** — drie P1's, alle drie opgelost:
+
+- P1: back-upvalidatie accepteerde aanwezige-maar-fout-getypeerde
+  `revision`/`deletedAt`/`deletedBy` (bijv. `revision:'bad'`, of een
+  inconsistente `{deletedAt:null, deletedBy:'uid'}`). Opgelost:
+  `validateCompletedGameTombstoneFields()` in `domain/backup/validate.ts`
+  valideert deze drie velden nu fail-closed zodra ze AANWEZIG zijn (integer
+  ≥0 / string-of-null / string-of-null, plus een beide-of-geen-
+  consistentiecheck) — afwezigheid blijft geen fout (backward-compat met
+  back-ups van vóór PR 7.2c). Regressies via zowel `validateBackupData()`
+  direct als de publieke `parseBackupPayload()`-pijplijn (bewijst nul writes).
+- P1: een `completedGames`-document van vóór PR 7.2c (PR 7.2a/7.2b-schema)
+  mist `revision`/`deletedAt`/`deletedBy` volledig — de strikte converter
+  weigerde zo'n document (routeert de hele cloudquery naar `onError`), en de
+  tombstone-rules-regel kon het nooit tombstonen (`resource.data.revision`/
+  `resource.data.deletedAt` op een ontbrekend veld gooit een evaluatiefout,
+  geen `0`/`null`). Opgelost: `completedGameConverter.fromFirestore()`
+  behandelt AFWEZIGHEID nu als de aanmaak-default; firestore.rules'
+  tombstone-`allow update` gebruikt `('veld' in resource.data) ? ... : default`
+  voor dezelfde defaulting. Bewezen met een nieuwe rules-testgroep (legacy
+  document seeden, lezen, tombstonen — inhoud blijft byte-identiek) en een
+  converter-unittest.
+- P1: het late/offline-clientpad was niet end-to-end bewezen, en de
+  proactieve lokale opruiming in `CompositeCompletedGameRepository` gaf geen
+  zichtbare status — in strijd met het letterlijke acceptatiecriterium "een
+  late client verliest zijn lokale bron niet stil en de zichtbare status
+  verklaart wat herstel vraagt". Opgelost: `subscribe()` geeft nu een derde,
+  optioneel argument door aan `onNext` met de ID's die dit apparaat OP DEZE
+  notificatie voor het eerst als getombstoned leerde terwijl het zelf nog
+  een lokale kopie had; `App.tsx` toont dit als een dismissbare
+  `HistoryPanel`-banner ("N wedstrijden verwijderd door een teamgenoot").
+  Bewezen met een nieuwe e2e-test: apparaat A rondt af (lokale kopie +
+  server-bevestigd), gaat offline, apparaat B (zelfde identiteit, andere
+  browsercontext) tombstonet het item, apparaat A reconnect ZONDER reload
+  (bewijst dat de al-actieve listener het zelf oppikt) — banner verschijnt,
+  item verdwijnt uit de lijst, localStorage bevat het ID niet meer, en dat
+  blijft zo na een volledige reload.
+
+Na deze ronde: volledige `firebase-base`-rules-suite 193 tests (was 189),
+volledige v2-suite 678 tests (was 662), volledige `test:e2e:auth`-suite 59
+specs (was 58) — allemaal groen tegen de echte emulator, plus typecheck,
+eslint, prettier en productiebuild.
 
 ## D. Stopregels
 

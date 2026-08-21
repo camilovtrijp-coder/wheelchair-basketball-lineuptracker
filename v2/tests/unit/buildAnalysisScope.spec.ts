@@ -52,6 +52,9 @@ function completedGame(overrides: Partial<CompletedGame> = {}): CompletedGame {
     quarterCount: 4,
     periodLabel: '',
     useClassLimit: false,
+    revision: 0,
+    deletedAt: null,
+    deletedBy: null,
     ...overrides,
   };
 }

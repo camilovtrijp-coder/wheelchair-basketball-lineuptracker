@@ -7,6 +7,8 @@ import {
   assertInteger,
   assertIsoTimestampString,
   assertNonEmptyString,
+  assertNullableString,
+  assertNullableTimestamp,
   assertPathContextField,
   assertString,
   assertTimestamp,
@@ -34,8 +36,11 @@ function assertSegments(field: string, value: unknown): SegmentDocument[] {
  * snapshot bevestigd is, zie `game.ts`). Create-only en daarna volledig
  * onveranderlijk (firestore.rules staat geen `update` toe) — een
  * geschiedenis-item is na afronding inhoudelijk onveranderlijk
- * (docs/pr-7.2-plan.md §B). Verwijderen via een tombstone-fieldpatch is
- * bewust PR 7.2c-scope, nog niet geïmplementeerd.
+ * (docs/pr-7.2-plan.md §B). PR 7.2c: verwijderen is een toegestane
+ * tombstone-fieldpatch (`deletedAt`/`deletedBy`/`revision`) — de bevroren
+ * inhoud hierboven blijft daarbij letterlijk ongewijzigd; firestore.rules
+ * dwingt dat af via een `diff(...).affectedKeys().hasOnly([...])`-allowlist
+ * op precies die drie velden (zie firestore.rules, `completedGames`-update).
  *
  * `date`/`players`/`segments`/`scoreFor`/`scoreAgainst`/`quarterCount`/
  * `periodLabel`/`useClassLimit` zijn de exacte, ongewijzigde velden uit
@@ -46,6 +51,17 @@ function assertSegments(field: string, value: unknown): SegmentDocument[] {
  * bookkeeping (net als `GameDocument.updatedAt`) voor cache-/
  * serveractualiteit op een tweede apparaat (PR 7.2b) — geen domeinveld, dus
  * niet aanwezig op `CompletedGame` zelf.
+ *
+ * Backward-compat (externe review op PR #65, P1): elk document dat vóór
+ * PR 7.2c is aangemaakt (PR 7.2a/7.2b-schema) mist `revision`/`deletedAt`/
+ * `deletedBy` volledig — die velden bestonden toen nog niet. `fromFirestore()`
+ * behandelt AFWEZIGHEID (`undefined`) van deze drie velden daarom als hun
+ * aanmaak-default (`revision:0`, `deletedAt:null`, `deletedBy:null`) i.p.v.
+ * fail-closed te weigeren; een AANWEZIG-maar-fout-getypeerd veld blijft wél
+ * fail-closed (`assertInteger`/`assertNullableTimestamp`/`assertNullableString`).
+ * `firestore.rules`' tombstone-`allow update` past dezelfde
+ * `('revision' in resource.data) ? ... : 0`-defaulting toe (zie daar), zodat
+ * ook een legacy-document zonder migratiestap getombstoned kan worden.
  */
 export interface CompletedGameDocument {
   organizationId: string;
@@ -62,6 +78,12 @@ export interface CompletedGameDocument {
   periodLabel: string;
   useClassLimit: boolean;
   syncedAt: Timestamp;
+  /** PR 7.2c: optimistische-concurrencyteller voor de tombstone-patch. `0` bij create. */
+  revision: number;
+  /** PR 7.2c: `null` tot een tombstone-patch dit zet; nooit teruggezet naar `null`. */
+  deletedAt: Timestamp | null;
+  /** PR 7.2c: uid van de gebruiker die de tombstone-patch zette; `null` tot dan. */
+  deletedBy: string | null;
 }
 
 export const completedGameConverter: FirestoreDataConverter<CompletedGameDocument> = {
@@ -91,6 +113,18 @@ export const completedGameConverter: FirestoreDataConverter<CompletedGameDocumen
       periodLabel: assertString(TYPE, 'periodLabel', data.periodLabel),
       useClassLimit: assertBoolean(TYPE, 'useClassLimit', data.useClassLimit),
       syncedAt: assertTimestamp(TYPE, 'syncedAt', data.syncedAt),
+      // Backward-compat met PR 7.2a/7.2b-documenten (zie de klassendocstring
+      // hierboven): AFWEZIG → aanmaak-default; AANWEZIG-maar-fout-getypeerd
+      // blijft fail-closed via de bestaande assert-helpers.
+      revision: data.revision === undefined ? 0 : assertInteger(TYPE, 'revision', data.revision),
+      deletedAt:
+        data.deletedAt === undefined
+          ? null
+          : assertNullableTimestamp(TYPE, 'deletedAt', data.deletedAt),
+      deletedBy:
+        data.deletedBy === undefined
+          ? null
+          : assertNullableString(TYPE, 'deletedBy', data.deletedBy),
     };
   },
 };

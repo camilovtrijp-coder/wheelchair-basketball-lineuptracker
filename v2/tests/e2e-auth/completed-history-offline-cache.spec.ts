@@ -82,6 +82,9 @@ async function seedCompletedGameViaAdmin(
     quarterCount: 4,
     periodLabel: '',
     useClassLimit: false,
+    revision: 0,
+    deletedAt: null,
+    deletedBy: null,
   };
   await completedRef.set({ ...doc, syncedAt: new Date() });
   return completedRef.id;

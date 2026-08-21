@@ -23,15 +23,42 @@
 // `date` gesorteerd binnenkomt — zonder hersortering zou een cloud-only
 // item van vóór de laatst-lokale wedstrijd toch onderaan blijven staan.
 //
-// Bewust NIET opgelost hier (7.2c-scope, zie plan §D "geen edit-API voor
-// afgeronde kerninhoud"): een lokale `remove()` verwijdert alleen de lokale
-// kopie. Als het item al server-bevestigd is, blijft de cloud-snapshot
-// bestaan en verschijnt hij na de eerstvolgende cloud-snapshot-update
-// gewoon weer in de samengevoegde lijst (firestore.rules staat vóór PR 7.2c
-// geen `update`/`delete` op `completedGames` toe — er is dus letterlijk
-// niets om vanaf hier te verwijderen). `app/App.tsx` blokkeert `remove()`
-// daarom in cloud-modus zodra een item een cloud-tegenhanger heeft, tot
-// PR 7.2c een tombstone-fieldpatch toevoegt.
+// PR 7.2c (docs/pr-7.2-plan.md §C 7.2c werk 1/2): een lokale `remove()`
+// verwijdert nog altijd alleen de lokale kopie — als het item al
+// server-bevestigd is, blijft de cloud-snapshot daardoor bestaan en
+// verschijnt hij na de eerstvolgende cloud-snapshot-update gewoon weer in de
+// samengevoegde lijst. `tombstone()` hieronder is daarom het ECHTE
+// verwijderpad voor een server-bevestigd item: het patcht een
+// `deletedAt`/`deletedBy` op de cloud-snapshot zelf (via `GameCloudGateway.
+// tombstoneCompletedGame()`), niet alleen de lokale kopie. `app/App.tsx`
+// kiest per geval tussen `remove()` (nog nooit geüpload, niets om te
+// tombstonen) en `tombstone()` (al server-bevestigd).
+//
+// Resurrectie-preventie (plan §C 7.2c werk 2, acceptatie "een verwijderd
+// item keert niet terug, een late client verliest zijn lokale bron niet
+// stil"): `mergeGames()` filtert elk cloud-item met `deletedAt != null` altijd
+// uit de zichtbare lijst — ongeacht of er nog een niet-getombstoned lokale
+// kopie bestaat. Het cloud-abonnement in `subscribe()` ruimt zo'n lokale
+// kopie bovendien proactief op (`local.remove()`) zodra de bijbehorende
+// cloud-snapshot een tombstone draagt, zodat een later apparaat dat zelf nog
+// nooit van de tombstone wist (bijv. offline tijdens het verwijderen) 'm bij
+// de eerste online cloud-snapshot alsnog leert en niet blijft "resurrecten"
+// bij elke volgende render. Vóór dat moment (nog offline, nog geen
+// cloud-snapshot ontvangen) blijft de lokale kopie zichtbaar — dat is geen
+// resurrectie, dat is een eerlijke offline-cachestand (zelfde patroon als de
+// rest van PR 7.2b's offline-cache-garanties).
+//
+// "Niet stil" (externe review PR #65, P1 op het letterlijke acceptatiecriterium
+// "een late client verliest zijn lokale bron niet stil en de zichtbare status
+// verklaart wat herstel vraagt"): het precieze moment waarop DIT apparaat de
+// tombstone leert — bijv. na een reconnect terwijl het zelf nog een oudere,
+// niet-getombstoned lokale kopie had — is voor de gebruiker van dit apparaat
+// zelf een relevante gebeurtenis, geen achtergrondopruiming. `subscribe()`
+// geeft de ID's van zo'n net-geleerde tombstone daarom door als DERDE,
+// optioneel argument aan `onNext` (alleen gevuld op de transitie waarop dit
+// gebeurt, nooit `undefined`→leeg op een gewone update) — `app/App.tsx` zet
+// dit om in een zichtbare `HistoryPanel`-banner (`tombstoneNotice`), zodat de
+// gebruiker ziet WAAROM een wedstrijd verdween i.p.v. 'm gewoon te missen.
 
 import type { CompletedGame } from '../../domain/game/types';
 import type { SyncState } from '../../domain/syncState';
@@ -41,8 +68,31 @@ import type {
 } from '../../application/game/CompletedGameRepository';
 import type { CloudCompletedGameSource } from './FirestoreCompletedGameRepository';
 
-type Listener = (result: CompletedGamesReadResult, cloudSync: SyncState | null) => void;
+type Listener = (
+  result: CompletedGamesReadResult,
+  cloudSync: SyncState | null,
+  /** Niet-lege array van `CompletedGame.id`'s die dit apparaat op DEZE
+   * cloud-snapshot voor het eerst als getombstoned leerde terwijl er nog
+   * een niet-getombstoned lokale kopie bestond — `undefined` op elke andere
+   * notificatie (mount, add/remove/replaceAll, een reguliere cloud-update
+   * zonder zo'n transitie). Zie bestandsdocstring "Niet stil". */
+  removedByCloudTombstone?: readonly string[],
+) => void;
 type ErrorListener = (error: unknown) => void;
+
+/** PR 7.2c: het smalle schrijfcontract dat `tombstone()` nodig heeft — een
+ * `GameCloudGateway` voldoet hier structureel aan zonder dat deze klasse de
+ * volledige poort (ensureGame/uploadActions/patchSnapshot/...) hoeft te
+ * kennen. */
+export interface CompletedGameTombstoneWriter {
+  tombstoneCompletedGame(
+    organizationId: string,
+    teamId: string,
+    completedGameId: string,
+    deletedBy: string,
+    expectedRevision: number,
+  ): Promise<{ ok: boolean; revision?: number; error?: unknown }>;
+}
 
 export class CompositeCompletedGameRepository implements CompletedGameRepository {
   private cloudGames: CompletedGame[] = [];
@@ -53,6 +103,7 @@ export class CompositeCompletedGameRepository implements CompletedGameRepository
   constructor(
     private readonly local: CompletedGameRepository,
     private readonly cloud: CloudCompletedGameSource,
+    private readonly cloudWriter: CompletedGameTombstoneWriter,
   ) {}
 
   private readLocal(): CompletedGamesReadResult {
@@ -61,8 +112,15 @@ export class CompositeCompletedGameRepository implements CompletedGameRepository
   }
 
   private mergeGames(localGames: CompletedGame[], cloudGames: CompletedGame[]): CompletedGame[] {
-    const localIds = new Set(localGames.map((g) => g.id));
-    const merged = [...localGames, ...cloudGames.filter((g) => !localIds.has(g.id))];
+    // PR 7.2c: een cloud-tombstone wint altijd, ook over een niet-
+    // getombstoned lokale kopie (resurrectie-preventie, zie bestandsdocstring
+    // hierboven) — dus eerst de getombstoned ID's uitfilteren aan BEIDE
+    // kanten, vóór de bestaande lokaal-wint-dedupe.
+    const tombstonedIds = new Set(cloudGames.filter((g) => g.deletedAt != null).map((g) => g.id));
+    const visibleLocal = localGames.filter((g) => !tombstonedIds.has(g.id));
+    const visibleCloud = cloudGames.filter((g) => g.deletedAt == null);
+    const localIds = new Set(visibleLocal.map((g) => g.id));
+    const merged = [...visibleLocal, ...visibleCloud.filter((g) => !localIds.has(g.id))];
     return merged.sort((a, b) => (a.date < b.date ? 1 : a.date > b.date ? -1 : 0));
   }
 
@@ -121,6 +179,33 @@ export class CompositeCompletedGameRepository implements CompletedGameRepository
     return this.cloudGames.some((g) => g.id === id);
   }
 
+  /**
+   * PR 7.2c: tombstone-verwijderpad voor een server-bevestigd item (zie
+   * bestandsdocstring). `'not-synced'` als er geen cloud-tegenhanger bekend
+   * is — de aanroeper (`app/App.tsx`) valt dan terug op de bestaande
+   * "nog niet gesynchroniseerd"-blokkade, precies zoals vóór PR 7.2c.
+   */
+  async tombstone(id: string, deletedBy: string): Promise<'ok' | 'not-synced' | 'error'> {
+    const cloudEntry = this.cloudGames.find((g) => g.id === id);
+    if (!cloudEntry) return 'not-synced';
+    const result = await this.cloudWriter.tombstoneCompletedGame(
+      cloudEntry.organizationId,
+      cloudEntry.teamId,
+      id,
+      deletedBy,
+      cloudEntry.revision,
+    );
+    if (!result.ok) return 'error';
+    // Proactieve lokale opruiming voor snelle UI-feedback op DIT apparaat —
+    // niet vereist voor correctheid (de eerstvolgende cloud-snapshot draagt
+    // de tombstone toch al en `mergeGames()` filtert 'm hoe dan ook), maar
+    // voorkomt dat de net-verwijderde wedstrijd nog kortstondig zichtbaar
+    // blijft tot die snapshot binnenkomt.
+    this.local.remove(id);
+    this.notify();
+    return 'ok';
+  }
+
   subscribe(onNext: Listener, onError?: ErrorListener): () => void {
     this.listeners.set(onNext, onError);
     if (this.cloudUnsubscribe === null) {
@@ -128,7 +213,25 @@ export class CompositeCompletedGameRepository implements CompletedGameRepository
         (games, sync) => {
           this.cloudGames = games;
           this.cloudSync = sync;
-          this.notify();
+          // Resurrectie-preventie (zie bestandsdocstring): een net binnen-
+          // gekomen cloud-tombstone ruimt een eventuele niet-getombstoned
+          // lokale kopie meteen op, zodat een later apparaat dat de
+          // tombstone nog niet kende 'm bij dit eerste online-moment leert
+          // en 'm niet blijft terugzien uit zijn eigen lokale opslag. Vóór
+          // het opruimen wordt vastgelegd WELKE ID's dit betreft ("Niet
+          // stil", zie bestandsdocstring) — alleen items die dit apparaat
+          // nog als lokaal-aanwezig had, niet elk getombstoned cloud-item
+          // (dat kan er ook al vóór dit apparaat ooit iets wist gewoon bij
+          // zitten, bijv. door een ander teamlid getombstoned zonder dat dit
+          // apparaat het item ooit lokaal had).
+          const localIdsBeforePurge = new Set(this.readLocal().games.map((g) => g.id));
+          const newlyLearnedTombstones = games
+            .filter((g) => g.deletedAt != null && localIdsBeforePurge.has(g.id))
+            .map((g) => g.id);
+          for (const game of games) {
+            if (game.deletedAt != null) this.local.remove(game.id);
+          }
+          this.notify(newlyLearnedTombstones.length > 0 ? newlyLearnedTombstones : undefined);
         },
         (err) => {
           for (const errorListener of this.listeners.values()) {
@@ -149,10 +252,10 @@ export class CompositeCompletedGameRepository implements CompletedGameRepository
     };
   }
 
-  private notify(): void {
+  private notify(removedByCloudTombstone?: readonly string[]): void {
     const result = this.safeList();
     for (const onNext of this.listeners.keys()) {
-      onNext(result, this.cloudSync);
+      onNext(result, this.cloudSync, removedByCloudTombstone);
     }
   }
 }

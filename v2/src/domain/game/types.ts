@@ -164,4 +164,27 @@ export interface CompletedGame {
   quarterCount: number;
   periodLabel: string;
   useClassLimit: boolean;
+  /**
+   * PR 7.2c (docs/pr-7.2-plan.md §C 7.2c): optimistische-concurrencyteller
+   * voor de tombstone-fieldpatch, spiegelt `ActiveGame`/`GameDocument`'s
+   * `revision`. `0` bij aanmaken (create); een tombstone-patch verhoogt 'm
+   * met exact 1. Alleen relevant in cloud-modus — een puur lokale
+   * `CompletedGame` (nooit geüpload) heeft geen serverrevisie nodig, maar
+   * draagt dit veld toch al vanaf aanmaak zodat een latere cloud-upload geen
+   * apart migratiepad nodig heeft.
+   */
+  revision: number;
+  /**
+   * PR 7.2c: `null` tot een owner/admin/coach de wedstrijd verwijdert. Een
+   * tombstone-patch zet dit (en `deletedBy`) op de server; de bevroren
+   * wedstrijdinhoud zelf blijft ongewijzigd (§B: "een historie-item is na
+   * afronding inhoudelijk onveranderlijk"). Een getombstoned item verdwijnt
+   * uit Historie/Stats/Trends (`CompositeCompletedGameRepository`), maar het
+   * document zelf wordt nooit hard verwijderd of automatisch gepurged vóór
+   * PR 8.3 — dit veld blijft dus de enige plek waar "verwijderd" vastligt,
+   * exporteerbaar/auditbaar zolang het document bestaat.
+   */
+  deletedAt: string | null;
+  /** PR 7.2c: uid van de gebruiker die de tombstone-patch zette; `null` tot dan. */
+  deletedBy: string | null;
 }

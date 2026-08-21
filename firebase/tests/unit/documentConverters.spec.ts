@@ -286,6 +286,9 @@ describe('documentcontracten: round-trip via toFirestore/fromFirestore', () => {
       periodLabel: 'kwart',
       useClassLimit: true,
       syncedAt: Timestamp.now(),
+      revision: 0,
+      deletedAt: null,
+      deletedBy: null,
     };
     const stored = completedGameConverter.toFirestore(doc);
     expect(
@@ -294,6 +297,63 @@ describe('documentcontracten: round-trip via toFirestore/fromFirestore', () => {
         {},
       ),
     ).toEqual(doc);
+  });
+
+  it('completedGame: getombstoned (PR 7.2c)', () => {
+    const deletedAt = Timestamp.now();
+    const doc: CompletedGameDocument = {
+      organizationId: 'org-1',
+      teamId: 'team-1',
+      sourceGameId: 'game-1',
+      opponent: 'Fictieve Tegenstander',
+      competition: 'Fictieve Competitie',
+      date: '2026-01-01T01:30:00.000Z',
+      players: [],
+      segments: [],
+      scoreFor: 40,
+      scoreAgainst: 32,
+      quarterCount: 4,
+      periodLabel: 'kwart',
+      useClassLimit: true,
+      syncedAt: Timestamp.now(),
+      revision: 1,
+      deletedAt,
+      deletedBy: 'uid-alice',
+    };
+    const stored = completedGameConverter.toFirestore(doc);
+    expect(
+      completedGameConverter.fromFirestore!(
+        mockSnapshot(stored as Record<string, unknown>, COMPLETED_GAME_PATH),
+        {},
+      ),
+    ).toEqual(doc);
+  });
+
+  it('completedGame: legacy document zonder revision/deletedAt/deletedBy (PR 7.2a/7.2b-schema, externe review PR #65) defaultet naar 0/null/null', () => {
+    const legacy: Omit<CompletedGameDocument, 'revision' | 'deletedAt' | 'deletedBy'> = {
+      organizationId: 'org-1',
+      teamId: 'team-1',
+      sourceGameId: 'game-1',
+      opponent: 'Fictieve Tegenstander',
+      competition: 'Fictieve Competitie',
+      date: '2026-01-01T01:30:00.000Z',
+      players: [],
+      segments: [],
+      scoreFor: 40,
+      scoreAgainst: 32,
+      quarterCount: 4,
+      periodLabel: 'kwart',
+      useClassLimit: true,
+      syncedAt: Timestamp.now(),
+    };
+    const out = completedGameConverter.fromFirestore!(
+      mockSnapshot(legacy as unknown as Record<string, unknown>, COMPLETED_GAME_PATH),
+      {},
+    );
+    expect(out.revision).toBe(0);
+    expect(out.deletedAt).toBeNull();
+    expect(out.deletedBy).toBeNull();
+    expect(out.scoreFor).toBe(40);
   });
 
   it('gameAction: score-delta (PR 7.1a)', () => {

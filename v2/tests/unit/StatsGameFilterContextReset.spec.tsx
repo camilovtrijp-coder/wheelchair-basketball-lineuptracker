@@ -87,6 +87,9 @@ function completedGame(id: string, organizationId: string, teamId: string): Comp
     quarterCount: 4,
     periodLabel: '',
     useClassLimit: false,
+    revision: 0,
+    deletedAt: null,
+    deletedBy: null,
   };
 }
 

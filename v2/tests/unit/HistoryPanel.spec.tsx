@@ -22,6 +22,9 @@ function completedGame(overrides: Partial<CompletedGame> = {}): CompletedGame {
     quarterCount: 4,
     periodLabel: '',
     useClassLimit: false,
+    revision: 0,
+    deletedAt: null,
+    deletedBy: null,
     ...overrides,
   };
 }
@@ -258,5 +261,120 @@ describe('ui/game/HistoryPanel (PR 7.2a: deleteBlocked-banner, derde ronde)', ()
       />,
     );
     expect(queryByTestId('history-delete-blocked')).toBeNull();
+  });
+});
+
+// PR 7.2c: een mislukte tombstone-verwijderpoging krijgt een eigen banner,
+// los van `deleteBlocked` (bewust geblokkeerd) en `saveError` (mislukte
+// lokale opslag) — zie App.handleDeleteCompletedGame().
+describe('ui/game/HistoryPanel (PR 7.2c: deleteError-banner)', () => {
+  it('toont een deleteError-banner op zowel de lijst- als detailweergave', () => {
+    const list = render(
+      <HistoryPanel
+        lang="nl"
+        games={[completedGame()]}
+        teamName="Team"
+        openId={null}
+        onOpenChange={vi.fn()}
+        onDeleteGame={vi.fn()}
+        canWrite={true}
+        saveError={false}
+        deleteError={true}
+      />,
+    );
+    expect(list.getByTestId('history-delete-error')).toBeTruthy();
+    list.unmount();
+
+    const detail = render(
+      <HistoryPanel
+        lang="nl"
+        games={[completedGame()]}
+        teamName="Team"
+        openId="g1"
+        onOpenChange={vi.fn()}
+        onDeleteGame={vi.fn()}
+        canWrite={true}
+        saveError={false}
+        deleteError={true}
+      />,
+    );
+    expect(detail.getByTestId('history-delete-error')).toBeTruthy();
+  });
+
+  it('toont geen deleteError-banner zonder deleteError', () => {
+    const { queryByTestId } = render(
+      <HistoryPanel
+        lang="nl"
+        games={[completedGame()]}
+        teamName="Team"
+        openId="g1"
+        onOpenChange={vi.fn()}
+        onDeleteGame={vi.fn()}
+        canWrite={true}
+        saveError={false}
+      />,
+    );
+    expect(queryByTestId('history-delete-error')).toBeNull();
+  });
+});
+
+// PR 7.2c, externe review op PR #65 (P1 — "de zichtbare status verklaart wat
+// herstel vraagt"): een banner voor "dit apparaat leerde zojuist dat een
+// teamgenoot een wedstrijd verwijderde die híer nog lokaal stond", los van
+// deleteBlocked/deleteError (die gaan over EIGEN verwijderpogingen).
+describe('ui/game/HistoryPanel (PR 7.2c: tombstoneNotice-banner)', () => {
+  it('toont een enkelvoud-banner bij tombstoneNoticeCount=1, met een dismissknop', () => {
+    const onDismiss = vi.fn();
+    const { getByTestId, getByText } = render(
+      <HistoryPanel
+        lang="nl"
+        games={[completedGame()]}
+        teamName="Team"
+        openId={null}
+        onOpenChange={vi.fn()}
+        onDeleteGame={vi.fn()}
+        canWrite={true}
+        saveError={false}
+        tombstoneNoticeCount={1}
+        onDismissTombstoneNotice={onDismiss}
+      />,
+    );
+    expect(getByText(/1 afgeronde wedstrijd is verwijderd door een teamgenoot/)).toBeTruthy();
+    getByTestId('history-tombstone-notice-dismiss').click();
+    expect(onDismiss).toHaveBeenCalledTimes(1);
+  });
+
+  it('toont een meervoud-banner met het juiste aantal bij tombstoneNoticeCount>1', () => {
+    const { getByText } = render(
+      <HistoryPanel
+        lang="nl"
+        games={[completedGame()]}
+        teamName="Team"
+        openId={null}
+        onOpenChange={vi.fn()}
+        onDeleteGame={vi.fn()}
+        canWrite={true}
+        saveError={false}
+        tombstoneNoticeCount={3}
+      />,
+    );
+    expect(getByText(/3 afgeronde wedstrijden zijn verwijderd door een teamgenoot/)).toBeTruthy();
+  });
+
+  it('toont geen banner zonder tombstoneNoticeCount of bij 0', () => {
+    const { queryByTestId } = render(
+      <HistoryPanel
+        lang="nl"
+        games={[completedGame()]}
+        teamName="Team"
+        openId={null}
+        onOpenChange={vi.fn()}
+        onDeleteGame={vi.fn()}
+        canWrite={true}
+        saveError={false}
+        tombstoneNoticeCount={0}
+      />,
+    );
+    expect(queryByTestId('history-tombstone-notice')).toBeNull();
   });
 });

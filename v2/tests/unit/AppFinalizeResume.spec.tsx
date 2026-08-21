@@ -137,6 +137,9 @@ function pendingCompleted(): CompletedGame {
     quarterCount: 4,
     periodLabel: '',
     useClassLimit: false,
+    revision: 0,
+    deletedAt: null,
+    deletedBy: null,
   };
 }
 
@@ -179,6 +182,15 @@ function alwaysSucceedsGateway(): GameCloudGateway {
       expectedRevision: number,
     ): Promise<GameSnapshotWriteResult> {
       return { ok: true, revision: expectedRevision + 1, completedGameId };
+    },
+    async tombstoneCompletedGame(
+      _o: string,
+      _t: string,
+      _completedGameId: string,
+      _deletedBy: string,
+      expectedRevision: number,
+    ) {
+      return { ok: true, revision: expectedRevision + 1 };
     },
   };
 }
@@ -595,6 +607,15 @@ function controlledFinalizeGateway(): {
       finalizeCalls.push(call);
       const result = await call.promise;
       return { ...result, completedGameId };
+    },
+    async tombstoneCompletedGame(
+      _o: string,
+      _t: string,
+      _completedGameId: string,
+      _deletedBy: string,
+      expectedRevision: number,
+    ) {
+      return { ok: true, revision: expectedRevision + 1 };
     },
   };
   return { gateway, finalizeCalls };
