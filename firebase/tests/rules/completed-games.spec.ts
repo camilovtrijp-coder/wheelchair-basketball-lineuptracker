@@ -507,3 +507,80 @@ describe('completedGames/{completedGameId}: tombstone-fieldpatch (PR 7.2c)', () 
     await assertSucceeds(getDoc(completedGameRef(db, ORG_A, TEAM_A1, 'completed-1')));
   });
 });
+
+// PR 7.2c, externe review op PR #65 (P1): een document dat vóór PR 7.2c is
+// aangemaakt (PR 7.2a/7.2b-schema) mist `revision`/`deletedAt`/`deletedBy`
+// VOLLEDIG. Dit blok seedt zo'n legacy-document rechtstreeks (geen `create`,
+// dat zou nu de nieuwe punt-16-validatie raken) en bewijst dat de tombstone-
+// update-regel het toch correct afhandelt via de `('veld' in resource.data)`-
+// defaulting.
+describe('completedGames/{completedGameId}: backward-compat met een legacy (PR 7.2a/7.2b) document zonder revision/deletedAt/deletedBy (PR 7.2c)', () => {
+  function legacyCompletedGame() {
+    const { revision: _r, deletedAt: _d, deletedBy: _b, ...legacy } = sampleCompletedGame();
+    return legacy;
+  }
+
+  beforeEach(async () => {
+    await withAdmin(env, async (db) => {
+      await db
+        .collection('organizations')
+        .doc(ORG_A)
+        .collection('teams')
+        .doc(TEAM_A1)
+        .collection('completedGames')
+        .doc('legacy-1')
+        .set(legacyCompletedGame());
+    });
+  });
+
+  it('een legacy-document kan gewoon gelezen worden', async () => {
+    const db = authCtx(env, USERS.erin.uid, { email: USERS.erin.email, email_verified: true });
+    const snap = await getDoc(completedGameRef(db, ORG_A, TEAM_A1, 'legacy-1'));
+    expect(snap.exists()).toBe(true);
+    expect(snap.data()?.revision).toBeUndefined();
+  });
+
+  it('owner mag een legacy-document tombstonen — revision start impliciet op 0, bevroren inhoud blijft ongewijzigd', async () => {
+    const db = authCtx(env, USERS.alice.uid, { email: USERS.alice.email, email_verified: true });
+    await assertSucceeds(
+      updateDoc(completedGameRef(db, ORG_A, TEAM_A1, 'legacy-1'), {
+        deletedAt: Timestamp.now(),
+        deletedBy: USERS.alice.uid,
+        revision: 1,
+      }),
+    );
+    const snap = await getDoc(completedGameRef(db, ORG_A, TEAM_A1, 'legacy-1'));
+    const data = snap.data()!;
+    expect(data.deletedAt).not.toBeNull();
+    expect(data.deletedBy).toBe(USERS.alice.uid);
+    expect(data.revision).toBe(1);
+    // Bevroren inhoud (spelers/segmenten/score/...) letterlijk ongewijzigd.
+    const legacy = legacyCompletedGame();
+    expect(data.scoreFor).toBe(legacy.scoreFor);
+    expect(data.scoreAgainst).toBe(legacy.scoreAgainst);
+    expect(data.segments).toEqual(legacy.segments);
+    expect(data.players).toEqual(legacy.players);
+  });
+
+  it('een tombstone-poging op een legacy-document met de VERKEERDE (niet-impliciete) revisie wordt geweigerd', async () => {
+    const db = authCtx(env, USERS.alice.uid, { email: USERS.alice.email, email_verified: true });
+    await assertFails(
+      updateDoc(completedGameRef(db, ORG_A, TEAM_A1, 'legacy-1'), {
+        deletedAt: Timestamp.now(),
+        deletedBy: USERS.alice.uid,
+        revision: 2,
+      }),
+    );
+  });
+
+  it('scorer mag een legacy-document nog steeds NIET tombstonen', async () => {
+    const db = authCtx(env, USERS.dave.uid, { email: USERS.dave.email, email_verified: true });
+    await assertFails(
+      updateDoc(completedGameRef(db, ORG_A, TEAM_A1, 'legacy-1'), {
+        deletedAt: Timestamp.now(),
+        deletedBy: USERS.dave.uid,
+        revision: 1,
+      }),
+    );
+  });
+});

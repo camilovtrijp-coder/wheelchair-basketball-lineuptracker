@@ -769,13 +769,24 @@ service cloud.firestore {
           //   .tombstoneCompletedGame()`).
           // - optimistische concurrency, zelfde contract als de
           //   `games`-paden hierboven: `revision` moet exact met 1 omhoog.
+          //
+          // Backward-compat (externe review PR #65, P1): een document van
+          // vóór PR 7.2c (PR 7.2a/7.2b-schema) mist `deletedAt`/`revision`
+          // VOLLEDIG — een rechtstreekse `resource.data.deletedAt`/
+          // `resource.data.revision`-toegang gooit dan een evaluatiefout
+          // (geen `null`/`0`) en zou zo'n legacy-document nooit tombstonebaar
+          // maken. `('veld' in resource.data)` checkt sleutelaanwezigheid
+          // zonder te gooien; ontbreken telt hier als de aanmaak-default
+          // (`deletedAt: null`, `revision: 0`) — exact dezelfde defaulting
+          // als `completedGameConverter.fromFirestore()` aan de leeskant.
           allow update: if canManageTeamData(orgId, teamId) &&
-            resource.data.deletedAt == null &&
+            (!('deletedAt' in resource.data) || resource.data.deletedAt == null) &&
             request.resource.data.diff(resource.data).affectedKeys()
               .hasOnly(['deletedAt', 'deletedBy', 'revision']) &&
             request.resource.data.deletedAt is timestamp &&
             request.resource.data.deletedBy == request.auth.uid &&
-            request.resource.data.revision == resource.data.revision + 1;
+            request.resource.data.revision ==
+              (('revision' in resource.data) ? resource.data.revision : 0) + 1;
 
           allow delete: if false;
         }

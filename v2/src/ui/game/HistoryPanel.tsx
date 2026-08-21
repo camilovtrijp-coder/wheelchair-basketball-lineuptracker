@@ -37,6 +37,16 @@ export interface HistoryPanelProps {
    */
   deleteError?: boolean;
   /**
+   * PR 7.2c, externe review op PR #65 (P1 — "een late client verliest zijn
+   * lokale bron niet stil"): aantal wedstrijden dat dit apparaat ZOJUIST als
+   * getombstoned leerde terwijl het zelf nog een lokale kopie had (zie
+   * `CompositeCompletedGameRepository`'s "Niet stil"-docstring). `undefined`
+   * (lokale modus) of `0` toont geen banner. `> 0` toont een dismissbare
+   * banner — `onDismissTombstoneNotice` wist 'm.
+   */
+  tombstoneNoticeCount?: number;
+  onDismissTombstoneNotice?: () => void;
+  /**
    * PR 7.2b: van de team-brede cloudhistoriequery afgeleide `SyncState` (zie
    * `CompositeCompletedGameRepository`/`FirestoreCompletedGameRepository`),
    * uitsluitend gevuld door `App` in cloud-modus. `undefined` (lokale modus)
@@ -104,6 +114,8 @@ export function HistoryPanel({
   saveError,
   deleteBlocked,
   deleteError,
+  tombstoneNoticeCount,
+  onDismissTombstoneNotice,
   syncStatuses,
   cloudSync,
   cloudReadError,
@@ -127,6 +139,26 @@ export function HistoryPanel({
       {t(lang, 'historyDeleteError')}
     </p>
   ) : null;
+
+  const tombstoneNoticeBanner =
+    tombstoneNoticeCount != null && tombstoneNoticeCount > 0 ? (
+      <p className="settings-error" role="status" data-testid="history-tombstone-notice">
+        {tombstoneNoticeCount === 1
+          ? t(lang, 'historyTombstoneNoticeSingular')
+          : t(lang, 'historyTombstoneNoticePlural').replace(
+              '{count}',
+              String(tombstoneNoticeCount),
+            )}{' '}
+        <button
+          type="button"
+          className="btn-outline"
+          data-testid="history-tombstone-notice-dismiss"
+          onClick={onDismissTombstoneNotice}
+        >
+          {t(lang, 'historyTombstoneDismissBtn')}
+        </button>
+      </p>
+    ) : null;
 
   // PR 7.2b, plan §C 7.2b werk 4: een cloud-leesfout mag nooit gelijk getoond
   // worden aan "geen wedstrijden" — aparte banner, lokale historie blijft
@@ -158,6 +190,7 @@ export function HistoryPanel({
         {errorBanner}
         {deleteBlockedBanner}
         {deleteErrorBanner}
+        {tombstoneNoticeBanner}
         {cloudReadErrorBanner}
         <div className="history-detail__actions">
           <button
@@ -236,6 +269,7 @@ export function HistoryPanel({
       {errorBanner}
       {deleteBlockedBanner}
       {deleteErrorBanner}
+      {tombstoneNoticeBanner}
       {cloudReadErrorBanner}
       {cloudSyncIndicator}
       {games.length === 0 ? (

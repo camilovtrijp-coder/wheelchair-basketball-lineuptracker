@@ -302,6 +302,56 @@ function validateCompletedGameFields(
   if (typeof game.useClassLimit !== 'boolean') {
     errors.push({ code: 'gameInvalid', detail: `field:useClassLimit:${label}` });
   }
+  errors.push(...validateCompletedGameTombstoneFields(game, label));
+  return errors;
+}
+
+/**
+ * PR 7.2c, externe review op PR #65 (P1): `revision`/`deletedAt`/`deletedBy`
+ * ontbreken op een back-up van vóór PR 7.2c — afwezigheid mag dus naar hun
+ * aanmaak-default genormaliseerd worden (zie `BackupCoordinator.
+ * writeCompletedGamesSection()`). Maar AANWEZIG-maar-fout-getypeerd moet
+ * fail-closed geweigerd worden, net als elk ander veld hierboven — vóór deze
+ * fix accepteerde `validateCompletedGameFields` bijvoorbeeld stilzwijgend
+ * `{revision:'bad', deletedAt:123, deletedBy:false}` (de `??`-normalisatie
+ * in `BackupCoordinator` vangt alleen `null`/`undefined` op, geen ander
+ * fout type), en `{revision:0, deletedAt:null, deletedBy:'uid'}` (een
+ * innerlijk inconsistente tombstone-status: wél een `deletedBy`, geen
+ * `deletedAt`) werd evenmin afgekeurd.
+ */
+function validateCompletedGameTombstoneFields(
+  game: Record<string, unknown>,
+  label: string,
+): BackupValidationError[] {
+  const errors: BackupValidationError[] = [];
+  if ('revision' in game) {
+    const revision = game.revision;
+    if (typeof revision !== 'number' || !Number.isInteger(revision) || revision < 0) {
+      errors.push({ code: 'gameInvalid', detail: `field:revision:${label}` });
+    }
+  }
+  const hasDeletedAt = 'deletedAt' in game;
+  const hasDeletedBy = 'deletedBy' in game;
+  const deletedAtValid =
+    !hasDeletedAt || game.deletedAt === null || typeof game.deletedAt === 'string';
+  const deletedByValid =
+    !hasDeletedBy || game.deletedBy === null || typeof game.deletedBy === 'string';
+  if (!deletedAtValid) {
+    errors.push({ code: 'gameInvalid', detail: `field:deletedAt:${label}` });
+  }
+  if (!deletedByValid) {
+    errors.push({ code: 'gameInvalid', detail: `field:deletedBy:${label}` });
+  }
+  if (deletedAtValid && deletedByValid && (hasDeletedAt || hasDeletedBy)) {
+    // Een tombstone is beide-of-geen-van-beide: `deletedAt` en `deletedBy`
+    // moeten samen `null` zijn (nooit getombstoned) of samen niet-`null`
+    // (getombstoned) — nooit één zonder de ander.
+    const deletedAtIsNull = !hasDeletedAt || game.deletedAt === null;
+    const deletedByIsNull = !hasDeletedBy || game.deletedBy === null;
+    if (deletedAtIsNull !== deletedByIsNull) {
+      errors.push({ code: 'gameInvalid', detail: `field:deletedTombstoneConsistency:${label}` });
+    }
+  }
   return errors;
 }
 

@@ -119,6 +119,24 @@ export async function readCompletedGameId(
   return games[0]!.id;
 }
 
+/**
+ * PR 7.2c: alle lokaal opgeslagen `CompletedGame.id`'s voor dit org/team
+ * (leeg als er nog niets/niet meer staat) — i.t.t. `readCompletedGameId()`
+ * hierboven (die het NIEUWSTE item pakt en gooit bij een lege array) faalt
+ * dit niet op een lege lijst: nuttig om te bewijzen dat een ID NIET (meer)
+ * lokaal aanwezig is, bijv. na een tombstone die dit apparaat leerde.
+ */
+export async function readLocalCompletedGameIds(
+  page: Page,
+  orgId: string,
+  teamId: string,
+): Promise<string[]> {
+  const key = completedGamesStorageKey(orgId, teamId);
+  const raw = await page.evaluate((storageKey) => localStorage.getItem(storageKey), key);
+  if (!raw) return [];
+  return (JSON.parse(raw) as Array<{ id: string }>).map((g) => g.id);
+}
+
 export async function readGameSyncStatus(page: Page): Promise<string | null> {
   const el = page.getByTestId('game-sync-status-indicator');
   if ((await el.count()) === 0) return null;

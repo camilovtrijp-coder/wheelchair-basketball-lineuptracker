@@ -18,6 +18,7 @@ import {
 import {
   finishGameWithOneSegment,
   readCompletedGameId,
+  readLocalCompletedGameIds,
   seedPilotRoster,
   startTrackedGame,
 } from './gameSyncFixtures';
@@ -84,4 +85,84 @@ test('apparaat A verwijdert (tombstone) een afgeronde wedstrijd; apparaat B ziet
   } finally {
     await second.context.close();
   }
+});
+
+// PR 7.2c, externe review op PR #65 (P1 — het letterlijke 7.2c-
+// acceptatiecriterium "een late client verliest zijn lokale bron niet stil
+// en de zichtbare status verklaart wat herstel vraagt"): dit dekt het
+// scenario dat de test hierboven NIET dekt — een apparaat dat de wedstrijd
+// AL lokaal had (het heeft 'm zelf afgerond), offline gaat, en pas NA een
+// tombstone door een ander apparaat weer online komt. Bewijst: (1) de lokale
+// kopie verdwijnt uit localStorage zodra dit apparaat de tombstone leert
+// (geen resurrectie NA reconnect, en geen stille state die achterblijft), en
+// (2) een zichtbare banner verklaart WAAROM ("verwijderd door een
+// teamgenoot"), i.p.v. het item gewoon te laten verdwijnen.
+test("apparaat A (offline, had de wedstrijd al lokaal) leert bij reconnect dat apparaat B 'm intussen tombstoned heeft — lokale bron verdwijnt niet stil, banner verklaart waarom", async ({
+  browser,
+  page,
+  context,
+}) => {
+  const identity = await registerPilotCoach(page, 'tombstone-late');
+  const team = await seedPilotTeam(identity, 'tombstone-late');
+  await seedPilotRoster(team);
+
+  await openPilotTeam(page, team);
+  await startTrackedGame(page);
+  await finishGameWithOneSegment(page);
+  const completedId = await readCompletedGameId(page, team.orgId, team.teamId);
+
+  await expect(page.getByTestId(`history-sync-status-${completedId}`)).toHaveAttribute(
+    'data-status',
+    'gesynchroniseerd',
+    { timeout: 20_000 },
+  );
+  await expect(await readLocalCompletedGameIds(page, team.orgId, team.teamId)).toContain(
+    completedId,
+  );
+
+  // Apparaat A gaat offline — MET de wedstrijd nog gewoon lokaal aanwezig.
+  await context.setOffline(true);
+
+  // Apparaat B: onafhankelijke browsercontext/Firestore-verbinding, dezelfde
+  // coach-identiteit (rules vereisen alleen de rol, niet een specifiek
+  // apparaat) — tombstonet het item terwijl apparaat A niets kan weten.
+  const second = await openSecondDevice(browser, identity, team);
+  try {
+    await second.page.getByTestId('nav-history').click();
+    await second.page.getByTestId(`history-item-${completedId}`).click();
+    second.page.once('dialog', (dialog) => dialog.accept());
+    await second.page.getByTestId('history-delete-btn').click();
+    await expect(second.page.getByTestId('history-back-btn')).toHaveCount(0, {
+      timeout: 20_000,
+    });
+  } finally {
+    await second.context.close();
+  }
+
+  // Apparaat A reconnect — GEEN reload: bewijst dat de al-actieve
+  // `onSnapshot()`-listener zelf, zonder handmatig herladen, de tombstone
+  // oppikt zodra het netwerk terugkomt (zelfde patroon als
+  // `offline-reload-cache-write-second-client.spec.ts` test 3).
+  await context.setOffline(false);
+
+  // (1) Niet stil: de banner verschijnt en verklaart WAAROM (taal-
+  // onafhankelijk gecontroleerd — de standaard browserlocale in deze suite
+  // is en-US, zie `i18n/detect.ts`, dus de gerenderde tekst is Engels).
+  await expect(page.getByTestId('history-tombstone-notice')).toBeVisible({ timeout: 20_000 });
+  await expect(page.getByTestId('history-tombstone-notice')).toContainText('deleted by a teammate');
+
+  // (2) Geen resurrectie: het item verdwijnt uit de zichtbare lijst.
+  await expect(page.getByTestId(`history-item-${completedId}`)).toHaveCount(0);
+
+  // (3) Geen stille achtergebleven bron: de lokale kopie is daadwerkelijk
+  // opgeruimd, niet alleen uit de gerenderde lijst gefilterd.
+  expect(await readLocalCompletedGameIds(page, team.orgId, team.teamId)).not.toContain(completedId);
+
+  // (4) Overleeft een volledige reload — geen in-memory-only staat. Reload
+  // reset de UI naar het standaard-tabblad, dus eerst weer naar Historie.
+  await page.reload();
+  await expect(page.locator('.app-title')).toHaveText(team.teamName, { timeout: 10_000 });
+  await page.getByTestId('nav-history').click();
+  await expect(page.getByTestId(`history-item-${completedId}`)).toHaveCount(0);
+  expect(await readLocalCompletedGameIds(page, team.orgId, team.teamId)).not.toContain(completedId);
 });

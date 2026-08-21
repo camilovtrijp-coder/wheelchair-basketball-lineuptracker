@@ -51,6 +51,17 @@ function assertSegments(field: string, value: unknown): SegmentDocument[] {
  * bookkeeping (net als `GameDocument.updatedAt`) voor cache-/
  * serveractualiteit op een tweede apparaat (PR 7.2b) — geen domeinveld, dus
  * niet aanwezig op `CompletedGame` zelf.
+ *
+ * Backward-compat (externe review op PR #65, P1): elk document dat vóór
+ * PR 7.2c is aangemaakt (PR 7.2a/7.2b-schema) mist `revision`/`deletedAt`/
+ * `deletedBy` volledig — die velden bestonden toen nog niet. `fromFirestore()`
+ * behandelt AFWEZIGHEID (`undefined`) van deze drie velden daarom als hun
+ * aanmaak-default (`revision:0`, `deletedAt:null`, `deletedBy:null`) i.p.v.
+ * fail-closed te weigeren; een AANWEZIG-maar-fout-getypeerd veld blijft wél
+ * fail-closed (`assertInteger`/`assertNullableTimestamp`/`assertNullableString`).
+ * `firestore.rules`' tombstone-`allow update` past dezelfde
+ * `('revision' in resource.data) ? ... : 0`-defaulting toe (zie daar), zodat
+ * ook een legacy-document zonder migratiestap getombstoned kan worden.
  */
 export interface CompletedGameDocument {
   organizationId: string;
@@ -102,9 +113,18 @@ export const completedGameConverter: FirestoreDataConverter<CompletedGameDocumen
       periodLabel: assertString(TYPE, 'periodLabel', data.periodLabel),
       useClassLimit: assertBoolean(TYPE, 'useClassLimit', data.useClassLimit),
       syncedAt: assertTimestamp(TYPE, 'syncedAt', data.syncedAt),
-      revision: assertInteger(TYPE, 'revision', data.revision),
-      deletedAt: assertNullableTimestamp(TYPE, 'deletedAt', data.deletedAt),
-      deletedBy: assertNullableString(TYPE, 'deletedBy', data.deletedBy),
+      // Backward-compat met PR 7.2a/7.2b-documenten (zie de klassendocstring
+      // hierboven): AFWEZIG → aanmaak-default; AANWEZIG-maar-fout-getypeerd
+      // blijft fail-closed via de bestaande assert-helpers.
+      revision: data.revision === undefined ? 0 : assertInteger(TYPE, 'revision', data.revision),
+      deletedAt:
+        data.deletedAt === undefined
+          ? null
+          : assertNullableTimestamp(TYPE, 'deletedAt', data.deletedAt),
+      deletedBy:
+        data.deletedBy === undefined
+          ? null
+          : assertNullableString(TYPE, 'deletedBy', data.deletedBy),
     };
   },
 };

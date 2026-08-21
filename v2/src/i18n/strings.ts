@@ -140,6 +140,11 @@ const nl = {
     'Deze wedstrijd is nog niet naar de cloud gesynchroniseerd. Wacht tot de synchronisatie is voltooid en probeer het daarna opnieuw.',
   historyDeleteError:
     'Verwijderen is niet gelukt. Controleer je verbinding en probeer het opnieuw.',
+  historyTombstoneNoticeSingular:
+    '1 afgeronde wedstrijd is verwijderd door een teamgenoot op een ander apparaat.',
+  historyTombstoneNoticePlural:
+    '{count} afgeronde wedstrijden zijn verwijderd door een teamgenoot op een ander apparaat.',
+  historyTombstoneDismissBtn: 'Negeren',
   exportShareBtn: 'Exporteren/Delen',
   // PR 6.4: Stats-tab. Strings gespiegeld van v1 (index.html
   // `stats[A-Z]*`-verten) zodat een vertaler beide talen tegelijk kan
@@ -452,6 +457,10 @@ const en = {
   deleteBlockedPendingSync:
     "This game hasn't synced to the cloud yet. Wait for sync to complete and try again.",
   historyDeleteError: 'Deleting failed. Check your connection and try again.',
+  historyTombstoneNoticeSingular: '1 finished game was deleted by a teammate on another device.',
+  historyTombstoneNoticePlural:
+    '{count} finished games were deleted by a teammate on another device.',
+  historyTombstoneDismissBtn: 'Dismiss',
   exportShareBtn: 'Export/Share',
 
   // PR 6.4: Stats-tab. See NL block for rationale; v1 parity.

@@ -204,6 +204,49 @@ describe('domain/backup/validate — validateBackupData (plan §C.5/§G.3-4)', (
     expect(validateBackupData({ completedGames: [completedGame()] })).toEqual([]);
   });
 
+  // PR 7.2c, externe review op PR #65 (P1): revision/deletedAt/deletedBy
+  // mogen bij AFWEZIGHEID naar hun aanmaak-default genormaliseerd worden
+  // (backward-compat met back-ups van vóór PR 7.2c), maar AANWEZIG-maar-
+  // fout-getypeerd moet fail-closed geweigerd worden. Letterlijke
+  // reviewerprobes.
+  it('aanwezige maar fout-getypeerde tombstonevelden worden geweigerd (revision niet-numeriek, deletedAt niet-string, deletedBy niet-string)', () => {
+    const raw = { ...completedGame(), revision: 'bad', deletedAt: 123, deletedBy: false };
+    const errors = validateBackupData({ completedGames: [raw as unknown as CompletedGame] });
+    expect(errors.some((e) => e.detail === 'field:revision:game:0')).toBe(true);
+    expect(errors.some((e) => e.detail === 'field:deletedAt:game:0')).toBe(true);
+    expect(errors.some((e) => e.detail === 'field:deletedBy:game:0')).toBe(true);
+  });
+
+  it('een negatieve revision wordt geweigerd', () => {
+    const raw = { ...completedGame(), revision: -4, deletedAt: 'not-iso', deletedBy: 'uid' };
+    const errors = validateBackupData({ completedGames: [raw as unknown as CompletedGame] });
+    expect(errors.some((e) => e.detail === 'field:revision:game:0')).toBe(true);
+  });
+
+  it('een inconsistente tombstonestatus (deletedBy zonder deletedAt) wordt geweigerd', () => {
+    const raw = { ...completedGame(), revision: 0, deletedAt: null, deletedBy: 'uid' };
+    const errors = validateBackupData({ completedGames: [raw as unknown as CompletedGame] });
+    expect(errors.some((e) => e.detail === 'field:deletedTombstoneConsistency:game:0')).toBe(true);
+  });
+
+  it('een geldig getombstoned item (deletedAt + deletedBy beide gezet) is geldig', () => {
+    const raw = {
+      ...completedGame(),
+      revision: 1,
+      deletedAt: '2026-01-05T00:00:00.000Z',
+      deletedBy: 'uid-alice',
+    };
+    expect(validateBackupData({ completedGames: [raw as unknown as CompletedGame] })).toEqual([]);
+  });
+
+  it('ontbrekende revision/deletedAt/deletedBy zijn GEEN fout (backward-compat, worden bij import genormaliseerd)', () => {
+    const raw = completedGame() as unknown as Record<string, unknown>;
+    delete raw.revision;
+    delete raw.deletedAt;
+    delete raw.deletedBy;
+    expect(validateBackupData({ completedGames: [raw as unknown as CompletedGame] })).toEqual([]);
+  });
+
   // Herreview op PR #52 (aug. 2026): twee wedstrijden met hetzelfde `id`
   // (of dezelfde `sourceGameId`) binnen ÉÉN payload werden niet
   // gedetecteerd — `replaceAll()` zou zo'n interne botsing zonder waarschuwing

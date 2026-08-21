@@ -462,3 +462,72 @@ describe('CompositeCompletedGameRepository — resurrectie-preventie (PR 7.2c)',
     expect(repo.list().map((g) => g.id)).toEqual(['still-here']);
   });
 });
+
+// PR 7.2c, externe review op PR #65 (P1 — "een late client verliest zijn
+// lokale bron niet stil"): `subscribe()`'s derde, optionele `onNext`-
+// argument moet exact de ID's dragen die dit apparaat OP DEZE notificatie
+// voor het eerst als getombstoned leerde terwijl het zelf nog een lokale
+// kopie had — nooit gevuld op een andere notificatie.
+describe('CompositeCompletedGameRepository — "niet stil" tombstone-notificatie (PR 7.2c)', () => {
+  it('geeft de ID door als de eerste cloud-snapshot direct een tombstone toont voor een lokaal item', () => {
+    const local = new FakeLocalRepo();
+    local.add(completedGame({ id: 'stale-local' }));
+    const cloud = new FakeCloudSource();
+    const repo = new CompositeCompletedGameRepository(local, cloud, new FakeCloudWriter());
+    const calls: Array<readonly string[] | undefined> = [];
+    repo.subscribe((_r, _s, removed) => calls.push(removed));
+    cloud.emit([
+      completedGame({
+        id: 'stale-local',
+        deletedAt: '2026-01-05T00:00:00.000Z',
+        deletedBy: 'uid-alice',
+      }),
+    ]);
+    expect(calls).toEqual([undefined, ['stale-local']]);
+  });
+
+  it('geeft GEEN ID door voor een getombstoned cloud-item dat dit apparaat nooit lokaal had', () => {
+    const local = new FakeLocalRepo();
+    const cloud = new FakeCloudSource();
+    const repo = new CompositeCompletedGameRepository(local, cloud, new FakeCloudWriter());
+    const calls: Array<readonly string[] | undefined> = [];
+    repo.subscribe((_r, _s, removed) => calls.push(removed));
+    cloud.emit([
+      completedGame({
+        id: 'never-local',
+        deletedAt: '2026-01-05T00:00:00.000Z',
+        deletedBy: 'uid-alice',
+      }),
+    ]);
+    expect(calls).toEqual([undefined, undefined]);
+  });
+
+  it('geeft GEEN ID meer door op een VOLGENDE, ongewijzigde cloud-snapshot (alleen op de transitie zelf)', () => {
+    const local = new FakeLocalRepo();
+    local.add(completedGame({ id: 'stale-local' }));
+    const cloud = new FakeCloudSource();
+    const repo = new CompositeCompletedGameRepository(local, cloud, new FakeCloudWriter());
+    const calls: Array<readonly string[] | undefined> = [];
+    repo.subscribe((_r, _s, removed) => calls.push(removed));
+    const tombstoned = completedGame({
+      id: 'stale-local',
+      deletedAt: '2026-01-05T00:00:00.000Z',
+      deletedBy: 'uid-alice',
+    });
+    cloud.emit([tombstoned]);
+    cloud.emit([tombstoned]);
+    expect(calls).toEqual([undefined, ['stale-local'], undefined]);
+  });
+
+  it('geeft GEEN ID door bij een eigen tombstone()-aanroep (dat is geen "late"/verrassende leergebeurtenis)', async () => {
+    const local = new FakeLocalRepo();
+    local.add(completedGame({ id: 'synced-1' }));
+    const cloud = new FakeCloudSource();
+    const repo = new CompositeCompletedGameRepository(local, cloud, new FakeCloudWriter());
+    const calls: Array<readonly string[] | undefined> = [];
+    repo.subscribe((_r, _s, removed) => calls.push(removed));
+    cloud.emit([completedGame({ id: 'synced-1' })]);
+    await repo.tombstone('synced-1', 'uid-alice');
+    expect(calls.every((c) => c === undefined)).toBe(true);
+  });
+});

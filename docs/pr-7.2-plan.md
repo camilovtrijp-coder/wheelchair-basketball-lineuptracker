@@ -310,6 +310,49 @@ het volledige bestandenoverzicht):
   Volledige `test:e2e:auth`-suite (58 specs, inclusief de nieuwe tombstone-e2e)
   groen tegen de echte Firebase Auth-/Firestore-emulator.
 
+**Externe review, eerste ronde (PR #65)** — drie P1's, alle drie opgelost:
+
+- P1: back-upvalidatie accepteerde aanwezige-maar-fout-getypeerde
+  `revision`/`deletedAt`/`deletedBy` (bijv. `revision:'bad'`, of een
+  inconsistente `{deletedAt:null, deletedBy:'uid'}`). Opgelost:
+  `validateCompletedGameTombstoneFields()` in `domain/backup/validate.ts`
+  valideert deze drie velden nu fail-closed zodra ze AANWEZIG zijn (integer
+  ≥0 / string-of-null / string-of-null, plus een beide-of-geen-
+  consistentiecheck) — afwezigheid blijft geen fout (backward-compat met
+  back-ups van vóór PR 7.2c). Regressies via zowel `validateBackupData()`
+  direct als de publieke `parseBackupPayload()`-pijplijn (bewijst nul writes).
+- P1: een `completedGames`-document van vóór PR 7.2c (PR 7.2a/7.2b-schema)
+  mist `revision`/`deletedAt`/`deletedBy` volledig — de strikte converter
+  weigerde zo'n document (routeert de hele cloudquery naar `onError`), en de
+  tombstone-rules-regel kon het nooit tombstonen (`resource.data.revision`/
+  `resource.data.deletedAt` op een ontbrekend veld gooit een evaluatiefout,
+  geen `0`/`null`). Opgelost: `completedGameConverter.fromFirestore()`
+  behandelt AFWEZIGHEID nu als de aanmaak-default; firestore.rules'
+  tombstone-`allow update` gebruikt `('veld' in resource.data) ? ... : default`
+  voor dezelfde defaulting. Bewezen met een nieuwe rules-testgroep (legacy
+  document seeden, lezen, tombstonen — inhoud blijft byte-identiek) en een
+  converter-unittest.
+- P1: het late/offline-clientpad was niet end-to-end bewezen, en de
+  proactieve lokale opruiming in `CompositeCompletedGameRepository` gaf geen
+  zichtbare status — in strijd met het letterlijke acceptatiecriterium "een
+  late client verliest zijn lokale bron niet stil en de zichtbare status
+  verklaart wat herstel vraagt". Opgelost: `subscribe()` geeft nu een derde,
+  optioneel argument door aan `onNext` met de ID's die dit apparaat OP DEZE
+  notificatie voor het eerst als getombstoned leerde terwijl het zelf nog
+  een lokale kopie had; `App.tsx` toont dit als een dismissbare
+  `HistoryPanel`-banner ("N wedstrijden verwijderd door een teamgenoot").
+  Bewezen met een nieuwe e2e-test: apparaat A rondt af (lokale kopie +
+  server-bevestigd), gaat offline, apparaat B (zelfde identiteit, andere
+  browsercontext) tombstonet het item, apparaat A reconnect ZONDER reload
+  (bewijst dat de al-actieve listener het zelf oppikt) — banner verschijnt,
+  item verdwijnt uit de lijst, localStorage bevat het ID niet meer, en dat
+  blijft zo na een volledige reload.
+
+Na deze ronde: volledige `firebase-base`-rules-suite 193 tests (was 189),
+volledige v2-suite 678 tests (was 662), volledige `test:e2e:auth`-suite 59
+specs (was 58) — allemaal groen tegen de echte emulator, plus typecheck,
+eslint, prettier en productiebuild.
+
 ## D. Stopregels
 
 - Geen harde delete of automatische purge zonder PR 8.3-besluit.

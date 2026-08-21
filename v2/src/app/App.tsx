@@ -240,6 +240,13 @@ export function App({
   /** PR 7.2c: los van `gameSaveError` — een mislukte tombstone-verwijderpoging
    * (Rules, revisiemismatch, netwerk), geen mislukte lokale opslag. */
   const [deleteError, setDeleteError] = useState(false);
+  /** PR 7.2c, externe review op PR #65 (P1): aantal wedstrijden dat dit
+   * apparaat ZOJUIST als getombstoned leerde terwijl het zelf nog een
+   * niet-getombstoned lokale kopie had (zie `CompositeCompletedGameRepository`'s
+   * "Niet stil"-docstring). Transiënt, puur in-sessie — geen aparte
+   * opslag/persisted state nodig; de gebruiker bevestigt de banner (of
+   * navigeert weg en terug) om 'm te wissen. */
+  const [tombstoneNoticeCount, setTombstoneNoticeCount] = useState(0);
   // PR 7.2b: cloudkant van de historie-lijst-actualiteit — los van
   // `finalizeStatuses` (dat is per-item, alleen voor door DIT apparaat
   // afgeronde wedstrijden). `null` = nog geen enkele cloud-snapshot
@@ -285,10 +292,17 @@ export function App({
   useEffect(() => {
     if (typeof completedGameRepo.subscribe !== 'function') return undefined;
     return completedGameRepo.subscribe(
-      (result, cloudSync) => {
+      (result, cloudSync, removedByCloudTombstone) => {
         setCompletedGames(result.games);
         setCompletedGamesCloudSync(cloudSync);
         if (result.status !== 'error') setCompletedGamesCloudError(false);
+        // PR 7.2c, externe review op PR #65 (P1): dit apparaat leerde
+        // ZOJUIST dat een teamgenoot een wedstrijd verwijderde die híer nog
+        // als lokale kopie stond — nooit stilzwijgend laten verdwijnen, zie
+        // `CompositeCompletedGameRepository`'s "Niet stil"-docstring.
+        if (removedByCloudTombstone && removedByCloudTombstone.length > 0) {
+          setTombstoneNoticeCount((prev) => prev + removedByCloudTombstone.length);
+        }
       },
       () => {
         // Externe review op PR #64: een oude, mogelijk 'gesynchroniseerd'-
@@ -1094,6 +1108,8 @@ export function App({
             saveError={gameSaveError}
             deleteBlocked={deleteBlocked}
             deleteError={deleteError}
+            tombstoneNoticeCount={repositories.gameSync ? tombstoneNoticeCount : undefined}
+            onDismissTombstoneNotice={() => setTombstoneNoticeCount(0)}
             syncStatuses={repositories.gameSync ? finalizeStatuses : undefined}
             cloudSync={repositories.gameSync ? completedGamesCloudSync : undefined}
             cloudReadError={repositories.gameSync ? completedGamesCloudError : undefined}

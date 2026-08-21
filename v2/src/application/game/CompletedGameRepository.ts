@@ -88,9 +88,22 @@ export interface CompletedGameRepository {
    * geschiedenis wordt geladen", niet als "gesynchroniseerd" of "leeg".
    * Geeft een unsubscribe-functie terug (zelfde vorm als
    * `AsyncSettingsRepository.subscribe()`/`AsyncRosterRepository.subscribe()`).
+   *
+   * PR 7.2c, externe review op PR #65 (P1 — "een late client verliest zijn
+   * lokale bron niet stil"): `onNext`'s derde, optionele argument draagt de
+   * ID's van items die dit apparaat OP DEZE notificatie voor het eerst als
+   * getombstoned leerde terwijl het zelf nog een niet-getombstoned lokale
+   * kopie had — nooit gevuld op een gewone add/remove/replaceAll-notificatie
+   * of een cloud-update zonder zo'n transitie. `app/App.tsx` gebruikt dit om
+   * een zichtbare banner te tonen i.p.v. het item stilzwijgend te laten
+   * verdwijnen.
    */
   subscribe?(
-    onNext: (result: CompletedGamesReadResult, cloudSync: SyncState | null) => void,
+    onNext: (
+      result: CompletedGamesReadResult,
+      cloudSync: SyncState | null,
+      removedByCloudTombstone?: readonly string[],
+    ) => void,
     onError?: (error: unknown) => void,
   ): () => void;
   /**
