@@ -116,7 +116,30 @@ export class FirestoreCompletedGameRepository implements CloudCompletedGameSourc
       this.queryRef(),
       { includeMetadataChanges: true },
       (snap: QuerySnapshot<CompletedGameDocument>) => {
-        const games = snap.docs.map((d) => completedGameFromDocument(d.id, d.data()));
+        // Externe review op PR #64: `d.data()` roept de converter aan
+        // (`completedGameConverter.fromFirestore()`), die een
+        // `DocumentValidationError` gooit bij een malformed/corrupt
+        // serverdocument (zie `firebase-base/documents/validation.ts`). Zonder
+        // deze try/catch ontsnapt die throw ONGEVANGEN uit deze
+        // `onSnapshot`-callback — de meegegeven `onError` wordt dan nooit
+        // aangeroepen (Firestore's SDK roept die uitsluitend bij een eigen
+        // query-/verbindingsfout aan, niet bij een fout die de aanroeper zelf
+        // in de succes-callback maakt), dus de bedoelde cloudfoutbanner blijft
+        // dan onterecht weg. Eén malformed document behandelt dit bewust als
+        // een fout voor de HELE snapshot (niet per-item gefilterd, in
+        // tegenstelling tot `LocalStorageCompletedGameRepository`): deze
+        // collectie is Rules-/schema-afgedwongen bij het schrijven, dus een
+        // malformed document duidt op een echte anomalie die zichtbaar hoort
+        // te worden — `CompositeCompletedGameRepository` laat de LOKALE
+        // historie intussen gewoon zichtbaar (zie de eigen docstring van
+        // die klasse).
+        let games: CompletedGame[];
+        try {
+          games = snap.docs.map((d) => completedGameFromDocument(d.id, d.data()));
+        } catch (error) {
+          if (onError) onError(error);
+          return;
+        }
         onNext(games, deriveSyncState(snap.metadata));
       },
       (err) => {

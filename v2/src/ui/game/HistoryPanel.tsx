@@ -125,8 +125,12 @@ export function HistoryPanel({
     </p>
   ) : null;
 
+  // Externe review op PR #64: defense-in-depth naast `App`'s eigen reset van
+  // `completedGamesCloudSync` naar `null` bij een cloudfout — toon nooit een
+  // (mogelijk verouderde) syncbadge tegelijk met de foutbanner, ook niet als
+  // een toekomstige aanroeper `cloudSync` per ongeluk niet resette.
   const cloudSyncIndicator =
-    cloudSync != null ? (
+    cloudSync != null && !cloudReadError ? (
       <SyncStatusIndicator
         lang={lang}
         status={cloudSync.status}

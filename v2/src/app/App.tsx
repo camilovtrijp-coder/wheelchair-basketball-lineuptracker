@@ -287,7 +287,16 @@ export function App({
         setCompletedGamesCloudSync(cloudSync);
         if (result.status !== 'error') setCompletedGamesCloudError(false);
       },
-      () => setCompletedGamesCloudError(true),
+      () => {
+        // Externe review op PR #64: een oude, mogelijk 'gesynchroniseerd'-
+        // `completedGamesCloudSync` bleef hier eerder onaangeroerd staan bij
+        // een cloudfout (bijv. een ingetrokken membership) — de UI toonde dan
+        // tegelijk de foutbanner ÉN een verouderde groene syncindicator.
+        // `null` is hier correct, niet misleidend: sinds de laatste succesvolle
+        // snapshot is de actualiteit van de cloudkant per definitie onbekend.
+        setCompletedGamesCloudError(true);
+        setCompletedGamesCloudSync(null);
+      },
     );
   }, [completedGameRepo]);
 

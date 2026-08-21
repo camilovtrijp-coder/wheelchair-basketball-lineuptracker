@@ -231,6 +231,55 @@ describe('CompositeCompletedGameRepository — subscribe', () => {
     expect(onErrorB).toHaveBeenCalledWith(failure);
   });
 
+  it(
+    'externe review PR #64 (plan §C 7.2b werk 5, "ongecachete context"): een cloudquery-' +
+      'fout (bijv. een malformed serverdocument of een ingetrokken membership) laat de ' +
+      'lokale historie gewoon zichtbaar in list()/safeList() — een leesfout is nooit ' +
+      'gelijk aan lege historie',
+    () => {
+      const local = new FakeLocalRepo();
+      local.add(completedGame({ id: 'local-1' }));
+      local.add(completedGame({ id: 'local-2' }));
+      const cloud = new FakeCloudSource();
+      const repo = new CompositeCompletedGameRepository(local, cloud);
+      const results: CompletedGamesReadResult[] = [];
+      repo.subscribe((result) => results.push(result));
+      cloud.emitError(new Error('permission-denied (revoked membership)'));
+      const last = results.at(-1)!;
+      expect(last.status).toBe('ok');
+      expect(last.games.map((g) => g.id).sort()).toEqual(['local-1', 'local-2']);
+    },
+  );
+
+  it(
+    'plan §C 7.2b werk 5 ("offline cached history"): een cache-only cloud-emissie ' +
+      '(fromCache:true) levert toch de samengevoegde lijst en geeft fromCache door, zodat ' +
+      'de UI cache-/serveractualiteit kan tonen',
+    () => {
+      const local = new FakeLocalRepo();
+      local.add(completedGame({ id: 'local-1', date: '2026-01-01T00:00:00.000Z' }));
+      const cloud = new FakeCloudSource();
+      const repo = new CompositeCompletedGameRepository(local, cloud);
+      let lastSync: SyncState | null = null;
+      let lastGames: string[] = [];
+      repo.subscribe((result, sync) => {
+        lastSync = sync;
+        lastGames = result.games.map((g) => g.id);
+      });
+      const cachedOffline: SyncState = {
+        status: 'lokaal-beschikbaar',
+        fromCache: true,
+        hasPendingWrites: false,
+      };
+      cloud.emit(
+        [completedGame({ id: 'cloud-cached-1', date: '2026-01-02T00:00:00.000Z' })],
+        cachedOffline,
+      );
+      expect(lastSync).toEqual(cachedOffline);
+      expect(lastGames.sort()).toEqual(['cloud-cached-1', 'local-1']);
+    },
+  );
+
   it('stopt de cloud-subscribe zodra de laatste abonnee zich afmeldt', () => {
     const local = new FakeLocalRepo();
     const cloud = new FakeCloudSource();

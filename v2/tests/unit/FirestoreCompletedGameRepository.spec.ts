@@ -146,6 +146,82 @@ describe('FirestoreCompletedGameRepository — subscribe', () => {
     expect(errors).toEqual([failure]);
   });
 
+  it(
+    'externe review PR #64: een malformed/corrupt document (d.data() gooit) crasht de ' +
+      'callback niet en gaat via onError, nooit via onNext',
+    () => {
+      const validationError = new Error(
+        'DocumentValidationError: completedGame.scoreFor ontbreekt',
+      );
+      (onSnapshot as Mock).mockImplementationOnce(
+        (
+          _ref: unknown,
+          _opts: unknown,
+          onNext: (snap: {
+            docs: Array<{ id: string; data: () => CompletedGameDocument }>;
+            metadata: { fromCache: boolean; hasPendingWrites: boolean };
+          }) => void,
+        ) => {
+          onNext({
+            docs: [
+              {
+                id: 'corrupt-1',
+                data: () => {
+                  throw validationError;
+                },
+              },
+            ],
+            metadata: { fromCache: false, hasPendingWrites: false },
+          });
+          return () => undefined;
+        },
+      );
+      const repo = new FirestoreCompletedGameRepository(fakeDb, 'org-1', 'team-1');
+      const seenGames: CompletedGame[][] = [];
+      const errors: unknown[] = [];
+      expect(() =>
+        repo.subscribe(
+          (games) => seenGames.push(games),
+          (err) => errors.push(err),
+        ),
+      ).not.toThrow();
+      expect(seenGames).toHaveLength(0);
+      expect(errors).toEqual([validationError]);
+    },
+  );
+
+  it(
+    'gelijknamige teams (verschillend orgId/teamId): elke repository-instantie bouwt een ' +
+      'eigen, onderscheiden padquery — geen naam-gebaseerde vermenging mogelijk',
+    () => {
+      (onSnapshot as Mock).mockImplementation(() => () => undefined);
+      new FirestoreCompletedGameRepository(fakeDb, 'org-rotterdam', 'team-u23').subscribe(
+        () => undefined,
+      );
+      new FirestoreCompletedGameRepository(fakeDb, 'org-nbb', 'team-u23').subscribe(
+        () => undefined,
+      );
+      expect(collection).toHaveBeenNthCalledWith(
+        1,
+        fakeDb,
+        'organizations',
+        'org-rotterdam',
+        'teams',
+        'team-u23',
+        'completedGames',
+      );
+      expect(collection).toHaveBeenNthCalledWith(
+        2,
+        fakeDb,
+        'organizations',
+        'org-nbb',
+        'teams',
+        'team-u23',
+        'completedGames',
+      );
+    },
+  );
+
   it('geeft de unsubscribe-functie van onSnapshot door', () => {
     const unsub = vi.fn();
     (onSnapshot as Mock).mockReturnValueOnce(unsub);

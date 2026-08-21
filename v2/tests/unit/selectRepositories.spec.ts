@@ -129,10 +129,45 @@ describe('infrastructure/repositories/selectRepositories', () => {
     if (a.kind === 'cloud' && b.kind === 'cloud') {
       expect(a.settings).not.toBe(b.settings);
       expect(a.roster).not.toBe(b.roster);
+      // PR 7.2b/externe review PR #64: idem voor `completedGames` — een
+      // contextwissel (nieuwe `selectRepositories()`-aanroep, zie AuthGate's
+      // `repositories`-useMemo) mag nooit dezelfde `CompositeCompletedGameRepository`-
+      // instantie hergebruiken; anders zou team B's Historie-tab nog even de
+      // gecachte cloud-state (of een lopend `subscribe()`-abonnement) van
+      // team A kunnen tonen vóórdat de nieuwe cloudquery is aangeslagen.
+      expect(a.completedGames).not.toBe(b.completedGames);
     } else {
       throw new Error('Beide selecties moeten cloud zijn');
     }
   });
+
+  it(
+    'gelijknamige teams (verschillend orgId/teamId): completedGames-selectie is per context ' +
+      'gescoped, geen gedeelde instantie ondanks identieke teamnaam',
+    () => {
+      const teamRotterdamU23: SelectedContext = { orgId: 'org-rotterdam', teamId: 'team-u23' };
+      const teamNbbU23: SelectedContext = { orgId: 'org-nbb', teamId: 'team-u23' };
+      const a = selectRepositories({
+        authUser: user,
+        selectedContext: teamRotterdamU23,
+        trustedDevice: true,
+        firestoreDb: fakeDb(),
+        storage: fakeStorage(),
+      });
+      const b = selectRepositories({
+        authUser: user,
+        selectedContext: teamNbbU23,
+        trustedDevice: true,
+        firestoreDb: fakeDb(),
+        storage: fakeStorage(),
+      });
+      if (a.kind === 'cloud' && b.kind === 'cloud') {
+        expect(a.completedGames).not.toBe(b.completedGames);
+      } else {
+        throw new Error('Beide selecties moeten cloud zijn');
+      }
+    },
+  );
 });
 
 // Bewust geen import van vi hierboven — vi wordt enkel gebruikt voor spy-asserts in
