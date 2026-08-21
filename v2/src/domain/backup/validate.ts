@@ -307,17 +307,30 @@ function validateCompletedGameFields(
 }
 
 /**
- * PR 7.2c, externe review op PR #65 (P1): `revision`/`deletedAt`/`deletedBy`
- * ontbreken op een back-up van vóór PR 7.2c — afwezigheid mag dus naar hun
- * aanmaak-default genormaliseerd worden (zie `BackupCoordinator.
- * writeCompletedGamesSection()`). Maar AANWEZIG-maar-fout-getypeerd moet
- * fail-closed geweigerd worden, net als elk ander veld hierboven — vóór deze
- * fix accepteerde `validateCompletedGameFields` bijvoorbeeld stilzwijgend
- * `{revision:'bad', deletedAt:123, deletedBy:false}` (de `??`-normalisatie
- * in `BackupCoordinator` vangt alleen `null`/`undefined` op, geen ander
- * fout type), en `{revision:0, deletedAt:null, deletedBy:'uid'}` (een
- * innerlijk inconsistente tombstone-status: wél een `deletedBy`, geen
- * `deletedAt`) werd evenmin afgekeurd.
+ * Zelfde strikte ISO-round-trip-eis als firebase's
+ * `assertIsoTimestampString()` (`firebase/src/documents/validation.ts`):
+ * `Date.parse()` accepteert ook niet-ISO-formaten en normaliseert een
+ * onmogelijke kalenderdatum stilzwijgend, dus alleen een waarde die exact
+ * gelijk is aan `new Date(Date.parse(s)).toISOString()` telt als geldig.
+ */
+function isIsoTimestampString(value: string): boolean {
+  const ms = Date.parse(value);
+  return !Number.isNaN(ms) && new Date(ms).toISOString() === value;
+}
+
+/**
+ * PR 7.2c, externe review op PR #65 (P1, twee rondes): `revision`/
+ * `deletedAt`/`deletedBy` ontbreken op een back-up van vóór PR 7.2c —
+ * afwezigheid mag dus naar hun aanmaak-default genormaliseerd worden (zie
+ * `BackupCoordinator.writeCompletedGamesSection()`). Maar AANWEZIG-maar-
+ * fout-getypeerd moet fail-closed geweigerd worden, net als elk ander veld
+ * hierboven. Eerste ronde loste `{revision:'bad', deletedAt:123,
+ * deletedBy:false}` en de inconsistente-tombstone-combinatie op, maar
+ * controleerde `deletedAt` alleen op `typeof === 'string'` — een
+ * niet-ISO-string zoals `'not-iso'` (of een lege `deletedBy: ''`) kwam er
+ * zo alsnog doorheen. `deletedAt` moet nu een geldige ISO-timestamp-string
+ * zijn (zelfde round-trip-eis als de firebase-converter) en `deletedBy` een
+ * NIET-lege string.
  */
 function validateCompletedGameTombstoneFields(
   game: Record<string, unknown>,
@@ -333,9 +346,13 @@ function validateCompletedGameTombstoneFields(
   const hasDeletedAt = 'deletedAt' in game;
   const hasDeletedBy = 'deletedBy' in game;
   const deletedAtValid =
-    !hasDeletedAt || game.deletedAt === null || typeof game.deletedAt === 'string';
+    !hasDeletedAt ||
+    game.deletedAt === null ||
+    (typeof game.deletedAt === 'string' && isIsoTimestampString(game.deletedAt));
   const deletedByValid =
-    !hasDeletedBy || game.deletedBy === null || typeof game.deletedBy === 'string';
+    !hasDeletedBy ||
+    game.deletedBy === null ||
+    (typeof game.deletedBy === 'string' && game.deletedBy.length > 0);
   if (!deletedAtValid) {
     errors.push({ code: 'gameInvalid', detail: `field:deletedAt:${label}` });
   }

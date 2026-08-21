@@ -216,10 +216,43 @@ describe('domain/backup/parse — v2-envelopepijplijn, tombstonevelden (externe 
     expect(parsed.data).toEqual({});
   });
 
-  it('een negatieve revision met een niet-ISO deletedAt wordt geweigerd (nul writes)', () => {
+  it('een negatieve revision wordt geweigerd (geïsoleerd, nul writes)', () => {
     const parsed = parseBackupPayload(
       v2Envelope({
-        completedGames: [v2CompletedGame({ revision: -4, deletedAt: 'not-iso', deletedBy: 'uid' })],
+        completedGames: [
+          v2CompletedGame({
+            revision: -4,
+            deletedAt: '2026-01-05T00:00:00.000Z',
+            deletedBy: 'uid',
+          }),
+        ],
+      }),
+    );
+    expect(parsed.errors.length).toBeGreaterThan(0);
+    expect(parsed.data).toEqual({});
+  });
+
+  // Tweede externe-reviewronde op PR #65 (P1): de vorige probe combineerde
+  // `deletedAt:'not-iso'` met `revision:-4` en bewees zo niets over de
+  // ISO-timestampcontrole zelf (de revisiefout alleen was al genoeg om te
+  // slagen) — `deletedAt` werd toen slechts op `typeof === 'string'`
+  // gecontroleerd. Geïsoleerd hier, met verder geldige tombstonevelden.
+  it('een niet-ISO deletedAt wordt geweigerd (geïsoleerd, nul writes)', () => {
+    const parsed = parseBackupPayload(
+      v2Envelope({
+        completedGames: [v2CompletedGame({ revision: 1, deletedAt: 'not-iso', deletedBy: 'uid' })],
+      }),
+    );
+    expect(parsed.errors.length).toBeGreaterThan(0);
+    expect(parsed.data).toEqual({});
+  });
+
+  it('een lege deletedBy wordt geweigerd (geïsoleerd, nul writes)', () => {
+    const parsed = parseBackupPayload(
+      v2Envelope({
+        completedGames: [
+          v2CompletedGame({ revision: 1, deletedAt: '2026-01-05T00:00:00.000Z', deletedBy: '' }),
+        ],
       }),
     );
     expect(parsed.errors.length).toBeGreaterThan(0);

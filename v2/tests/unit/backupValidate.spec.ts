@@ -217,10 +217,48 @@ describe('domain/backup/validate — validateBackupData (plan §C.5/§G.3-4)', (
     expect(errors.some((e) => e.detail === 'field:deletedBy:game:0')).toBe(true);
   });
 
-  it('een negatieve revision wordt geweigerd', () => {
-    const raw = { ...completedGame(), revision: -4, deletedAt: 'not-iso', deletedBy: 'uid' };
+  it('een negatieve revision wordt geweigerd (geïsoleerd, met verder geldige tombstonevelden)', () => {
+    const raw = {
+      ...completedGame(),
+      revision: -4,
+      deletedAt: '2026-01-05T00:00:00.000Z',
+      deletedBy: 'uid',
+    };
     const errors = validateBackupData({ completedGames: [raw as unknown as CompletedGame] });
     expect(errors.some((e) => e.detail === 'field:revision:game:0')).toBe(true);
+  });
+
+  // Tweede externe-reviewronde op PR #65 (P1): de vorige versie van deze
+  // probe combineerde `deletedAt:'not-iso'` met `revision:-4`, waardoor de
+  // test alleen slaagde vanwege de revisiefout en niets over de
+  // ISO-timestampcontrole bewees — `deletedAt` werd toen slechts op
+  // `typeof === 'string'` gecontroleerd, niet op geldig ISO-formaat.
+  it('een niet-ISO deletedAt wordt geweigerd (geïsoleerd, met verder geldige tombstonevelden)', () => {
+    const raw = { ...completedGame(), revision: 1, deletedAt: 'not-iso', deletedBy: 'uid' };
+    const errors = validateBackupData({ completedGames: [raw as unknown as CompletedGame] });
+    expect(errors.some((e) => e.detail === 'field:deletedAt:game:0')).toBe(true);
+  });
+
+  it('een niet-ISO deletedAt met een onmogelijke kalenderdatum wordt geweigerd (round-trip-eis, geen kale Date.parse())', () => {
+    const raw = {
+      ...completedGame(),
+      revision: 1,
+      deletedAt: '2026-02-31T00:00:00.000Z',
+      deletedBy: 'uid',
+    };
+    const errors = validateBackupData({ completedGames: [raw as unknown as CompletedGame] });
+    expect(errors.some((e) => e.detail === 'field:deletedAt:game:0')).toBe(true);
+  });
+
+  it('een lege deletedBy wordt geweigerd (geïsoleerd, met verder geldige tombstonevelden)', () => {
+    const raw = {
+      ...completedGame(),
+      revision: 1,
+      deletedAt: '2026-01-05T00:00:00.000Z',
+      deletedBy: '',
+    };
+    const errors = validateBackupData({ completedGames: [raw as unknown as CompletedGame] });
+    expect(errors.some((e) => e.detail === 'field:deletedBy:game:0')).toBe(true);
   });
 
   it('een inconsistente tombstonestatus (deletedBy zonder deletedAt) wordt geweigerd', () => {
