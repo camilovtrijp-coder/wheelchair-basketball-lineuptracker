@@ -13,58 +13,12 @@ import {
   registerPilotCoach,
   seedPilotTeam,
 } from './twoDeviceFixtures';
-import { seedPilotRoster, startTrackedGame, waitForGameSyncStatus } from './gameSyncFixtures';
-import { completedGamesStorageKey } from '../../src/infrastructure/game/LocalStorageCompletedGameRepository';
-
-/**
- * Scoort één segment en rondt de wedstrijd af (v1-/PR-6.3-pariteit:
- * 'Afronden' blijft uitgeschakeld zonder minstens één opgeslagen segment).
- *
- * Wacht bewust na de score-acties en na het segment op 'gesynchroniseerd'
- * (net als `game-sync-second-client-readback.spec.ts`) vóórdat 'Afronden'
- * geklikt wordt: `GameSyncCoordinator.finalize()` roept intern zelf óók
- * `sync()` aan (zie de docstring bij `finalize()`), volledig los van
- * `app/App.tsx`'s eigen `gameSyncInFlightRef`-serialisatie voor de LIVE
- * trackingsync. Een 'Afronden'-klik terwijl de vorige live-sync-cyclus voor
- * dezelfde wedstrijd nog in-flight is, laat zo twee gelijktijdige
- * `patchSnapshot()`-aanroepen op dezelfde verwachte `revision` racen — de
- * verliezer wordt door firestore.rules' optimistische-concurrencycheck
- * afgewezen (`request.resource.data.revision == resource.data.revision + 1`)
- * en zet het checkpoint op `actie-nodig`. Dat is een bestaande
- * coordinator-brede racevoorwaarde (PR 7.1c/7.2a-scope, niet 7.2b) — dit
- * bestand test de cloudhistorie-samenvoeging, dus ontwijkt 'm hier door
- * dezelfde wacht-tussen-acties-conventie als de rest van de suite te volgen
- * i.p.v. 'm te fixen.
- */
-async function finishGameWithOneSegment(page: import('@playwright/test').Page): Promise<void> {
-  await page.getByTestId('score-plus3-for').click();
-  await page.getByTestId('score-plus1-against').click();
-  await waitForGameSyncStatus(page, 'gesynchroniseerd');
-
-  await page.getByTestId('end-min').selectOption('5');
-  await page.getByTestId('save-segment-btn').click();
-  await expect(page.locator('[data-testid^="segment-item-"]')).toHaveCount(1);
-  await waitForGameSyncStatus(page, 'gesynchroniseerd');
-
-  await expect(page.getByTestId('finish-game-btn')).toBeEnabled();
-  page.once('dialog', (dialog) => dialog.accept());
-  await page.getByTestId('finish-game-btn').click();
-  // 'Afronden' schakelt automatisch naar Historie met het net afgeronde item open.
-  await expect(page.getByTestId('history-back-btn')).toBeVisible();
-}
-
-async function readCompletedGameId(
-  page: import('@playwright/test').Page,
-  orgId: string,
-  teamId: string,
-): Promise<string> {
-  const key = completedGamesStorageKey(orgId, teamId);
-  const raw = await page.evaluate((storageKey) => localStorage.getItem(storageKey), key);
-  if (!raw) throw new Error('geen afgeronde wedstrijd gevonden in localStorage');
-  const games = JSON.parse(raw) as Array<{ id: string }>;
-  if (games.length === 0) throw new Error('completedGames-array is leeg');
-  return games[0]!.id;
-}
+import {
+  finishGameWithOneSegment,
+  readCompletedGameId,
+  seedPilotRoster,
+  startTrackedGame,
+} from './gameSyncFixtures';
 
 test('apparaat B ziet een op apparaat A afgeronde wedstrijd zonder reload, via de echte Historie-UI en echte Rules', async ({
   browser,

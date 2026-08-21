@@ -2,10 +2,11 @@
 // van twoDeviceFixtures.ts/adminFixtures.ts: Firebase Admin voor het seeden/
 // direct verifiëren van serverdata (buiten de UI om, buiten Security Rules
 // om), de UI zelf voor de daadwerkelijke sync-cyclus via GameSyncCoordinator.
-import type { Page } from '@playwright/test';
+import { expect, type Page } from '@playwright/test';
 import { adminDb } from './adminFixtures';
 import type { PilotTeam } from './twoDeviceFixtures';
 import { activeGameStorageKey } from '../../src/infrastructure/game/LocalStorageGameRepository';
+import { completedGamesStorageKey } from '../../src/infrastructure/game/LocalStorageCompletedGameRepository';
 import { gameSyncCheckpointStorageKey } from '../../src/infrastructure/game/LocalStorageGameSyncCheckpointRepository';
 
 /** Minimale, geldige 5-spelersroster — genoeg om canStart()/startGame() te halen. */
@@ -59,6 +60,63 @@ export async function startTrackedGame(page: Page): Promise<void> {
   await page.waitForSelector('[data-testid="game-start-btn"]', { timeout: 10_000 });
   await page.getByTestId('game-start-btn').click();
   await page.waitForSelector('[data-testid="score-plus1-for"]', { timeout: 10_000 });
+}
+
+/**
+ * Scoort één segment en rondt de wedstrijd af (v1-/PR-6.3-pariteit:
+ * 'Afronden' blijft uitgeschakeld zonder minstens één opgeslagen segment).
+ * Geëxtraheerd uit `game-sync-second-client-completed-history.spec.ts`
+ * (PR 7.2b) zodat andere completedGames-e2e-specs 'm kunnen hergebruiken.
+ *
+ * Wacht bewust na de score-acties en na het segment op 'gesynchroniseerd'
+ * (net als `game-sync-second-client-readback.spec.ts`) vóórdat 'Afronden'
+ * geklikt wordt: `GameSyncCoordinator.finalize()` roept intern zelf óók
+ * `sync()` aan (zie de docstring bij `finalize()`), volledig los van
+ * `app/App.tsx`'s eigen `gameSyncInFlightRef`-serialisatie voor de LIVE
+ * trackingsync. Een 'Afronden'-klik terwijl de vorige live-sync-cyclus voor
+ * dezelfde wedstrijd nog in-flight is, laat zo twee gelijktijdige
+ * `patchSnapshot()`-aanroepen op dezelfde verwachte `revision` racen — de
+ * verliezer wordt door firestore.rules' optimistische-concurrencycheck
+ * afgewezen (`request.resource.data.revision == resource.data.revision + 1`)
+ * en zet het checkpoint op `actie-nodig`. Dat is een bestaande
+ * coordinator-brede racevoorwaarde (PR 7.1c/7.2a-scope, geen 7.2b-scope) —
+ * de completedGames-e2e-specs ontwijken 'm hier door dezelfde
+ * wacht-tussen-acties-conventie als de rest van de suite te volgen i.p.v.
+ * 'm te fixen.
+ */
+export async function finishGameWithOneSegment(page: Page): Promise<void> {
+  await page.getByTestId('score-plus3-for').click();
+  await page.getByTestId('score-plus1-against').click();
+  await waitForGameSyncStatus(page, 'gesynchroniseerd');
+
+  await page.getByTestId('end-min').selectOption('5');
+  await page.getByTestId('save-segment-btn').click();
+  await expect(page.locator('[data-testid^="segment-item-"]')).toHaveCount(1);
+  await waitForGameSyncStatus(page, 'gesynchroniseerd');
+
+  await expect(page.getByTestId('finish-game-btn')).toBeEnabled();
+  page.once('dialog', (dialog) => dialog.accept());
+  await page.getByTestId('finish-game-btn').click();
+  // 'Afronden' schakelt automatisch naar Historie met het net afgeronde item open.
+  await expect(page.getByTestId('history-back-btn')).toBeVisible();
+}
+
+/**
+ * Leest het lokaal opgeslagen `CompletedGame.id` van het eerst opgeslagen
+ * item (nieuwste eerst, v1-pariteit) rechtstreeks uit localStorage — het ID
+ * is clientgegenereerd, dus niet vooraf voorspelbaar vanuit de test.
+ */
+export async function readCompletedGameId(
+  page: Page,
+  orgId: string,
+  teamId: string,
+): Promise<string> {
+  const key = completedGamesStorageKey(orgId, teamId);
+  const raw = await page.evaluate((storageKey) => localStorage.getItem(storageKey), key);
+  if (!raw) throw new Error('geen afgeronde wedstrijd gevonden in localStorage');
+  const games = JSON.parse(raw) as Array<{ id: string }>;
+  if (games.length === 0) throw new Error('completedGames-array is leeg');
+  return games[0]!.id;
 }
 
 export async function readGameSyncStatus(page: Page): Promise<string | null> {

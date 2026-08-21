@@ -122,6 +122,60 @@ het volledige bestandenoverzicht):
   `lokaal-beschikbaar` teruggeven voor een wedstrijd die per definitie alleen
   via een geslaagde serverquery zichtbaar werd.
 
+**Externe review, eerste ronde (PR #64)** — twee code-bevindingen, beide
+opgelost:
+
+- P1: `FirestoreCompletedGameRepository.subscribe()` liet `d.data()` (de
+  converter) ongevangen; een malformed/corrupt cloud-document crashte zo de
+  `onSnapshot`-succescallback in plaats van via `onError` te lopen, waardoor
+  de bedoelde cloudfoutbanner onterecht kon wegblijven. Opgelost: `d.data()`
+  in try/catch, routeert naar `onError`.
+- P2: een cloudfout liet de oude, mogelijk `'gesynchroniseerd'`
+  `completedGamesCloudSync` onaangeroerd staan naast de nieuwe foutbanner —
+  tegenstrijdige UI. Opgelost: `App.tsx` reset 'm naar `null` bij een
+  cloudfout; `HistoryPanel` toont de syncindicator bovendien nooit meer
+  tegelijk met `cloudReadError` (defense-in-depth).
+- Daarnaast: unit-testdekking toegevoegd voor gelijknamige teams, offline
+  gecachte historie (`fromCache`-doorgifte) en ongecachete context/cloudfout
+  — via `FakeCloudSource`/`FakeLocalRepo`, niet tegen de echte emulator.
+
+**Externe review, tweede ronde (PR #64)** — terechte kanttekening dat de
+eerste ronde het acceptatiepoort-werk 5 alleen met unit-testfakes had
+gedekt, niet met echte Firestore-/Playwright-tests. Drie nieuwe
+emulator-e2e-bestanden tegen de échte Firestore-/Auth-emulator lossen dit
+op, met één genuanceerde bevinding onderweg:
+
+- `tests/e2e-auth/completed-history-offline-cache.spec.ts`:
+  1. Server-bevestigde historie overleeft een volledige offline reload
+     (`context.setOffline(true)` + `page.reload()`), met een eerlijke
+     `'lokaal-beschikbaar'`-syncindicator (nooit het misleidende
+     `'gesynchroniseerd'` van vóór het offline gaan).
+  2. **Bevinding**: het door de reviewer beschreven scenario ("settings/
+     roster gecachet, Historie-tab nog nooit bezocht, offline") bleek bij
+     het schrijven van de test NIET reproduceerbaar — `app/App.tsx`
+     abonneert de completedGames-cloudquery in een `useEffect` die
+     uitsluitend van de organisatie/teamcontext afhangt, niet van welk
+     tabblad open staat, dus start 'm altijd GELIJKTIJDIG met settings/
+     roster. Er bestaat dus geen bereikbare toestand waarin settings/roster
+     wél gecachet zijn maar completedGames niet. De test bewijst dit nu
+     positief: een wedstrijd die vóór het eerste bezoek al op de server
+     staat (Admin-geseed) is na een simpel team-bezoek — zonder ooit de
+     Historie-tab te openen — al offline beschikbaar.
+  3. Het WEL bereikbare "nooit-gecachete-context"-equivalent (team zelf nog
+     nooit geopend) is exact gate #27 criterium 4
+     (`offline-reload-cache-write-second-client.spec.ts`); hier expliciet
+     herbevestigd vanuit de completedGames-hoek: `OfflineUncachedScreen`
+     blokkeert de Historie-tab volledig, ook als er een echte
+     serverwedstrijd (Admin-geseed) bestaat die anders misleidend als "geen
+     wedstrijden" getoond had kunnen worden.
+- `tests/e2e-auth/completed-history-same-named-teams-switch.spec.ts`: één
+  apparaat wisselt tussen twee volledig gescheiden teams met IDENTIEKE naam
+  (verschillende orgId/teamId) — bewijst dat elke context uitsluitend zijn
+  eigen historie toont, nooit stale data van het andere team, ook niet
+  kortstondig tijdens de wissel.
+- `finishGameWithOneSegment()`/`readCompletedGameId()` geëxtraheerd naar
+  `gameSyncFixtures.ts` zodat de drie completedGames-e2e-bestanden ze delen.
+
 ### 7.2c — tombstones en pilotbewijs
 
 1. Implementeer verwijderen als toegestane tombstone-fieldpatch; de bevroren
