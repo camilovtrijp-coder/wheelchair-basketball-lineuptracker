@@ -54,7 +54,7 @@ export interface CloudRepositorySelection {
    * PR 7.3b (docs/pr-7.3-plan.md §C 7.3b werk 2/3): read-only tegenhanger van
    * `gameSync` — abonneert op "is er nu een ANDERE actieve schrijver voor dit
    * team" en levert, zo ja, een puur afgeleide `ActiveGame`-weergave (zie
-   * `domain/game/liveView.ts`). `app/App.tsx` gebruikt dit alleen terwijl dit
+   * `application/game/liveView.ts`). `app/App.tsx` gebruikt dit alleen terwijl dit
    * apparaat zelf geen lokale `'tracking'`-wedstrijd heeft.
    */
   gameViewer: GameViewerGateway;

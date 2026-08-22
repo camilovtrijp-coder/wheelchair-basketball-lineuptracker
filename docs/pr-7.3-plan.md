@@ -226,8 +226,18 @@ apparaten convergeren na reconnect zonder dubbele of terugwerkende actie.
   wijziging hier nodig — 7.3b's eigen scope bleek zuiver de LEESKANT (werk
   2/3) plus een teambrede single-writer-gate die tijdens de implementatie
   aan het licht kwam (zie hieronder).
-- `v2/src/domain/game/liveView.ts` (nieuw, puur): de inverse van
-  `projectGameForCloud.ts`. `deriveLiveGameActions()` reconstrueert
+- `v2/src/application/game/liveView.ts` (nieuw, puur): de inverse van
+  `projectGameForCloud.ts` — bewust in `application/game/`, niet
+  `domain/game/`: dit bestand importeert `firebase-base/documents`-typen, en
+  `domain/` moet dependency-vrij blijven (bewaakt door
+  `firebase-spike/tsconfig.json`, dat `../v2/src/domain/**/*.ts` tegen zijn
+  eigen geïsoleerde tsconfig compileert). **Ontdekt door CI, niet vooraf**:
+  een eerste versie zette dit bestand per ongeluk in `domain/game/`, wat de
+  `firebase-spike`-CI-job liet falen op "Cannot find module
+  'firebase-base/documents'" (plus twee cascaderende exhaustiveness-/
+  implicit-any-fouten, allebei een gevolg van diezelfde onopgeloste import)
+  — gefixt door het bestand naar `application/game/` te verplaatsen, exact
+  symmetrisch aan waar `projectGameForCloud.ts` al staat. `deriveLiveGameActions()` reconstrueert
   `ActiveGame.actions` uit een (mogelijk out-of-order/gedupliceerd
   geleverde) verzameling `GameActionEnvelopeDocument`'s — dedupliceert op
   `actionId`, sorteert op `(writerEpoch, sequence, actionId)` zodat een

@@ -52,7 +52,7 @@ import type {
   ActiveGameViewerSnapshot,
   GameViewerGateway,
 } from '../../application/game/GameViewerGateway';
-import { buildLiveGameView, pickActiveGameCandidate } from '../../domain/game/liveView';
+import { buildLiveGameView, pickActiveGameCandidate } from '../../application/game/liveView';
 import { deriveSyncState } from '../../domain/syncState';
 
 /** Defensieve bovengrens — normaliter matcht de discoveryquery 0 of 1

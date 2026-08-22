@@ -36,7 +36,7 @@ export interface LiveTrackingPanelProps {
   /**
    * PR 7.3b (docs/pr-7.3-plan.md §C 7.3b werk 3): aanwezig wanneer `game` een
    * puur afgeleide read-only weergave is van ANDERMANS actieve cloudwedstrijd
-   * (`app/App.tsx`'s `activeCloudGame`, via `domain/game/liveView.ts`
+   * (`app/App.tsx`'s `activeCloudGame`, via `application/game/liveView.ts`
    * `buildLiveGameView()`) — nooit tegelijk met `canWrite=true`. Vervangt de
    * generieke `gameReadOnly`-banner door een specifiekere melding ("wordt
    * live gescoord op een ander apparaat") plus de cache-/serveractualiteit

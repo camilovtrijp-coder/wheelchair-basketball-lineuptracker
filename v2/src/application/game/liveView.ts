@@ -1,10 +1,16 @@
 // PR 7.3b (docs/pr-7.3-plan.md §C 7.3b werk 2): pure reconstructie van een
 // live, read-only `ActiveGame`-weergave uit cloudgegevens — de inverse van
-// `application/game/projectGameForCloud.ts` (die `ActiveGame` NAAR de
-// cloudvorm projecteert). Geen Firestore-import hier: dit bestand levert
-// alleen de zuivere afleidingen die `infrastructure/game/
-// FirestoreGameViewerGateway.ts` (de daadwerkelijke live-abonnementen) en de
-// UI nodig hebben, in dezelfde geest als `domain/game/writerClaim.ts`.
+// `projectGameForCloud.ts` in ditzelfde bestandsdeel (die `ActiveGame` NAAR
+// de cloudvorm projecteert). Bewust in `application/game/`, niet
+// `domain/game/`: dit bestand importeert `firebase-base/documents`-typen,
+// en `domain/` moet dependency-vrij blijven (`firebase-spike/tsconfig.json`
+// bewaakt dat expliciet door `../v2/src/domain/**/*.ts` tegen zijn eigen,
+// geïsoleerde tsconfig te compileren — een import hiervandaan naar
+// `firebase-base` faalt daar met "Cannot find module", precies zoals
+// `projectGameForCloud.ts` hiernaast om dezelfde reden al in
+// `application/` staat, niet in `domain/`). Levert alleen de zuivere
+// afleidingen die `infrastructure/game/FirestoreGameViewerGateway.ts` (de
+// daadwerkelijke live-abonnementen) en de UI nodig hebben.
 //
 // Een niet-writende viewer (apparaat B, C, ...) heeft geen eigen lokale
 // `ActiveGame` voor de wedstrijd die apparaat A actief bijhoudt — v2 kent per
@@ -22,7 +28,7 @@ import type {
   GameDocument,
   SegmentDocument,
 } from 'firebase-base/documents';
-import type { ActiveGame, GameAction, Segment } from './types';
+import type { ActiveGame, GameAction, Segment } from '../../domain/game/types';
 
 function segmentFromDocument(doc: SegmentDocument): Segment {
   return {

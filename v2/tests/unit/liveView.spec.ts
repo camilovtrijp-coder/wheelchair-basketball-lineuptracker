@@ -5,7 +5,7 @@ import {
   deriveLiveGameActions,
   pickActiveGameCandidate,
   type ActiveGameCandidate,
-} from '../../src/domain/game/liveView';
+} from '../../src/application/game/liveView';
 import { deriveGameHistory } from '../../src/domain/game/tracking';
 import type { GameAction, GamePlayer, Segment } from '../../src/domain/game/types';
 
@@ -93,7 +93,7 @@ function gameDoc(overrides: Partial<GameDocument> = {}): GameDocument {
   };
 }
 
-describe('domain/game/liveView (PR 7.3b §C 7.3b werk 2)', () => {
+describe('application/game/liveView (PR 7.3b §C 7.3b werk 2)', () => {
   describe('deriveLiveGameActions', () => {
     it('vertaalt elk actietype exact terug (inverse van projectActionPayload())', () => {
       const envelopes: GameActionEnvelopeDocument[] = [

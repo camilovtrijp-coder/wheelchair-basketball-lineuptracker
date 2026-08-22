@@ -17,7 +17,7 @@ import type { SyncState } from '../../domain/syncState';
  * actief aan het scoren, of dit apparaat kan het door een leesfout niet
  * bepalen — zie `subscribeActiveGame()`'s `onError`). `'active'`: een andere
  * schrijver is bezig; `game` is de puur afgeleide read-only
- * `ActiveGame`-weergave (`domain/game/liveView.ts` `buildLiveGameView()`),
+ * `ActiveGame`-weergave (`application/game/liveView.ts` `buildLiveGameView()`),
  * geschikt om ongewijzigd aan `LiveTrackingPanel` door te geven met
  * `canWrite=false`. `sync` spiegelt exact `domain/syncState.ts`'s
  * `SyncState` — cache-/serveractualiteit voor dezelfde
