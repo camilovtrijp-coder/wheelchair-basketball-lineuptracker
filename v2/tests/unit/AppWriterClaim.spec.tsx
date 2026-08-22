@@ -50,7 +50,9 @@ class ImmediateSettingsRepository implements AsyncSettingsRepository {
   async reset(): Promise<never> {
     throw new Error('niet gebruikt in deze test');
   }
-  subscribe(onNext: (settings: Settings & Record<string, unknown>, sync: SyncState) => void): () => void {
+  subscribe(
+    onNext: (settings: Settings & Record<string, unknown>, sync: SyncState) => void,
+  ): () => void {
     onNext({ ...DEFAULT_SETTINGS, teamName: 'Team Claim' }, SYNCED);
     return () => undefined;
   }

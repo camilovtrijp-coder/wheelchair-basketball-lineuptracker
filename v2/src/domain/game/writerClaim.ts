@@ -54,12 +54,7 @@ export function deriveWriterClaimState(
  * kunnen tonen i.p.v. één generieke foutmelding.
  */
 export type WriterClaimErrorCode =
-  | 'offline'
-  | 'stale-revision'
-  | 'already-claimed'
-  | 'role-denied'
-  | 'game-completed'
-  | 'unknown';
+  'offline' | 'stale-revision' | 'already-claimed' | 'role-denied' | 'game-completed' | 'unknown';
 
 export interface WriterClaimFailure {
   ok: false;

@@ -115,10 +115,13 @@ describe('ui/game/GameSetupPanel: pre-game cloudclaim-gate (PR 7.3a)', () => {
     ['role-denied', 'Je hebt geen rechten om deze wedstrijd te claimen.'],
     ['game-completed', 'Deze wedstrijd is al afgerond.'],
     ['unknown', 'Claimen is mislukt. Probeer opnieuw.'],
-  ] as const)('cloudmodus, blocked (%s): toont de bijbehorende NL-herstelmelding', (code, label) => {
-    const { getByTestId } = renderPanel({ kind: 'blocked', code });
-    expect(getByTestId('game-start-btn').textContent).toBe(label);
-  });
+  ] as const)(
+    'cloudmodus, blocked (%s): toont de bijbehorende NL-herstelmelding',
+    (code, label) => {
+      const { getByTestId } = renderPanel({ kind: 'blocked', code });
+      expect(getByTestId('game-start-btn').textContent).toBe(label);
+    },
+  );
 
   it('roster-redenen gaan altijd voor cloudclaim-redenen', () => {
     // Vier geldige spelers (< 5) i.p.v. nul — leeg roster (vp.length === 0)

@@ -55,7 +55,9 @@ describe('domain/game/writerClaim: deriveWriterClaimState (PR 7.3a)', () => {
   const self = { authorUid: 'uid-alice', deviceId: 'device-alice' };
 
   it('unclaimed als writerUid/deviceId beide null zijn', () => {
-    expect(deriveWriterClaimState({ writerUid: null, deviceId: null, writerEpoch: 0 }, self)).toEqual({
+    expect(
+      deriveWriterClaimState({ writerUid: null, deviceId: null, writerEpoch: 0 }, self),
+    ).toEqual({
       kind: 'unclaimed',
     });
   });
@@ -74,7 +76,10 @@ describe('domain/game/writerClaim: deriveWriterClaimState (PR 7.3a)', () => {
 
   it('other als een ANDER uid/apparaat de writer is', () => {
     expect(
-      deriveWriterClaimState({ writerUid: 'uid-bob', deviceId: 'device-bob', writerEpoch: 1 }, self),
+      deriveWriterClaimState(
+        { writerUid: 'uid-bob', deviceId: 'device-bob', writerEpoch: 1 },
+        self,
+      ),
     ).toEqual({
       kind: 'other',
       identity: { writerUid: 'uid-bob', deviceId: 'device-bob', writerEpoch: 1 },
@@ -103,7 +108,12 @@ describe('domain/game/writerClaim: gameStartBlockReason/canStartGame (PR 7.3a)',
       kind: 'roster',
       reason: 'needFivePlayers',
     });
-    expect(gameStartBlockReason(notReady, { kind: 'confirmed', identity: { writerUid: 'x', deviceId: 'y', writerEpoch: 0 } })).toEqual({
+    expect(
+      gameStartBlockReason(notReady, {
+        kind: 'confirmed',
+        identity: { writerUid: 'x', deviceId: 'y', writerEpoch: 0 },
+      }),
+    ).toEqual({
       kind: 'roster',
       reason: 'needFivePlayers',
     });

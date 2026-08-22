@@ -264,7 +264,8 @@ export class FirestoreGameCloudGateway implements GameCloudGateway {
       if (readback.exists()) {
         const data = readback.data();
         if (data.completedGameId != null) return { ok: false, code: 'game-completed', error };
-        if (data.revision !== expected.revision) return { ok: false, code: 'stale-revision', error };
+        if (data.revision !== expected.revision)
+          return { ok: false, code: 'stale-revision', error };
         if (expected.requireUnclaimed && data.writerUid != null) {
           return { ok: false, code: 'already-claimed', error };
         }
