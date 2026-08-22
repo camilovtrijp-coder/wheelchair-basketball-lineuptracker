@@ -59,12 +59,14 @@ export function projectSegment(segment: Segment) {
 /**
  * Projecteert identiteit/status, historische spelersnapshot en de actuele
  * draaivelden naar de parent-snapshotvorm. `revision`/`writerUid`/`deviceId`/
- * `writerEpoch` krijgen hier bewust vaste initiële waarden (0/`null`/`null`/0)
- * — de daadwerkelijke schrijver-/epochtoekenning is PR 7.3-scope; deze
- * functie levert alleen de vorm voor een eerste `ensureGame()`-create in
- * PR 7.1c. `scoreFor`/`scoreAgainst`/`segmentCount` komen uit
- * `deriveGameHistory()`, dezelfde afleiding als de lokale UI gebruikt — geen
- * tweede, eigen berekeningspad.
+ * `writerEpoch`/`claimedAt`/`lastWriterActivityAt` krijgen hier bewust vaste
+ * initiële waarden (0/`null`/`null`/0/`null`/`null`) — de daadwerkelijke
+ * schrijver-/epochtoekenning gebeurt via `GameCloudGateway.claimWriter()`/
+ * `takeoverWriter()` (PR 7.3a); deze functie levert alleen de vorm voor een
+ * eerste `ensureGame()`-create in PR 7.1c, altijd nog-ongeclaimd.
+ * `scoreFor`/`scoreAgainst`/`segmentCount` komen uit `deriveGameHistory()`,
+ * dezelfde afleiding als de lokale UI gebruikt — geen tweede, eigen
+ * berekeningspad.
  */
 export function projectGameSnapshot(game: ActiveGame): GameSnapshotProjection {
   const history = deriveGameHistory(game);
@@ -88,6 +90,8 @@ export function projectGameSnapshot(game: ActiveGame): GameSnapshotProjection {
     writerUid: null,
     deviceId: null,
     writerEpoch: 0,
+    claimedAt: null,
+    lastWriterActivityAt: null,
     revision: 0,
     createdAt: game.createdAt,
     startedAt: game.startedAt,
@@ -101,24 +105,28 @@ export function projectGameSnapshot(game: ActiveGame): GameSnapshotProjection {
 
 /**
  * Exacte "draaivelden"-subset uit ADR-002 §"Verduidelijkingen voor fase 7"
- * punt 4 (plus de afgeleide score-/segmentsnapshot en `phase`/`startedAt`) —
- * spiegelt precies de veldallowlist van firestore.rules' normale
- * game-updatepad (PR 7.1b, punt 10a). Nooit `organizationId`/`teamId`/
- * `players`/`opponent`/`competition`/`clockDown`/`limitStr`/`createdAt` (die
- * zijn na `ensureGame()`'s create onveranderlijk) en nooit `writerUid`/
- * `deviceId`/`writerEpoch`/`revision` (die beheert `GameSyncCoordinator`
- * zelf, zie de initiële-claimstap). Bevat bewust altijd de volledige subset,
- * ook velden die sinds de laatste patch niet gewijzigd zijn: Firestore
- * Rules' `diff(resource.data).affectedKeys()` reageert alleen op een
- * werkelijke waardewijziging in het resulterende document, dus een
- * ongewijzigd veld meesturen is een no-op voor de Rules-validatie en dit
- * spaart de coordinator een eigen "wat is er sinds de vorige patch
- * veranderd"-boekhouding uit — er is hooguit één actieve schrijver per
- * wedstrijd (het epoch/fencingcontract), dus er is geen ander apparaat dat
- * intussen een van deze velden onafhankelijk gewijzigd kan hebben.
+ * punt 4 (plus de afgeleide score-/segmentsnapshot, `phase`/`startedAt` en,
+ * sinds PR 7.3a, `lastWriterActivityAt`) — spiegelt precies de veldallowlist
+ * van firestore.rules' normale game-updatepad (PR 7.1b, punt 10a). Nooit
+ * `organizationId`/`teamId`/`players`/`opponent`/`competition`/`clockDown`/
+ * `limitStr`/`createdAt` (die zijn na `ensureGame()`'s create onveranderlijk)
+ * en nooit `writerUid`/`deviceId`/`writerEpoch`/`claimedAt`/`revision` (die
+ * beheert `GameCloudGateway.claimWriter()`/`takeoverWriter()` zelf, PR 7.3a).
+ * Bevat bewust altijd de volledige subset, ook velden die sinds de laatste
+ * patch niet gewijzigd zijn: Firestore Rules' `diff(resource.data).affectedKeys()`
+ * reageert alleen op een werkelijke waardewijziging in het resulterende
+ * document, dus een ongewijzigd veld meesturen is een no-op voor de
+ * Rules-validatie en dit spaart de coordinator een eigen "wat is er sinds de
+ * vorige patch veranderd"-boekhouding uit — er is hooguit één actieve
+ * schrijver per wedstrijd (het epoch/fencingcontract), dus er is geen ander
+ * apparaat dat intussen een van deze velden onafhankelijk gewijzigd kan
+ * hebben. `now` is de client-autoritatieve ISO-tijd voor
+ * `lastWriterActivityAt` — door de aanroeper berekend (net als elders in
+ * deze module) zodat deze functie zelf puur/deterministisch blijft.
  */
 export function projectGameSnapshotPatch(
   game: ActiveGame,
+  now: string,
 ): Pick<
   GameSnapshotProjection,
   | 'phase'
@@ -131,6 +139,7 @@ export function projectGameSnapshotPatch(
   | 'scoreAgainst'
   | 'segmentCount'
   | 'startedAt'
+  | 'lastWriterActivityAt'
 > {
   const snapshot = projectGameSnapshot(game);
   return {
@@ -144,6 +153,7 @@ export function projectGameSnapshotPatch(
     scoreAgainst: snapshot.scoreAgainst,
     segmentCount: snapshot.segmentCount,
     startedAt: snapshot.startedAt,
+    lastWriterActivityAt: now,
   };
 }
 

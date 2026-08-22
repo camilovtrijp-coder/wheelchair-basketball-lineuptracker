@@ -62,6 +62,7 @@ import type {
   GameSnapshotProjection,
   GameSnapshotWriteResult,
 } from '../../application/game/GameCloudGateway';
+import type { WriterClaimResult } from '../../domain/game/writerClaim';
 
 const DEFAULT_TIMEOUT_MS = 8000;
 
@@ -188,6 +189,7 @@ export class FirestoreGameCloudGateway implements GameCloudGateway {
           revision: data.revision,
           writerUid: data.writerUid,
           deviceId: data.deviceId,
+          writerEpoch: data.writerEpoch,
           completedGameId: data.completedGameId,
         };
       }
@@ -201,6 +203,7 @@ export class FirestoreGameCloudGateway implements GameCloudGateway {
         revision: snapshot.revision,
         writerUid: snapshot.writerUid,
         deviceId: snapshot.deviceId,
+        writerEpoch: snapshot.writerEpoch,
         completedGameId: snapshot.completedGameId,
       };
     } catch (createError) {
@@ -223,6 +226,7 @@ export class FirestoreGameCloudGateway implements GameCloudGateway {
             revision: data.revision,
             writerUid: data.writerUid,
             deviceId: data.deviceId,
+            writerEpoch: data.writerEpoch,
             completedGameId: data.completedGameId,
           };
         }
@@ -231,6 +235,152 @@ export class FirestoreGameCloudGateway implements GameCloudGateway {
       }
       return { ok: false, error: createError };
     }
+  }
+
+  /**
+   * Best-effort foutclassificatie voor `claimWriter()`/`takeoverWriter()`
+   * (PR 7.3a): een geweigerde `updateDoc()` komt van Firestore altijd terug
+   * als een kale permission-denied — deze readback onderscheidt WAAROM (voor
+   * de pre-game-gate/overname-UI se NL/EN-herstelactie per `WriterClaimErrorCode`,
+   * zie domain/game/writerClaim.ts). Geen garantie: de server-staat kan
+   * tussen de mislukte write en deze readback alweer veranderd zijn — in dat
+   * geval valt dit terug op de dichtstbijzijnde plausibele code, nooit een
+   * harde crash.
+   */
+  private async classifyClaimFailure(
+    ref: DocumentReference,
+    error: unknown,
+    expected: { revision: number; requireUnclaimed?: boolean; requireEpoch?: number },
+  ): Promise<WriterClaimResult> {
+    if (error instanceof GameSyncTimeoutError) {
+      return { ok: false, code: 'offline', error };
+    }
+    try {
+      const readback = await withTimeout(
+        getDoc(ref.withConverter(gameConverter)),
+        this.timeoutMs,
+        'classifyClaimFailure:readback',
+      );
+      if (readback.exists()) {
+        const data = readback.data();
+        if (data.completedGameId != null) return { ok: false, code: 'game-completed', error };
+        if (data.revision !== expected.revision) return { ok: false, code: 'stale-revision', error };
+        if (expected.requireUnclaimed && data.writerUid != null) {
+          return { ok: false, code: 'already-claimed', error };
+        }
+        if (expected.requireEpoch != null && data.writerEpoch !== expected.requireEpoch) {
+          return { ok: false, code: 'already-claimed', error };
+        }
+        // Document staat er precies zo bij als verwacht — de enige overgebleven
+        // plausibele weigeringsreden is dan de rol van de aanroeper zelf.
+        return { ok: false, code: 'role-denied', error };
+      }
+    } catch {
+      /* readback zelf faalde ook — val door naar 'unknown' hieronder */
+    }
+    return { ok: false, code: 'unknown', error };
+  }
+
+  /**
+   * PR 7.3a (docs/pr-7.3-plan.md §B/§C 7.3a werk 2): initiële claim, spiegelt
+   * firestore.rules' 10b-pad. Geen `runTransaction()` nodig: Firestore
+   * serialiseert schrijfacties per document en Rules herevalueren
+   * `resource.data` tegen de LAATSTE servertoestand bij elke write — een
+   * `revision`-mismatch (concurrency) of een `writerUid != null` (een ander
+   * apparaat won de claimrace) wordt daardoor al server-side geweigerd, exact
+   * dezelfde garantie als een client-transactie hier zou bieden (zie ook
+   * `patchSnapshot()` hierboven, die dezelfde redenering al toepast op de
+   * draaiveldpatch). De voorgaande `updateDoc()` slagen IS de
+   * serverbevestiging; geen aparte readback nodig voor het succespad.
+   */
+  async claimWriter(
+    organizationId: string,
+    teamId: string,
+    gameId: string,
+    writer: { authorUid: string; deviceId: string },
+    expectedRevision: number,
+    now: string,
+  ): Promise<WriterClaimResult> {
+    const ref = this.gameRef(organizationId, teamId, gameId);
+    const nextRevision = expectedRevision + 1;
+    try {
+      await withTimeout(
+        updateDoc(ref, {
+          writerUid: writer.authorUid,
+          deviceId: writer.deviceId,
+          claimedAt: now,
+          lastWriterActivityAt: now,
+          revision: nextRevision,
+          updatedAt: serverTimestamp(),
+        }),
+        this.timeoutMs,
+        'claimWriter:updateDoc',
+      );
+    } catch (error) {
+      return this.classifyClaimFailure(ref, error, {
+        revision: expectedRevision,
+        requireUnclaimed: true,
+      });
+    }
+    return {
+      ok: true,
+      // Een ongeclaimd document (writerUid == null) heeft per constructie
+      // altijd writerEpoch == 0 — epoch verandert uitsluitend via een 10d-
+      // overname, en die vereist juist een AL geclaimd document. Zie
+      // firestore.rules punt 18.
+      identity: { writerUid: writer.authorUid, deviceId: writer.deviceId, writerEpoch: 0 },
+      revision: nextRevision,
+      claimedAt: now,
+    };
+  }
+
+  /**
+   * PR 7.3a (docs/pr-7.3-plan.md §B/§C 7.3a werk 2): overname van een AL
+   * geclaimd document, spiegelt firestore.rules' 10d-pad — zelfde
+   * geen-transactie-redenering als `claimWriter()` hierboven. `expectedEpoch`
+   * is het epoch dat de aanroeper kende vóór de overnamebeslissing; de
+   * server-Rule eist dat het NIEUWE epoch daar exact 1 boven ligt, dus een
+   * race met een andere, inmiddels al gelukte overname wordt hier altijd
+   * geweigerd (nooit twee overnames die allebei "winnen").
+   */
+  async takeoverWriter(
+    organizationId: string,
+    teamId: string,
+    gameId: string,
+    writer: { authorUid: string; deviceId: string },
+    expectedEpoch: number,
+    expectedRevision: number,
+    now: string,
+  ): Promise<WriterClaimResult> {
+    const ref = this.gameRef(organizationId, teamId, gameId);
+    const nextRevision = expectedRevision + 1;
+    const nextEpoch = expectedEpoch + 1;
+    try {
+      await withTimeout(
+        updateDoc(ref, {
+          writerUid: writer.authorUid,
+          deviceId: writer.deviceId,
+          writerEpoch: nextEpoch,
+          claimedAt: now,
+          lastWriterActivityAt: now,
+          revision: nextRevision,
+          updatedAt: serverTimestamp(),
+        }),
+        this.timeoutMs,
+        'takeoverWriter:updateDoc',
+      );
+    } catch (error) {
+      return this.classifyClaimFailure(ref, error, {
+        revision: expectedRevision,
+        requireEpoch: expectedEpoch,
+      });
+    }
+    return {
+      ok: true,
+      identity: { writerUid: writer.authorUid, deviceId: writer.deviceId, writerEpoch: nextEpoch },
+      revision: nextRevision,
+      claimedAt: now,
+    };
   }
 
   async uploadActions(
@@ -309,6 +459,7 @@ export class FirestoreGameCloudGateway implements GameCloudGateway {
           revision: data.revision,
           writerUid: data.writerUid,
           deviceId: data.deviceId,
+          writerEpoch: data.writerEpoch,
           completedGameId: data.completedGameId,
         };
       }
@@ -320,6 +471,7 @@ export class FirestoreGameCloudGateway implements GameCloudGateway {
       revision: nextRevision,
       writerUid: patch.writerUid,
       deviceId: patch.deviceId,
+      writerEpoch: patch.writerEpoch,
       completedGameId: patch.completedGameId,
     };
   }
@@ -379,6 +531,7 @@ export class FirestoreGameCloudGateway implements GameCloudGateway {
           revision: data.revision,
           writerUid: data.writerUid,
           deviceId: data.deviceId,
+          writerEpoch: data.writerEpoch,
           completedGameId: data.completedGameId,
         };
       }

@@ -80,13 +80,27 @@ export function assertGamePlayers(field: string, value: unknown): GamePlayerDocu
  * zijn de "draaivelden" uit ADR-002 §"Verduidelijkingen voor fase 7" punt 4:
  * die worden met echte veldpatches geschreven, nooit als actielog-entry.
  * `writerUid`/`deviceId`/`writerEpoch` leggen het epoch/fencing-contract uit
- * hetzelfde ADR-punt 3 vast; de daadwerkelijke claim-/overnamelogica is
- * PR 7.3-scope, dit document draagt hier alleen de velden. `revision` is een
- * monotone teller voor optimistische concurrency-controle op snapshotpatches
- * (PR 7.1c). `createdAt`/`startedAt` zijn client-autoritatieve historische
- * feiten die `ActiveGame.createdAt`/`startedAt` exact spiegelen (platte
- * ISO-strings, geen `serverTimestamp()` — nodig voor deterministische
- * projectie, zie `application/game/projectGameForCloud.ts`); `updatedAt` is
+ * hetzelfde ADR-punt 3 vast; de daadwerkelijke claim-/overnamelogica staat in
+ * `application/game/GameCloudGateway.ts` (PR 7.3a, docs/pr-7.3-plan.md §B/
+ * §C 7.3a). `claimedAt`/`lastWriterActivityAt` zijn PR 7.3a-toevoegingen: net
+ * als `createdAt`/`startedAt` zijn dit client-autoritatieve ISO-strings, geen
+ * `serverTimestamp()` — nodig voor een deterministische, testbare
+ * claim/overname-projectie. `claimedAt` wordt bij elke (initiële-claim- of
+ * overname-)claim opnieuw gezet; `lastWriterActivityAt` wordt bij elke
+ * normale draaiveldpatch van de ACTUELE writer bijgewerkt (zie
+ * `projectGameSnapshotPatch()`). Samen leveren ze de "zichtbare huidige
+ * writer + laatste serveractiviteit" die een overname-bevestigingsflow
+ * (7.3c) nodig heeft — expliciet GEEN automatische lease-expiry op basis van
+ * de klok (docs/pr-7.3-plan.md §B: "Courtside-netwerkverlies mag
+ * eigenaarschap niet ongemerkt laten vervallen"), dus deze velden worden
+ * nergens clientside met de systeemklok vergeleken om een claim automatisch
+ * ongeldig te verklaren. `revision` is een monotone teller voor
+ * optimistische concurrency-controle op snapshotpatches (PR 7.1c, ook
+ * gebruikt door de PR 7.3a-claim/overnamepatches). `createdAt`/`startedAt`
+ * zijn client-autoritatieve historische feiten die
+ * `ActiveGame.createdAt`/`startedAt` exact spiegelen (platte ISO-strings,
+ * geen `serverTimestamp()` — nodig voor deterministische projectie, zie
+ * `application/game/projectGameForCloud.ts`); `updatedAt` is
  * server-bijgehouden bookkeeping voor sync-/staleness-weergave (zelfde
  * patroon als settings/roster) en wordt pas door de PR 7.1c-adapter gezet,
  * niet door de pure projectiefunctie.
@@ -122,6 +136,10 @@ export interface GameDocument {
   writerUid: string | null;
   deviceId: string | null;
   writerEpoch: number;
+  /** PR 7.3a: ISO-tijdstip van de laatste (initiële of overname-)claim; `null` zolang `writerUid` `null` is. */
+  claimedAt: string | null;
+  /** PR 7.3a: ISO-tijdstip van de laatste draaiveldpatch door de actuele writer; `null` zolang `writerUid` `null` is. */
+  lastWriterActivityAt: string | null;
   revision: number;
   createdAt: string;
   startedAt: string | null;
@@ -165,6 +183,12 @@ export const gameConverter: FirestoreDataConverter<GameDocument> = {
       writerUid: assertNullableString(TYPE, 'writerUid', data.writerUid),
       deviceId: assertNullableString(TYPE, 'deviceId', data.deviceId),
       writerEpoch: assertInteger(TYPE, 'writerEpoch', data.writerEpoch),
+      claimedAt: assertNullableIsoTimestampString(TYPE, 'claimedAt', data.claimedAt),
+      lastWriterActivityAt: assertNullableIsoTimestampString(
+        TYPE,
+        'lastWriterActivityAt',
+        data.lastWriterActivityAt,
+      ),
       revision: assertInteger(TYPE, 'revision', data.revision),
       createdAt: assertIsoTimestampString(TYPE, 'createdAt', data.createdAt),
       startedAt: assertNullableIsoTimestampString(TYPE, 'startedAt', data.startedAt),

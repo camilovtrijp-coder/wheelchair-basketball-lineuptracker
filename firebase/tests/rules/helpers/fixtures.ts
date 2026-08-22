@@ -80,6 +80,8 @@ export function sampleGame(overrides: Record<string, unknown> = {}) {
     writerUid: null,
     deviceId: null,
     writerEpoch: 0,
+    claimedAt: null,
+    lastWriterActivityAt: null,
     revision: 0,
     createdAt: '2026-01-01T00:00:00.000Z',
     startedAt: null,

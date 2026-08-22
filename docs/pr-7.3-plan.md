@@ -1,6 +1,7 @@
 # Voorbereidingsplan PR 7.3 — actieve wedstrijd single-writer
 
-Status: goedgekeurde bouwrichting; start na 7.2. Implementatie nog niet gestart.
+Status: 7.3a geïmplementeerd (claim/epoch/overname-plumbing + pre-game-gate +
+contextlock); 7.3b/7.3c nog niet gestart.
 
 ## A. Doel
 
@@ -45,6 +46,107 @@ epoch stil toevoegen.
 
 Acceptatie: exact één device wint; geen timer neemt stil over; zonder bevestigde
 cloudclaim start cloudmodus niet, terwijl lokale modus netwerkloos blijft.
+
+**Geïmplementeerd:**
+
+- `v2/src/domain/game/writerClaim.ts` (nieuw): pure types/afleidingen, geen
+  Firestore-import. `WriterIdentity`/`WriterClaimState`
+  (`deriveWriterClaimState()`: `'unclaimed'|'own'|'other'` t.o.v. dit
+  apparaat), `WriterClaimErrorCode` (`'offline'|'stale-revision'|
+  'already-claimed'|'role-denied'|'game-completed'|'unknown'`),
+  `WriterClaimResult` (succes/failure-union met `identity`/`revision`/
+  `claimedAt` resp. `code`), `CloudClaimStatus` (`'not-required'|'pending'|
+  'confirmed'|'blocked'` — UI-state voor de pre-game-gate) en
+  `gameStartBlockReason()`/`canStartGame()`: combineert de bestaande
+  roster-`startBlockReason()` (setup.ts) met de cloudclaim-eis; roster-redenen
+  gaan altijd eerst.
+- `firebase/src/documents/game.ts` / `firebase/firestore.rules`: twee nieuwe
+  velden op `GameDocument`, `claimedAt`/`lastWriterActivityAt` (client-
+  autoritatieve ISO-strings, net als `createdAt`/`startedAt` — geen
+  `serverTimestamp()`). Rules punt 18 (nieuw): 10a (normale patch) mag
+  voortaan ook `lastWriterActivityAt` bijwerken (elke patch van de actuele
+  writer is server-zichtbare activiteit); 10b (initiële claim) zet
+  `claimedAt`/`lastWriterActivityAt` samen op "nu"; nieuw pad **10d
+  (overname)**: elke bevoegde rol (niet alleen de huidige writer) mag een AL
+  geclaimd document overnemen mits `writerEpoch` met EXACT 1 omhoog gaat, de
+  aanroeper zichzelf claimt, `claimedAt`/`lastWriterActivityAt` samen op "nu"
+  gezet worden, de wedstrijd nog niet is afgerond, en geen draaivelden worden
+  aangeraakt — zelfde optimistische-concurrencycontrole (`revision == +1`)
+  als de andere paden, dus GEEN `runTransaction()` nodig: Firestore
+  serialiseert writes per document en Rules herevalueren `resource.data` tegen
+  de laatste servertoestand, wat dezelfde garantie geeft als een
+  clienttransactie hier zou bieden. Bewust GEEN tijd-/lease-conditie (§B).
+  `firebase/tests/rules/games-and-actions.spec.ts` (nieuw: het volledige
+  10d-pad — geldige overname door een andere/dezelfde gebruiker, self-
+  promotion geweigerd, viewer geweigerd, epoch-sprong/epoch-ongewijzigd
+  geweigerd, lege deviceId, claimedAt/lastWriterActivityAt niet-samen
+  geweigerd, draaivelden-in-dezelfde-patch geweigerd, stale revision, een
+  afgeronde wedstrijd niet overneembaar, en het fencingbewijs: een oude
+  actie van de vorige epoch wordt na overname geweigerd). Volledige
+  `firebase-base`-Rules-suite (11 bestanden, 209 tests) en unit-suite (75
+  tests) groen tegen de emulator.
+- `v2/src/application/game/GameCloudGateway.ts` /
+  `infrastructure/game/FirestoreGameCloudGateway.ts`: nieuwe
+  `claimWriter()`/`takeoverWriter()`-methoden, retourneren `WriterClaimResult`.
+  Niet-transactioneel (zelfde redenering als hierboven), met een best-effort
+  `classifyClaimFailure()`-readback die een geweigerde `updateDoc()`
+  terugvertaalt naar een specifieke `WriterClaimErrorCode` voor de UI.
+  `GameSnapshotWriteResult` draagt nu ook `writerEpoch` — nodig omdat
+  `GameSyncCoordinator.sync()` voortaan het ECHTE serverepoch gebruikt voor
+  `projectGameActions()` (i.p.v. de statische `GameCloudWriterContext.
+  writerEpoch`, die vóór 7.3a altijd vast op 0 stond); zonder deze fix zou een
+  actie-upload ná een overname altijd met een verouderd epoch falen.
+  `projectGameSnapshotPatch()` krijgt een `now`-parameter (blijft puur) en
+  vult `lastWriterActivityAt` — de coordinator geeft z'n eigen `now()` door.
+  Nieuwe `GameSyncCoordinator.ensureWriterClaim()` (het EXPLICIETE, blokkerende
+  claimpad vóór tip-off — idempotent, geen dubbele write als dit apparaat al
+  de bevestigde writer is) en `takeoverWriter()` (dunne doorgeefluik,
+  aanroepbare bouwsteen voor de 7.3c-bevestigingsflow, nog geen eigen UI-
+  knop). `sync()`'s bestaande interne claim-tijdens-tracking-blijft-bestaan
+  als achtervangpad, gebruikt nu ook `claimWriter()` i.p.v. de generieke
+  `patchSnapshot()`.
+- `v2/src/ui/game/GameSetupPanel.tsx` / `app/App.tsx`: nieuwe `cloudClaim`/
+  `onRetryClaim`-props op `GameSetupPanel`. De startknop gebruikt
+  `gameStartBlockReason()`: in cloudmodus geblokkeerd totdat `'confirmed'`,
+  met een eigen NL/EN-tekst per `WriterClaimErrorCode`
+  (`claimBlocked*`-i18n-sleutels) en een "Opnieuw proberen"-knop bij
+  `'blocked'`. `App.tsx` roept `ensureWriterClaim()` automatisch aan zodra er
+  een `'setup'`-wedstrijd is in cloud-modus (effect op `game?.id`/
+  `game?.phase`, niet op elke toetsaanslag) — alleen-lokale modus
+  (`repositories.gameSync === null`) blijft `'not-required'` zonder enige
+  Firestore/Auth-aanroep.
+- `app/App.tsx` / `app/AuthGate.tsx`: nieuwe `AppProps.onGameLockChange`
+  — meldt `true` zodra `game.phase === 'tracking'` OF `cloudClaim.kind ===
+  'confirmed'` (dus al vóór "Start wedstrijd" geklikt is, zodra de claim
+  server-bevestigd is). `AuthGate.handleBackToSwitcher()` blokkeert de
+  contextwissel bij een actieve lock en toont een dismissible NL/EN-banner
+  (`contextSwitchLocked*`-sleutels) i.p.v. de context stil te wissen. Er
+  bestaat in 7.3a nog geen "expliciet loslaten"-actie (dat is 7.3c-scope,
+  samen met de overname-/recoveryflow) — tot die tijd is de enige uitweg de
+  wedstrijd zelf afronden.
+- Nieuwe/uitgebreide v2-unit-tests: `writerClaim.spec.ts` (nieuw, pure
+  afleidingen), `GameSyncCoordinator.spec.ts` (uitgebreid met
+  `ensureWriterClaim()`/`takeoverWriter()`-scenario's: claim, idempotente
+  herclaim, blocked-door-ander-apparaat, offline, foutcode-doorgifte, epoch+1
+  bij overname), `GameSetupPanel.spec.tsx` (nieuw, alle
+  `CloudClaimStatus`-varianten + alle `WriterClaimErrorCode`-teksten + roster-
+  gaat-voor-cloudclaim), `AppWriterClaim.spec.tsx` (nieuw, end-to-end door
+  `App` heen: automatische claim, `onGameLockChange`-timing, alleen-lokale
+  modus blijft claimloos). Volledige v2-unit-suite nu 713 tests, groen.
+
+**Nog niet gedaan (bewust doorgeschoven):**
+
+- Een sterke overname-bevestigingsflow/UI-knop ("Take over") — expliciet
+  7.3c-scope (docs/pr-7.3-plan.md §C 7.3c werk 1). `takeoverWriter()` is wél
+  geïmplementeerd en getest (Rules + coordinator), maar heeft nog geen
+  aanroeppunt in de UI.
+- Echte-apparaat-/emulator-e2e-tests (`v2/tests/e2e-auth/*.spec.ts`) voor
+  claimrace/offline-start/contextwissel — 7.3a's acceptatiecriteria zijn hier
+  bewezen op Rules- en coordinator-/component-niveau; de twee-apparaten-/
+  echte-mobiel-validatie is 7.3c-scope (werk 4/5 daar).
+- 7.3b (live writer-sync en read-only viewer voor niet-writers) is nog niet
+  gestart — dat is waar `takeoverWriter()`'s UI-aanroep en een live viewer-
+  abonnement op parent+actions bij horen.
 
 ### 7.3b — live writer-sync en read-only viewer
 

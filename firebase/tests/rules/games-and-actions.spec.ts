@@ -3,12 +3,14 @@
 // - lezen voor elk geautoriseerd teamlid, schrijven alleen voor owner/admin/coach/scorer;
 // - game-create: pad-/payloadcontext, toegestane initiële fase/revisie/epoch, "maker"-borging;
 // - game-update is gesplitst in een normale patch (uitsluitend de ACTUELE writer; writer-/
-//   epochvelden blijven exact ongewijzigd) en een initiële claim (alleen op een nog
-//   ongeclaimd document, uitsluitend de eigen uid, epoch blijft gelijk) — een latere
-//   overname van een AL geclaimd document is geen van beide en blijft geweigerd
-//   (PR 7.3-scope); strikte veldallowlist, toegestane faseovergang, monotone revisie;
+//   epoch-/claimvelden blijven exact ongewijzigd, `lastWriterActivityAt` mag wel), een
+//   initiële claim (alleen op een nog ongeclaimd document, uitsluitend de eigen uid, epoch
+//   blijft gelijk) en (PR 7.3a) een overname van een AL geclaimd document (elke bevoegde
+//   rol, epoch moet met exact 1 omhoog, claimedAt/lastWriterActivityAt samen op "nu"); strikte
+//   veldallowlist per pad, toegestane faseovergang, monotone revisie;
 // - action-create: create-only, eigen auteur, epoch/deviceId moeten matchen met de ACTUELE
-//   claim op het parentdocument (stale-epoch-weigering — het fundament voor PR 7.3-overname);
+//   claim op het parentdocument (stale-epoch-weigering — dit fenced een oude writer na een
+//   PR 7.3a-overname: diens acties uit de vorige epoch worden altijd geweigerd);
 // - action-update/delete altijd geweigerd (ADR-002 punt 1: create-only is echt onveranderlijk);
 // - volledige schema-/typevalidatie (exacte sleutelset, veldtypen, schemaVersion,
 //   action-discriminant/payload, ISO-tijdstipvorm) voor zowel games als actions;
@@ -193,12 +195,37 @@ describe('games/{gameId}: create', () => {
     );
   });
 
-  it('mag writerUid WEL op de eigen uid zetten (directe claim bij create)', async () => {
+  it('mag writerUid WEL op de eigen uid zetten (directe claim bij create), mét claimedAt/lastWriterActivityAt samen op "nu"', async () => {
     const db = authCtx(env, USERS.dave.uid, { email: USERS.dave.email, email_verified: true });
     await assertSucceeds(
       setDoc(
         gameRef(db, ORG_A, TEAM_A1, 'game-1'),
+        sampleGame({
+          writerUid: USERS.dave.uid,
+          deviceId: 'device-dave',
+          claimedAt: '2026-01-01T00:00:00.000Z',
+          lastWriterActivityAt: '2026-01-01T00:00:00.000Z',
+        }),
+      ),
+    );
+  });
+
+  it('mag GEEN directe claim bij create zonder claimedAt (PR 7.3a)', async () => {
+    const db = authCtx(env, USERS.dave.uid, { email: USERS.dave.email, email_verified: true });
+    await assertFails(
+      setDoc(
+        gameRef(db, ORG_A, TEAM_A1, 'game-1'),
         sampleGame({ writerUid: USERS.dave.uid, deviceId: 'device-dave' }),
+      ),
+    );
+  });
+
+  it('mag GEEN claimedAt zonder writerUid bij create', async () => {
+    const db = authCtx(env, USERS.dave.uid, { email: USERS.dave.email, email_verified: true });
+    await assertFails(
+      setDoc(
+        gameRef(db, ORG_A, TEAM_A1, 'game-1'),
+        sampleGame({ claimedAt: '2026-01-01T00:00:00.000Z' }),
       ),
     );
   });
@@ -289,23 +316,45 @@ describe('games/{gameId}: update', () => {
         .doc(TEAM_A1)
         .collection('games')
         .doc('game-1')
-        .set(sampleGame({ writerUid: USERS.dave.uid, deviceId: 'device-dave' }));
+        .set(
+          sampleGame({
+            writerUid: USERS.dave.uid,
+            deviceId: 'device-dave',
+            claimedAt: '2026-01-01T00:00:00.000Z',
+            lastWriterActivityAt: '2026-01-01T00:00:00.000Z',
+          }),
+        );
     });
   });
 
   it('scorer (huidige writer) mag draaivelden patchen met revision+1', async () => {
     const db = authCtx(env, USERS.dave.uid, { email: USERS.dave.email, email_verified: true });
     await assertSucceeds(
-      updateDoc(gameRef(db, ORG_A, TEAM_A1, 'game-1'), { onCourt: ['gp-1'], revision: 1 }),
+      updateDoc(gameRef(db, ORG_A, TEAM_A1, 'game-1'), {
+        onCourt: ['gp-1'],
+        lastWriterActivityAt: '2026-01-01T00:05:00.000Z',
+        revision: 1,
+      }),
     );
   });
 
   it('mag de fase van setup naar tracking zetten (toegestane overgang)', async () => {
     const db = authCtx(env, USERS.dave.uid, { email: USERS.dave.email, email_verified: true });
     await assertSucceeds(
-      updateDoc(gameRef(db, ORG_A, TEAM_A1, 'game-1'), { phase: 'tracking', revision: 1 }),
+      updateDoc(gameRef(db, ORG_A, TEAM_A1, 'game-1'), {
+        phase: 'tracking',
+        lastWriterActivityAt: '2026-01-01T00:05:00.000Z',
+        revision: 1,
+      }),
     );
   });
+
+  // `lastWriterActivityAt` moet een geldig ISO-tijdstip BLIJVEN (rules'
+  // isValidGamePayload()), maar hoeft niet per se in élke patch te wijzigen —
+  // de al aanwezige geldige waarde uit de fixture hierboven volstaat als de
+  // patch het veld zelf niet meestuurt. `projectGameSnapshotPatch()` stuurt
+  // 'm in de praktijk altijd mee (spiegelt "nu"), maar Rules dwingen dat niet
+  // strikt af — vandaar geen losse negatieve test hiervoor.
 
   it('mag de fase NIET van tracking terug naar setup zetten', async () => {
     await withAdmin(env, async (db) => {
@@ -320,7 +369,11 @@ describe('games/{gameId}: update', () => {
     });
     const db = authCtx(env, USERS.dave.uid, { email: USERS.dave.email, email_verified: true });
     await assertFails(
-      updateDoc(gameRef(db, ORG_A, TEAM_A1, 'game-1'), { phase: 'setup', revision: 1 }),
+      updateDoc(gameRef(db, ORG_A, TEAM_A1, 'game-1'), {
+        phase: 'setup',
+        lastWriterActivityAt: '2026-01-01T00:05:00.000Z',
+        revision: 1,
+      }),
     );
   });
 
@@ -329,6 +382,7 @@ describe('games/{gameId}: update', () => {
     await assertFails(
       updateDoc(gameRef(db, ORG_A, TEAM_A1, 'game-1'), {
         opponent: 'Andere tegenstander',
+        lastWriterActivityAt: '2026-01-01T00:05:00.000Z',
         revision: 1,
       }),
     );
@@ -337,14 +391,22 @@ describe('games/{gameId}: update', () => {
   it('mag organizationId/teamId NIET wijzigen', async () => {
     const db = authCtx(env, USERS.dave.uid, { email: USERS.dave.email, email_verified: true });
     await assertFails(
-      updateDoc(gameRef(db, ORG_A, TEAM_A1, 'game-1'), { teamId: TEAM_B1, revision: 1 }),
+      updateDoc(gameRef(db, ORG_A, TEAM_A1, 'game-1'), {
+        teamId: TEAM_B1,
+        lastWriterActivityAt: '2026-01-01T00:05:00.000Z',
+        revision: 1,
+      }),
     );
   });
 
   it('mag revision NIET overslaan (moet exact +1 zijn)', async () => {
     const db = authCtx(env, USERS.dave.uid, { email: USERS.dave.email, email_verified: true });
     await assertFails(
-      updateDoc(gameRef(db, ORG_A, TEAM_A1, 'game-1'), { onCourt: ['gp-1'], revision: 2 }),
+      updateDoc(gameRef(db, ORG_A, TEAM_A1, 'game-1'), {
+        onCourt: ['gp-1'],
+        lastWriterActivityAt: '2026-01-01T00:05:00.000Z',
+        revision: 2,
+      }),
     );
   });
 
@@ -361,7 +423,11 @@ describe('games/{gameId}: update', () => {
     });
     const db = authCtx(env, USERS.dave.uid, { email: USERS.dave.email, email_verified: true });
     await assertFails(
-      updateDoc(gameRef(db, ORG_A, TEAM_A1, 'game-1'), { writerEpoch: 1, revision: 1 }),
+      updateDoc(gameRef(db, ORG_A, TEAM_A1, 'game-1'), {
+        writerEpoch: 1,
+        lastWriterActivityAt: '2026-01-01T00:05:00.000Z',
+        revision: 1,
+      }),
     );
   });
 
@@ -372,42 +438,77 @@ describe('games/{gameId}: update', () => {
   it('de huidige writer mag writerEpoch NIET laten stijgen via een normale patch (geen overname via dit pad)', async () => {
     const db = authCtx(env, USERS.dave.uid, { email: USERS.dave.email, email_verified: true });
     await assertFails(
-      updateDoc(gameRef(db, ORG_A, TEAM_A1, 'game-1'), { writerEpoch: 1, revision: 1 }),
+      updateDoc(gameRef(db, ORG_A, TEAM_A1, 'game-1'), {
+        writerEpoch: 1,
+        lastWriterActivityAt: '2026-01-01T00:05:00.000Z',
+        revision: 1,
+      }),
     );
   });
 
   it('de huidige writer mag deviceId NIET wijzigen via een normale patch', async () => {
     const db = authCtx(env, USERS.dave.uid, { email: USERS.dave.email, email_verified: true });
     await assertFails(
-      updateDoc(gameRef(db, ORG_A, TEAM_A1, 'game-1'), { deviceId: 'ander-apparaat', revision: 1 }),
+      updateDoc(gameRef(db, ORG_A, TEAM_A1, 'game-1'), {
+        deviceId: 'ander-apparaat',
+        lastWriterActivityAt: '2026-01-01T00:05:00.000Z',
+        revision: 1,
+      }),
     );
   });
 
   it('de huidige writer mag writerUid NIET op een ander zetten via een normale patch', async () => {
     const db = authCtx(env, USERS.dave.uid, { email: USERS.dave.email, email_verified: true });
     await assertFails(
-      updateDoc(gameRef(db, ORG_A, TEAM_A1, 'game-1'), { writerUid: USERS.alice.uid, revision: 1 }),
+      updateDoc(gameRef(db, ORG_A, TEAM_A1, 'game-1'), {
+        writerUid: USERS.alice.uid,
+        lastWriterActivityAt: '2026-01-01T00:05:00.000Z',
+        revision: 1,
+      }),
+    );
+  });
+
+  it('de huidige writer mag claimedAt NIET wijzigen via een normale patch', async () => {
+    const db = authCtx(env, USERS.dave.uid, { email: USERS.dave.email, email_verified: true });
+    await assertFails(
+      updateDoc(gameRef(db, ORG_A, TEAM_A1, 'game-1'), {
+        claimedAt: '2026-01-01T00:05:00.000Z',
+        lastWriterActivityAt: '2026-01-01T00:05:00.000Z',
+        revision: 1,
+      }),
     );
   });
 
   it('een andere bevoegde gebruiker (carol, coach) dan de huidige writer (dave) mag NIET patchen', async () => {
     const db = authCtx(env, USERS.carol.uid, { email: USERS.carol.email, email_verified: true });
     await assertFails(
-      updateDoc(gameRef(db, ORG_A, TEAM_A1, 'game-1'), { onCourt: ['gp-1'], revision: 1 }),
+      updateDoc(gameRef(db, ORG_A, TEAM_A1, 'game-1'), {
+        onCourt: ['gp-1'],
+        lastWriterActivityAt: '2026-01-01T00:05:00.000Z',
+        revision: 1,
+      }),
     );
   });
 
   it('owner (impliciete toegang, maar niet de huidige writer) mag ook NIET patchen', async () => {
     const db = authCtx(env, USERS.alice.uid, { email: USERS.alice.email, email_verified: true });
     await assertFails(
-      updateDoc(gameRef(db, ORG_A, TEAM_A1, 'game-1'), { onCourt: ['gp-1'], revision: 1 }),
+      updateDoc(gameRef(db, ORG_A, TEAM_A1, 'game-1'), {
+        onCourt: ['gp-1'],
+        lastWriterActivityAt: '2026-01-01T00:05:00.000Z',
+        revision: 1,
+      }),
     );
   });
 
   it('viewer mag NIET patchen', async () => {
     const db = authCtx(env, USERS.erin.uid, { email: USERS.erin.email, email_verified: true });
     await assertFails(
-      updateDoc(gameRef(db, ORG_A, TEAM_A1, 'game-1'), { onCourt: ['gp-1'], revision: 1 }),
+      updateDoc(gameRef(db, ORG_A, TEAM_A1, 'game-1'), {
+        onCourt: ['gp-1'],
+        lastWriterActivityAt: '2026-01-01T00:05:00.000Z',
+        revision: 1,
+      }),
     );
   });
 
@@ -431,12 +532,38 @@ describe('games/{gameId}: initiële claim via update (nog geen writer)', () => {
     });
   });
 
-  it('scorer mag een nog ongeclaimd document op de eigen uid claimen', async () => {
+  it('scorer mag een nog ongeclaimd document op de eigen uid claimen, mét claimedAt/lastWriterActivityAt samen op "nu"', async () => {
     const db = authCtx(env, USERS.dave.uid, { email: USERS.dave.email, email_verified: true });
     await assertSucceeds(
       updateDoc(gameRef(db, ORG_A, TEAM_A1, 'game-1'), {
         writerUid: USERS.dave.uid,
         deviceId: 'device-dave',
+        claimedAt: '2026-01-01T00:00:00.000Z',
+        lastWriterActivityAt: '2026-01-01T00:00:00.000Z',
+        revision: 1,
+      }),
+    );
+  });
+
+  it('mag NIET claimen zonder claimedAt (PR 7.3a)', async () => {
+    const db = authCtx(env, USERS.dave.uid, { email: USERS.dave.email, email_verified: true });
+    await assertFails(
+      updateDoc(gameRef(db, ORG_A, TEAM_A1, 'game-1'), {
+        writerUid: USERS.dave.uid,
+        deviceId: 'device-dave',
+        revision: 1,
+      }),
+    );
+  });
+
+  it('claimedAt en lastWriterActivityAt moeten SAMEN op dezelfde waarde gezet worden bij de initiële claim', async () => {
+    const db = authCtx(env, USERS.dave.uid, { email: USERS.dave.email, email_verified: true });
+    await assertFails(
+      updateDoc(gameRef(db, ORG_A, TEAM_A1, 'game-1'), {
+        writerUid: USERS.dave.uid,
+        deviceId: 'device-dave',
+        claimedAt: '2026-01-01T00:00:00.000Z',
+        lastWriterActivityAt: '2026-01-01T00:01:00.000Z',
         revision: 1,
       }),
     );
@@ -448,6 +575,8 @@ describe('games/{gameId}: initiële claim via update (nog geen writer)', () => {
       updateDoc(gameRef(db, ORG_A, TEAM_A1, 'game-1'), {
         writerUid: USERS.alice.uid,
         deviceId: 'device-alice',
+        claimedAt: '2026-01-01T00:00:00.000Z',
+        lastWriterActivityAt: '2026-01-01T00:00:00.000Z',
         revision: 1,
       }),
     );
@@ -459,6 +588,8 @@ describe('games/{gameId}: initiële claim via update (nog geen writer)', () => {
       updateDoc(gameRef(db, ORG_A, TEAM_A1, 'game-1'), {
         writerUid: USERS.dave.uid,
         deviceId: '',
+        claimedAt: '2026-01-01T00:00:00.000Z',
+        lastWriterActivityAt: '2026-01-01T00:00:00.000Z',
         revision: 1,
       }),
     );
@@ -471,6 +602,8 @@ describe('games/{gameId}: initiële claim via update (nog geen writer)', () => {
         writerUid: USERS.dave.uid,
         deviceId: 'device-dave',
         writerEpoch: 1,
+        claimedAt: '2026-01-01T00:00:00.000Z',
+        lastWriterActivityAt: '2026-01-01T00:00:00.000Z',
         revision: 1,
       }),
     );
@@ -488,7 +621,7 @@ describe('games/{gameId}: initiële claim via update (nog geen writer)', () => {
   });
 });
 
-describe('games/{gameId}: overname van een AL geclaimd document via update wordt geweigerd', () => {
+describe('games/{gameId}: overname (10d, PR 7.3a) van een AL geclaimd document', () => {
   beforeEach(async () => {
     await withAdmin(env, async (db) => {
       await db
@@ -498,19 +631,202 @@ describe('games/{gameId}: overname van een AL geclaimd document via update wordt
         .doc(TEAM_A1)
         .collection('games')
         .doc('game-1')
-        .set(sampleGame({ writerUid: USERS.dave.uid, deviceId: 'device-dave' }));
+        .set(
+          sampleGame({
+            writerUid: USERS.dave.uid,
+            deviceId: 'device-dave',
+            writerEpoch: 1,
+            claimedAt: '2026-01-01T00:00:00.000Z',
+            lastWriterActivityAt: '2026-01-01T00:00:00.000Z',
+          }),
+        );
     });
   });
 
-  it('een andere bevoegde gebruiker (carol) mag de claim NIET overnemen via update (PR 7.3-scope)', async () => {
+  it('een andere bevoegde gebruiker (carol) mag een geldige overname doen: epoch +1, claimedAt/lastWriterActivityAt samen op "nu"', async () => {
+    const db = authCtx(env, USERS.carol.uid, { email: USERS.carol.email, email_verified: true });
+    await assertSucceeds(
+      updateDoc(gameRef(db, ORG_A, TEAM_A1, 'game-1'), {
+        writerUid: USERS.carol.uid,
+        deviceId: 'device-carol',
+        writerEpoch: 2,
+        claimedAt: '2026-01-01T00:10:00.000Z',
+        lastWriterActivityAt: '2026-01-01T00:10:00.000Z',
+        revision: 1,
+      }),
+    );
+  });
+
+  it('de huidige writer (dave) mag zichzelf ook op een ANDER apparaat overnemen (bijv. na een crash)', async () => {
+    const db = authCtx(env, USERS.dave.uid, { email: USERS.dave.email, email_verified: true });
+    await assertSucceeds(
+      updateDoc(gameRef(db, ORG_A, TEAM_A1, 'game-1'), {
+        writerUid: USERS.dave.uid,
+        deviceId: 'device-dave-2',
+        writerEpoch: 2,
+        claimedAt: '2026-01-01T00:10:00.000Z',
+        lastWriterActivityAt: '2026-01-01T00:10:00.000Z',
+        revision: 1,
+      }),
+    );
+  });
+
+  it('mag NIET een ANDER uid overnemen dan de eigen (self-promotion via overname)', async () => {
+    const db = authCtx(env, USERS.carol.uid, { email: USERS.carol.email, email_verified: true });
+    await assertFails(
+      updateDoc(gameRef(db, ORG_A, TEAM_A1, 'game-1'), {
+        writerUid: USERS.alice.uid,
+        deviceId: 'device-alice',
+        writerEpoch: 2,
+        claimedAt: '2026-01-01T00:10:00.000Z',
+        lastWriterActivityAt: '2026-01-01T00:10:00.000Z',
+        revision: 1,
+      }),
+    );
+  });
+
+  it('viewer (erin) mag niet overnemen', async () => {
+    const db = authCtx(env, USERS.erin.uid, { email: USERS.erin.email, email_verified: true });
+    await assertFails(
+      updateDoc(gameRef(db, ORG_A, TEAM_A1, 'game-1'), {
+        writerUid: USERS.erin.uid,
+        deviceId: 'device-erin',
+        writerEpoch: 2,
+        claimedAt: '2026-01-01T00:10:00.000Z',
+        lastWriterActivityAt: '2026-01-01T00:10:00.000Z',
+        revision: 1,
+      }),
+    );
+  });
+
+  it('writerEpoch moet met EXACT 1 omhoog — een sprong wordt geweigerd', async () => {
+    const db = authCtx(env, USERS.carol.uid, { email: USERS.carol.email, email_verified: true });
+    await assertFails(
+      updateDoc(gameRef(db, ORG_A, TEAM_A1, 'game-1'), {
+        writerUid: USERS.carol.uid,
+        deviceId: 'device-carol',
+        writerEpoch: 5,
+        claimedAt: '2026-01-01T00:10:00.000Z',
+        lastWriterActivityAt: '2026-01-01T00:10:00.000Z',
+        revision: 1,
+      }),
+    );
+  });
+
+  it('writerEpoch mag NIET ongewijzigd blijven bij een overname (dat is het 10a-normale-patchpad, niet 10d)', async () => {
     const db = authCtx(env, USERS.carol.uid, { email: USERS.carol.email, email_verified: true });
     await assertFails(
       updateDoc(gameRef(db, ORG_A, TEAM_A1, 'game-1'), {
         writerUid: USERS.carol.uid,
         deviceId: 'device-carol',
         writerEpoch: 1,
+        claimedAt: '2026-01-01T00:10:00.000Z',
+        lastWriterActivityAt: '2026-01-01T00:10:00.000Z',
         revision: 1,
       }),
+    );
+  });
+
+  it('mag NIET overnemen met een lege string als deviceId', async () => {
+    const db = authCtx(env, USERS.carol.uid, { email: USERS.carol.email, email_verified: true });
+    await assertFails(
+      updateDoc(gameRef(db, ORG_A, TEAM_A1, 'game-1'), {
+        writerUid: USERS.carol.uid,
+        deviceId: '',
+        writerEpoch: 2,
+        claimedAt: '2026-01-01T00:10:00.000Z',
+        lastWriterActivityAt: '2026-01-01T00:10:00.000Z',
+        revision: 1,
+      }),
+    );
+  });
+
+  it('claimedAt en lastWriterActivityAt moeten SAMEN op dezelfde waarde gezet worden', async () => {
+    const db = authCtx(env, USERS.carol.uid, { email: USERS.carol.email, email_verified: true });
+    await assertFails(
+      updateDoc(gameRef(db, ORG_A, TEAM_A1, 'game-1'), {
+        writerUid: USERS.carol.uid,
+        deviceId: 'device-carol',
+        writerEpoch: 2,
+        claimedAt: '2026-01-01T00:10:00.000Z',
+        lastWriterActivityAt: '2026-01-01T00:09:00.000Z',
+        revision: 1,
+      }),
+    );
+  });
+
+  it('mag geen draaivelden meesturen in dezelfde patch (10d raakt uitsluitend claim-/epochvelden)', async () => {
+    const db = authCtx(env, USERS.carol.uid, { email: USERS.carol.email, email_verified: true });
+    await assertFails(
+      updateDoc(gameRef(db, ORG_A, TEAM_A1, 'game-1'), {
+        writerUid: USERS.carol.uid,
+        deviceId: 'device-carol',
+        writerEpoch: 2,
+        claimedAt: '2026-01-01T00:10:00.000Z',
+        lastWriterActivityAt: '2026-01-01T00:10:00.000Z',
+        onCourt: ['gp-1'],
+        revision: 1,
+      }),
+    );
+  });
+
+  it('revisiemismatch (stale revision) wordt geweigerd, ook bij een verder geldige overname', async () => {
+    const db = authCtx(env, USERS.carol.uid, { email: USERS.carol.email, email_verified: true });
+    await assertFails(
+      updateDoc(gameRef(db, ORG_A, TEAM_A1, 'game-1'), {
+        writerUid: USERS.carol.uid,
+        deviceId: 'device-carol',
+        writerEpoch: 2,
+        claimedAt: '2026-01-01T00:10:00.000Z',
+        lastWriterActivityAt: '2026-01-01T00:10:00.000Z',
+        revision: 99,
+      }),
+    );
+  });
+
+  it('een reeds afgeronde wedstrijd (completedGameId gezet) kan niet meer overgenomen worden', async () => {
+    await withAdmin(env, async (db) => {
+      await db
+        .collection('organizations')
+        .doc(ORG_A)
+        .collection('teams')
+        .doc(TEAM_A1)
+        .collection('games')
+        .doc('game-1')
+        .update({ completedGameId: 'completed-1', revision: 1 });
+    });
+    const db = authCtx(env, USERS.carol.uid, { email: USERS.carol.email, email_verified: true });
+    await assertFails(
+      updateDoc(gameRef(db, ORG_A, TEAM_A1, 'game-1'), {
+        writerUid: USERS.carol.uid,
+        deviceId: 'device-carol',
+        writerEpoch: 2,
+        claimedAt: '2026-01-01T00:10:00.000Z',
+        lastWriterActivityAt: '2026-01-01T00:10:00.000Z',
+        revision: 2,
+      }),
+    );
+  });
+
+  it('een oude action-envelope uit de vorige epoch wordt na overname geweigerd (fencing)', async () => {
+    const carolDb = authCtx(env, USERS.carol.uid, { email: USERS.carol.email, email_verified: true });
+    await assertSucceeds(
+      updateDoc(gameRef(carolDb, ORG_A, TEAM_A1, 'game-1'), {
+        writerUid: USERS.carol.uid,
+        deviceId: 'device-carol',
+        writerEpoch: 2,
+        claimedAt: '2026-01-01T00:10:00.000Z',
+        lastWriterActivityAt: '2026-01-01T00:10:00.000Z',
+        revision: 1,
+      }),
+    );
+    // dave (de oude writer, epoch 1) probeert alsnog een actie te uploaden.
+    const daveDb = authCtx(env, USERS.dave.uid, { email: USERS.dave.email, email_verified: true });
+    await assertFails(
+      setDoc(
+        doc(daveDb, 'organizations', ORG_A, 'teams', TEAM_A1, 'games', 'game-1', 'actions', 'stale-1'),
+        sampleGameAction({ authorUid: USERS.dave.uid, deviceId: 'device-dave', writerEpoch: 1 }),
+      ),
     );
   });
 });

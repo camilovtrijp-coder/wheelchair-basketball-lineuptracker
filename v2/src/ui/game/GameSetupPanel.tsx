@@ -1,7 +1,6 @@
 import type { ActiveGame } from '../../domain/game/types';
 import {
   duplicateStartNumbers,
-  startBlockReason,
   startCount,
   startGame,
   setClockDown,
@@ -12,6 +11,11 @@ import {
   toggleStart,
   validPlayers,
 } from '../../domain/game/setup';
+import {
+  gameStartBlockReason,
+  type CloudClaimStatus,
+  type WriterClaimErrorCode,
+} from '../../domain/game/writerClaim';
 import { translate, type Lang, type StringKey } from '../../i18n/strings';
 
 export interface GameSetupPanelProps {
@@ -23,25 +27,56 @@ export interface GameSetupPanelProps {
   onGoToRoster: () => void;
   canWrite: boolean;
   saveError: boolean;
+  /**
+   * PR 7.3a (docs/pr-7.3-plan.md §C 7.3a werk 3): serverbevestigde
+   * cloudwriterclaim-status. `{kind:'not-required'}` in alleen-lokale modus —
+   * die blijft zonder claim/netwerk werken, zie `App.tsx`. In cloud-modus
+   * blokkeert dit de startknop totdat `'confirmed'`, met een per-reden
+   * NL/EN-herstelactie (`claimBlocked*`-strings) zodra `'blocked'`.
+   */
+  cloudClaim: CloudClaimStatus;
+  onRetryClaim: () => void;
 }
 
 function t(lang: Lang, key: StringKey): string {
   return translate(lang, key);
 }
 
-function startButtonLabel(lang: Lang, game: ActiveGame): string {
-  switch (startBlockReason(game)) {
-    case 'needFivePlayers':
-      return t(lang, 'startNeedFive');
-    case 'duplicateNumbers':
-      return t(lang, 'startFixDup');
-    case 'needFiveParticipants':
-      return t(lang, 'startNeedFiveParticipating');
-    case 'chooseFiveStarters':
-      return t(lang, 'startChooseFive');
-    case null:
-      return t(lang, 'startGameBtn');
+function claimBlockedKey(code: WriterClaimErrorCode): StringKey {
+  switch (code) {
+    case 'offline':
+      return 'claimBlockedOffline';
+    case 'already-claimed':
+      return 'claimBlockedAlreadyClaimed';
+    case 'stale-revision':
+      return 'claimBlockedStaleRevision';
+    case 'role-denied':
+      return 'claimBlockedRoleDenied';
+    case 'game-completed':
+      return 'claimBlockedGameCompleted';
+    case 'unknown':
+      return 'claimBlockedUnknown';
   }
+}
+
+function startButtonLabel(lang: Lang, game: ActiveGame, cloudClaim: CloudClaimStatus): string {
+  const reason = gameStartBlockReason(game, cloudClaim);
+  if (reason === null) return t(lang, 'startGameBtn');
+  if (reason.kind === 'roster') {
+    switch (reason.reason) {
+      case 'needFivePlayers':
+        return t(lang, 'startNeedFive');
+      case 'duplicateNumbers':
+        return t(lang, 'startFixDup');
+      case 'needFiveParticipants':
+        return t(lang, 'startNeedFiveParticipating');
+      case 'chooseFiveStarters':
+        return t(lang, 'startChooseFive');
+    }
+  }
+  // reason.kind === 'cloud-claim'
+  if (reason.status.kind === 'pending') return t(lang, 'claimPendingBtn');
+  return t(lang, claimBlockedKey(reason.status.code));
 }
 
 export function GameSetupPanel({
@@ -52,13 +87,17 @@ export function GameSetupPanel({
   onGoToRoster,
   canWrite,
   saveError,
+  cloudClaim,
+  onRetryClaim,
 }: GameSetupPanelProps) {
   if (game === null || game.phase === 'tracking') return null;
 
   const vp = validPlayers(game);
   const dupNrs = duplicateStartNumbers(game);
   const sc = startCount(game);
-  const canStartNow = startBlockReason(game) === null;
+  const startBlock = gameStartBlockReason(game, cloudClaim);
+  const canStartNow = startBlock === null;
+  const claimBlocked = startBlock?.kind === 'cloud-claim' && startBlock.status.kind === 'blocked';
 
   if (vp.length === 0) {
     return (
@@ -210,8 +249,19 @@ export function GameSetupPanel({
             if (started) onGameChange(started);
           }}
         >
-          {startButtonLabel(lang, game)}
+          {startButtonLabel(lang, game, cloudClaim)}
         </button>
+        {claimBlocked ? (
+          <button
+            type="button"
+            className="btn-outline"
+            data-testid="game-claim-retry"
+            disabled={!canWrite}
+            onClick={onRetryClaim}
+          >
+            {t(lang, 'claimRetryBtn')}
+          </button>
+        ) : null}
       </div>
     </section>
   );

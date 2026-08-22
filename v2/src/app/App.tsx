@@ -29,6 +29,7 @@ import { LocalStorageLangRepository } from '../infrastructure/i18n/LocalStorageL
 import { createGameFromRoster, syncGamePlayersWithRoster } from '../domain/game/setup';
 import { finishGame } from '../domain/game/finish';
 import type { ActiveGame, CompletedGame } from '../domain/game/types';
+import type { CloudClaimStatus } from '../domain/game/writerClaim';
 import { GameSetupPanel } from '../ui/game/GameSetupPanel';
 import { LiveTrackingPanel } from '../ui/game/LiveTrackingPanel';
 import { V1MigrationPrompt } from '../ui/game/V1MigrationPrompt';
@@ -89,6 +90,18 @@ export interface AppProps {
    * bekend is.
    */
   organizationName: string;
+  /**
+   * PR 7.3a (docs/pr-7.3-plan.md §C 7.3a werk 4): meldt AuthGate of de
+   * organisatie/teamcontext op dit moment vergrendeld is — `true` zodra deze
+   * wedstrijd tracking heeft (`phase === 'tracking'`) OF een serverbevestigde
+   * cloudwriterclaim draagt (`cloudClaim.kind === 'confirmed'`, ook nog
+   * tijdens `'setup'` na een geslaagde pre-game-claim). AuthGate blokkeert
+   * dan `handleBackToSwitcher()` — navigeren binnen de app blijft wél
+   * toegestaan, alleen een contextWISSEL vereist eerst stoppen/loslaten.
+   * Optioneel zodat bestaande tests/call sites zonder deze prop blijven
+   * werken (geen lock-gedrag als de aanroeper 'm niet leest).
+   */
+  onGameLockChange?: (locked: boolean) => void;
 }
 
 type Tab = 'settings' | 'roster' | 'game' | 'history' | 'stats' | 'trends';
@@ -130,6 +143,7 @@ export function App({
   organizationId,
   teamId,
   organizationName,
+  onGameLockChange,
 }: AppProps) {
   const [lang, setLang] = useState<Lang>(initialLang);
   const [tab, setTab] = useState<Tab>('settings');
@@ -478,6 +492,61 @@ export function App({
     window.addEventListener('online', handleOnline);
     return () => window.removeEventListener('online', handleOnline);
   }, [runGameSync]);
+
+  /**
+   * PR 7.3a (docs/pr-7.3-plan.md §B/§C 7.3a werk 3): pre-game-gate —
+   * verkrijgt/bevestigt de writerclaim VÓÓR tip-off ("Een cloudwedstrijd
+   * krijgt vóór tip-off een serverbevestigde writerclaim"). Draait alleen
+   * terwijl `game.phase === 'setup'` in cloud-modus; `repositories.gameSync`/
+   * `gameWriterContext` zijn `null` in alleen-lokale modus (net als
+   * `runGameSync` hierboven), dus dan blijft dit `'not-required'` zonder
+   * enige Firestore/Auth-aanroep — alleen-lokale modus blijft zonder claim of
+   * netwerk werken. `GameSetupPanel`'s startknop blijft geblokkeerd
+   * (`domain/game/writerClaim.ts` `gameStartBlockReason()`) totdat dit
+   * `'confirmed'` wordt. `claimAttempt` is een handmatige retry-trigger (de
+   * "Opnieuw proberen"-knop bij `'blocked'`).
+   */
+  const [cloudClaim, setCloudClaim] = useState<CloudClaimStatus>({ kind: 'not-required' });
+  const [claimAttempt, setClaimAttempt] = useState(0);
+  const claimInFlightRef = useRef(false);
+
+  useEffect(() => {
+    const coordinator = repositories.gameSync;
+    const writerContext = repositories.gameWriterContext;
+    if (!coordinator || !writerContext) {
+      setCloudClaim({ kind: 'not-required' });
+      return;
+    }
+    const current = latestGameRef.current;
+    if (!current || current.phase !== 'setup') return;
+    if (claimInFlightRef.current) return;
+    claimInFlightRef.current = true;
+    setCloudClaim({ kind: 'pending' });
+    coordinator
+      .ensureWriterClaim(current, writerContext)
+      .then(setCloudClaim, () => setCloudClaim({ kind: 'blocked', code: 'unknown' }))
+      .finally(() => {
+        claimInFlightRef.current = false;
+      });
+  }, [repositories.gameSync, repositories.gameWriterContext, game?.id, game?.phase, claimAttempt]);
+
+  function handleRetryClaim() {
+    setClaimAttempt((n) => n + 1);
+  }
+
+  /**
+   * PR 7.3a (docs/pr-7.3-plan.md §C 7.3a werk 4): meldt AuthGate de
+   * contextlockstatus zodra die verandert — zie `AppProps.onGameLockChange`.
+   * Vergrendeld zodra deze wedstrijd tracking heeft óf al een bevestigde
+   * cloudclaim draagt (die claim kan al vóór `phase === 'tracking'`
+   * bestaan, tijdens de pre-game-gate). Los van `game?.id` als dependency:
+   * een contextwissel na afronden (`game` wordt een verse `'setup'`-opzet
+   * zonder claim) moet de lock weer meteen opheffen.
+   */
+  useEffect(() => {
+    const locked = game?.phase === 'tracking' || cloudClaim.kind === 'confirmed';
+    onGameLockChange?.(locked);
+  }, [game?.phase, cloudClaim, onGameLockChange]);
 
   /**
    * PR 7.2a (docs/pr-7.2-plan.md §C 7.2a werk 4): per-`CompletedGame.id`
@@ -1181,6 +1250,8 @@ export function App({
             onGoToRoster={() => setTab('roster')}
             canWrite={canWriteGame}
             saveError={gameSaveError}
+            cloudClaim={cloudClaim}
+            onRetryClaim={handleRetryClaim}
           />
         )}
       </main>

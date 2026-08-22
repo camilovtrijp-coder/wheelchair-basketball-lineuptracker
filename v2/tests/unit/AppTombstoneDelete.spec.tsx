@@ -169,11 +169,22 @@ class FakeCompletedGameRepo implements CompletedGameRepository {
 }
 
 function renderHistoryWith(repo: FakeCompletedGameRepo) {
+  // PR 7.3a: `App`'s pre-game-gate roept nu `ensureWriterClaim()` aan zodra er
+  // een 'setup'-wedstrijd is in cloud-modus (los van deze test se
+  // tombstone-scenario) — een kale `{}`-stub volstaat daardoor niet meer.
+  const inertGameSync = {
+    async ensureWriterClaim() {
+      return {
+        kind: 'confirmed' as const,
+        identity: { writerUid: writer.authorUid, deviceId: writer.deviceId, writerEpoch: 0 },
+      };
+    },
+  } as unknown as GameSyncCoordinator;
   const repositories = {
     mode: 'cloud' as const,
     settings: new ImmediateSettingsRepository(),
     roster: new ImmediateRosterRepository(),
-    gameSync: {} as GameSyncCoordinator,
+    gameSync: inertGameSync,
     gameWriterContext: writer,
     completedGames: repo,
   };
