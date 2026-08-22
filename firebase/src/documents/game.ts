@@ -183,12 +183,22 @@ export const gameConverter: FirestoreDataConverter<GameDocument> = {
       writerUid: assertNullableString(TYPE, 'writerUid', data.writerUid),
       deviceId: assertNullableString(TYPE, 'deviceId', data.deviceId),
       writerEpoch: assertInteger(TYPE, 'writerEpoch', data.writerEpoch),
-      claimedAt: assertNullableIsoTimestampString(TYPE, 'claimedAt', data.claimedAt),
-      lastWriterActivityAt: assertNullableIsoTimestampString(
-        TYPE,
-        'lastWriterActivityAt',
-        data.lastWriterActivityAt,
-      ),
+      // Backward-compat met documenten van vóór PR 7.3a (externe review, P1):
+      // die missen `claimedAt`/`lastWriterActivityAt` volledig (de sleutels
+      // zelf ontbreken, geen `null`) — die schema-uitbreiding bestond toen nog
+      // niet. AFWEZIG wordt daarom behandeld als het ongeclaimd-default
+      // (`null`), exact hetzelfde patroon als
+      // `completedGameConverter.fromFirestore()` toepast op PR 7.2c se nieuwe
+      // velden. Een AANWEZIG-maar-fout-getypeerd veld blijft fail-closed via
+      // `assertNullableIsoTimestampString()`.
+      claimedAt:
+        data.claimedAt === undefined
+          ? null
+          : assertNullableIsoTimestampString(TYPE, 'claimedAt', data.claimedAt),
+      lastWriterActivityAt:
+        data.lastWriterActivityAt === undefined
+          ? null
+          : assertNullableIsoTimestampString(TYPE, 'lastWriterActivityAt', data.lastWriterActivityAt),
       revision: assertInteger(TYPE, 'revision', data.revision),
       createdAt: assertIsoTimestampString(TYPE, 'createdAt', data.createdAt),
       startedAt: assertNullableIsoTimestampString(TYPE, 'startedAt', data.startedAt),

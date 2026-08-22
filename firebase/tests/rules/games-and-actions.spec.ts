@@ -43,6 +43,7 @@ import {
   TEAM_B1,
   USERS,
   sampleGame,
+  sampleLegacyGame,
   sampleGameAction,
 } from './helpers/fixtures.js';
 
@@ -515,6 +516,184 @@ describe('games/{gameId}: update', () => {
   it('mag NOOIT verwijderd worden', async () => {
     const db = authCtx(env, USERS.dave.uid, { email: USERS.dave.email, email_verified: true });
     await assertFails(deleteDoc(gameRef(db, ORG_A, TEAM_A1, 'game-1')));
+  });
+});
+
+// P1-fix (externe review PR #66): documenten van vóór PR 7.3a missen
+// `claimedAt`/`lastWriterActivityAt` server-side VOLLEDIG (geen `null`, de
+// sleutels zelf ontbreken — `sampleLegacyGame()` bootst dat exact na, zie
+// firebase/tests/rules/helpers/fixtures.ts). Zie firestore.rules punt 19
+// voor de volledige toelichting.
+describe('games/{gameId}: backward-compat (P1, externe review PR #66) — documenten van vóór PR 7.3a', () => {
+  it('een ongeclaimd legacydocument kan alsnog via het initiële-claimpad (10b) geclaimd worden', async () => {
+    await withAdmin(env, async (db) => {
+      await db
+        .collection('organizations')
+        .doc(ORG_A)
+        .collection('teams')
+        .doc(TEAM_A1)
+        .collection('games')
+        .doc('game-legacy-unclaimed')
+        .set(sampleLegacyGame());
+    });
+    const db = authCtx(env, USERS.dave.uid, { email: USERS.dave.email, email_verified: true });
+    await assertSucceeds(
+      updateDoc(gameRef(db, ORG_A, TEAM_A1, 'game-legacy-unclaimed'), {
+        writerUid: USERS.dave.uid,
+        deviceId: 'device-dave',
+        claimedAt: '2026-01-01T00:05:00.000Z',
+        lastWriterActivityAt: '2026-01-01T00:05:00.000Z',
+        revision: 1,
+      }),
+    );
+  });
+
+  it('een AL geclaimd legacydocument (claimedAt/lastWriterActivityAt afwezig) kan door de huidige writer opgewaardeerd worden via een normale patch (10a), met claimedAt ongewijzigd teruggezet op null', async () => {
+    await withAdmin(env, async (db) => {
+      await db
+        .collection('organizations')
+        .doc(ORG_A)
+        .collection('teams')
+        .doc(TEAM_A1)
+        .collection('games')
+        .doc('game-legacy-claimed')
+        .set(sampleLegacyGame({ writerUid: USERS.dave.uid, deviceId: 'device-dave' }));
+    });
+    const db = authCtx(env, USERS.dave.uid, { email: USERS.dave.email, email_verified: true });
+    // `GameSyncCoordinator.sync()` stuurt `claimedAt` in de praktijk altijd
+    // mee (ongewijzigd terugecho'd, `ensure.claimedAt ?? null`, zie
+    // `projectGameSnapshotPatch()`) — expliciet `null` hier, spiegelt exact
+    // die aanroep. Zie de volgende test voor waarom dat veld niet weggelaten
+    // mag worden.
+    await assertSucceeds(
+      updateDoc(gameRef(db, ORG_A, TEAM_A1, 'game-legacy-claimed'), {
+        onCourt: ['gp-1'],
+        claimedAt: null,
+        lastWriterActivityAt: '2026-01-01T00:05:00.000Z',
+        revision: 1,
+      }),
+    );
+  });
+
+  // `updateDoc()` raakt alleen de meegestuurde velden — een patch die
+  // `claimedAt` zelf NIET meestuurt, laat de sleutel op een legacydocument
+  // dus voor altijd afwezig; `isValidGamePayload()` eist die sleutel juist
+  // PRESENT op het resulterende document. Dit is precies waarom
+  // `GameSyncCoordinator.sync()`/`projectGameSnapshotPatch()` `claimedAt`
+  // voortaan ALTIJD meesturen (test hierboven) — zonder dat zou elke normale
+  // patch op een legacydocument voor altijd blijven weigeren.
+  it('een AL geclaimd legacydocument weigert een patch die claimedAt zelf niet meestuurt (bewijst de noodzaak van de app-fix)', async () => {
+    await withAdmin(env, async (db) => {
+      await db
+        .collection('organizations')
+        .doc(ORG_A)
+        .collection('teams')
+        .doc(TEAM_A1)
+        .collection('games')
+        .doc('game-legacy-claimed-2')
+        .set(sampleLegacyGame({ writerUid: USERS.dave.uid, deviceId: 'device-dave' }));
+    });
+    const db = authCtx(env, USERS.dave.uid, { email: USERS.dave.email, email_verified: true });
+    await assertFails(
+      updateDoc(gameRef(db, ORG_A, TEAM_A1, 'game-legacy-claimed-2'), {
+        onCourt: ['gp-1'],
+        lastWriterActivityAt: '2026-01-01T00:05:00.000Z',
+        revision: 1,
+      }),
+    );
+  });
+
+  it('een AL geclaimd legacydocument weigert een patch die claimedAt via dit pad WEL een waarde geeft (nog steeds geen claim/overname via 10a)', async () => {
+    await withAdmin(env, async (db) => {
+      await db
+        .collection('organizations')
+        .doc(ORG_A)
+        .collection('teams')
+        .doc(TEAM_A1)
+        .collection('games')
+        .doc('game-legacy-claimed-3')
+        .set(sampleLegacyGame({ writerUid: USERS.dave.uid, deviceId: 'device-dave' }));
+    });
+    const db = authCtx(env, USERS.dave.uid, { email: USERS.dave.email, email_verified: true });
+    await assertFails(
+      updateDoc(gameRef(db, ORG_A, TEAM_A1, 'game-legacy-claimed-3'), {
+        onCourt: ['gp-1'],
+        claimedAt: '2026-01-01T00:05:00.000Z',
+        lastWriterActivityAt: '2026-01-01T00:05:00.000Z',
+        revision: 1,
+      }),
+    );
+  });
+
+  it('een ANDERE bevoegde gebruiker dan de huidige writer kan het migratiepad NIET misbruiken om een legacydocument via 10a over te nemen', async () => {
+    await withAdmin(env, async (db) => {
+      await db
+        .collection('organizations')
+        .doc(ORG_A)
+        .collection('teams')
+        .doc(TEAM_A1)
+        .collection('games')
+        .doc('game-legacy-claimed-4')
+        .set(sampleLegacyGame({ writerUid: USERS.dave.uid, deviceId: 'device-dave' }));
+    });
+    // carol (coach) is bevoegd om wedstrijddata te schrijven, maar is niet de
+    // huidige writer (dave) — de backward-compat-guard mag dat niet omzeilen.
+    const db = authCtx(env, USERS.carol.uid, { email: USERS.carol.email, email_verified: true });
+    await assertFails(
+      updateDoc(gameRef(db, ORG_A, TEAM_A1, 'game-legacy-claimed-4'), {
+        onCourt: ['gp-1'],
+        claimedAt: null,
+        lastWriterActivityAt: '2026-01-01T00:05:00.000Z',
+        revision: 1,
+      }),
+    );
+  });
+
+  it('een AL geclaimd legacydocument kan nog steeds normaal overgenomen worden via 10d (epoch +1)', async () => {
+    await withAdmin(env, async (db) => {
+      await db
+        .collection('organizations')
+        .doc(ORG_A)
+        .collection('teams')
+        .doc(TEAM_A1)
+        .collection('games')
+        .doc('game-legacy-takeover')
+        .set(sampleLegacyGame({ writerUid: USERS.dave.uid, deviceId: 'device-dave' }));
+    });
+    const db = authCtx(env, USERS.carol.uid, { email: USERS.carol.email, email_verified: true });
+    await assertSucceeds(
+      updateDoc(gameRef(db, ORG_A, TEAM_A1, 'game-legacy-takeover'), {
+        writerUid: USERS.carol.uid,
+        deviceId: 'device-carol',
+        writerEpoch: 1,
+        claimedAt: '2026-01-01T00:05:00.000Z',
+        lastWriterActivityAt: '2026-01-01T00:05:00.000Z',
+        revision: 1,
+      }),
+    );
+  });
+
+  it('een afgerond legacyparentdocument (completedGameId gezet, claimedAt afwezig) blijft leesbaar', async () => {
+    await withAdmin(env, async (db) => {
+      await db
+        .collection('organizations')
+        .doc(ORG_A)
+        .collection('teams')
+        .doc(TEAM_A1)
+        .collection('games')
+        .doc('game-legacy-completed')
+        .set(
+          sampleLegacyGame({
+            writerUid: USERS.dave.uid,
+            deviceId: 'device-dave',
+            completedGameId: 'completed-legacy-1',
+          }),
+        );
+    });
+    const db = authCtx(env, USERS.dave.uid, { email: USERS.dave.email, email_verified: true });
+    const snapshot = await assertSucceeds(getDoc(gameRef(db, ORG_A, TEAM_A1, 'game-legacy-completed')));
+    expect(snapshot.data()?.completedGameId).toBe('completed-legacy-1');
+    expect(snapshot.data()?.claimedAt).toBeUndefined();
   });
 });
 

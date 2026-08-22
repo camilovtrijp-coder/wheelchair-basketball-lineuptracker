@@ -240,6 +240,34 @@ describe('application/game/GameSyncCoordinator (PR 7.1c)', () => {
     expect(result.serverRevision).toBe(4);
   });
 
+  it('REGRESSIE (externe review PR #66, P1): een legacygeclaimd document (claimedAt server-side afwezig, niet null) synct alsnog een normale patch', async () => {
+    // `ensureGame()` levert hier geen `claimedAt` in het resultaat — spiegelt
+    // een document van vóór PR 7.3a, waar de sleutel server-side nog
+    // volledig ontbreekt (de FirestoreGameCloudGateway/converter geven zo'n
+    // afwezigheid door als `undefined`, nooit `null`). `sync()` moet dit
+    // opvangen (`ensure.claimedAt ?? null`) en `claimedAt: null` meesturen
+    // aan de patch — zonder deze fix bleef `claimedAt` voor altijd afwezig
+    // op het serverdocument en weigerde firestore.rules elke volgende patch.
+    const checkpoints = new LocalStorageGameSyncCheckpointRepository(new MemoryStorage());
+    const gateway = mockGateway({
+      ensureGame: () => ({
+        ok: true,
+        revision: 3,
+        writerUid: writer.authorUid,
+        deviceId: writer.deviceId,
+        // Bewust geen `claimedAt`-sleutel — simuleert het server-side
+        // ontbreken op een legacydocument.
+      }),
+    });
+    const coordinator = new GameSyncCoordinator({ gateway, checkpoints, now: fixedClock() });
+    const game = gameWithActions(['a1']);
+
+    const result = await coordinator.sync(game, writer);
+
+    expect(result.status).toBe('idle');
+    expect(gateway.calls.patchSnapshot).toBe(1);
+  });
+
   it('faalt zichtbaar (actie-nodig) als een ANDER apparaat/andere gebruiker de wedstrijd al claimde', async () => {
     const checkpoints = new LocalStorageGameSyncCheckpointRepository(new MemoryStorage());
     const gateway = mockGateway({

@@ -199,6 +199,35 @@ rules_version = '2';
 //      altijd, ongeacht wanneer de oude writer weer online komt — dat
 //      apparaat ziet zo'n mislukte upload lokaal terug als `Actie nodig`,
 //      nooit een stille herschrijving naar de nieuwe epoch.
+//  19. [P1, externe review PR #66] Backward-compat voor documenten van vóór
+//      PR 7.3a: die missen `claimedAt`/`lastWriterActivityAt` volledig (de
+//      sleutels zelf ontbreken, geen `null` — punt 18's schema-uitbreiding
+//      bestond toen nog niet). Voor een nog-ONGECLAIMD legacydocument werkt
+//      punt 10b (initiële claim) al zonder aanpassing: dat pad zet beide
+//      velden altijd expliciet, ongeacht wat ervóór stond. Voor een AL
+//      GECLAIMD legacydocument faalde punt 10a (normale patch) voorheen
+//      altijd: `isValidGamePayload()` eist de VOLLEDIGE sleutelset op het
+//      RESULTERENDE document (dus ook `claimedAt`), maar 10a's patchpad
+//      (`GameSyncCoordinator`/`projectGameSnapshotPatch()`) liet `claimedAt`
+//      bewust altijd ongewijzigd — op een document waar die sleutel nooit
+//      bestond, blijft 'ie zo dus voor altijd afwezig. `GameSyncCoordinator.
+//      sync()` stuurt `claimedAt` daarom voortaan MEE in elke 10a-patch
+//      (ongewijzigd terugecho'd, nooit een nieuwe claim), en 10a's
+//      vergelijking hieronder gebruikt dezelfde `('claimedAt' in
+//      resource.data) ? resource.data.claimedAt : null`-defaulting als de
+//      PR 7.2c-tombstoneregel op `completedGames` toepast — zonder deze
+//      guard gooit Rules een veldtoegangsfout op een ontbrekende sleutel
+//      (geen `null`-waarde), wat de hele 10a-tak alsnog laat weigeren. 10a's
+//      `diff(...).affectedKeys().hasOnly([...])`-allowlist bevat `claimedAt`
+//      om dezelfde reden: het TOEVOEGEN van een tot dan toe afwezige sleutel
+//      (zelfs met een ongewijzigde `null`-waarde) telt voor `diff()` als een
+//      gewijzigde sleutel. Zodra één 10a-patch geslaagd is, draagt het
+//      document de sleutel blijvend (Firestore-`updateDoc()` voegt een veld
+//      permanent toe) — geen aparte migratiestap nodig.
+//      `firebase/src/documents/game.ts`'s
+//      `gameConverter.fromFirestore()` past dezelfde afwezig-is-`null`-
+//      defaulting toe aan de leeskant (spiegelt `completedGameConverter`'s
+//      PR 7.2c-precedent).
 
 service cloud.firestore {
   match /databases/{database}/documents {
@@ -677,14 +706,29 @@ service cloud.firestore {
                 request.resource.data.writerUid == resource.data.writerUid &&
                 request.resource.data.deviceId == resource.data.deviceId &&
                 request.resource.data.writerEpoch == resource.data.writerEpoch &&
-                request.resource.data.claimedAt == resource.data.claimedAt &&
+                // Punt 19: backward-compat — een legacydocument (vóór PR
+                // 7.3a) mist `claimedAt` server-side nog volledig (geen
+                // sleutel, geen `null`); zonder deze `in`-guard gooit het
+                // veldtoegang hieronder een fout in plaats van `null` op te
+                // leveren.
+                request.resource.data.claimedAt ==
+                  (('claimedAt' in resource.data) ? resource.data.claimedAt : null) &&
                 request.resource.data.lastWriterActivityAt is string &&
                 isIsoTimestampShape(request.resource.data.lastWriterActivityAt) &&
                 request.resource.data.completedGameId == resource.data.completedGameId &&
+                // Punt 19: `claimedAt` staat ook in deze allowlist — niet omdat
+                // 10a 'm mag WIJZIGEN (de gelijkheidscheck hierboven dwingt
+                // "ongewijzigd" nog steeds af), maar omdat het toevoegen van
+                // een tot dan toe AFWEZIGE sleutel op een legacydocument (zie
+                // firestore.rules punt 19) voor `diff().affectedKeys()` een
+                // "gewijzigde sleutel" is, ook al is de waarde zelf `null`
+                // (hetzelfde als de sleutel nooit had bestaan). Zonder
+                // `claimedAt` hier zou zo'n eerste post-migratie patch alsnog
+                // op deze allowlist stuklopen.
                 request.resource.data.diff(resource.data).affectedKeys().hasOnly([
                   'phase', 'onCourt', 'curQuarter', 'beginSec', 'endSec',
                   'pendingSwapLineup', 'scoreFor', 'scoreAgainst', 'segmentCount',
-                  'lastWriterActivityAt', 'revision', 'startedAt', 'updatedAt'
+                  'claimedAt', 'lastWriterActivityAt', 'revision', 'startedAt', 'updatedAt'
                 ]) &&
                 (request.resource.data.phase == resource.data.phase ||
                   (resource.data.phase == 'setup' && request.resource.data.phase == 'tracking')) &&

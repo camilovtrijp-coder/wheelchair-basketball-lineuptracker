@@ -150,6 +150,38 @@ cloudclaim start cloudmodus niet, terwijl lokale modus netwerkloos blijft.
   `App` heen: automatische claim, `onGameLockChange`-timing, alleen-lokale
   modus blijft claimloos). Volledige v2-unit-suite nu 713 tests, groen.
 
+**P1-fix (externe review PR #66, na de bovenstaande implementatie):** een
+document van vóór PR 7.3a mist `claimedAt`/`lastWriterActivityAt` server-side
+VOLLEDIG (de sleutels zelf ontbreken, geen `null`). Dat brak twee dingen: (1)
+`gameConverter.fromFirestore()` gooide een `DocumentValidationError` op elke
+lezing van zo'n document (`assertNullableIsoTimestampString` behandelde
+`undefined` niet als `null`) — `ensureGame()` kon bestaande wedstrijden dus
+niet meer lezen; (2) zelfs na een read-side fix bleef een AL geclaimd
+legacydocument permanent onpatchbaar: het normale 10a-patchpad
+(`projectGameSnapshotPatch()`) liet `claimedAt` bewust altijd ongewijzigd,
+maar op een document waar die sleutel nooit bestond blijft 'ie zo voor altijd
+afwezig, en `isValidGamePayload()` eist de volledige sleutelset op het
+RESULTERENDE document. Fix, spiegelt het PR 7.2c-precedent voor
+`completedGames`' `revision`/`deletedAt`/`deletedBy`:
+`gameConverter.fromFirestore()` defaultet AFWEZIG naar `null` (AANWEZIG-maar-
+fout-getypeerd blijft fail-closed); `GameSyncCoordinator.sync()` geeft het
+gelezen `claimedAt` (`ensure.claimedAt ?? null`) voortaan altijd ongewijzigd
+mee aan `projectGameSnapshotPatch()`/`patchSnapshot()`; firestore.rules' 10a-
+pad gebruikt `('claimedAt' in resource.data) ? resource.data.claimedAt :
+null`-defaulting in de vergelijking (zelfde patroon als de
+`completedGames`-tombstoneregel) en telt `claimedAt` mee in de
+`diff().affectedKeys().hasOnly([...])`-allowlist (het toevoegen van een tot
+dan toe afwezige sleutel is voor `diff()` een "gewijzigde sleutel", ook met
+een ongewijzigde `null`-waarde). 10b (initiële claim)/10d (overname) hadden
+geen fix nodig — die paden zetten `claimedAt`/`lastWriterActivityAt` altijd
+al expliciet. Regressietests: `documentConverters.spec.ts` (legacy round-trip
++ fail-closed op malformed), `GameSyncCoordinator.spec.ts` (legacygeclaimd
+document synct alsnog), `games-and-actions.spec.ts` (nieuw describe-block:
+ongeclaimd/geclaimd legacydocument via 10b/10a/10d, een andere gebruiker kan
+het pad niet misbruiken, afgerond legacyparentdocument blijft leesbaar).
+Geverifieerd: volledige `test:e2e:auth`-suite (59 specs) en `test:e2e`-suite
+(90 specs) opnieuw groen tegen de echte Firebase-emulator.
+
 **Nog niet gedaan (bewust doorgeschoven):**
 
 - Een sterke overname-bevestigingsflow/UI-knop ("Take over") — expliciet

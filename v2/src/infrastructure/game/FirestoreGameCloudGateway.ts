@@ -190,6 +190,7 @@ export class FirestoreGameCloudGateway implements GameCloudGateway {
           writerUid: data.writerUid,
           deviceId: data.deviceId,
           writerEpoch: data.writerEpoch,
+          claimedAt: data.claimedAt,
           completedGameId: data.completedGameId,
         };
       }
@@ -204,6 +205,7 @@ export class FirestoreGameCloudGateway implements GameCloudGateway {
         writerUid: snapshot.writerUid,
         deviceId: snapshot.deviceId,
         writerEpoch: snapshot.writerEpoch,
+        claimedAt: snapshot.claimedAt,
         completedGameId: snapshot.completedGameId,
       };
     } catch (createError) {
@@ -227,6 +229,7 @@ export class FirestoreGameCloudGateway implements GameCloudGateway {
             writerUid: data.writerUid,
             deviceId: data.deviceId,
             writerEpoch: data.writerEpoch,
+            claimedAt: data.claimedAt,
             completedGameId: data.completedGameId,
           };
         }
@@ -461,6 +464,7 @@ export class FirestoreGameCloudGateway implements GameCloudGateway {
           writerUid: data.writerUid,
           deviceId: data.deviceId,
           writerEpoch: data.writerEpoch,
+          claimedAt: data.claimedAt,
           completedGameId: data.completedGameId,
         };
       }
@@ -473,6 +477,7 @@ export class FirestoreGameCloudGateway implements GameCloudGateway {
       writerUid: patch.writerUid,
       deviceId: patch.deviceId,
       writerEpoch: patch.writerEpoch,
+      claimedAt: patch.claimedAt,
       completedGameId: patch.completedGameId,
     };
   }
@@ -533,6 +538,7 @@ export class FirestoreGameCloudGateway implements GameCloudGateway {
           writerUid: data.writerUid,
           deviceId: data.deviceId,
           writerEpoch: data.writerEpoch,
+          claimedAt: data.claimedAt,
           completedGameId: data.completedGameId,
         };
       }

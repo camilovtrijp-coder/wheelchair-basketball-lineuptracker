@@ -248,6 +248,46 @@ describe('documentcontracten: round-trip via toFirestore/fromFirestore', () => {
     ).toEqual(doc);
   });
 
+  it('game: legacy document zonder claimedAt/lastWriterActivityAt (vóór PR 7.3a-schema, externe review PR #66, P1) defaultet naar null', () => {
+    const legacy: Omit<GameDocument, 'claimedAt' | 'lastWriterActivityAt'> = {
+      organizationId: 'org-1',
+      teamId: 'team-1',
+      phase: 'tracking',
+      players: [],
+      opponent: 'Fictieve Tegenstander',
+      competition: 'Fictieve Competitie',
+      clockDown: true,
+      limitStr: '14.5',
+      onCourt: ['gp-1'],
+      curQuarter: 2,
+      beginSec: 600,
+      endSec: 540,
+      pendingSwapLineup: null,
+      scoreFor: 12,
+      scoreAgainst: 9,
+      segmentCount: 1,
+      writerUid: 'uid-alice',
+      deviceId: 'device-1',
+      writerEpoch: 1,
+      revision: 3,
+      createdAt: '2026-01-01T00:00:00.000Z',
+      startedAt: '2026-01-01T00:05:00.000Z',
+      completedGameId: null,
+      updatedAt: Timestamp.now(),
+    };
+    const out = gameConverter.fromFirestore!(
+      mockSnapshot(legacy as unknown as Record<string, unknown>, GAME_PATH),
+      {},
+    );
+    expect(out.claimedAt).toBeNull();
+    expect(out.lastWriterActivityAt).toBeNull();
+    // Legacy AL geclaimd (writerUid gezet) blijft leesbaar ondanks de
+    // ontbrekende claimtijd — deriveWriterClaimState() (domain/game/
+    // writerClaim.ts) leunt op writerUid/deviceId, nooit op claimedAt.
+    expect(out.writerUid).toBe('uid-alice');
+    expect(out.scoreFor).toBe(12);
+  });
+
   it('completedGame (PR 7.2a)', () => {
     const doc: CompletedGameDocument = {
       organizationId: 'org-1',
@@ -822,6 +862,27 @@ describe('documentcontracten: weigeren malformed serverdata', () => {
     expect(() =>
       gameConverter.fromFirestore!(
         mockSnapshot({ ...validGame, startedAt: 'dit-is-geen-tijdstip' }, GAME_PATH),
+        {},
+      ),
+    ).toThrow(DocumentValidationError);
+  });
+
+  // Backward-compat-fix (externe review PR #66, P1): AFWEZIG → `null`
+  // (zie de aparte legacy-round-trip-test hierboven), maar een AANWEZIG-
+  // maar-fout-getypeerd `claimedAt`/`lastWriterActivityAt` blijft fail-closed.
+  it('game: niet-ISO-string voor claimedAt wordt geweigerd', () => {
+    expect(() =>
+      gameConverter.fromFirestore!(
+        mockSnapshot({ ...validGame, claimedAt: 'dit-is-geen-tijdstip' }, GAME_PATH),
+        {},
+      ),
+    ).toThrow(DocumentValidationError);
+  });
+
+  it('game: niet-ISO-string voor lastWriterActivityAt wordt geweigerd', () => {
+    expect(() =>
+      gameConverter.fromFirestore!(
+        mockSnapshot({ ...validGame, lastWriterActivityAt: 'dit-is-geen-tijdstip' }, GAME_PATH),
         {},
       ),
     ).toThrow(DocumentValidationError);

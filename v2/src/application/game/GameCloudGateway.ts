@@ -53,6 +53,20 @@ export interface GameSnapshotWriteResult {
    */
   writerEpoch?: number;
   /**
+   * PR 7.3a, backward-compat-fix (externe review, P1): aanwezig bij `ok:
+   * true`; het actuele `claimedAt` op het serverdocument NA deze operatie.
+   * `GameSyncCoordinator.sync()` geeft dit ongewijzigd terug aan de
+   * eerstvolgende `patchSnapshot()`-patch (`projectGameSnapshotPatch()`),
+   * ook als de huidige writer geen nieuwe claim/overname doet — een document
+   * van vóór PR 7.3a mist `claimedAt` server-side nog VOLLEDIG (geen `null`,
+   * de sleutel zelf ontbreekt); zonder dit veld hier zou de coordinator die
+   * afwezigheid niet kunnen "meenemen" naar de patch, en zou
+   * `isValidGamePayload()` (firestore.rules) elke normale patch op zo'n
+   * legacydocument blijven weigeren omdat het resulterende document dan nog
+   * steeds geen `claimedAt`-sleutel draagt.
+   */
+  claimedAt?: string | null;
+  /**
    * PR 7.2a: aanwezig bij `ok: true`; de actuele `completedGameId` op het
    * serverdocument NA deze operatie. `GameSyncCoordinator.finalize()`
    * gebruikt dit om een reeds server-side afgeronde wedstrijd te herkennen

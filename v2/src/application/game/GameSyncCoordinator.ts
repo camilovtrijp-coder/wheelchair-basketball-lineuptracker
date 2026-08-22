@@ -217,6 +217,12 @@ export class GameSyncCoordinator {
     // epoch geprobeerd worden en permanent op de actions-createregel
     // (firestore.rules punt 11) stuklopen.
     let writerEpoch = ensure.writerEpoch ?? writer.writerEpoch;
+    // P1-fix (externe review PR #66, backward-compat): het ECHTE huidige
+    // `claimedAt`, altijd ongewijzigd teruggegeven aan `patchSnapshot()`
+    // hieronder (zie `projectGameSnapshotPatch()`'s docstring). Een document
+    // van vóór PR 7.3a mist deze sleutel server-side nog volledig — de
+    // gateway/converter defaulten dat naar `null`, nooit `undefined`.
+    let claimedAt = ensure.claimedAt ?? null;
 
     if (writerUid === null && deviceId === null) {
       const claim = await this.gateway.claimWriter(
@@ -232,6 +238,7 @@ export class GameSyncCoordinator {
       writerUid = claim.identity.writerUid;
       deviceId = claim.identity.deviceId;
       writerEpoch = claim.identity.writerEpoch;
+      claimedAt = claim.claimedAt;
     } else if (writerUid !== writer.authorUid || deviceId !== writer.deviceId) {
       // Al geclaimd door een andere schrijver (ander apparaat en/of andere
       // gebruiker) — een overname is een expliciete gebruikersactie
@@ -271,7 +278,7 @@ export class GameSyncCoordinator {
       game.organizationId,
       game.teamId,
       game.id,
-      projectGameSnapshotPatch(game, this.now()),
+      projectGameSnapshotPatch(game, this.now(), claimedAt),
       revision,
     );
     if (!patchResult.ok) {

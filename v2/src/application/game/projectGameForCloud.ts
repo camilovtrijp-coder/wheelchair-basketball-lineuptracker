@@ -123,10 +123,23 @@ export function projectGameSnapshot(game: ActiveGame): GameSnapshotProjection {
  * hebben. `now` is de client-autoritatieve ISO-tijd voor
  * `lastWriterActivityAt` — door de aanroeper berekend (net als elders in
  * deze module) zodat deze functie zelf puur/deterministisch blijft.
+ *
+ * `claimedAt` (P1-fix, externe review PR #66): altijd ONGEWIJZIGD
+ * terugecho'd, nooit hier berekend — dit pad claimt/neemt nooit over (dat
+ * blijft exclusief `GameCloudGateway.claimWriter()`/`takeoverWriter()`, PR
+ * 7.3a). Toch moet elke patch dit veld meesturen: een document van vóór PR
+ * 7.3a mist `claimedAt` server-side nog VOLLEDIG (geen `null`, de sleutel
+ * zelf ontbreekt), en `firestore.rules`' `isValidGamePayload()` eist de
+ * volledige sleutelset op het RESULTERENDE document. Zonder dit veld hier
+ * zou een normale patch op zo'n legacydocument permanent op die schema-eis
+ * blijven stuklopen — zie firestore.rules punt 19 voor de volledige
+ * toelichting (spiegelt de Rules-kant se `('claimedAt' in resource.data) ?
+ * ... : null`-defaulting).
  */
 export function projectGameSnapshotPatch(
   game: ActiveGame,
   now: string,
+  claimedAt: string | null,
 ): Pick<
   GameSnapshotProjection,
   | 'phase'
@@ -139,6 +152,7 @@ export function projectGameSnapshotPatch(
   | 'scoreAgainst'
   | 'segmentCount'
   | 'startedAt'
+  | 'claimedAt'
   | 'lastWriterActivityAt'
 > {
   const snapshot = projectGameSnapshot(game);
@@ -153,6 +167,7 @@ export function projectGameSnapshotPatch(
     scoreAgainst: snapshot.scoreAgainst,
     segmentCount: snapshot.segmentCount,
     startedAt: snapshot.startedAt,
+    claimedAt,
     lastWriterActivityAt: now,
   };
 }
