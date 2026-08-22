@@ -110,11 +110,27 @@ cloudclaim start cloudmodus niet, terwijl lokale modus netwerkloos blijft.
   `gameStartBlockReason()`: in cloudmodus geblokkeerd totdat `'confirmed'`,
   met een eigen NL/EN-tekst per `WriterClaimErrorCode`
   (`claimBlocked*`-i18n-sleutels) en een "Opnieuw proberen"-knop bij
-  `'blocked'`. `App.tsx` roept `ensureWriterClaim()` automatisch aan zodra er
-  een `'setup'`-wedstrijd is in cloud-modus (effect op `game?.id`/
-  `game?.phase`, niet op elke toetsaanslag) — alleen-lokale modus
+  `'blocked'`. `App.tsx` roept `ensureWriterClaim()` automatisch aan zodra
+  (a) er een `'setup'`-wedstrijd is, (b) de roster startbaar is
+  (`startBlockReason() === null`) ÉN (c) de gebruiker daadwerkelijk op het
+  Wedstrijd-tabblad staat, in cloud-modus (effect op `game?.id`/`game?.phase`/
+  `tab`, niet op elke toetsaanslag) — alleen-lokale modus
   (`repositories.gameSync === null`) blijft `'not-required'` zonder enige
-  Firestore/Auth-aanroep.
+  Firestore/Auth-aanroep. Voorwaarde (c) is een externe-reviewfix: zonder de
+  tab-gate claimde de app elke net-aangemaakte 'setup'-opzet (die App.tsx
+  altijd derived zodra settings/roster geladen zijn, ook ongezien) meteen bij
+  het openen, en opnieuw na het afronden van een wedstrijd (de app schakelt
+  dan automatisch naar Historie terwijl er alweer een — vaak direct
+  startbare — verse opzet klaarstaat) — beide keren vergrendelde dat de
+  organisatie/teamcontext voor een wedstrijd die de gebruiker nooit bewust
+  benaderde, zichtbaar geworden via twee falende `test:e2e:auth`-scenario's
+  (contextwisselaar bleef onbereikbaar). Een tweede, samenhangende fix: een
+  al bevestigde claim (`cloudClaim.kind === 'confirmed'`) wordt alleen nog
+  behouden zolang 'm over DEZELFDE wedstrijd gaat (`confirmedForGameIdRef`)
+  — anders erfde de VERSE opzet na het afronden stilzwijgend de bevestigde
+  status van de oude wedstrijd en bleef de context vergrendeld. Volledige
+  `test:e2e:auth`-suite (59 specs) groen tegen de echte Firebase-emulator na
+  deze fix.
 - `app/App.tsx` / `app/AuthGate.tsx`: nieuwe `AppProps.onGameLockChange`
   — meldt `true` zodra `game.phase === 'tracking'` OF `cloudClaim.kind ===
   'confirmed'` (dus al vóór "Start wedstrijd" geklikt is, zodra de claim

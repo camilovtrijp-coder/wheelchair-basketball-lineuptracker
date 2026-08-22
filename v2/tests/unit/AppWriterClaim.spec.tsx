@@ -71,6 +71,21 @@ class ImmediateRosterRepository implements AsyncRosterRepository {
   }
 }
 
+/** Regressiefixture (externe review op PR #66): een leeg roster levert een
+ * nog-niet-startbare 'setup'-opzet op — die mag GEEN claimpoging triggeren. */
+class EmptyRosterRepository implements AsyncRosterRepository {
+  async read(): Promise<Roster> {
+    return [];
+  }
+  async write(): Promise<never> {
+    throw new Error('niet gebruikt in deze test');
+  }
+  subscribe(onNext: (roster: Roster, sync: SyncState) => void): () => void {
+    onNext([], SYNCED);
+    return () => undefined;
+  }
+}
+
 function fakeSyncStatusApi(): SyncStatusApi {
   return {
     status: 'gesynchroniseerd',
@@ -230,6 +245,105 @@ describe('app/App: pre-game-gate roept ensureWriterClaim() aan en meldt de conte
     await act(async () => {
       getByTestId('game-start-btn').click();
     });
+    await waitFor(() => expect(onGameLockChange).toHaveBeenCalledWith(true));
+  });
+
+  it('REGRESSIE (externe review PR #66): een nog-niet-startbare wedstrijd (leeg roster) claimt NOOIT automatisch en vergrendelt de context NIET', async () => {
+    const claimCalls: unknown[] = [];
+    const gameSync = {
+      async ensureWriterClaim(game: unknown, w: unknown) {
+        claimCalls.push([game, w]);
+        return {
+          kind: 'confirmed' as const,
+          identity: { writerUid: writer.authorUid, deviceId: writer.deviceId, writerEpoch: 0 },
+        };
+      },
+    } as unknown as GameSyncCoordinator;
+    const onGameLockChange = vi.fn();
+    const repositories = {
+      mode: 'cloud' as const,
+      settings: new ImmediateSettingsRepository(),
+      roster: new EmptyRosterRepository(),
+      gameSync,
+      gameWriterContext: writer,
+      completedGames: null,
+    };
+
+    const { getByTestId } = render(
+      <App
+        repositories={repositories}
+        syncStatus={fakeSyncStatusApi()}
+        canWrite={true}
+        canWriteGame={true}
+        organizationId={ORG_ID}
+        teamId={TEAM_ID}
+        organizationName="Org Claim Test"
+        onGameLockChange={onGameLockChange}
+      />,
+    );
+
+    await act(async () => {
+      getByTestId('nav-game').click();
+    });
+    await waitFor(() => expect(getByTestId('game-no-players')).toBeTruthy());
+
+    // Geef eventuele (foutieve) effect-cycli de kans om te vuren.
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 50));
+    });
+
+    expect(claimCalls.length).toBe(0);
+    expect(onGameLockChange).not.toHaveBeenCalledWith(true);
+  });
+
+  it('REGRESSIE (externe review PR #66): een startbare wedstrijd claimt NOOIT automatisch zolang de gebruiker niet op het Wedstrijd-tabblad staat', async () => {
+    const claimCalls: unknown[] = [];
+    const gameSync = {
+      async ensureWriterClaim(game: unknown, w: unknown) {
+        claimCalls.push([game, w]);
+        return {
+          kind: 'confirmed' as const,
+          identity: { writerUid: writer.authorUid, deviceId: writer.deviceId, writerEpoch: 0 },
+        };
+      },
+    } as unknown as GameSyncCoordinator;
+    const onGameLockChange = vi.fn();
+    const repositories = {
+      mode: 'cloud' as const,
+      settings: new ImmediateSettingsRepository(),
+      roster: new ImmediateRosterRepository(), // vijf spelers: meteen startbaar
+      gameSync,
+      gameWriterContext: writer,
+      completedGames: null,
+    };
+
+    const { getByTestId } = render(
+      <App
+        repositories={repositories}
+        syncStatus={fakeSyncStatusApi()}
+        canWrite={true}
+        canWriteGame={true}
+        organizationId={ORG_ID}
+        teamId={TEAM_ID}
+        organizationName="Org Claim Test"
+        onGameLockChange={onGameLockChange}
+      />,
+    );
+
+    // Blijft op het standaard 'settings'-tabblad — nooit naar Wedstrijd genavigeerd.
+    await waitFor(() => expect(getByTestId('settings-teamName')).toBeTruthy());
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 50));
+    });
+
+    expect(claimCalls.length).toBe(0);
+    expect(onGameLockChange).not.toHaveBeenCalledWith(true);
+
+    // Navigeert nu WEL naar Wedstrijd — pas dan mag de claim starten.
+    await act(async () => {
+      getByTestId('nav-game').click();
+    });
+    await waitFor(() => expect(claimCalls.length).toBe(1));
     await waitFor(() => expect(onGameLockChange).toHaveBeenCalledWith(true));
   });
 });

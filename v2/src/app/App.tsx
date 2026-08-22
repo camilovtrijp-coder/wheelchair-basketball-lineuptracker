@@ -26,7 +26,11 @@ import { LocalStorageCompletedGameRepository } from '../infrastructure/game/Loca
 import type { CompletedGameRepository } from '../application/game/CompletedGameRepository';
 import { LocalStoragePendingFinalizeRepository } from '../infrastructure/game/LocalStoragePendingFinalizeRepository';
 import { LocalStorageLangRepository } from '../infrastructure/i18n/LocalStorageLangRepository';
-import { createGameFromRoster, syncGamePlayersWithRoster } from '../domain/game/setup';
+import {
+  createGameFromRoster,
+  startBlockReason,
+  syncGamePlayersWithRoster,
+} from '../domain/game/setup';
 import { finishGame } from '../domain/game/finish';
 import type { ActiveGame, CompletedGame } from '../domain/game/types';
 import type { CloudClaimStatus } from '../domain/game/writerClaim';
@@ -497,18 +501,44 @@ export function App({
    * PR 7.3a (docs/pr-7.3-plan.md §B/§C 7.3a werk 3): pre-game-gate —
    * verkrijgt/bevestigt de writerclaim VÓÓR tip-off ("Een cloudwedstrijd
    * krijgt vóór tip-off een serverbevestigde writerclaim"). Draait alleen
-   * terwijl `game.phase === 'setup'` in cloud-modus; `repositories.gameSync`/
-   * `gameWriterContext` zijn `null` in alleen-lokale modus (net als
-   * `runGameSync` hierboven), dus dan blijft dit `'not-required'` zonder
-   * enige Firestore/Auth-aanroep — alleen-lokale modus blijft zonder claim of
-   * netwerk werken. `GameSetupPanel`'s startknop blijft geblokkeerd
-   * (`domain/game/writerClaim.ts` `gameStartBlockReason()`) totdat dit
-   * `'confirmed'` wordt. `claimAttempt` is een handmatige retry-trigger (de
-   * "Opnieuw proberen"-knop bij `'blocked'`).
+   * terwijl (a) `game.phase === 'setup'`, (b) de roster al startbaar is
+   * (`startBlockReason(game) === null` — dezelfde voorwaarde als
+   * `GameSetupPanel`'s startknop) ÉN (c) de gebruiker daadwerkelijk op het
+   * Wedstrijd-tabblad staat, in cloud-modus.
+   *
+   * Voorwaarde (c) is net zo essentieel als (b): App.tsx derived altijd een
+   * verse 'setup'-opzet zodra settings/roster geladen zijn, ook zonder dat de
+   * gebruiker ooit het Wedstrijd-tabblad bezocht — en na het afronden van een
+   * wedstrijd schakelt de app automatisch naar Historie terwijl er alweer een
+   * verse, vaak DIRECT startbare opzet klaarstaat (dezelfde roster als
+   * daarvoor). Zonder de tab-gate zou zo'n net-afgeronde sessie de
+   * organisatie/teamcontext (zie `onGameLockChange` hieronder) opnieuw
+   * vergrendelen vóórdat de gebruiker ooit weer naar het Wedstrijd-tabblad
+   * keek — precies zichtbaar geworden via twee falende
+   * `test:e2e:auth`-scenario's op PR #66 (contextwissel vóór ooit het
+   * Wedstrijd-tabblad bezocht te hebben, en contextwissel na het afronden van
+   * een wedstrijd). `repositories.gameSync`/`gameWriterContext` zijn `null`
+   * in alleen-lokale modus (net als `runGameSync` hierboven), dus dan blijft
+   * dit `'not-required'` zonder enige Firestore/Auth-aanroep — alleen-lokale
+   * modus blijft zonder claim of netwerk werken. `GameSetupPanel`'s
+   * startknop blijft geblokkeerd (`domain/game/writerClaim.ts`
+   * `gameStartBlockReason()`) totdat dit `'confirmed'` wordt. `claimAttempt`
+   * is een handmatige retry-trigger (de "Opnieuw proberen"-knop bij
+   * `'blocked'`).
+   *
+   * `claimReadiness` is een primitieve dependency (string|null, geen object)
+   * die alleen wijzigt zodra de roster-startbaarheid zelf verandert (bijv. de
+   * 5e deelnemer gekozen) — niet bij elke ongerelateerde veldwijziging
+   * (opponent/competition/clockDown), wat het effect anders bij elke
+   * toetsaanslag opnieuw zou triggeren.
    */
   const [cloudClaim, setCloudClaim] = useState<CloudClaimStatus>({ kind: 'not-required' });
   const [claimAttempt, setClaimAttempt] = useState(0);
   const claimInFlightRef = useRef(false);
+  /** Welk `game.id` het huidige `cloudClaim` (indien `'confirmed'`) daadwerkelijk dekt. */
+  const confirmedForGameIdRef = useRef<string | null>(null);
+  const claimReadiness =
+    game !== null && game.phase === 'setup' ? startBlockReason(game) : 'no-game';
 
   useEffect(() => {
     const coordinator = repositories.gameSync;
@@ -519,16 +549,48 @@ export function App({
     }
     const current = latestGameRef.current;
     if (!current || current.phase !== 'setup') return;
+    if (tab !== 'game' || startBlockReason(current) !== null) {
+      // Nog niet startbaar (roster-reden) of de gebruiker staat niet op het
+      // Wedstrijd-tabblad — geen claimpoging. Een AL bevestigde claim blijft
+      // alleen behouden als 'm nog over DEZE wedstrijd gaat (bijv. de
+      // gebruiker togglet de roster kortstondig terug naar niet-startbaar
+      // ná een geslaagde claim, vóór het klikken op "Start") — nooit stil
+      // overerven naar een NIEUWE wedstrijd (bijv. de verse opzet na het
+      // afronden van de vorige, PR #66-review): dat zou de context blijven
+      // vergrendelen voor een wedstrijd die nooit geclaimd is. Ook nooit stil
+      // terugvallen op `'not-required'` — dat zou de cloud-claim-eis omzeilen
+      // op precies het eerste render-frame waarop beide alsnog voldaan raken.
+      setCloudClaim((prev) =>
+        prev.kind === 'confirmed' && confirmedForGameIdRef.current === current.id
+          ? prev
+          : { kind: 'pending' },
+      );
+      return;
+    }
     if (claimInFlightRef.current) return;
     claimInFlightRef.current = true;
     setCloudClaim({ kind: 'pending' });
     coordinator
       .ensureWriterClaim(current, writerContext)
-      .then(setCloudClaim, () => setCloudClaim({ kind: 'blocked', code: 'unknown' }))
+      .then(
+        (status) => {
+          confirmedForGameIdRef.current = status.kind === 'confirmed' ? current.id : null;
+          setCloudClaim(status);
+        },
+        () => setCloudClaim({ kind: 'blocked', code: 'unknown' }),
+      )
       .finally(() => {
         claimInFlightRef.current = false;
       });
-  }, [repositories.gameSync, repositories.gameWriterContext, game?.id, game?.phase, claimAttempt]);
+  }, [
+    repositories.gameSync,
+    repositories.gameWriterContext,
+    game?.id,
+    game?.phase,
+    tab,
+    claimReadiness,
+    claimAttempt,
+  ]);
 
   function handleRetryClaim() {
     setClaimAttempt((n) => n + 1);
