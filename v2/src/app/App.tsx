@@ -544,7 +544,12 @@ export function App({
     const coordinator = repositories.gameSync;
     const writerContext = repositories.gameWriterContext;
     if (!coordinator || !writerContext) {
-      setCloudClaim({ kind: 'not-required' });
+      // Referentiestabiel: in alleen-lokale modus blijft dit elke keer
+      // hetzelfde resultaat — een nieuwe `{kind:'not-required'}`-referentie
+      // zou hier bij elke `tab`-wisseling een overbodige App-brede re-render
+      // triggeren (`cloudClaim` is een dependency van meerdere hooks
+      // hieronder), puur voor een semantisch ongewijzigde staat.
+      setCloudClaim((prev) => (prev.kind === 'not-required' ? prev : { kind: 'not-required' }));
       return;
     }
     const current = latestGameRef.current;
@@ -560,11 +565,12 @@ export function App({
       // vergrendelen voor een wedstrijd die nooit geclaimd is. Ook nooit stil
       // terugvallen op `'not-required'` — dat zou de cloud-claim-eis omzeilen
       // op precies het eerste render-frame waarop beide alsnog voldaan raken.
-      setCloudClaim((prev) =>
-        prev.kind === 'confirmed' && confirmedForGameIdRef.current === current.id
-          ? prev
-          : { kind: 'pending' },
-      );
+      // Referentiestabiel (zie hierboven) — blijft `'pending'` een no-op-
+      // update als dat al de staat was.
+      setCloudClaim((prev) => {
+        if (prev.kind === 'confirmed' && confirmedForGameIdRef.current === current.id) return prev;
+        return prev.kind === 'pending' ? prev : { kind: 'pending' };
+      });
       return;
     }
     if (claimInFlightRef.current) return;
