@@ -99,6 +99,7 @@ const repositories = {
   roster: new StaticRosterRepository(),
   gameSync: null,
   gameWriterContext: null,
+  gameViewer: null,
   completedGames: null,
 };
 

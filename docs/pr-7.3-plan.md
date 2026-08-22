@@ -1,7 +1,9 @@
 # Voorbereidingsplan PR 7.3 — actieve wedstrijd single-writer
 
 Status: 7.3a geïmplementeerd (claim/epoch/overname-plumbing + pre-game-gate +
-contextlock); 7.3b/7.3c nog niet gestart.
+contextlock); 7.3b geïmplementeerd (live read-only viewer + team-brede
+single-writer-gate); 7.3c (overname-UI/-bevestigingsflow, recovery, echte-
+apparaatvalidatie) nog niet gestart.
 
 ## A. Doel
 
@@ -192,9 +194,9 @@ Geverifieerd: volledige `test:e2e:auth`-suite (59 specs) en `test:e2e`-suite
   claimrace/offline-start/contextwissel — 7.3a's acceptatiecriteria zijn hier
   bewezen op Rules- en coordinator-/component-niveau; de twee-apparaten-/
   echte-mobiel-validatie is 7.3c-scope (werk 4/5 daar).
-- 7.3b (live writer-sync en read-only viewer voor niet-writers) is nog niet
-  gestart — dat is waar `takeoverWriter()`'s UI-aanroep en een live viewer-
-  abonnement op parent+actions bij horen.
+- 7.3b (live writer-sync en read-only viewer voor niet-writers) is
+  geïmplementeerd, zie hieronder. `takeoverWriter()`'s UI-aanroep (de sterke
+  overname-bevestigingsflow) blijft 7.3c-scope.
 
 ### 7.3b — live writer-sync en read-only viewer
 
@@ -211,6 +213,164 @@ Geverifieerd: volledige `test:e2e:auth`-suite (59 specs) en `test:e2e`-suite
 
 Acceptatie: viewer kan nooit schrijven; writer blokkeert niet offline; beide
 apparaten convergeren na reconnect zonder dubbele of terugwerkende actie.
+
+**Geïmplementeerd:**
+
+- Werk 1 (epoch/sequence, ordered upload, idempotente retries) bleek al
+  volledig aanwezig sinds PR 7.1c/7.3a: `application/game/
+  projectGameForCloud.ts`'s `projectGameActions()` geeft elke `GameAction`
+  al een `sequence` (de arrayindex in `game.actions`, dus reconstrueerbaar
+  ongeacht netwerklevering) en het ECHTE serverepoch (`GameSyncCoordinator.
+  sync()`, sinds de 7.3a-fix); `FirestoreGameCloudGateway.uploadActions()`
+  is per actie create-only met een `alreadyConfirmed`-readback. Geen
+  wijziging hier nodig — 7.3b's eigen scope bleek zuiver de LEESKANT (werk
+  2/3) plus een teambrede single-writer-gate die tijdens de implementatie
+  aan het licht kwam (zie hieronder).
+- `v2/src/application/game/liveView.ts` (nieuw, puur): de inverse van
+  `projectGameForCloud.ts` — bewust in `application/game/`, niet
+  `domain/game/`: dit bestand importeert `firebase-base/documents`-typen, en
+  `domain/` moet dependency-vrij blijven (bewaakt door
+  `firebase-spike/tsconfig.json`, dat `../v2/src/domain/**/*.ts` tegen zijn
+  eigen geïsoleerde tsconfig compileert). **Ontdekt door CI, niet vooraf**:
+  een eerste versie zette dit bestand per ongeluk in `domain/game/`, wat de
+  `firebase-spike`-CI-job liet falen op "Cannot find module
+  'firebase-base/documents'" (plus twee cascaderende exhaustiveness-/
+  implicit-any-fouten, allebei een gevolg van diezelfde onopgeloste import)
+  — gefixt door het bestand naar `application/game/` te verplaatsen, exact
+  symmetrisch aan waar `projectGameForCloud.ts` al staat. `deriveLiveGameActions()` reconstrueert
+  `ActiveGame.actions` uit een (mogelijk out-of-order/gedupliceerd
+  geleverde) verzameling `GameActionEnvelopeDocument`'s — dedupliceert op
+  `actionId`, sorteert op `(writerEpoch, sequence, actionId)` zodat een
+  latere epoch (een 7.3c-overname) altijd ná een eerdere sorteert, ongeacht
+  de eigen `sequence` (die per epoch bij 0 herbegint). `buildLiveGameView()`
+  bouwt de volledige read-only `ActiveGame`-weergave (draaivelden
+  rechtstreeks van het parentdocument, `actions` hierboven afgeleid) —
+  geschikt om ONGEWIJZIGD door de bestaande `LiveTrackingPanel`/
+  `deriveGameHistory()` gerenderd te worden. `pickActiveGameCandidate()`
+  kiest bij een (theoretische) race tussen meerdere kandidaten de meest
+  recent actieve (`lastWriterActivityAt` → `claimedAt` → `createdAt`, dan
+  `gameId` als tiebreak).
+- `v2/src/application/game/GameViewerGateway.ts` (nieuw): read-only
+  application-poort, los van `GameCloudGateway` (de schrijverskant).
+  `ActiveGameViewerSnapshot` is `{kind:'none', sync}` of `{kind:'active',
+  game, writer, lastWriterActivityAt, sync}` — `sync` hergebruikt exact
+  `domain/syncState.ts`'s bestaande `SyncState`/`SyncStatusIndicator`
+  (cache-/serveractualiteit), geen nieuw statuscontract.
+- `v2/src/infrastructure/game/FirestoreGameViewerGateway.ts` (nieuw):
+  tweetrapsabonnement. (1) discovery — een gewone, padgebonden
+  collectiequery binnen één team (`games`-subcollectie, `where('phase','==',
+  'tracking')` + `where('completedGameId','==',null)`, `limit(5)`, GEEN
+  `orderBy`): Firestore combineert meerdere `==`-filters zonder
+  samengestelde index nodig te hebben, dus dit voegt bewust GEEN nieuwe
+  `firestore.indexes.json`-override toe. GEEN Rules-wijziging nodig: dit is
+  geen `collectionGroup()`-query (die blijft default-deny,
+  `firebase/docs/QUERY_CONTRACT.md`) maar een normale collectiequery, al
+  gedekt door de bestaande `allow read: if canReadTeam(orgId, teamId)` op
+  `games/{gameId}`. (2) inner — zodra de gekozen `gameId` verandert, worden
+  een parentdocument- én een actions-subcollectie-abonnement (opnieuw)
+  opgezet; `emit()` wacht tot BEIDE minstens één keer geleverd hebben vóór
+  een `'active'`-snapshot naar buiten gaat (voorkomt een tussenbeeld waarbij
+  de score-cache al binnen is maar de acties nog niet). **Bug gevonden en
+  gefixt tijdens de eigen emulator-e2e-verificatie van deze PR** (niet in
+  externe review, maar wel expliciet hier gedocumenteerd omdat 'm bijna de
+  eerste "geen actieve wedstrijd"-melding permanent had laten wegvallen):
+  de discoveryhandler vergeleek de gekozen `gameId` met het vorige resultaat
+  om een overbodige resubscribe te vermijden, maar initialiseerde die
+  vergelijkingswaarde op `null` — exact gelijk aan "geen kandidaten
+  gevonden". Het ALLEREERSTE discoverysnapshot van een lege collectie (het
+  normale geval vóór tip-off) leek zo aan de initiële toestand gelijk en
+  riep `emit()` nooit aan; de aanroeper hoorde dan nooit "geen actieve
+  wedstrijd", ook niet na de volledige timeout. Fix: een apart `undefined`-
+  sentinel ("nog geen enkele discoverysnapshot verwerkt"), onderscheiden van
+  `null` ("verwerkt, geen actieve wedstrijd") — gevonden doordat de eigen
+  nieuwe emulator-e2e-test (zie hieronder) hierop vastliep vóórdat 'm
+  gemerged werd, dus zonder productie-impact.
+- **Teambrede single-writer-gate (bleek nodig tijdens implementatie, geen
+  vooraf gedocumenteerd werkitem)**: vóór deze PR voorkwam de 7.3a-claim
+  alleen dat een AL geclaimd `games/{gameId}`-document een tweede schrijver
+  kreeg — maar `ActiveGame.id` wordt per apparaat lokaal gegenereerd
+  (`domain/game/setup.ts`), dus twee apparaten die allebei een verse
+  'setup'-opzet voor hetzelfde team hadden, konden elk hun EIGEN, andere
+  `gameId` claimen en tegelijk 'tracking' starten — het team kreeg dan
+  stilzwijgend twee gelijktijdig actieve wedstrijden, precies wat het
+  single-writer-per-team-contract (§B) moet voorkomen. `app/App.tsx`:
+  nieuwe `activeCloudGame`-state, gevoed door `repositories.gameViewer`
+  (`null` in lokale modus, net als `gameSync`) — abonneert alleen terwijl
+  dit apparaat zelf geen lokale `'tracking'`-wedstrijd heeft én op het
+  Wedstrijd-tabblad staat (zelfde tab-gate-redenering als de bestaande
+  pre-game-gate). De bestaande `ensureWriterClaim()`-auto-effect (7.3a)
+  kreeg een derde blokkeervoorwaarde, `viewerBlocksClaim`: `true` zolang
+  cloud-modus actief is EN (nog geen definitief antwoord van de
+  live-viewergateway ÓF een andere schrijver actief is). Het "nog geen
+  antwoord"-deel dicht een race die tijdens het schrijven van
+  `AppLiveViewer.spec.tsx` aan het licht kwam: navigeren naar het
+  Wedstrijd-tabblad triggert in dezelfde rendercyclus zowel het
+  live-viewerabonnement als de pre-game-gate — zonder op een definitief
+  antwoord te wachten kon de gate al claimen vóórdat bekend was of een ander
+  apparaat al actief was (reproduceerbaar met een gescripte, nooit-
+  oplossende `GameViewerGateway` in de test). Fix: `activeCloudGame` wordt
+  EXPLICIET terug naar `null` gezet zodra het abonnement-effect een
+  (nieuw) abonnement start (nooit een stale waarde van een vorige
+  `(gameViewer, tab, locallyTracking)`-combinatie, bijv. een net gewisselde
+  context), en een listenerfout valt terug op een EXPLICIETE `{kind:'none'}`
+  (nooit `null`, dat de gate juist als "nog onbekend" leest — anders zou een
+  fout de gate permanent laten wachten).
+- `v2/src/ui/game/LiveTrackingPanel.tsx`: nieuwe optionele
+  `liveViewerSync?: SyncState`-prop. Aanwezig ⇒ vervangt de generieke,
+  rolgebaseerde `gameReadOnly`-banner door een specifiekere melding
+  ("wordt live gescoord op een ander apparaat", nieuwe `liveViewerBannerText`-
+  i18n-sleutel NL/EN) plus de cache-/serveractualiteit via de bestaande
+  `SyncStatusIndicator` (nieuwe `live-viewer-sync-indicator`-testid). Elke
+  schrijfbediening was al `disabled={!canWrite}` (bestond al vóór deze PR,
+  zie de `canWrite`-prop) — `app/App.tsx` geeft in het live-viewerpad altijd
+  `canWrite={false}` door, ONGEACHT `canWriteGame` (rol): dit is apparaat-/
+  writerclaim-fencing, geen rolvraag — een owner/scorer op een NIET-writende
+  device mag hier net zo min schrijven als een viewer-rol.
+- `app/App.tsx`: render-tak tussen `game?.phase === 'tracking'` en de
+  `GameSetupPanel`-fallback — `activeCloudGame?.kind === 'active'` toont
+  ongewijzigd dezelfde `LiveTrackingPanel` gevoed met de cloud-afgeleide
+  `ActiveGame`, `canWrite=false`, `onGameChange`/`onFinishGame` als no-ops
+  (nooit aangeroepen, want elke knop is disabled).
+  `infrastructure/repositories/selectRepositories.ts`/
+  `resolveAppRepositories.ts`: nieuw `gameViewer`-veld
+  (`FirestoreGameViewerGateway`-instantie in cloud-modus, `null` lokaal),
+  zelfde patroon als `gameSync`/`completedGames`.
+- Nieuwe v2-unit-tests: `liveView.spec.ts` (14 tests: elk actietype
+  round-trip, out-of-order/duplicated-envelope-afhandeling, epoch-ordering,
+  `buildLiveGameView()`-zuiverheid/defensieve kopieën,
+  `pickActiveGameCandidate()`-tiebreaks), `AppLiveViewer.spec.tsx` (4 tests,
+  gescripte `GameViewerGateway`: read-only weergave i.p.v. `GameSetupPanel`
+  + nooit een claimpoging; terugval op `GameSetupPanel` bij `'none'` mét
+  claimpoging; een listenerfout valt terug op `GameSetupPanel` i.p.v. te
+  crashen; alleen-lokale modus abonneert nooit). Volledige v2-unit-suite nu
+  735 tests, groen. Nieuwe emulator-e2e
+  `tests/e2e-auth/game-viewer-second-client.spec.ts` (echte Rules, een
+  onafhankelijke tweede client zoals `game-sync-second-client-readback.
+  spec.ts`, roept `FirestoreGameViewerGateway` rechtstreeks aan i.p.v. via
+  de UI): bewijst discovery zonder de `gameId` vooraf te kennen, live
+  updates zonder reload, "geen actieve wedstrijd" vóór tip-off én ná
+  afronden, en — de kern van 7.3b's acceptatiecriterium — dat de viewer
+  (blijft online) de laatst servergesynchroniseerde stand toont terwijl
+  apparaat A offline doorscoort, met convergentie op de nieuwe stand ná
+  reconnect. Volledige `test:e2e:auth`-suite (60 specs) en `test:e2e`-suite
+  (90 specs) groen tegen de echte Firebase-emulator; typecheck/eslint/
+  prettier/build groen.
+
+**Nog niet gedaan (bewust doorgeschoven naar 7.3c):**
+
+- De sterke overname-bevestigingsflow/UI-knop ("Take over") —
+  `takeoverWriter()` bestaat en is getest sinds 7.3a, maar heeft nog geen
+  aanroeppunt in de UI (docs/pr-7.3-plan.md §C 7.3c werk 1).
+- Echte-apparaat-validatie (twee browsers/echte iOS/Android) — 7.3b's
+  acceptatie is hier bewezen op coordinator-/gateway-/component-niveau plus
+  één emulator-e2e met een onafhankelijke tweede Firestore-client; de
+  twee-apparaten-/echte-mobiel-validatie blijft 7.3c-scope (werk 4 daar).
+- De writer-identiteit in de viewerbanner blijft bewust generiek ("een ander
+  apparaat", geen naam) — dit product doet nergens elders een cross-user
+  displaynaam-lookup (zelfde precedent als `claimBlockedAlreadyClaimed`'s
+  bestaande tekst); een naamweergave zou een nieuwe, ongeplande
+  leesbevoegdheid op andermans gebruikersprofiel vereisen en is geen
+  onderdeel van dit werkitem.
 
 ### 7.3c — overname, recovery en echte-apparaatvalidatie
 

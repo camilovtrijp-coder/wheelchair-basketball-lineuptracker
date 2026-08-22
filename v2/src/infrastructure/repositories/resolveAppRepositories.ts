@@ -14,6 +14,7 @@ import type { AsyncSettingsRepository } from '../../application/settings/AsyncSe
 import type { CompletedGameRepository } from '../../application/game/CompletedGameRepository';
 import type { GameSyncCoordinator } from '../../application/game/GameSyncCoordinator';
 import type { GameCloudWriterContext } from '../../application/game/projectGameForCloud';
+import type { GameViewerGateway } from '../../application/game/GameViewerGateway';
 import type { KeyValueStorage } from '../../i18n/persistence';
 import type { RepositorySelection } from './selectRepositories';
 import { LocalAsyncRosterRepository } from '../roster/LocalAsyncRosterRepository';
@@ -28,6 +29,10 @@ export interface ResolvedAppRepositories {
   /** PR 7.1c: `null` in lokale modus — App roept dan nooit cloud-sync aan voor wedstrijden. */
   gameSync: GameSyncCoordinator | null;
   gameWriterContext: GameCloudWriterContext | null;
+  /** PR 7.3b: `null` in lokale modus — App abonneert dan nooit op andermans
+   * actieve cloudwedstrijd (er is in lokale modus toch geen ander apparaat
+   * dat hetzelfde team kan zien). */
+  gameViewer: GameViewerGateway | null;
   /**
    * PR 7.2b: `null` in lokale modus — `app/App.tsx` bouwt dan zelf, net als
    * vóór deze PR, een kale `LocalStorageCompletedGameRepository` (org/teamId
@@ -48,6 +53,7 @@ export function resolveAppRepositories(
       roster: selection.roster,
       gameSync: selection.gameSync,
       gameWriterContext: selection.gameWriterContext,
+      gameViewer: selection.gameViewer,
       completedGames: selection.completedGames,
     };
   }
@@ -57,6 +63,7 @@ export function resolveAppRepositories(
     roster: new LocalAsyncRosterRepository(new LocalStorageRosterRepository(storage)),
     gameSync: null,
     gameWriterContext: null,
+    gameViewer: null,
     completedGames: null,
   };
 }

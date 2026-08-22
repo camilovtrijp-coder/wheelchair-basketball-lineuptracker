@@ -127,6 +127,7 @@ describe('app/App: pre-game-gate roept ensureWriterClaim() aan en meldt de conte
       roster: new ImmediateRosterRepository(),
       gameSync,
       gameWriterContext: writer,
+      gameViewer: null,
       completedGames: null,
     };
 
@@ -183,6 +184,7 @@ describe('app/App: pre-game-gate roept ensureWriterClaim() aan en meldt de conte
       roster: new ImmediateRosterRepository(),
       gameSync,
       gameWriterContext: writer,
+      gameViewer: null,
       completedGames: null,
     };
 
@@ -216,6 +218,7 @@ describe('app/App: pre-game-gate roept ensureWriterClaim() aan en meldt de conte
       roster: new ImmediateRosterRepository(),
       gameSync: null,
       gameWriterContext: null,
+      gameViewer: null,
       completedGames: null,
     };
     const onGameLockChange = vi.fn();
@@ -266,6 +269,7 @@ describe('app/App: pre-game-gate roept ensureWriterClaim() aan en meldt de conte
       roster: new EmptyRosterRepository(),
       gameSync,
       gameWriterContext: writer,
+      gameViewer: null,
       completedGames: null,
     };
 
@@ -314,6 +318,7 @@ describe('app/App: pre-game-gate roept ensureWriterClaim() aan en meldt de conte
       roster: new ImmediateRosterRepository(), // vijf spelers: meteen startbaar
       gameSync,
       gameWriterContext: writer,
+      gameViewer: null,
       completedGames: null,
     };
 

@@ -34,6 +34,7 @@ import {
 import { finishGame } from '../domain/game/finish';
 import type { ActiveGame, CompletedGame } from '../domain/game/types';
 import type { CloudClaimStatus } from '../domain/game/writerClaim';
+import type { ActiveGameViewerSnapshot } from '../application/game/GameViewerGateway';
 import { GameSetupPanel } from '../ui/game/GameSetupPanel';
 import { LiveTrackingPanel } from '../ui/game/LiveTrackingPanel';
 import { V1MigrationPrompt } from '../ui/game/V1MigrationPrompt';
@@ -498,6 +499,67 @@ export function App({
   }, [runGameSync]);
 
   /**
+   * PR 7.3b (docs/pr-7.3-plan.md §C 7.3b werk 2/3): live read-only weergave
+   * van ANDERMANS actieve cloudwedstrijd voor dit team — `repositories.
+   * gameViewer` is `null` in alleen-lokale modus (net als `gameSync`
+   * hierboven), dus dan gebeurt hier niets. Abonneert alleen terwijl (a) dit
+   * apparaat zelf GEEN lokale `'tracking'`-wedstrijd heeft (anders is dit
+   * apparaat zelf de schrijver — geen viewer nodig, en dubbel abonneren op
+   * de eigen wedstrijd zou zinloos extra Firestore-reads kosten) ÉN (b) de
+   * gebruiker op het Wedstrijd-tabblad staat (zelfde tab-gate-redenering als
+   * de pre-game-gate hieronder: geen achtergrondabonnement voor een tabblad
+   * dat niemand bekijkt). `activeCloudGame` wordt EXPLICIET terug naar `null`
+   * gezet zodra dit effect een (nieuw) abonnement start — `null` betekent dus
+   * altijd "nog geen antwoord van HET HUIDIGE abonnement", nooit een stale
+   * waarde van een vorige `(gameViewer, tab, locallyTracking)`-combinatie
+   * (bijv. een net gewisselde organisatie/team-context). Dat is essentieel
+   * voor de pre-game-gate hieronder: die behandelt `null` bewust als
+   * "blokkeer nog even" — zonder deze reset zou een stale `'none'` van de
+   * VORIGE context een claimpoging op de NIEUWE context kunnen toestaan
+   * vóórdat bekend is of daar al een andere schrijver actief is (de exacte
+   * race die een externe review op deze PR aan het licht bracht: navigeren
+   * naar het Wedstrijd-tabblad triggerde in dezelfde render-cyclus zowel dit
+   * abonnement als de pre-game-gate hieronder — zonder deze reset kon de gate
+   * nog de vorige, inmiddels irrelevante `activeCloudGame`-waarde zien en al
+   * claimen vóórdat de eerste snapshot van het NIEUWE abonnement binnenkwam).
+   */
+  const [activeCloudGame, setActiveCloudGame] = useState<ActiveGameViewerSnapshot | null>(null);
+  const locallyTracking = game !== null && game.phase === 'tracking';
+  useEffect(() => {
+    const viewer = repositories.gameViewer;
+    setActiveCloudGame(null);
+    if (!viewer || tab !== 'game' || locallyTracking) return;
+    return viewer.subscribeActiveGame(
+      (snapshot) => setActiveCloudGame(snapshot),
+      () => {
+        // PR 7.3b-acceptatie "listenerfout": een afgewezen/mislukt abonnement
+        // (bijv. een ingetrokken membership) mag nooit een stale 'active'-
+        // weergave laten staan, de rest van de app blokkeren, of de pre-
+        // game-gate hieronder permanent laten wachten op een antwoord dat
+        // nooit meer komt — terugvallen op het EXPLICIETE `'none'` (i.p.v.
+        // `null`, dat de gate juist als "nog onbekend" leest) laat de
+        // gebruiker altijd nog gewoon bij GameSetupPanel uitkomen.
+        setActiveCloudGame({
+          kind: 'none',
+          sync: { status: 'actie-nodig', fromCache: false, hasPendingWrites: false },
+        });
+      },
+    );
+  }, [repositories.gameViewer, tab, locallyTracking]);
+  /**
+   * `true` zolang cloud-modus actief is (`repositories.gameViewer !== null`)
+   * ÉN dit apparaat nog geen definitief antwoord heeft van het live-
+   * viewerabonnement hierboven (`null`) OF dat antwoord een ANDERE actieve
+   * schrijver meldt (`'active'`) — in beide gevallen mag de pre-game-gate
+   * hieronder NOOIT automatisch claimen. `false` in alleen-lokale modus
+   * (`gameViewer === null`, geen viewer-concept daar) en zodra het
+   * abonnement expliciet `'none'` meldt.
+   */
+  const viewerBlocksClaim =
+    repositories.gameViewer !== null &&
+    (activeCloudGame === null || activeCloudGame.kind === 'active');
+
+  /**
    * PR 7.3a (docs/pr-7.3-plan.md §B/§C 7.3a werk 3): pre-game-gate —
    * verkrijgt/bevestigt de writerclaim VÓÓR tip-off ("Een cloudwedstrijd
    * krijgt vóór tip-off een serverbevestigde writerclaim"). Draait alleen
@@ -554,10 +616,25 @@ export function App({
     }
     const current = latestGameRef.current;
     if (!current || current.phase !== 'setup') return;
-    if (tab !== 'game' || startBlockReason(current) !== null) {
-      // Nog niet startbaar (roster-reden) of de gebruiker staat niet op het
-      // Wedstrijd-tabblad — geen claimpoging. Een AL bevestigde claim blijft
-      // alleen behouden als 'm nog over DEZE wedstrijd gaat (bijv. de
+    if (tab !== 'game' || startBlockReason(current) !== null || viewerBlocksClaim) {
+      // Nog niet startbaar (roster-reden), de gebruiker staat niet op het
+      // Wedstrijd-tabblad, OF er is nog geen definitief antwoord van de
+      // live-viewergateway, OF een ANDER apparaat heeft al een actieve
+      // cloudwedstrijd voor dit team (PR 7.3b: `viewerBlocksClaim` hierboven
+      // — zonder deze derde voorwaarde zou dit apparaat hier gewoon zijn
+      // EIGEN, andere `game.id` claimen/starten, waardoor een team
+      // stilzwijgend TWEE gelijktijdig actieve wedstrijden zou krijgen —
+      // precies wat het single-writer-per-team-contract uit
+      // docs/pr-7.3-plan.md §B moet voorkomen; het "nog geen antwoord"-deel
+      // dicht een race die vóór deze voorwaarde bestond: navigeren naar het
+      // Wedstrijd-tabblad triggerde in dezelfde render-cyclus zowel het
+      // live-viewerabonnement als deze pre-game-gate, en zonder op een
+      // definitief antwoord te wachten kon deze gate al claimen vóórdat
+      // bekend was of een ander apparaat al actief was). De gebruiker ziet
+      // in het "andere schrijver"-geval de live-viewer i.p.v.
+      // `GameSetupPanel` (zie de render-tak in de JSX hieronder). Geen
+      // claimpoging. Een AL bevestigde claim
+      // blijft alleen behouden als 'm nog over DEZE wedstrijd gaat (bijv. de
       // gebruiker togglet de roster kortstondig terug naar niet-startbaar
       // ná een geslaagde claim, vóór het klikken op "Start") — nooit stil
       // overerven naar een NIEUWE wedstrijd (bijv. de verse opzet na het
@@ -596,6 +673,7 @@ export function App({
     tab,
     claimReadiness,
     claimAttempt,
+    viewerBlocksClaim,
   ]);
 
   function handleRetryClaim() {
@@ -1308,6 +1386,35 @@ export function App({
             onFinishGame={handleFinishGame}
             canWrite={canWriteGame}
             saveError={gameSaveError}
+          />
+        ) : activeCloudGame?.kind === 'active' ? (
+          // PR 7.3b (docs/pr-7.3-plan.md §C 7.3b werk 3): live read-only
+          // weergave van andermans actieve cloudwedstrijd — `canWrite` is
+          // hier ALTIJD `false`, ongeacht `canWriteGame` (rol): dit is
+          // apparaat-/writerclaim-fencing, geen rolvraag. Hergebruikt
+          // ongewijzigd dezelfde `LiveTrackingPanel` als de schrijver zelf
+          // (elke knop/invoer is al `disabled={!canWrite}`, zie daar).
+          <LiveTrackingPanel
+            lang={lang}
+            game={activeCloudGame.game}
+            quarterCount={settings.quarterCount as number}
+            periodLabel={settings.periodLabel as string}
+            classification={{
+              useClassLimit: settings.useClassLimit === true,
+              classBaseLimit: settings.classBaseLimit as number,
+              maxBonus: settings.maxBonus as number,
+              bonusTag1Only: settings.bonusTag1Only as number,
+              bonusTag2Only: settings.bonusTag2Only as number,
+              bonusBoth: settings.bonusBoth as number,
+            }}
+            teamName={(settings.teamName as string) || ''}
+            tag1Label={tag1Label}
+            tag2Label={tag2Label}
+            onGameChange={() => undefined}
+            onFinishGame={() => undefined}
+            canWrite={false}
+            saveError={false}
+            liveViewerSync={activeCloudGame.sync}
           />
         ) : (
           <GameSetupPanel

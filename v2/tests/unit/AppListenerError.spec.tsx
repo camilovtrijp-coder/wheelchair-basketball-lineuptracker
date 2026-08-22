@@ -146,6 +146,7 @@ const repositories = {
   roster: new ControlledAsyncRosterRepository(),
   gameSync: null,
   gameWriterContext: null,
+  gameViewer: null,
   completedGames: null,
 };
 
@@ -191,6 +192,7 @@ describe('app/App — listener-fout-detectie na initiële load (PR 5.4a)', () =>
       roster: new ControlledAsyncRosterRepository(),
       gameSync: null,
       gameWriterContext: null,
+      gameViewer: null,
       completedGames: null,
     };
     const { queryByTestId } = render(

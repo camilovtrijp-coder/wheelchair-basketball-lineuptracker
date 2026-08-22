@@ -186,6 +186,7 @@ function renderHistoryWith(repo: FakeCompletedGameRepo) {
     roster: new ImmediateRosterRepository(),
     gameSync: inertGameSync,
     gameWriterContext: writer,
+    gameViewer: null,
     completedGames: repo,
   };
   return render(

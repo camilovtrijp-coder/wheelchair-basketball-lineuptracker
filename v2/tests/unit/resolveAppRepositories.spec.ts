@@ -7,6 +7,7 @@ import { LocalAsyncRosterRepository } from '../../src/infrastructure/roster/Loca
 import { FirestoreSettingsRepository } from '../../src/infrastructure/settings/FirestoreSettingsRepository';
 import { FirestoreRosterRepository } from '../../src/infrastructure/roster/FirestoreRosterRepository';
 import { GameSyncCoordinator } from '../../src/application/game/GameSyncCoordinator';
+import { FirestoreGameViewerGateway } from '../../src/infrastructure/game/FirestoreGameViewerGateway';
 import type { KeyValueStorage } from '../../src/i18n/persistence';
 import type { AuthUser } from '../../src/domain/auth/types';
 import type { SelectedContext } from '../../src/domain/organizations/types';
@@ -47,6 +48,7 @@ describe('infrastructure/repositories/resolveAppRepositories (PR 5.3c-1)', () =>
     expect(resolved.roster).toBeInstanceOf(LocalAsyncRosterRepository);
     expect(resolved.gameSync).toBeNull();
     expect(resolved.gameWriterContext).toBeNull();
+    expect(resolved.gameViewer).toBeNull();
   });
 
   it("kind:'cloud' geeft de Firestore-adapters uit de selectie ongewijzigd door en mode:'cloud'", () => {
@@ -63,6 +65,7 @@ describe('infrastructure/repositories/resolveAppRepositories (PR 5.3c-1)', () =>
     expect(resolved.settings).toBeInstanceOf(FirestoreSettingsRepository);
     expect(resolved.roster).toBeInstanceOf(FirestoreRosterRepository);
     expect(resolved.gameSync).toBeInstanceOf(GameSyncCoordinator);
+    expect(resolved.gameViewer).toBeInstanceOf(FirestoreGameViewerGateway);
     expect(resolved.gameWriterContext).toEqual({
       authorUid: user.uid,
       deviceId: expect.any(String),

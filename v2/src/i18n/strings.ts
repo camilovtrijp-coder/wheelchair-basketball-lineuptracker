@@ -81,6 +81,8 @@ const nl = {
   startGameBtn: 'Start wedstrijd',
   gameSaveError: 'Opslaan is mislukt. Controleer de opslagruimte van je browser.',
   gameReadOnly: 'Alleen-lezen',
+  liveViewerBannerText:
+    'Wordt live gescoord op een ander apparaat — deze weergave is alleen-lezen.',
   claimPendingBtn: 'Wedstrijd claimen…',
   claimBlockedOffline: 'Geen verbinding — kan de wedstrijd niet claimen voor je begint.',
   claimBlockedAlreadyClaimed: 'Deze wedstrijd wordt al door een ander apparaat gescoord.',
@@ -410,6 +412,7 @@ const en = {
   startGameBtn: 'Start match',
   gameSaveError: "Saving failed. Check your browser's storage space.",
   gameReadOnly: 'Read-only',
+  liveViewerBannerText: 'Being scored live on another device — this view is read-only.',
   claimPendingBtn: 'Claiming match…',
   claimBlockedOffline: "No connection — can't claim the match before you start.",
   claimBlockedAlreadyClaimed: 'This match is already being scored on another device.',

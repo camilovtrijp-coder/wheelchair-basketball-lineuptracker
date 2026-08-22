@@ -22,10 +22,12 @@ import type { AsyncRosterRepository } from '../../application/roster/AsyncRoster
 import type { AsyncSettingsRepository } from '../../application/settings/AsyncSettingsRepository';
 import type { CompletedGameRepository } from '../../application/game/CompletedGameRepository';
 import type { GameCloudWriterContext } from '../../application/game/projectGameForCloud';
+import type { GameViewerGateway } from '../../application/game/GameViewerGateway';
 import { GameSyncCoordinator } from '../../application/game/GameSyncCoordinator';
 import { FirestoreRosterRepository } from '../roster/FirestoreRosterRepository';
 import { FirestoreSettingsRepository } from '../settings/FirestoreSettingsRepository';
 import { FirestoreGameCloudGateway } from '../game/FirestoreGameCloudGateway';
+import { FirestoreGameViewerGateway } from '../game/FirestoreGameViewerGateway';
 import { FirestoreCompletedGameRepository } from '../game/FirestoreCompletedGameRepository';
 import { CompositeCompletedGameRepository } from '../game/CompositeCompletedGameRepository';
 import { LocalStorageCompletedGameRepository } from '../game/LocalStorageCompletedGameRepository';
@@ -48,6 +50,14 @@ export interface CloudRepositorySelection {
    */
   gameSync: GameSyncCoordinator;
   gameWriterContext: GameCloudWriterContext;
+  /**
+   * PR 7.3b (docs/pr-7.3-plan.md §C 7.3b werk 2/3): read-only tegenhanger van
+   * `gameSync` — abonneert op "is er nu een ANDERE actieve schrijver voor dit
+   * team" en levert, zo ja, een puur afgeleide `ActiveGame`-weergave (zie
+   * `application/game/liveView.ts`). `app/App.tsx` gebruikt dit alleen terwijl dit
+   * apparaat zelf geen lokale `'tracking'`-wedstrijd heeft.
+   */
+  gameViewer: GameViewerGateway;
   /**
    * PR 7.2b (docs/pr-7.2-plan.md §C 7.2b): samengestelde lokaal+cloud-
    * historie, achter dezelfde `CompletedGameRepository`-poort als de
@@ -81,6 +91,7 @@ export function selectRepositories(input: {
     settings: new FirestoreSettingsRepository(input.firestoreDb, orgId, teamId),
     roster: new FirestoreRosterRepository(input.firestoreDb, orgId, teamId),
     gameSync: new GameSyncCoordinator({ gateway, checkpoints }),
+    gameViewer: new FirestoreGameViewerGateway(input.firestoreDb, orgId, teamId),
     completedGames: new CompositeCompletedGameRepository(
       new LocalStorageCompletedGameRepository(strictReadBrowserStorage, orgId, teamId),
       new FirestoreCompletedGameRepository(input.firestoreDb, orgId, teamId),
