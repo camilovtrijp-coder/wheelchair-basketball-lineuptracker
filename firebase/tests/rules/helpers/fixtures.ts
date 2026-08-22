@@ -80,6 +80,8 @@ export function sampleGame(overrides: Record<string, unknown> = {}) {
     writerUid: null,
     deviceId: null,
     writerEpoch: 0,
+    claimedAt: null,
+    lastWriterActivityAt: null,
     revision: 0,
     createdAt: '2026-01-01T00:00:00.000Z',
     startedAt: null,
@@ -87,6 +89,21 @@ export function sampleGame(overrides: Record<string, unknown> = {}) {
     updatedAt: Timestamp.now(),
     ...overrides,
   };
+}
+
+// P1-fix (externe review PR #66): een document van vóór PR 7.3a — mist
+// `claimedAt`/`lastWriterActivityAt` VOLLEDIG (de sleutels zelf ontbreken,
+// geen `null` — die schema-uitbreiding bestond toen nog niet). Bewust een
+// aparte helper i.p.v. `sampleGame({claimedAt: undefined, ...})`: de Admin
+// SDK behandelt een expliciete `undefined`-waarde niet als "sleutel
+// afwezig". `writerUid`/`deviceId`/`writerEpoch` bestonden al vóór PR 7.3a,
+// dus die blijven hier gewoon overschrijfbaar via `overrides` (bijv. voor
+// een "al geclaimd legacydocument"-scenario).
+export function sampleLegacyGame(overrides: Record<string, unknown> = {}) {
+  const { claimedAt, lastWriterActivityAt, ...legacyDefaults } = sampleGame(overrides);
+  void claimedAt;
+  void lastWriterActivityAt;
+  return legacyDefaults;
 }
 
 // PR 7.1b — cloudkopie van een score-delta GameAction (zie

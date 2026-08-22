@@ -8,6 +8,7 @@ import type {
   GameSnapshotProjection,
   GameSnapshotWriteResult,
 } from '../../src/application/game/GameCloudGateway';
+import type { WriterClaimResult } from '../../src/domain/game/writerClaim';
 import type { GameCloudWriterContext } from '../../src/application/game/projectGameForCloud';
 import type { ActiveGame, CompletedGame, GameAction } from '../../src/domain/game/types';
 import type { GameActionEnvelopeDocument } from 'firebase-base/documents';
@@ -95,6 +96,15 @@ interface GatewayScript {
   ensureGame?: (
     snapshot: GameSnapshotProjection,
   ) => GameSnapshotWriteResult | Promise<GameSnapshotWriteResult>;
+  claimWriter?: (
+    writer: { authorUid: string; deviceId: string },
+    expectedRevision: number,
+  ) => WriterClaimResult | Promise<WriterClaimResult>;
+  takeoverWriter?: (
+    writer: { authorUid: string; deviceId: string },
+    expectedEpoch: number,
+    expectedRevision: number,
+  ) => WriterClaimResult | Promise<WriterClaimResult>;
   uploadActions?: (
     actions: readonly GameActionEnvelopeDocument[],
   ) => GameActionUploadOutcome[] | Promise<GameActionUploadOutcome[]>;
@@ -112,13 +122,22 @@ interface GatewayScript {
 function mockGateway(script: GatewayScript): GameCloudGateway & {
   calls: {
     ensureGame: number;
+    claimWriter: number;
+    takeoverWriter: number;
     uploadActions: number;
     patchSnapshot: number;
     finalizeCompletedGame: number;
   };
   uploadedActionIds: string[][];
 } {
-  const calls = { ensureGame: 0, uploadActions: 0, patchSnapshot: 0, finalizeCompletedGame: 0 };
+  const calls = {
+    ensureGame: 0,
+    claimWriter: 0,
+    takeoverWriter: 0,
+    uploadActions: 0,
+    patchSnapshot: 0,
+    finalizeCompletedGame: 0,
+  };
   const uploadedActionIds: string[][] = [];
   return {
     calls,
@@ -128,6 +147,32 @@ function mockGateway(script: GatewayScript): GameCloudGateway & {
       return script.ensureGame
         ? script.ensureGame(snapshot)
         : { ok: true, revision: 0, writerUid: null, deviceId: null, completedGameId: null };
+    },
+    async claimWriter(_org, _team, _gameId, writer, expectedRevision, now) {
+      calls.claimWriter += 1;
+      return script.claimWriter
+        ? script.claimWriter(writer, expectedRevision)
+        : {
+            ok: true,
+            identity: { writerUid: writer.authorUid, deviceId: writer.deviceId, writerEpoch: 0 },
+            revision: expectedRevision + 1,
+            claimedAt: now,
+          };
+    },
+    async takeoverWriter(_org, _team, _gameId, writer, expectedEpoch, expectedRevision, now) {
+      calls.takeoverWriter += 1;
+      return script.takeoverWriter
+        ? script.takeoverWriter(writer, expectedEpoch, expectedRevision)
+        : {
+            ok: true,
+            identity: {
+              writerUid: writer.authorUid,
+              deviceId: writer.deviceId,
+              writerEpoch: expectedEpoch + 1,
+            },
+            revision: expectedRevision + 1,
+            claimedAt: now,
+          };
     },
     async uploadActions(_org, _team, _gameId, actions) {
       calls.uploadActions += 1;
@@ -167,7 +212,8 @@ describe('application/game/GameSyncCoordinator (PR 7.1c)', () => {
     expect(result.confirmedActionIds.sort()).toEqual(['a1', 'a2']);
     expect(result.serverRevision).toBe(2); // claim (0->1) + veldpatch (1->2)
     expect(gateway.calls.ensureGame).toBe(1);
-    expect(gateway.calls.patchSnapshot).toBe(2); // claim + veldpatch
+    expect(gateway.calls.claimWriter).toBe(1);
+    expect(gateway.calls.patchSnapshot).toBe(1); // uitsluitend de veldpatch
     expect(gateway.calls.uploadActions).toBe(1);
     expect(gateway.uploadedActionIds[0]?.sort()).toEqual(['a1', 'a2']);
     expect(checkpoints.read('game-1')).toEqual(result);
@@ -192,6 +238,34 @@ describe('application/game/GameSyncCoordinator (PR 7.1c)', () => {
     // patchSnapshot wordt alleen nog voor de veldpatch aangeroepen, niet voor een claim.
     expect(gateway.calls.patchSnapshot).toBe(1);
     expect(result.serverRevision).toBe(4);
+  });
+
+  it('REGRESSIE (externe review PR #66, P1): een legacygeclaimd document (claimedAt server-side afwezig, niet null) synct alsnog een normale patch', async () => {
+    // `ensureGame()` levert hier geen `claimedAt` in het resultaat — spiegelt
+    // een document van vóór PR 7.3a, waar de sleutel server-side nog
+    // volledig ontbreekt (de FirestoreGameCloudGateway/converter geven zo'n
+    // afwezigheid door als `undefined`, nooit `null`). `sync()` moet dit
+    // opvangen (`ensure.claimedAt ?? null`) en `claimedAt: null` meesturen
+    // aan de patch — zonder deze fix bleef `claimedAt` voor altijd afwezig
+    // op het serverdocument en weigerde firestore.rules elke volgende patch.
+    const checkpoints = new LocalStorageGameSyncCheckpointRepository(new MemoryStorage());
+    const gateway = mockGateway({
+      ensureGame: () => ({
+        ok: true,
+        revision: 3,
+        writerUid: writer.authorUid,
+        deviceId: writer.deviceId,
+        // Bewust geen `claimedAt`-sleutel — simuleert het server-side
+        // ontbreken op een legacydocument.
+      }),
+    });
+    const coordinator = new GameSyncCoordinator({ gateway, checkpoints, now: fixedClock() });
+    const game = gameWithActions(['a1']);
+
+    const result = await coordinator.sync(game, writer);
+
+    expect(result.status).toBe('idle');
+    expect(gateway.calls.patchSnapshot).toBe(1);
   });
 
   it('faalt zichtbaar (actie-nodig) als een ANDER apparaat/andere gebruiker de wedstrijd al claimde', async () => {
@@ -383,6 +457,22 @@ describe('application/game/GameSyncCoordinator (PR 7.1c)', () => {
       writerUid: null,
       deviceId: null,
     }));
+    const claimWriter = vi.fn(
+      async (
+        _o: string,
+        _t: string,
+        _g: string,
+        w: { authorUid: string; deviceId: string },
+        rev: number,
+        now: string,
+      ) => ({
+        ok: true as const,
+        identity: { writerUid: w.authorUid, deviceId: w.deviceId, writerEpoch: 0 },
+        revision: rev + 1,
+        claimedAt: now,
+      }),
+    );
+    const takeoverWriter = vi.fn(async () => ({ ok: false as const, code: 'unknown' as const }));
     const uploadActions = vi.fn(
       async (_o: string, _t: string, _g: string, actions: readonly GameActionEnvelopeDocument[]) =>
         actions.map((a) => ({ actionId: a.actionId, ok: true })),
@@ -403,6 +493,8 @@ describe('application/game/GameSyncCoordinator (PR 7.1c)', () => {
     const tombstoneCompletedGame = vi.fn(async () => ({ ok: true }));
     const gateway: GameCloudGateway = {
       ensureGame,
+      claimWriter,
+      takeoverWriter,
       uploadActions,
       patchSnapshot,
       finalizeCompletedGame,
@@ -411,8 +503,9 @@ describe('application/game/GameSyncCoordinator (PR 7.1c)', () => {
     const coordinator = new GameSyncCoordinator({ gateway, checkpoints });
     await coordinator.sync(gameWithActions(['a1']), writer);
     expect(ensureGame).toHaveBeenCalledTimes(1);
+    expect(claimWriter).toHaveBeenCalledTimes(1);
     expect(uploadActions).toHaveBeenCalledTimes(1);
-    expect(patchSnapshot).toHaveBeenCalledTimes(2);
+    expect(patchSnapshot).toHaveBeenCalledTimes(1);
     expect(finalizeCompletedGame).not.toHaveBeenCalled();
   });
 });
@@ -689,5 +782,118 @@ describe('application/game/GameSyncCoordinator.finalize() (PR 7.2a)', () => {
     expect(result.status).toBe('actie-nodig');
     expect(result.lastError).toContain('completed-OUD');
     expect(gateway.calls.ensureGame).toBe(0);
+  });
+});
+
+describe('application/game/GameSyncCoordinator.ensureWriterClaim() (PR 7.3a)', () => {
+  it('claimt een nog ongeclaimde wedstrijd en levert een bevestigde identiteit', async () => {
+    const checkpoints = new LocalStorageGameSyncCheckpointRepository(new MemoryStorage());
+    const gateway = mockGateway({
+      ensureGame: () => ({ ok: true, revision: 0, writerUid: null, deviceId: null }),
+    });
+    const coordinator = new GameSyncCoordinator({ gateway, checkpoints, now: fixedClock() });
+    const game = gameWithActions([], { phase: 'setup' });
+
+    const status = await coordinator.ensureWriterClaim(game, writer);
+
+    expect(status).toEqual({
+      kind: 'confirmed',
+      identity: { writerUid: writer.authorUid, deviceId: writer.deviceId, writerEpoch: 0 },
+    });
+    expect(gateway.calls.claimWriter).toBe(1);
+  });
+
+  it('slaat de claimstap over als dit apparaat de wedstrijd al claimde (idempotent, geen extra write)', async () => {
+    const checkpoints = new LocalStorageGameSyncCheckpointRepository(new MemoryStorage());
+    const gateway = mockGateway({
+      ensureGame: () => ({
+        ok: true,
+        revision: 3,
+        writerUid: writer.authorUid,
+        deviceId: writer.deviceId,
+        writerEpoch: 0,
+      }),
+    });
+    const coordinator = new GameSyncCoordinator({ gateway, checkpoints, now: fixedClock() });
+    const game = gameWithActions([], { phase: 'setup' });
+
+    const status = await coordinator.ensureWriterClaim(game, writer);
+
+    expect(status).toEqual({
+      kind: 'confirmed',
+      identity: { writerUid: writer.authorUid, deviceId: writer.deviceId, writerEpoch: 0 },
+    });
+    expect(gateway.calls.claimWriter).toBe(0);
+  });
+
+  it('levert "blocked: already-claimed" als een ANDER apparaat/andere gebruiker de wedstrijd al claimde (geen automatische overname)', async () => {
+    const checkpoints = new LocalStorageGameSyncCheckpointRepository(new MemoryStorage());
+    const gateway = mockGateway({
+      ensureGame: () => ({ ok: true, revision: 1, writerUid: 'uid-bob', deviceId: 'device-bob' }),
+    });
+    const coordinator = new GameSyncCoordinator({ gateway, checkpoints, now: fixedClock() });
+    const game = gameWithActions([], { phase: 'setup' });
+
+    const status = await coordinator.ensureWriterClaim(game, writer);
+
+    expect(status).toEqual({ kind: 'blocked', code: 'already-claimed' });
+    expect(gateway.calls.claimWriter).toBe(0);
+  });
+
+  it('levert "blocked: offline" als ensureGame() faalt (bijv. timeout)', async () => {
+    const checkpoints = new LocalStorageGameSyncCheckpointRepository(new MemoryStorage());
+    const gateway = mockGateway({
+      ensureGame: () => ({ ok: false, error: new Error('offline') }),
+    });
+    const coordinator = new GameSyncCoordinator({ gateway, checkpoints, now: fixedClock() });
+    const game = gameWithActions([], { phase: 'setup' });
+
+    const status = await coordinator.ensureWriterClaim(game, writer);
+
+    expect(status).toEqual({ kind: 'blocked', code: 'offline' });
+  });
+
+  it('geeft de foutcode van claimWriter() door (bijv. een claimrace die het apparaat verliest)', async () => {
+    const checkpoints = new LocalStorageGameSyncCheckpointRepository(new MemoryStorage());
+    const gateway = mockGateway({
+      ensureGame: () => ({ ok: true, revision: 0, writerUid: null, deviceId: null }),
+      claimWriter: () => ({ ok: false, code: 'already-claimed' }),
+    });
+    const coordinator = new GameSyncCoordinator({ gateway, checkpoints, now: fixedClock() });
+    const game = gameWithActions([], { phase: 'setup' });
+
+    const status = await coordinator.ensureWriterClaim(game, writer);
+
+    expect(status).toEqual({ kind: 'blocked', code: 'already-claimed' });
+  });
+});
+
+describe('application/game/GameSyncCoordinator.takeoverWriter() (PR 7.3a)', () => {
+  it('neemt een geclaimde wedstrijd over: epoch+1, bevestigde nieuwe identiteit', async () => {
+    const checkpoints = new LocalStorageGameSyncCheckpointRepository(new MemoryStorage());
+    const gateway = mockGateway({});
+    const coordinator = new GameSyncCoordinator({ gateway, checkpoints, now: fixedClock() });
+    const game = gameWithActions([], { phase: 'tracking' });
+
+    const status = await coordinator.takeoverWriter(game, writer, 1, 5);
+
+    expect(status).toEqual({
+      kind: 'confirmed',
+      identity: { writerUid: writer.authorUid, deviceId: writer.deviceId, writerEpoch: 2 },
+    });
+    expect(gateway.calls.takeoverWriter).toBe(1);
+  });
+
+  it('geeft de foutcode van takeoverWriter() door (bijv. een verouderde revisie)', async () => {
+    const checkpoints = new LocalStorageGameSyncCheckpointRepository(new MemoryStorage());
+    const gateway = mockGateway({
+      takeoverWriter: () => ({ ok: false, code: 'stale-revision' }),
+    });
+    const coordinator = new GameSyncCoordinator({ gateway, checkpoints, now: fixedClock() });
+    const game = gameWithActions([], { phase: 'tracking' });
+
+    const status = await coordinator.takeoverWriter(game, writer, 1, 5);
+
+    expect(status).toEqual({ kind: 'blocked', code: 'stale-revision' });
   });
 });

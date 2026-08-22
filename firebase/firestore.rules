@@ -69,35 +69,38 @@ rules_version = '2';
 //     `writerUid` al gezet maar `deviceId == null` kan daarna geen enkele
 //     action meer accepteren en ook niet via het initiële-claim-pad hersteld
 //     worden (dat vereist juist `writerUid == null`).
-//  10. Game-update is gesplitst in twee expliciete paden, elk met een strikte
+//  10. Game-update is gesplitst in expliciete paden, elk met een strikte
 //      veldallowlist (identiteits-/historische kernvelden —
 //      `organizationId`/`teamId`/`players`/`opponent`/`competition`/`clockDown`/
-//      `limitStr`/`createdAt` — zijn in GEEN van beide paden wijzigbaar):
+//      `limitStr`/`createdAt` — zijn in GEEN van deze paden wijzigbaar):
 //        a. **normale patch door de huidige writer**: alleen draaivelden,
-//           afgeleide snapshot en `revision` mogen wijzigen; `writerUid`/
-//           `deviceId`/`writerEpoch` moeten EXACT gelijk blijven (geen
-//           claim/overname via dit pad) en de aanroeper moet zelf de actuele
-//           `writerUid` zijn — een andere bevoegde gebruiker (bijv. een
-//           andere coach) mag hier niet via patchen;
+//           afgeleide snapshot, `lastWriterActivityAt` en `revision` mogen
+//           wijzigen; `writerUid`/`deviceId`/`writerEpoch`/`claimedAt` moeten
+//           EXACT gelijk blijven (geen claim/overname via dit pad) en de
+//           aanroeper moet zelf de actuele `writerUid` zijn — een andere
+//           bevoegde gebruiker (bijv. een andere coach) mag hier niet via
+//           patchen;
 //        b. **initiële claim**: alleen toegestaan als het document nog geen
 //           writer heeft (`resource.data.writerUid == null`); de aanroeper
 //           claimt uitsluitend zichzelf (`writerUid == request.auth.uid`),
-//           `writerEpoch` blijft ongewijzigd (geen sprong).
-//      Een latere OVERNAME (bestaande writer vervangen) heeft geen eigen pad
-//      hier — dat is bewust PR 7.3-scope (transactioneel, met epoch-increment)
-//      en blijft tot die tijd geweigerd: `writerUid`/`deviceId`/`writerEpoch`
-//      zijn dus effectief immutable zodra eenmaal geclaimd. `phase` mag in
-//      beide paden alleen gelijk blijven of van `'setup'` naar `'tracking'`
-//      (nooit terug/overslaan); `revision` moet exact met 1 omhoog — dit is
-//      tevens de optimistische-concurrencycontrole voor snapshotpatches uit
-//      PR 7.1c: een niet-transactionele write op een verouderde `revision`
-//      wordt door Rules geweigerd, geen aparte transactie nodig.
+//           `writerEpoch` blijft ongewijzigd (geen sprong), `claimedAt`/
+//           `lastWriterActivityAt` worden samen op "nu" gezet (PR 7.3a).
+//        d. **overname** (PR 7.3a, zie hieronder punt 18): alleen toegestaan
+//           als het document AL een writer heeft; elke bevoegde rol mag
+//           overnemen, `writerEpoch` moet met EXACT 1 omhoog.
+//      `phase` mag in elk pad alleen gelijk blijven of van `'setup'` naar
+//      `'tracking'` (nooit terug/overslaan); `revision` moet exact met 1
+//      omhoog — dit is tevens de optimistische-concurrencycontrole voor
+//      snapshotpatches uit PR 7.1c: een niet-transactionele write op een
+//      verouderde `revision` wordt door Rules geweigerd, geen aparte
+//      transactie nodig (ook voor de PR 7.3a-claim-/overnamepaden — zie punt
+//      18).
 //  11. Action-create is create-only (geen update/delete, ADR-002 punt 1): eigen
 //      auteur (`authorUid == request.auth.uid`), overeenkomende pad-/payloadcontext,
 //      en `writerEpoch`/`deviceId` moeten overeenkomen met de ACTUELE waarden op het
 //      parentdocument, geschreven door de daadwerkelijke huidige `writerUid`. Een
-//      actie uit een oude/overgenomen epoch (na een toekomstige PR 7.3-overname)
-//      wordt hierdoor al geweigerd, ook al is de overnamelogica zelf pas 7.3-scope.
+//      actie uit een oude, overgenomen epoch (PR 7.3a-overname, punt 18) wordt
+//      hierdoor geweigerd — nooit stil herschreven naar de nieuwe epoch.
 //  12. Geen recursieve-wildcard match voor `games`/`actions` (in tegenstelling tot
 //      punt 4/6 hierboven): er is nog geen cross-team queerybehoefte, dus elke
 //      `collectionGroup`-query op `games`/`actions` blijft default-deny — zie
@@ -171,6 +174,60 @@ rules_version = '2';
 //      argumentatie als punt 12 voor `games`/`actions`): nog geen
 //      cross-team-querybehoefte, dus elke `collectionGroup`-query blijft
 //      default-deny.
+//
+// Nieuw in PR 7.3a — actieve wedstrijd single-writer, claim/epoch/overname
+// (docs/pr-7.3-plan.md §B/§C 7.3a):
+//  18. `games/{gameId}` krijgt twee nieuwe velden: `claimedAt` (ISO-tijdstip
+//      van de laatste claim/overname) en `lastWriterActivityAt` (ISO-tijdstip
+//      van de laatste draaiveldpatch door de actuele writer) — beide `null`
+//      zolang `writerUid == null`. Punt 10a (normale patch) mag voortaan ook
+//      `lastWriterActivityAt` bijwerken (bij elke patch, geen aparte
+//      heartbeat-write nodig); `claimedAt` blijft daar wél ongewijzigd. Punt
+//      10b (initiële claim) zet beide velden samen op dezelfde "nu"-waarde.
+//      Nieuw pad 10d: **overname** van een AL geclaimd document — elke
+//      bevoegde rol (niet alleen de huidige writer) mag overnemen, mits
+//      `writerEpoch` met EXACT 1 omhoog gaat, de aanroeper zichzelf claimt
+//      (niet een ander uid), `claimedAt`/`lastWriterActivityAt` samen op "nu"
+//      gezet worden, en de wedstrijd nog niet is afgerond
+//      (`completedGameId == null`). Raakt GEEN draaivelden — die blijven
+//      exclusief pad 10a, alleen bereikbaar voor de (nieuwe) actuele writer.
+//      Bewust GEEN tijd-/lease-conditie: overname is altijd expliciet en
+//      online, nooit een automatische lease-expiry na verstreken tijd (§B:
+//      "Courtside-netwerkverlies mag eigenaarschap niet ongemerkt laten
+//      vervallen"). De epoch-bump zelf is de volledige fencing: een actie uit
+//      de vorige epoch (punt 11's actions-createregel) faalt na een overname
+//      altijd, ongeacht wanneer de oude writer weer online komt — dat
+//      apparaat ziet zo'n mislukte upload lokaal terug als `Actie nodig`,
+//      nooit een stille herschrijving naar de nieuwe epoch.
+//  19. [P1, externe review PR #66] Backward-compat voor documenten van vóór
+//      PR 7.3a: die missen `claimedAt`/`lastWriterActivityAt` volledig (de
+//      sleutels zelf ontbreken, geen `null` — punt 18's schema-uitbreiding
+//      bestond toen nog niet). Voor een nog-ONGECLAIMD legacydocument werkt
+//      punt 10b (initiële claim) al zonder aanpassing: dat pad zet beide
+//      velden altijd expliciet, ongeacht wat ervóór stond. Voor een AL
+//      GECLAIMD legacydocument faalde punt 10a (normale patch) voorheen
+//      altijd: `isValidGamePayload()` eist de VOLLEDIGE sleutelset op het
+//      RESULTERENDE document (dus ook `claimedAt`), maar 10a's patchpad
+//      (`GameSyncCoordinator`/`projectGameSnapshotPatch()`) liet `claimedAt`
+//      bewust altijd ongewijzigd — op een document waar die sleutel nooit
+//      bestond, blijft 'ie zo dus voor altijd afwezig. `GameSyncCoordinator.
+//      sync()` stuurt `claimedAt` daarom voortaan MEE in elke 10a-patch
+//      (ongewijzigd terugecho'd, nooit een nieuwe claim), en 10a's
+//      vergelijking hieronder gebruikt dezelfde `('claimedAt' in
+//      resource.data) ? resource.data.claimedAt : null`-defaulting als de
+//      PR 7.2c-tombstoneregel op `completedGames` toepast — zonder deze
+//      guard gooit Rules een veldtoegangsfout op een ontbrekende sleutel
+//      (geen `null`-waarde), wat de hele 10a-tak alsnog laat weigeren. 10a's
+//      `diff(...).affectedKeys().hasOnly([...])`-allowlist bevat `claimedAt`
+//      om dezelfde reden: het TOEVOEGEN van een tot dan toe afwezige sleutel
+//      (zelfs met een ongewijzigde `null`-waarde) telt voor `diff()` als een
+//      gewijzigde sleutel. Zodra één 10a-patch geslaagd is, draagt het
+//      document de sleutel blijvend (Firestore-`updateDoc()` voegt een veld
+//      permanent toe) — geen aparte migratiestap nodig.
+//      `firebase/src/documents/game.ts`'s
+//      `gameConverter.fromFirestore()` past dezelfde afwezig-is-`null`-
+//      defaulting toe aan de leeskant (spiegelt `completedGameConverter`'s
+//      PR 7.2c-precedent).
 
 service cloud.firestore {
   match /databases/{database}/documents {
@@ -250,8 +307,8 @@ service cloud.firestore {
         'organizationId', 'teamId', 'phase', 'players', 'opponent', 'competition',
         'clockDown', 'limitStr', 'onCourt', 'curQuarter', 'beginSec', 'endSec',
         'pendingSwapLineup', 'scoreFor', 'scoreAgainst', 'segmentCount',
-        'writerUid', 'deviceId', 'writerEpoch', 'revision', 'createdAt', 'startedAt',
-        'completedGameId', 'updatedAt'
+        'writerUid', 'deviceId', 'writerEpoch', 'claimedAt', 'lastWriterActivityAt',
+        'revision', 'createdAt', 'startedAt', 'completedGameId', 'updatedAt'
       ];
     }
 
@@ -292,6 +349,9 @@ service cloud.firestore {
         (data.writerUid == null || data.writerUid is string) &&
         (data.deviceId == null || (data.deviceId is string && data.deviceId.size() > 0)) &&
         data.writerEpoch is int &&
+        (data.claimedAt == null || (data.claimedAt is string && isIsoTimestampShape(data.claimedAt))) &&
+        (data.lastWriterActivityAt == null ||
+          (data.lastWriterActivityAt is string && isIsoTimestampShape(data.lastWriterActivityAt))) &&
         data.revision is int &&
         data.createdAt is string && isIsoTimestampShape(data.createdAt) &&
         (data.startedAt == null || (data.startedAt is string && isIsoTimestampShape(data.startedAt))) &&
@@ -597,9 +657,14 @@ service cloud.firestore {
             request.resource.data.revision == 0 &&
             request.resource.data.writerEpoch == 0 &&
             request.resource.data.completedGameId == null &&
-            ((request.resource.data.writerUid == null && request.resource.data.deviceId == null) ||
+            ((request.resource.data.writerUid == null && request.resource.data.deviceId == null &&
+                request.resource.data.claimedAt == null &&
+                request.resource.data.lastWriterActivityAt == null) ||
               (request.resource.data.writerUid == request.auth.uid &&
-                request.resource.data.deviceId is string && request.resource.data.deviceId.size() > 0));
+                request.resource.data.deviceId is string && request.resource.data.deviceId.size() > 0 &&
+                request.resource.data.claimedAt is string &&
+                isIsoTimestampShape(request.resource.data.claimedAt) &&
+                request.resource.data.lastWriterActivityAt == request.resource.data.claimedAt));
 
           // Punt 10a: normale patch — uitsluitend de ACTUELE writer, en
           // writer-/epochvelden blijven exact ongewijzigd (geen claim/
@@ -610,19 +675,19 @@ service cloud.firestore {
           // al is afgerond (`completedGameId != null`) — een bevroren
           // historie-item accepteert geen draaiveldpatches meer.
           //
-          // Punt 15 (PR 7.2a) en punt 10b hieronder — de finalize-patch en de
-          // initiële claim — staan bewust in DEZELFDE `allow update`-regel als
-          // de normale patch (in plaats van drie losse `allow update`-regels):
-          // Firestore Rules evalueert bij een update-request elke matchende
-          // `allow update`-regel apart, en `isValidGamePayload()` (~25
-          // veldchecks) bleek drie keer per request te duur — de
-          // Rules-emulator sloeg om bij "maximum of 1000 expressions to
-          // evaluate" zodra alle drie de paden apart stonden (empirisch
-          // ontdekt via `tests/rules/completed-games.spec.ts`/
-          // `games-and-actions.spec.ts`, aug. 2026). Eén gedeelde
-          // `isValidGamePayload()`-aanroep plus een OR van de drie
-          // padspecifieke voorwaarden houdt hetzelfde autorisatiecontract
-          // aan tegen ongeveer een derde van de evaluatiekosten.
+          // Punt 15 (PR 7.2a), punt 10b en punt 10c (PR 7.3a) hieronder — de
+          // finalize-patch, de initiële claim én de overname — staan bewust
+          // in DEZELFDE `allow update`-regel als de normale patch (in plaats
+          // van losse `allow update`-regels per pad): Firestore Rules
+          // evalueert bij een update-request elke matchende `allow
+          // update`-regel apart, en `isValidGamePayload()` (~25 veldchecks)
+          // bleek drie keer per request te duur — de Rules-emulator sloeg om
+          // bij "maximum of 1000 expressions to evaluate" zodra alle drie de
+          // paden apart stonden (empirisch ontdekt via
+          // `tests/rules/completed-games.spec.ts`/`games-and-actions.spec.ts`,
+          // aug. 2026). Eén gedeelde `isValidGamePayload()`-aanroep plus een
+          // OR van de padspecifieke voorwaarden houdt hetzelfde
+          // autorisatiecontract aan tegen een fractie van de evaluatiekosten.
           allow update: if canWriteGameData(orgId, teamId) &&
             isValidGamePayload(request.resource.data) &&
             request.resource.data.organizationId == resource.data.organizationId &&
@@ -630,17 +695,40 @@ service cloud.firestore {
             (
               // 10a: normale patch — uitsluitend de ACTUELE writer, writer-/
               // epochvelden en completedGameId blijven exact ongewijzigd.
+              // `lastWriterActivityAt` mag WEL wijzigen (PR 7.3a: elke
+              // draaiveldpatch van de actuele writer is server-zichtbare
+              // "leeft nog"-activiteit — geen automatische lease-expiry, zie
+              // docs/pr-7.3-plan.md §B, alleen een informatief veld voor een
+              // latere overname-bevestigingsflow).
               (resource.data.writerUid != null &&
                 request.auth.uid == resource.data.writerUid &&
                 resource.data.completedGameId == null &&
                 request.resource.data.writerUid == resource.data.writerUid &&
                 request.resource.data.deviceId == resource.data.deviceId &&
                 request.resource.data.writerEpoch == resource.data.writerEpoch &&
+                // Punt 19: backward-compat — een legacydocument (vóór PR
+                // 7.3a) mist `claimedAt` server-side nog volledig (geen
+                // sleutel, geen `null`); zonder deze `in`-guard gooit het
+                // veldtoegang hieronder een fout in plaats van `null` op te
+                // leveren.
+                request.resource.data.claimedAt ==
+                  (('claimedAt' in resource.data) ? resource.data.claimedAt : null) &&
+                request.resource.data.lastWriterActivityAt is string &&
+                isIsoTimestampShape(request.resource.data.lastWriterActivityAt) &&
                 request.resource.data.completedGameId == resource.data.completedGameId &&
+                // Punt 19: `claimedAt` staat ook in deze allowlist — niet omdat
+                // 10a 'm mag WIJZIGEN (de gelijkheidscheck hierboven dwingt
+                // "ongewijzigd" nog steeds af), maar omdat het toevoegen van
+                // een tot dan toe AFWEZIGE sleutel op een legacydocument (zie
+                // firestore.rules punt 19) voor `diff().affectedKeys()` een
+                // "gewijzigde sleutel" is, ook al is de waarde zelf `null`
+                // (hetzelfde als de sleutel nooit had bestaan). Zonder
+                // `claimedAt` hier zou zo'n eerste post-migratie patch alsnog
+                // op deze allowlist stuklopen.
                 request.resource.data.diff(resource.data).affectedKeys().hasOnly([
                   'phase', 'onCourt', 'curQuarter', 'beginSec', 'endSec',
                   'pendingSwapLineup', 'scoreFor', 'scoreAgainst', 'segmentCount',
-                  'revision', 'startedAt', 'updatedAt'
+                  'claimedAt', 'lastWriterActivityAt', 'revision', 'startedAt', 'updatedAt'
                 ]) &&
                 (request.resource.data.phase == resource.data.phase ||
                   (resource.data.phase == 'setup' && request.resource.data.phase == 'tracking')) &&
@@ -665,16 +753,48 @@ service cloud.firestore {
               ||
               // 10b: initiële claim — alleen als het document nog GEEN writer
               // heeft; de aanroeper claimt uitsluitend zichzelf, writerEpoch
-              // blijft ongewijzigd. Een latere OVERNAME (bestaande writer
-              // vervangen) heeft bewust geen pad hier — dat is PR 7.3-scope
-              // (transactioneel, met epoch-increment).
+              // blijft ongewijzigd. `claimedAt`/`lastWriterActivityAt` worden
+              // SAMEN op dezelfde "nu"-waarde gezet (PR 7.3a) — een latere
+              // OVERNAME (bestaande writer vervangen) loopt via punt 10c
+              // hieronder, niet dit pad (dat vereist juist writerUid == null).
               (resource.data.writerUid == null &&
                 resource.data.deviceId == null &&
                 request.resource.data.writerUid == request.auth.uid &&
                 request.resource.data.deviceId is string && request.resource.data.deviceId.size() > 0 &&
                 request.resource.data.writerEpoch == resource.data.writerEpoch &&
+                request.resource.data.claimedAt is string &&
+                isIsoTimestampShape(request.resource.data.claimedAt) &&
+                request.resource.data.lastWriterActivityAt == request.resource.data.claimedAt &&
                 request.resource.data.diff(resource.data).affectedKeys()
-                  .hasOnly(['writerUid', 'deviceId', 'revision', 'updatedAt']) &&
+                  .hasOnly(['writerUid', 'deviceId', 'claimedAt', 'lastWriterActivityAt', 'revision', 'updatedAt']) &&
+                request.resource.data.phase == resource.data.phase &&
+                request.resource.data.revision == resource.data.revision + 1)
+              ||
+              // 10d (PR 7.3a, docs/pr-7.3-plan.md §B/§C 7.3a): overname van
+              // een AL geclaimd document. Elke bevoegde rol mag overnemen
+              // (geen "alleen de huidige writer"-eis zoals 10a/15 — dat zou
+              // een overname per definitie onmogelijk maken); de aanroeper
+              // claimt uitsluitend zichzelf, `writerEpoch` MOET met exact 1
+              // omhoog (het fencingcontract dat de actions-createregel
+              // hieronder afdwingt — een oude, nog wachtende actie van de
+              // vorige epoch faalt daar dus altijd, nooit stil herschreven
+              // naar de nieuwe epoch). `claimedAt`/`lastWriterActivityAt`
+              // worden SAMEN op dezelfde "nu"-waarde gezet, exact als bij de
+              // initiële claim. Geen tijd-/lease-conditie hier — overname is
+              // altijd expliciet en online (§B: "Offline overname bestaat
+              // niet"), nooit automatisch na verstreken tijd. Raakt geen
+              // draaivelden — dat blijft uitsluitend het 10a-pad, en pas
+              // weer beschikbaar voor de NIEUWE writer na deze patch.
+              (resource.data.writerUid != null &&
+                resource.data.completedGameId == null &&
+                request.resource.data.writerUid == request.auth.uid &&
+                request.resource.data.deviceId is string && request.resource.data.deviceId.size() > 0 &&
+                request.resource.data.writerEpoch == resource.data.writerEpoch + 1 &&
+                request.resource.data.claimedAt is string &&
+                isIsoTimestampShape(request.resource.data.claimedAt) &&
+                request.resource.data.lastWriterActivityAt == request.resource.data.claimedAt &&
+                request.resource.data.diff(resource.data).affectedKeys()
+                  .hasOnly(['writerUid', 'deviceId', 'writerEpoch', 'claimedAt', 'lastWriterActivityAt', 'revision', 'updatedAt']) &&
                 request.resource.data.phase == resource.data.phase &&
                 request.resource.data.revision == resource.data.revision + 1)
             );

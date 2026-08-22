@@ -3,6 +3,7 @@ import type {
   GameActionEnvelopeDocument,
   GameDocument,
 } from 'firebase-base/documents';
+import type { WriterClaimResult } from '../../domain/game/writerClaim';
 
 /**
  * Application-poort voor de cloudkant van het wedstrijdmodel (PR 7.1a,
@@ -41,6 +42,30 @@ export interface GameSnapshotWriteResult {
    */
   writerUid?: string | null;
   deviceId?: string | null;
+  /**
+   * PR 7.3a: aanwezig bij `ok: true`; het actuele `writerEpoch` op het
+   * serverdocument NA deze operatie. `GameSyncCoordinator.sync()` gebruikt
+   * dit om `projectGameActions()` het ECHTE huidige epoch mee te geven
+   * i.p.v. een statische waarde uit `GameCloudWriterContext` — zonder dit
+   * veld zou een upload ná een overname altijd met een verouderd epoch
+   * geprobeerd worden en dus permanent op de actions-createregel (punt 11)
+   * stuklopen.
+   */
+  writerEpoch?: number;
+  /**
+   * PR 7.3a, backward-compat-fix (externe review, P1): aanwezig bij `ok:
+   * true`; het actuele `claimedAt` op het serverdocument NA deze operatie.
+   * `GameSyncCoordinator.sync()` geeft dit ongewijzigd terug aan de
+   * eerstvolgende `patchSnapshot()`-patch (`projectGameSnapshotPatch()`),
+   * ook als de huidige writer geen nieuwe claim/overname doet — een document
+   * van vóór PR 7.3a mist `claimedAt` server-side nog VOLLEDIG (geen `null`,
+   * de sleutel zelf ontbreekt); zonder dit veld hier zou de coordinator die
+   * afwezigheid niet kunnen "meenemen" naar de patch, en zou
+   * `isValidGamePayload()` (firestore.rules) elke normale patch op zo'n
+   * legacydocument blijven weigeren omdat het resulterende document dan nog
+   * steeds geen `claimedAt`-sleutel draagt.
+   */
+  claimedAt?: string | null;
   /**
    * PR 7.2a: aanwezig bij `ok: true`; de actuele `completedGameId` op het
    * serverdocument NA deze operatie. `GameSyncCoordinator.finalize()`
@@ -102,6 +127,48 @@ export interface GameCloudGateway {
     gameId: string,
     snapshot: GameSnapshotProjection,
   ): Promise<GameSnapshotWriteResult>;
+  /**
+   * PR 7.3a (docs/pr-7.3-plan.md §B/§C 7.3a werk 2): claimt een nog
+   * ONGECLAIMD parentdocument voor `writer` — spiegelt firestore.rules'
+   * 10b-pad. Faalt met `code: 'already-claimed'` als een ander apparaat het
+   * document tussen `ensureGame()` en deze aanroep al claimde (race, zie
+   * acceptatiecriterium "claimrace" in docs/pr-7.3-plan.md §C 7.3a), met
+   * `code: 'stale-revision'` bij een verouderde `expectedRevision`, met
+   * `code: 'role-denied'` als de aanroeper geen `canWriteGameData`-rol heeft,
+   * en met `code: 'offline'` bij een timeout/netwerkfout. `now` is de
+   * client-autoritatieve ISO-claimtijd (spiegelt `createdAt`/`startedAt` —
+   * door de aanroeper berekend, niet hier, voor deterministische tests).
+   */
+  claimWriter(
+    organizationId: string,
+    teamId: string,
+    gameId: string,
+    writer: { authorUid: string; deviceId: string },
+    expectedRevision: number,
+    now: string,
+  ): Promise<WriterClaimResult>;
+  /**
+   * PR 7.3a (docs/pr-7.3-plan.md §B/§C 7.3a werk 2): neemt een AL geclaimd
+   * parentdocument over voor `writer` — spiegelt firestore.rules' 10d-pad.
+   * `expectedEpoch` is het epoch dat de aanroeper op het moment van de
+   * overnamebeslissing kende (uit een voorafgaande lezing, bijv. voor een
+   * overname-bevestigingsscherm, 7.3c-scope) — de server verhoogt met exact
+   * 1; een afwijkend serverepoch (een ANDERE overname won de race) faalt met
+   * `code: 'already-claimed'`. Faalt verder met dezelfde codes als
+   * `claimWriter()` hierboven (`stale-revision`/`role-denied`/`offline`), en
+   * met `code: 'game-completed'` als de wedstrijd server-side al is
+   * afgerond. Bewust GEEN tijd-/lease-conditie — overname is altijd
+   * expliciet en online (§B), nooit automatisch na verstreken tijd.
+   */
+  takeoverWriter(
+    organizationId: string,
+    teamId: string,
+    gameId: string,
+    writer: { authorUid: string; deviceId: string },
+    expectedEpoch: number,
+    expectedRevision: number,
+    now: string,
+  ): Promise<WriterClaimResult>;
   /** Upload van nog onbevestigde action-envelopes; elk resultaat afzonderlijk idempotent. */
   uploadActions(
     organizationId: string,

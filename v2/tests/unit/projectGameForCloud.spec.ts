@@ -204,12 +204,18 @@ describe('projectGameActions (PR 7.1a)', () => {
 
 describe('projectGameSnapshotPatch (PR 7.1c)', () => {
   it('bevat exact de draaivelden-/afgeleide-snapshot-subset, nooit de onveranderlijke kernvelden', () => {
-    const patch = projectGameSnapshotPatch(fullGameFixture());
+    const patch = projectGameSnapshotPatch(
+      fullGameFixture(),
+      '2026-01-01T00:10:00.000Z',
+      '2026-01-01T00:05:00.000Z',
+    );
     expect(Object.keys(patch).sort()).toEqual(
       [
         'beginSec',
+        'claimedAt',
         'curQuarter',
         'endSec',
+        'lastWriterActivityAt',
         'onCourt',
         'pendingSwapLineup',
         'phase',
@@ -233,10 +239,14 @@ describe('projectGameSnapshotPatch (PR 7.1c)', () => {
     expect(patch).not.toHaveProperty('revision');
   });
 
-  it('spiegelt exact de afgeleide/draaivelden uit projectGameSnapshot', () => {
+  it('spiegelt exact de afgeleide/draaivelden uit projectGameSnapshot, plus de meegegeven lastWriterActivityAt', () => {
     const game = fullGameFixture();
     const snapshot = projectGameSnapshot(game);
-    const patch = projectGameSnapshotPatch(game);
+    const patch = projectGameSnapshotPatch(
+      game,
+      '2026-01-01T00:10:00.000Z',
+      '2026-01-01T00:05:00.000Z',
+    );
     expect(patch).toEqual({
       phase: snapshot.phase,
       onCourt: snapshot.onCourt,
@@ -248,7 +258,14 @@ describe('projectGameSnapshotPatch (PR 7.1c)', () => {
       scoreAgainst: snapshot.scoreAgainst,
       segmentCount: snapshot.segmentCount,
       startedAt: snapshot.startedAt,
+      claimedAt: '2026-01-01T00:05:00.000Z',
+      lastWriterActivityAt: '2026-01-01T00:10:00.000Z',
     });
+  });
+
+  it('geeft een null claimedAt ongewijzigd door (legacydocument-backward-compat, externe review PR #66)', () => {
+    const patch = projectGameSnapshotPatch(fullGameFixture(), '2026-01-01T00:10:00.000Z', null);
+    expect(patch.claimedAt).toBeNull();
   });
 });
 

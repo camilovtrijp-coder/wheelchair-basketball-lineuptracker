@@ -156,6 +156,12 @@ function alwaysSucceedsGateway(): GameCloudGateway {
         completedGameId: null,
       };
     },
+    async claimWriter() {
+      throw new Error('claimWriter mag hier niet aangeroepen worden — game is al zelf geclaimd');
+    },
+    async takeoverWriter() {
+      throw new Error('takeoverWriter mag hier niet aangeroepen worden');
+    },
     async uploadActions(
       _o: string,
       _t: string,
@@ -579,6 +585,12 @@ function controlledFinalizeGateway(): {
         deviceId: writer.deviceId,
         completedGameId: null,
       };
+    },
+    async claimWriter() {
+      throw new Error('claimWriter mag hier niet aangeroepen worden — game is al zelf geclaimd');
+    },
+    async takeoverWriter() {
+      throw new Error('takeoverWriter mag hier niet aangeroepen worden');
     },
     async uploadActions(
       _o: string,

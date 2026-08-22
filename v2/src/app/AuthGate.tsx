@@ -286,7 +286,28 @@ export function AuthGate({ authGateway }: AuthGateProps) {
     setSelectedContext(context);
   }
 
+  /**
+   * PR 7.3a (docs/pr-7.3-plan.md §B/§C 7.3a werk 4): "Vergrendel organisatie/
+   * teamcontext zodra een wedstrijd tracking/claim heeft; navigeren mag,
+   * maar wisselen naar een andere context vereist eerst stoppen of expliciet
+   * loslaten volgens het protocol." `App` meldt de actuele lockstatus via
+   * `onGameLockChange` (zie `app/App.tsx`) — een `true` waarde blokkeert
+   * `handleBackToSwitcher()` hieronder in plaats van de context stil te
+   * wissen/wissen. Er bestaat in 7.3a nog geen "expliciet loslaten"-actie
+   * (dat is 7.3c-scope, de overname-/recovery-flow); tot die tijd is de
+   * enige uitweg de wedstrijd zelf afronden.
+   */
+  const [gameLocked, setGameLocked] = useState(false);
+  const [switchBlockedNotice, setSwitchBlockedNotice] = useState(false);
+  useEffect(() => {
+    if (!gameLocked) setSwitchBlockedNotice(false);
+  }, [gameLocked]);
+
   function handleBackToSwitcher() {
+    if (gameLocked) {
+      setSwitchBlockedNotice(true);
+      return;
+    }
     clearSelectedContext(browserStorage);
     setSelectedContext(null);
   }
@@ -448,6 +469,18 @@ export function AuthGate({ authGateway }: AuthGateProps) {
             syncFromCache={repositories.mode === 'cloud' ? syncStatus.fromCache : undefined}
             email={authUser?.email}
           />
+          {switchBlockedNotice ? (
+            <p className="settings-error" role="alert" data-testid="context-switch-locked-notice">
+              {translate(lang, 'contextSwitchLockedWhileTracking')}{' '}
+              <button
+                type="button"
+                data-testid="context-switch-locked-dismiss"
+                onClick={() => setSwitchBlockedNotice(false)}
+              >
+                {translate(lang, 'contextSwitchLockedDismiss')}
+              </button>
+            </p>
+          ) : null}
           {repositories.mode === 'cloud' && syncStatus.pending.length > 0 ? (
             <ActionNeededPanel
               lang={lang}
@@ -472,6 +505,7 @@ export function AuthGate({ authGateway }: AuthGateProps) {
               selectedContext?.orgId ??
               ''
             }
+            onGameLockChange={setGameLocked}
           />
         </>
       );

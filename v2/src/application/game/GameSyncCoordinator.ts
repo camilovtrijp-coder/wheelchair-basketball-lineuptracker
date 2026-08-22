@@ -12,13 +12,15 @@
 //                        deviceId nog null als dit de eerste keer is).
 //   2. initiële claim — ALLEEN als het serverdocument nog geen schrijver
 //                        heeft: dit apparaat claimt zichzelf via
-//                        patchSnapshot() (Rules' "initiële claim"-pad, PR
-//                        7.1b punt 10b). Een reeds geclaimd document door
+//                        gateway.claimWriter() (Rules' "initiële claim"-pad,
+//                        PR 7.1b punt 10b). Een reeds geclaimd document door
 //                        een ANDER apparaat/andere gebruiker levert hier
-//                        'actie-nodig' op — een bestaande claim OVERNEMEN
-//                        (i.p.v. voor het eerst claimen) is bewust PR
-//                        7.3-scope (transactioneel, met epoch-increment) en
-//                        heeft ook geen pad in de PR 7.1b-Rules.
+//                        'actie-nodig' op — dit is bewust GEEN automatische
+//                        overname: `ensureWriterClaim()` hieronder (PR 7.3a,
+//                        aangeroepen door de pre-game-gate vóór tip-off) en
+//                        `gateway.takeoverWriter()` (10d) zijn de enige paden
+//                        die een AL geclaimd document overnemen, altijd een
+//                        expliciete gebruikersactie.
 //   3. uploadActions() — alleen nog onbevestigde `GameAction`'s (uit het
 //                        lokale checkpoint), elk create-only en idempotent.
 //   4. patchSnapshot() — de afgeleide/draaivelden-subset
@@ -39,6 +41,7 @@ import {
   withConfirmedActions,
   type GameSyncCheckpoint,
 } from '../../domain/game/syncCheckpoint';
+import type { CloudClaimStatus } from '../../domain/game/writerClaim';
 import type { GameCloudGateway } from './GameCloudGateway';
 import type { GameSyncCheckpointRepository } from './GameSyncCheckpointRepository';
 import {
@@ -106,6 +109,86 @@ export class GameSyncCoordinator {
   }
 
   /**
+   * PR 7.3a (docs/pr-7.3-plan.md §B/§C 7.3a werk 3): verkrijgt/bevestigt de
+   * writerclaim voor `game` VÓÓR tip-off — de pre-game-gate roept dit aan
+   * zodra de roster-voorwaarden voldaan zijn (`startBlockReason(game) ===
+   * null`) en wacht op `'confirmed'` vóór `startGame()` de fase naar
+   * `'tracking'` mag zetten (`domain/game/writerClaim.ts`
+   * `gameStartBlockReason()`). Los van `sync()`: die claimt alleen impliciet
+   * tijdens een reeds lopende sync-cyclus (fase al `'tracking'`), dit is het
+   * EXPLICIETE, blokkerende claimpad voor vóór de start.
+   *
+   * Retourneert altijd `'confirmed'` of `'blocked'` (nooit `'pending'`/
+   * `'not-required'` — dat zijn UI-state, gezet door de aanroeper vóór/na
+   * deze aanroep). Idempotent: een tweede aanroep terwijl dit apparaat al de
+   * bevestigde writer is, levert opnieuw `'confirmed'` op zonder een nieuwe
+   * serverwrite (geen onnodige revisie-increment bij bijv. een re-render/
+   * remount van de pre-game-gate).
+   */
+  async ensureWriterClaim(
+    game: ActiveGame,
+    writer: GameCloudWriterContext,
+  ): Promise<Extract<CloudClaimStatus, { kind: 'confirmed' | 'blocked' }>> {
+    const ensure = await this.gateway.ensureGame(
+      game.organizationId,
+      game.teamId,
+      game.id,
+      projectGameSnapshot(game),
+    );
+    if (!ensure.ok) return { kind: 'blocked', code: 'offline' };
+
+    const writerUid = ensure.writerUid ?? null;
+    const deviceId = ensure.deviceId ?? null;
+
+    if (writerUid === writer.authorUid && deviceId === writer.deviceId) {
+      return {
+        kind: 'confirmed',
+        identity: { writerUid, deviceId, writerEpoch: ensure.writerEpoch ?? 0 },
+      };
+    }
+    if (writerUid !== null || deviceId !== null) {
+      return { kind: 'blocked', code: 'already-claimed' };
+    }
+
+    const claim = await this.gateway.claimWriter(
+      game.organizationId,
+      game.teamId,
+      game.id,
+      { authorUid: writer.authorUid, deviceId: writer.deviceId },
+      ensure.revision ?? 0,
+      this.now(),
+    );
+    if (!claim.ok) return { kind: 'blocked', code: claim.code };
+    return { kind: 'confirmed', identity: claim.identity };
+  }
+
+  /**
+   * PR 7.3a (docs/pr-7.3-plan.md §C 7.3a werk 2): neemt de writerclaim over
+   * van een AL geclaimde `game` — dunne doorgeefluik naar
+   * `gateway.takeoverWriter()`. Geen sterke-bevestigingsflow/UI hier (dat is
+   * 7.3c-scope, docs/pr-7.3-plan.md §C 7.3c werk 1) — deze methode is de
+   * geteste, aanroepbare bouwsteen die die flow straks gebruikt.
+   */
+  async takeoverWriter(
+    game: ActiveGame,
+    writer: GameCloudWriterContext,
+    currentEpoch: number,
+    currentRevision: number,
+  ): Promise<Extract<CloudClaimStatus, { kind: 'confirmed' | 'blocked' }>> {
+    const takeover = await this.gateway.takeoverWriter(
+      game.organizationId,
+      game.teamId,
+      game.id,
+      { authorUid: writer.authorUid, deviceId: writer.deviceId },
+      currentEpoch,
+      currentRevision,
+      this.now(),
+    );
+    if (!takeover.ok) return { kind: 'blocked', code: takeover.code };
+    return { kind: 'confirmed', identity: takeover.identity };
+  }
+
+  /**
    * Synct `game` naar de cloud voor de gegeven schrijveridentiteit. Geeft
    * altijd het (bijgewerkte) lokale checkpoint terug — `status:'idle'`
    * betekent "alles wat bekend was op het moment van aanroepen is bevestigd",
@@ -126,22 +209,41 @@ export class GameSyncCoordinator {
     let revision = ensure.revision ?? checkpoint.serverRevision;
     let writerUid = ensure.writerUid ?? null;
     let deviceId = ensure.deviceId ?? null;
+    // PR 7.3a: het ECHTE huidige epoch komt van de server (`ensure`/`claim`),
+    // nooit de statische `writer.writerEpoch` uit `GameCloudWriterContext` —
+    // die is alleen nog een fallback voor een kersvers, nog nooit geüpload
+    // document (vóór de eerste `ensureGame()`-serverbevestiging hierboven).
+    // Zonder dit zou een upload ná een overname altijd met een verouderd
+    // epoch geprobeerd worden en permanent op de actions-createregel
+    // (firestore.rules punt 11) stuklopen.
+    let writerEpoch = ensure.writerEpoch ?? writer.writerEpoch;
+    // P1-fix (externe review PR #66, backward-compat): het ECHTE huidige
+    // `claimedAt`, altijd ongewijzigd teruggegeven aan `patchSnapshot()`
+    // hieronder (zie `projectGameSnapshotPatch()`'s docstring). Een document
+    // van vóór PR 7.3a mist deze sleutel server-side nog volledig — de
+    // gateway/converter defaulten dat naar `null`, nooit `undefined`.
+    let claimedAt = ensure.claimedAt ?? null;
 
     if (writerUid === null && deviceId === null) {
-      const claim = await this.gateway.patchSnapshot(
+      const claim = await this.gateway.claimWriter(
         game.organizationId,
         game.teamId,
         game.id,
-        { writerUid: writer.authorUid, deviceId: writer.deviceId },
+        { authorUid: writer.authorUid, deviceId: writer.deviceId },
         revision,
+        this.now(),
       );
-      if (!claim.ok) return this.fail(checkpoint, claim.error);
-      revision = claim.revision ?? revision + 1;
-      writerUid = writer.authorUid;
-      deviceId = writer.deviceId;
+      if (!claim.ok) return this.fail(checkpoint, claim.error ?? claim.code);
+      revision = claim.revision;
+      writerUid = claim.identity.writerUid;
+      deviceId = claim.identity.deviceId;
+      writerEpoch = claim.identity.writerEpoch;
+      claimedAt = claim.claimedAt;
     } else if (writerUid !== writer.authorUid || deviceId !== writer.deviceId) {
       // Al geclaimd door een andere schrijver (ander apparaat en/of andere
-      // gebruiker) — overname is PR 7.3-scope, hier alleen zichtbaar maken.
+      // gebruiker) — een overname is een expliciete gebruikersactie
+      // (`GameCloudGateway.takeoverWriter()`, PR 7.3a), nooit automatisch
+      // vanuit een reguliere sync-cyclus. Hier alleen zichtbaar maken.
       return this.fail(
         checkpoint,
         `wedstrijd is al geclaimd door een andere schrijver (writerUid=${writerUid ?? 'null'})`,
@@ -151,7 +253,7 @@ export class GameSyncCoordinator {
     const allActions = projectGameActions(game, {
       authorUid: writerUid,
       deviceId,
-      writerEpoch: writer.writerEpoch,
+      writerEpoch,
     });
     const unconfirmed = allActions.filter(
       (action) => !isActionConfirmed(checkpoint, action.actionId),
@@ -176,7 +278,7 @@ export class GameSyncCoordinator {
       game.organizationId,
       game.teamId,
       game.id,
-      projectGameSnapshotPatch(game),
+      projectGameSnapshotPatch(game, this.now(), claimedAt),
       revision,
     );
     if (!patchResult.ok) {
