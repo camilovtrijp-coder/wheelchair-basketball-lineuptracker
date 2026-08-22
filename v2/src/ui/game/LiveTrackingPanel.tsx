@@ -17,6 +17,8 @@ import {
   type ClassificationConfig,
 } from '../../domain/game/tracking';
 import { translate, type Lang, type StringKey } from '../../i18n/strings';
+import { SyncStatusIndicator } from '../sync/SyncStatusIndicator';
+import type { SyncState } from '../../domain/syncState';
 
 export interface LiveTrackingPanelProps {
   lang: Lang;
@@ -31,6 +33,19 @@ export interface LiveTrackingPanelProps {
   onFinishGame: () => void;
   canWrite: boolean;
   saveError: boolean;
+  /**
+   * PR 7.3b (docs/pr-7.3-plan.md §C 7.3b werk 3): aanwezig wanneer `game` een
+   * puur afgeleide read-only weergave is van ANDERMANS actieve cloudwedstrijd
+   * (`app/App.tsx`'s `activeCloudGame`, via `domain/game/liveView.ts`
+   * `buildLiveGameView()`) — nooit tegelijk met `canWrite=true`. Vervangt de
+   * generieke `gameReadOnly`-banner door een specifiekere melding ("wordt
+   * live gescoord op een ander apparaat") plus de cache-/serveractualiteit
+   * van dit live-abonnement, met dezelfde `SyncStatusIndicator` als de rest
+   * van de app. `undefined` (het bestaande, role-based read-only-pad — bijv.
+   * een 'viewer'-rol op het apparaat dat ZELF de wedstrijd bijhoudt) toont
+   * onveranderd de generieke banner.
+   */
+  liveViewerSync?: SyncState;
 }
 
 function t(lang: Lang, key: StringKey): string {
@@ -164,6 +179,7 @@ export function LiveTrackingPanel({
   onFinishGame,
   canWrite,
   saveError,
+  liveViewerSync,
 }: LiveTrackingPanelProps) {
   const [selected, setSelected] = useState<Selected | null>(null);
   // Snapshot van onCourt van vóór het huidige, nog niet bevestigde blokje
@@ -418,7 +434,17 @@ export function LiveTrackingPanel({
         </p>
       ) : null}
 
-      {canWrite ? null : (
+      {liveViewerSync ? (
+        <div className="live-viewer-banner" data-testid="live-viewer-banner" role="status">
+          <p className="settings-read-only">{t(lang, 'liveViewerBannerText')}</p>
+          <SyncStatusIndicator
+            lang={lang}
+            status={liveViewerSync.status}
+            fromCache={liveViewerSync.fromCache}
+            testId="live-viewer-sync-indicator"
+          />
+        </div>
+      ) : canWrite ? null : (
         <p className="settings-read-only" data-testid="game-read-only" role="status">
           {t(lang, 'gameReadOnly')}
         </p>
