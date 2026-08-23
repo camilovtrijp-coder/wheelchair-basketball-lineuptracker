@@ -113,3 +113,42 @@ export function gameStartBlockReason(
 export function canStartGame(game: ActiveGame, cloudClaim: CloudClaimStatus): boolean {
   return gameStartBlockReason(game, cloudClaim) === null;
 }
+
+/**
+ * PR 7.3b regressiefix (docs/pr-7.3-plan.md §C 7.3b): bepaalt of een
+ * `'other'`-writerclaim TIJDENS ACTIEVE TRACKING een ECHTE, epoch-bevorderde
+ * overname is (`GameCloudGateway.takeoverWriter()`, PR 7.3a — altijd exact
+ * +1 op `writerEpoch`), i.p.v. een gelijk-epoch writerUid/deviceId-mismatch
+ * op het serverdocument. Dat laatste is een corrupte/anomale staat — vandaag
+ * vanuit de client onbereikbaar, alleen via de Admin SDK te simuleren (PR
+ * 7.1c `game-sync-claim-conflict.spec.ts`) — die de cloud-sync als
+ * 'actie-nodig' moet melden maar de lokale schrijf-UI NOOIT mag blokkeren:
+ * dat is een bewust, getest ontwerp-invariant sinds PR 7.1c/7.3a.
+ *
+ * `ownClaim` is de bevestigde `CloudClaimStatus` van DIT apparaat
+ * (`ensureWriterClaim()`, pre-game-gate) — het epoch dat dit apparaat zelf
+ * claimde bij tip-off is de betrouwbare baseline, NIET een statische
+ * `GameCloudWriterContext.writerEpoch` (die blijft vóór een claim altijd op
+ * 0 staan, zie `infrastructure/repositories/selectRepositories.ts`).
+ * Ontbreekt die bevestiging nog (`ownClaim.kind !== 'confirmed'`, bijv. een
+ * pagina-herlaad midden in tracking vóórdat een verse claim opnieuw
+ * bevestigd is) dan is er geen betrouwbare eigen-epoch-baseline — val dan
+ * terug op de oude platte `writerClaim.kind === 'other'`-vergelijking:
+ * conservatief liever onterecht read-only tonen dan een ECHTE overname
+ * missen zonder baseline.
+ *
+ * Alleen relevant tijdens tracking (`app/App.tsx`'s eigen
+ * `isSelfBlockedByOtherWriter`). De pre-game-gate zelf
+ * (`gameStartBlockReason()` hierboven, en daarmee `deriveWriterClaimState()`)
+ * blijft bewust de platte vergelijking gebruiken — vóór tip-off is elke
+ * writerUid/deviceId-mismatch een legitieme "iemand anders heeft al
+ * geclaimd, start niet", los van welk epoch dat andere apparaat draagt.
+ */
+export function isEpochPromotedTakeover(
+  claim: WriterClaimState,
+  ownClaim: CloudClaimStatus,
+): boolean {
+  if (claim.kind !== 'other') return false;
+  if (ownClaim.kind !== 'confirmed') return true;
+  return claim.identity.writerEpoch > ownClaim.identity.writerEpoch;
+}

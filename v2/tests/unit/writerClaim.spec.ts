@@ -4,7 +4,9 @@ import {
   canStartGame,
   deriveWriterClaimState,
   gameStartBlockReason,
+  isEpochPromotedTakeover,
   type CloudClaimStatus,
+  type WriterClaimState,
 } from '../../src/domain/game/writerClaim';
 
 function player(overrides: Partial<GamePlayer> = {}): GamePlayer {
@@ -145,5 +147,55 @@ describe('domain/game/writerClaim: gameStartBlockReason/canStartGame (PR 7.3a)',
     };
     expect(gameStartBlockReason(game(), confirmed)).toBeNull();
     expect(canStartGame(game(), confirmed)).toBe(true);
+  });
+});
+
+describe('domain/game/writerClaim: isEpochPromotedTakeover (regressiefix na PR 7.3b)', () => {
+  const ownConfirmed: CloudClaimStatus = {
+    kind: 'confirmed',
+    identity: { writerUid: 'uid-alice', deviceId: 'device-alice', writerEpoch: 1 },
+  };
+
+  it('nooit true als de claim niet "other" is (own/unclaimed blokkeren nooit)', () => {
+    const own: WriterClaimState = {
+      kind: 'own',
+      identity: { writerUid: 'uid-alice', deviceId: 'device-alice', writerEpoch: 1 },
+    };
+    expect(isEpochPromotedTakeover(own, ownConfirmed)).toBe(false);
+    expect(isEpochPromotedTakeover({ kind: 'unclaimed' }, ownConfirmed)).toBe(false);
+  });
+
+  it('gelijk epoch (PR 7.1c-conflictscenario, Admin SDK zonder overname) blokkeert NIET', () => {
+    const otherSameEpoch: WriterClaimState = {
+      kind: 'other',
+      identity: { writerUid: 'uid-ander-apparaat', deviceId: 'ander-device', writerEpoch: 1 },
+    };
+    expect(isEpochPromotedTakeover(otherSameEpoch, ownConfirmed)).toBe(false);
+  });
+
+  it('lager epoch dan het eigen bevestigde epoch blokkeert NIET (kan in de praktijk niet voorkomen, maar defensief)', () => {
+    const otherLowerEpoch: WriterClaimState = {
+      kind: 'other',
+      identity: { writerUid: 'uid-ander-apparaat', deviceId: 'ander-device', writerEpoch: 0 },
+    };
+    expect(isEpochPromotedTakeover(otherLowerEpoch, ownConfirmed)).toBe(false);
+  });
+
+  it('strikt hoger epoch (echte takeoverWriter()-overname) blokkeert WEL', () => {
+    const otherHigherEpoch: WriterClaimState = {
+      kind: 'other',
+      identity: { writerUid: 'uid-ander-apparaat', deviceId: 'ander-device', writerEpoch: 2 },
+    };
+    expect(isEpochPromotedTakeover(otherHigherEpoch, ownConfirmed)).toBe(true);
+  });
+
+  it('geen bevestigde eigen claim bekend: valt terug op de platte "other"-vergelijking', () => {
+    const other: WriterClaimState = {
+      kind: 'other',
+      identity: { writerUid: 'uid-ander-apparaat', deviceId: 'ander-device', writerEpoch: 0 },
+    };
+    expect(isEpochPromotedTakeover(other, { kind: 'not-required' })).toBe(true);
+    expect(isEpochPromotedTakeover(other, { kind: 'pending' })).toBe(true);
+    expect(isEpochPromotedTakeover(other, { kind: 'blocked', code: 'unknown' })).toBe(true);
   });
 });

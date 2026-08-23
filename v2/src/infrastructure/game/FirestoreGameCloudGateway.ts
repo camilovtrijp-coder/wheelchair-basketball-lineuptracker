@@ -40,8 +40,12 @@
 //    firestore.rules punt 16) — twee losse writes lieten voorheen een
 //    dubbele-snapshot/orphan-snapshot-gat open.
 import {
+  collection,
   doc,
   getDoc,
+  onSnapshot,
+  orderBy,
+  query,
   serverTimestamp,
   setDoc,
   updateDoc,
@@ -59,6 +63,8 @@ import type {
   CompletedGameTombstoneResult,
   GameActionUploadOutcome,
   GameCloudGateway,
+  GameCloudSubscriptionCallbacks,
+  GameCloudUnsubscribe,
   GameSnapshotProjection,
   GameSnapshotWriteResult,
 } from '../../application/game/GameCloudGateway';
@@ -150,6 +156,19 @@ export class FirestoreGameCloudGateway implements GameCloudGateway {
       gameId,
       'actions',
       actionId,
+    );
+  }
+
+  private actionsCollectionRef(organizationId: string, teamId: string, gameId: string) {
+    return collection(
+      this.db,
+      'organizations',
+      organizationId,
+      'teams',
+      teamId,
+      'games',
+      gameId,
+      'actions',
     );
   }
 
@@ -578,5 +597,75 @@ export class FirestoreGameCloudGateway implements GameCloudGateway {
       return { ok: false, error };
     }
     return { ok: true, revision: nextRevision };
+  }
+
+  /**
+   * PR 7.3b (docs/pr-7.3-plan.md §C 7.3b werk 2): twee onafhankelijke
+   * `onSnapshot()`-listeners (parent + `actions`-query op `sequence`), elk
+   * met `includeMetadataChanges: true` zodat `onParent`/`onActions` ook
+   * vuurt zodra een snapshot van "cache" naar "server-bevestigd" overgaat
+   * (nodig voor de cache-/serveractualiteitsindicator, werk 3) — niet alleen
+   * bij een echte datawijziging. Geen `withTimeout()` hier: dat patroon is
+   * voor request/response-aanroepen met een zinvolle "geen antwoord binnen
+   * Xms"-grens; een live listener heeft geen zo'n eindtoestand — hij blijft
+   * per ontwerp open totdat de aanroeper afmeldt of Firestore zelf een
+   * fatale listenerfout meldt (`onError` hieronder). Elke listener meldt
+   * zijn eigen fouten onafhankelijk — een fout op de ene stopt de andere
+   * niet, zodat de aanroeper desgewenst nog gedeeltelijke data kan tonen.
+   */
+  subscribeToGame(
+    organizationId: string,
+    teamId: string,
+    gameId: string,
+    callbacks: GameCloudSubscriptionCallbacks,
+  ): GameCloudUnsubscribe {
+    const gameRef = this.gameRef(organizationId, teamId, gameId).withConverter(gameConverter);
+    // Review-fix (minimax, PR #68 punt 7): deze `orderBy('sequence')` draait
+    // vandaag op Firestore's automatische single-field index — geen entry in
+    // `firestore.indexes.json` nodig. Zodra hier ooit een `where()` aan
+    // toegevoegd wordt (bijv. filteren op een subset acties), heeft Firestore
+    // een COMPOSIETE index nodig die niet automatisch bestaat: dat werkt dan
+    // in de emulator (die composiete indexen niet afdwingt) maar faalt in
+    // productie met een "index niet gevonden"-fout. Vergeet dan niet
+    // `firestore.indexes.json` bij te werken.
+    const actionsQuery = query(
+      this.actionsCollectionRef(organizationId, teamId, gameId),
+      orderBy('sequence'),
+    ).withConverter(gameActionConverter);
+
+    const unsubParent = onSnapshot(
+      gameRef,
+      { includeMetadataChanges: true },
+      (snapshot) => {
+        callbacks.onParent({
+          doc: snapshot.exists() ? snapshot.data() : null,
+          meta: {
+            fromCache: snapshot.metadata.fromCache,
+            hasPendingWrites: snapshot.metadata.hasPendingWrites,
+          },
+        });
+      },
+      (error) => callbacks.onError(error),
+    );
+
+    const unsubActions = onSnapshot(
+      actionsQuery,
+      { includeMetadataChanges: true },
+      (snapshot) => {
+        callbacks.onActions({
+          actions: snapshot.docs.map((d) => d.data()),
+          meta: {
+            fromCache: snapshot.metadata.fromCache,
+            hasPendingWrites: snapshot.metadata.hasPendingWrites,
+          },
+        });
+      },
+      (error) => callbacks.onError(error),
+    );
+
+    return () => {
+      unsubParent();
+      unsubActions();
+    };
   }
 }

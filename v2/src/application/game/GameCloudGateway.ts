@@ -107,6 +107,58 @@ export interface CompletedGameTombstoneResult {
   error?: unknown;
 }
 
+/**
+ * PR 7.3b (docs/pr-7.3-plan.md §C 7.3b werk 2): cache-/serveractualiteit van
+ * één listener-snapshot — spiegelt Firestore's eigen
+ * `SnapshotMetadata.fromCache`/`hasPendingWrites` een-op-een, geen eigen
+ * afgeleide staat. `GameCloudGateway.subscribeToGame()` geeft dit apart per
+ * (parent-, actions-)listener door, omdat beide onafhankelijk uit cache of
+ * server kunnen komen (bijv. de parent al server-bevestigd, de
+ * actions-subcollectie nog niet).
+ */
+export interface GameCloudSnapshotMeta {
+  fromCache: boolean;
+  hasPendingWrites: boolean;
+}
+
+/** Eén update van het parentdocument via `subscribeToGame()`. `doc: null`
+ * betekent "nog geen (leesbaar) document" — vóór de eerste `ensureGame()` van
+ * de writer, of een tijdelijk niet-bestaand pad; nooit "verwijderd" (games
+ * worden nooit hard-deleted, zie firestore.rules). */
+export interface GameCloudParentUpdate {
+  doc: GameDocument | null;
+  meta: GameCloudSnapshotMeta;
+}
+
+/** Eén update van de volledige `actions`-subcollectie via `subscribeToGame()`
+ * — altijd de VOLLEDIGE huidige set (geen incrementeel diff-contract), in
+ * WILLEKEURIGE volgorde; de aanroeper sorteert zelf op `sequence`
+ * (`domain/game/deriveGameStateFromCloud.ts` `sortCloudActions()`). */
+export interface GameCloudActionsUpdate {
+  actions: GameActionEnvelopeDocument[];
+  meta: GameCloudSnapshotMeta;
+}
+
+export interface GameCloudSubscriptionCallbacks {
+  onParent: (update: GameCloudParentUpdate) => void;
+  onActions: (update: GameCloudActionsUpdate) => void;
+  /**
+   * Een listenerfout (bijv. een afgesloten Rules-toegang, een permanente
+   * netwerkstoring) op ÉÉN van beide onderliggende listeners — de andere
+   * listener blijft actief. De aanroeper toont dit als "laatst bekende stand,
+   * niet meer live" (docs/pr-7.3-plan.md §C 7.3b werk 3/5) i.p.v. te crashen;
+   * er is bewust GEEN automatische retry hier — dat is aan de aanroeper (een
+   * hernieuwde `subscribeToGame()`-aanroep, bijv. na een handmatige retry-
+   * knop of reconnect), zelfde terughoudendheid als elders in deze poort rond
+   * automatische recovery (§D "Geen time-based auto-takeover").
+   */
+  onError: (error: unknown) => void;
+}
+
+/** Stopt beide onderliggende Firestore-listeners; idempotent (dubbel
+ * aanroepen is een no-op, spiegelt de Firestore SDK's eigen `Unsubscribe`). */
+export type GameCloudUnsubscribe = () => void;
+
 export interface GameCloudGateway {
   /**
    * Maakt het parentdocument aan als het nog niet bestaat; een bestaand
@@ -229,4 +281,21 @@ export interface GameCloudGateway {
     deletedBy: string,
     expectedRevision: number,
   ): Promise<CompletedGameTombstoneResult>;
+  /**
+   * PR 7.3b (docs/pr-7.3-plan.md §C 7.3b werk 2): live abonnement op parent +
+   * `actions`-subcollectie voor een read-only viewer — de writer blijft altijd
+   * request/response via de methoden hierboven (§B: "geen UI-await op
+   * server"), dit pad is uitsluitend voor NIET-writers die willen meekijken.
+   * Rules-read-toegang is ongewijzigd (`canReadTeam`, al vóór PR 7.3b geldig
+   * voor elke teamrol inclusief 'viewer'), dus geen aparte Rules-uitbreiding
+   * nodig. Retourneert direct een `GameCloudUnsubscribe` — de aanroeper hoeft
+   * niet te wachten op de eerste snapshot om te kunnen afmelden (bijv. een
+   * component die meteen weer unmount't).
+   */
+  subscribeToGame(
+    organizationId: string,
+    teamId: string,
+    gameId: string,
+    callbacks: GameCloudSubscriptionCallbacks,
+  ): GameCloudUnsubscribe;
 }
