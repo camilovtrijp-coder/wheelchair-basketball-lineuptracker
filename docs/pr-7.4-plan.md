@@ -1,8 +1,15 @@
 # Voorbereidingsplan PR 7.4 — bestaande gebruiker naar cloud
 
-Status: 7.4a (inventarisatie, mapping en preview) en 7.4b (hervatbare
-migratiecoordinator) geïmplementeerd — zie "Geïmplementeerd" onder §C 7.4a/
-7.4b. 7.4c (migratie-UI en volledige e2e) nog niet gestart.
+Status: 7.4a (inventarisatie, mapping en preview), 7.4b (hervatbare
+migratiecoordinator) en 7.4c (migratie-UI en volledige e2e) geïmplementeerd —
+zie "Geïmplementeerd" onder §C 7.4a/7.4b/7.4c. Daarmee is PR 7.4 als geheel
+functioneel compleet, met twee expliciete restpunten die buiten dit
+sandbox-bereik vallen (zelfde aard als 7.2c/7.3c se eigen afsluiting): de
+Playwright-e2e-matrix kon niet daadwerkelijk DRAAIEN (geblokkeerde
+browserdownload-CDN) en de staging-pilot (werk 5) vereist live
+staging-infra-toegang die deze sandbox niet heeft — beide zijn manuele
+vervolgstappen voor wie die toegang wél heeft, natuurlijk onderdeel van de
+fase-7-acceptatie die na 7.4 volgt (§D).
 
 ## A. Doel en relatie met PR 6.6
 
@@ -415,6 +422,213 @@ context- of Rules-afwijzing blijft herstelbaar en exporteerbaar.
 
 Acceptatie: gebruiker kan de migratie vooraf begrijpen, veilig hervatten en
 lokale data blijven gebruiken; clouddata is na readback op apparaat B gelijk.
+
+**Geïmplementeerd:**
+
+- `v2/src/ui/migration/MigrationPanel.tsx` (nieuw): de volledige stroom uit
+  werk 1 als één statemachine-component — `idle → loading → preview → backup
+  → confirm → running → result`, plus `denied`/`error`/`blocked`
+  tussenstations. Bouwt zelf GEEN nieuwe domein-/orkestratielogica — roept
+  uitsluitend `buildCloudMigrationPreview()` (7.4a) en
+  `MigrationCoordinator.prepareRun()`/`.runMigration()` (7.4b) aan, exact
+  zoals de architectuurregel "UI never imports Firebase directly" vereist.
+  Structuurpatroon 1:1 gespiegeld van `ui/backup/BackupPanel.tsx` (PR 6.6,
+  plan §A: "7.4 hergebruikt PR 6.6's ... preview, herstelback-up,
+  contextbevestiging") en `ui/game/TakeoverConfirmDialog.tsx` (PR 7.3c, voor
+  de bevestigingsstap: expliciete consequentietekst + expliciete knop, geen
+  auto-trigger).
+  - Werk 2 (per-onderdeel weergave): `MigrationPreviewCard` toont settings/
+    roster/completedGames elk met lokaal/cloud-aanwezigheid (afgeleid uit
+    `item.action !== 'create'`, geen nieuwe boolean nodig — de preview
+    draagt dat al impliciet) en de bijbehorende conflictstatus (`create`/
+    `alreadyPresentIdentical`/`conflict`), plus de globale
+    `preview.counts`. De actieve wedstrijd krijgt een aparte sectie: een
+    `tracking`-fase-item (`action: 'excludedTrackingGame'`) toont expliciet
+    dat 'm NIET meegaat en apart via het 7.3-overnamescherm (writerclaim)
+    moet worden geadopteerd (`migrationTrackingGameExcludedTracking` — een
+    verwijzing, geen stille omissie); een `setup`-fase-item
+    (`needsSeparateDecision`) toont dat een aparte beslissing nodig is,
+    buiten deze bulkmigratie. Geen van beide wordt ooit in
+    `requiredWrites`/de bevestigingsstap meegeteld (7.4a/7.4b's eigen
+    garantie, hier alleen zichtbaar gemaakt).
+  - Werk 1's herstelback-up-stap hergebruikt LETTERLIJK
+    `domain/migration/recoveryBackup.ts` (7.4b) +
+    `infrastructure/backup/downloadBackupFile.ts` (PR 6.6, ongewijzigd) —
+    de "Volgende: bevestigen"-knop blijft `disabled` totdat de download
+    daadwerkelijk is uitgevoerd (`state.downloaded`), zodat een gebruiker
+    de bevestigingsstap niet kan overslaan zonder eerst een
+    terugvalmogelijkheid te hebben gedownload.
+  - Werk 1's retry/export (stuk-item 6): `infrastructure/migration/
+    exportStuckMigrationItems.ts` (nieuw) — zelfde blob-`<a download>`-
+    patroon als `infrastructure/game/exportPendingGameActions.ts` (PR
+    7.3c), exporteert UITSLUITEND de items met status `conflict`/`failed`/
+    `compensationFailed` (een `confirmed`/`compensated`-item is al klaar,
+    niets aan te "retrien"). "Opnieuw proberen" roept simpelweg opnieuw
+    `MigrationCoordinator.runMigration()` aan op dezelfde `MigrationRun` —
+    7.4b's eigen hervattingslogica (herclassificatie + checkpoint-skip via
+    `isMigrationRunItemRetryable()`) doet de rest, geen nieuwe UI-eigen
+    retrylogica.
+  - **Geen rollback-/afbreken-knop gebouwd**: de plan-werkstappenlijst voor
+    7.4c noemt uitdrukkelijk alleen "retry/export" als laatste stap, geen
+    "afbreken/rollback" — `MigrationCoordinator.abortAndCompensate()` (7.4b)
+    bestaat en is bruikbaar, maar heeft in deze PR bewust geen
+    UI-aanroeppunt. Bewuste scope-keuze, geen omissie: een niet-afgeronde
+    run blijft via `MigrationRunRepository`/de cloud-manifest zichtbaar en
+    hervatbaar (§D "geen stil verwijderen"), en het ontbreken van een
+    afbreken-knop verandert niets aan de fail-closed-garanties van 7.4a/
+    7.4b (geen enkele write gebeurt zonder expliciete bevestiging, ongeacht
+    of afbreken een UI-knop heeft).
+  - **Dubbele-bevestiging-bescherming (werk 3)**: de coordinator zelf heeft
+    GEEN interne mutex tegen twee overlappende `runMigration()`-aanroepen
+    vanuit hetzelfde tabblad — `MigrationPanel` is dus de PRIMAIRE
+    bescherming daartegen (`runningRef` + de bevestig-/retry-knop bestaat
+    domweg niet meer zodra `step === 'running'`, geen `disabled`-attribuut
+    dat omzeild kan worden, de knop is dan niet gerenderd). Wat de
+    coordinator/Rules WEL garanderen, onafhankelijk van de UI-guard: een
+    dubbele RETRY (bijv. na reload, of vanaf een tweede apparaat/tabblad)
+    levert nooit een dubbel clulditem op — elke schrijfronde herleest eerst
+    de doelcontext (`resolveAction()`-recheck, 7.4b) en
+    `completedGames`' Firestore-create-only-regel (7.2/7.4b) weigert een
+    tweede write op hetzelfde ID sowieso; settings/roster hebben dat
+    create-only-vangnet niet (bestaand PR-5.3-gat, zie 7.4b se
+    ontwerpbeslissing hierboven) — daar is de vlak-voor-write-recheck de
+    enige bescherming, met hetzelfde kleine racevenster als al gedocumenteerd
+    bij 7.4b. Kortom: de UI is de enige bescherming tegen een dubbelklik
+    BINNEN één sessie; de data-laag is de bescherming tegen een dubbele
+    write OVER sessies/apparaten heen.
+  - Werk 3 (toegankelijkheid): hergebruikt uitsluitend bestaande, al
+    320px-/toetsenbord-/screenreader-geteste CSS-klassen (`settings-
+    section`/`card`/`settings-actions`/`settings-explainer`/`settings-
+    error`/`btn-primary`/`btn-outline`) — geen nieuwe CSS, dus geen nieuw
+    responsief gedrag om apart te bewijzen. Alle interactie via `<button>`
+    (native toetsenbordbediening). De voortgangs-/resultaatweergave draagt
+    `role="status"`/`aria-live="polite"`, zelfde patroon als de
+    `cloud-viewer-banner` (PR 7.3b) — MET hetzelfde gedocumenteerde,
+    bewust-niet-hier-opgeloste gat: een latere status-FLIP binnen hetzelfde
+    element (bv. `actionNeeded` → opnieuw `actionNeeded` na een retry)
+    wijzigt alleen tekstinhoud zonder nieuwe DOM-node, dus sommige
+    schermlezers herhalen dat niet automatisch (7.3b se eigen review-note,
+    hier bewust consistent gelaten, niet opnieuw "opgelost" — een bredere
+    aria-live-UX-pas blijft toekomstig werk).
+  - Contextwissel-bescherming (werk 4-precedent, hergebruikt): een
+    `useEffect` zet de UI terug naar `idle` zodra `organizationId`/
+    `teamId`/`callerRole` wijzigt terwijl er een nog-onbevestigde
+    preview/backup/confirm-stap open staat — exact hetzelfde patroon als
+    `BackupPanel`. Een lopende/afgeronde run (`running`/`result`) blijft
+    zichtbaar (de run is al aan zijn eigen `MigrationRun.target` gebonden;
+    `runMigration()` bewaakt een tussentijdse contextwissel zelf via
+    `isPreviewStillValid()`, 7.4b).
+  - Propnaam bewust `callerRole`, niet `role`: `eslint-plugin-jsx-a11y`'s
+    `aria-role`-regel herkent een JSX-`role`-attribuut op een eigen
+    component niet als "gewone prop, geen DOM-ARIA-attribuut" en weigert
+    dan elke waarde die geen geldige ARIA-rol is (`'coach'`/`'scorer'`/…) —
+    een andere naam is de eenvoudigste correcte oplossing, geen
+    eslint-disable nodig.
+- `v2/src/infrastructure/migration/exportStuckMigrationItems.ts` (nieuw):
+  zie hierboven.
+- **Wiring** (App.tsx/AuthGate.tsx/repository-selectie — nergens een
+  Firestore-import in de UI-laag zelf):
+  - `v2/src/infrastructure/repositories/selectRepositories.ts` /
+    `resolveAppRepositories.ts`: `CloudRepositorySelection`/
+    `ResolvedAppRepositories` krijgen twee nieuwe velden,
+    `migrationInventoryGateway`/`migrationCoordinator` — samengesteld uit
+    exact de 7.4a/7.4b-infrastructuurklassen
+    (`FirestoreCloudMigrationInventoryGateway`/
+    `FirestoreCloudMigrationRunGateway`/`FirestoreMigrationWriteGateway`/
+    `LocalStorageMigrationRunRepository`), `null` in lokale modus (er is
+    geen cloudteam om naartoe te migreren — werk 4.2's "lokale modus zonder
+    netwerkcall" volgt hieruit STRUCTUREEL: er bestaat dan domweg geen
+    enkele migratiegateway-instantie, dus geen enkele Firestore-aanroep is
+    zelfs maar mogelijk vanuit dit paneel).
+  - `v2/src/app/App.tsx`: nieuwe optionele prop `organizationRole`
+    (`OrganizationRole | null`) — `MigrationPanel` wordt naast
+    `BackupPanel` in het Instellingen-tabblad gerenderd, uitsluitend
+    wanneer `repositories.mode === 'cloud'` ÉN `canBulkMigrate
+    (organizationRole)` — een scorer/viewer krijgt het blok NOOIT
+    gerenderd (niet alleen een disabled knop, precies de 7.4a-acceptatie
+    "een scorer/viewer krijgt geen bulkactie" toegepast op de UI-laag).
+    `MigrationPanel` herhaalt deze rolcheck defensief zelf nogmaals
+    (`canBulkMigrate()`, retourneert `null` als 'ie via een prop-fout toch
+    zou worden gerenderd) — nooit alleen op de aanroeper vertrouwen, zelfde
+    conventie als elders in deze reeks.
+  - `v2/src/app/AuthGate.tsx`: geeft `organizationRole` door uit dezelfde
+    `memberships`-lookup die `organizationName` al gebruikt — geen extra
+    Firestore-read.
+- i18n: `v2/src/i18n/strings.ts` — volledige NL/EN-sleutelset
+  `migration*` (~55 sleutels), zelfde `claimBlocked*`/`backup*`-stijl:
+  korte, directe copy, NL primair/EN secundair, key-voor-key gespiegeld
+  tussen beide blokken.
+- Tests:
+  - `v2/tests/unit/MigrationPanel.spec.tsx` (nieuw, 5 tests,
+    `@testing-library/preact` — zelfde patroon als `BackupPanel.spec.tsx`):
+    rolgating (`scorer`/`viewer` renderen `null`, geen enkele DOM-node),
+    de volledige gelukkige stroom tot een `completed`-resultaat, een
+    settings-conflict die zichtbaar blijft + een dubbele retry die nooit
+    alsnog een write veroorzaakt (`writeSettings`-spy blijft
+    ongeroepen), en een corrupte lokale bron die een `denied`-scherm
+    toont zonder ooit een itemlijst op te bouwen.
+  - `v2/tests/e2e-auth/migration-flow.spec.ts` (nieuw, werk 4's matrix):
+    rolgating tegen de ECHTE UI (owner ziet het paneel, scorer/viewer
+    niet), lokale modus (paneel bestaat structureel niet vóór inloggen),
+    de volledige stroom tegen echte Firestore-/Auth-emulators eindigend in
+    `completed` met server-readback-verificatie, een reload/"crash"
+    vlak ná bevestiging gevolgd door een hernieuwde start die dezelfde
+    lokale run hervat (geen duplicaat), een bestaand-afwijkend
+    cloud-settings-document dat een zichtbaar conflict blijft (nooit een
+    overwrite) met een dubbele retry die het clouddocument aantoonbaar
+    ongewijzigd laat, een export van het vastzittende item, en een
+    daadwerkelijke inhoudscontrole van de gedownloade herstelback-up-JSON
+    (niet alleen "er gebeurde een download"). **Niet uitgevoerd**: `npx
+    playwright install chromium` faalt nog steeds met `403` op
+    `cdn.playwright.dev` (geblokkeerde CDN) — opnieuw expliciet bevestigd
+    tijdens deze PR (niet aangenomen), zelfde bekende sandboxbeperking als
+    7.2c/7.3a/7.3b/7.3c/7.4a/7.4b. Compensatie: het bestand is
+    `tsc -b`/`eslint`/`prettier`-schoon, en elke `data-testid`/stapvolgorde
+    is 1:1 tegen de daadwerkelijke `MigrationPanel.tsx`-implementatie
+    nagelopen (geen aannames over testId-namen).
+  - Bestaande App-wiringtests (`AppFinalizeResume`/`AppGameCloudViewer`/
+    `AppListenerError`/`AppTombstoneDelete`/`AppWriterClaim`/
+    `StatsGameFilterContextReset`.spec.tsx) uitgebreid met de twee nieuwe
+    `ResolvedAppRepositories`-velden (`migrationInventoryGateway: null`/
+    `migrationCoordinator: null`) — anders braken die tests op het nieuwe,
+    verplichte veldenpaar; geen gedragswijziging in die tests zelf.
+- **Firestore Rules**: GEEN wijziging — 7.4a/7.4b dekten
+  settings/roster/games/completedGames/migrationRuns-lezen en -schrijven al
+  volledig (zie hun eigen "Geïmplementeerd"-secties); 7.4c voegt uitsluitend
+  UI-wiring toe bovenop bestaande poorten, geverifieerd door in dit bestand
+  te zoeken naar elke nieuwe Firestore-aanroep — die is er niet (alleen
+  hergebruik van 7.4a/7.4b se gateways).
+- **Werk 5 — staging-pilot (bewust NIET uitgevoerd, geen gefabriceerde
+  cijfers)**: net als 7.2c/7.3c (zie hun eigen §C-secties) heeft deze
+  sandbox geen live staging-Firebase-project-toegang, alleen de lokale
+  Firestore-/Auth-emulators. Wat een staging-pilot met fictieve data zou
+  moeten meten, methodologisch gelijk aan 7.2c/7.3c se eigen pilotaanpak:
+  (1) schrijf-/leesaantallen per migratiefase — inventarisatie (N reads:
+  settings + roster + completedGames-batches à max. 30 ID's), preview
+  (0 writes), herstelback-up (0 cloud-I/O, lokaal-only), bevestiging/
+  voortgang (1 write per `create`-item + 1 readback + 1 lokale
+  checkpointwrite + best-effort 1 cloud-checkpointpatch per item — zie
+  7.4b se "best-effort cloud-checkpointpersistentie"-ontwerpbeslissing);
+  (2) kosten-/latentie-impact van de gebatchte `completedGames`-
+  `documentId() in [...]`-preview-read t.o.v. N losse `getDoc()`s (7.4a se
+  al-gebouwde optimalisatie, nog nooit tegen echte staging-latentie
+  gemeten); (3) open risico's om tijdens die pilot te bevestigen: het
+  settings/roster-racevenster tussen recheck en write (7.4b se
+  gedocumenteerde, bestaande PR-5.3-gat) onder ECHTE gelijktijdige
+  belasting, en het gedrag van `migrationRuns`-Rules onder een
+  daadwerkelijke tweede-schrijver-race (nu alleen tegen de Rules-emulator
+  getest, nooit tegen productie-achtige latentie/consistentie). Dit blijft
+  een handmatige vervolgstap voor wie staging-toegang heeft, natuurlijk
+  onderdeel van de fase-7-acceptatie ná 7.4 (§D) — niet hier verzonnen.
+- **Testresultaten**: v2 `vitest run` 86 bestanden/837 tests groen (12
+  nieuw: 5× `MigrationPanel.spec.tsx` + bestaande wiringtests uitgebreid,
+  geen enkele regressie); v2 `tsc -b` + `eslint .` + `prettier -c .`
+  schoon (inclusief het nieuwe e2e-bestand). firebase `npm run type-check`
+  ongewijzigd groen (geen firebase/-wijziging in deze sub-PR, dus de volle
+  `npm run verify`/Rules-emulatorsuite niet opnieuw gedraaid — er is niets
+  aan Rules/firebase-base gewijzigd om opnieuw te bewijzen). Playwright
+  e2e NIET lokaal uitgevoerd — zie werk 4 hierboven voor de expliciet
+  herbevestigde reden.
 
 ## D. Stopregels en faseoverdracht
 
