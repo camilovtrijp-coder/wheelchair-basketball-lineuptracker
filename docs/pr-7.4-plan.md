@@ -630,6 +630,46 @@ lokale data blijven gebruiken; clouddata is na readback op apparaat B gelijk.
   e2e NIET lokaal uitgevoerd — zie werk 4 hierboven voor de expliciet
   herbevestigde reden.
 
+**CI-fixronde (na de eerste push, drie iteraties nodig):** de echte
+emulator-CI vond twee ronden van falende assertions in `migration-flow.spec.ts`
+die de lokale `tsc`/`eslint`/`vitest`-suite niet kon vangen (geen Chromium in
+de sandbox). Twee onafhankelijke, echte bugs kwamen aan het licht — geen van
+beide gefingeerd of weggetimeoutet:
+
+1. **`inventory.ts` — `isUntouchedAutoSetupGame()` (nieuw)**: `app/App.tsx`'s
+   bestaande "geen te hervatten wedstrijd → derive meteen een verse opzet"-
+   effect schrijft onvoorwaardelijk een `phase:'setup'`-opzet met `players:[]`
+   naar de actieve-wedstrijdsleutel zodra settings/roster geladen zijn — óók
+   op het exacte moment dat de migratie-UI voor het eerst wordt geopend op een
+   vers cloudteam. Die 100% ongebruikte bootstrap-placeholder faalde
+   `validateGamePlayers()` (minstens één speler vereist) en werd zo als
+   `'corrupt'` geclassificeerd, wat via `hasCorruptSection()`'s alles-of-niets-
+   poort de HELE preview blokkeerde — niet omdat de brondata corrupt was, maar
+   omdat de app zelf een inhoudsloze placeholder had weggeschreven.
+   `isUntouchedAutoSetupGame()` onderscheidt expliciet zo'n onaangeraakte
+   auto-opzet (nog `'setup'`, nooit gestart, geen acties, elke speler nog op
+   de exacte `createGameFromRoster()`-default) van échte — mogelijk wél
+   corrupte — brondata, en behandelt 'm als `'empty'`, niet `'corrupt'`.
+2. **`preview.ts` — `manifestHash` hashte eerder de volledige preview-`base`**
+   (incl. per-item `action` en `counts`, beide AFGELEID van de huidige
+   clouddoelstand). Zodra een run gedeeltelijk voltooid is (bijv. settings al
+   geschreven) en de gebruiker herlaadt/hervat, verandert dat item se `action`
+   van `'create'` naar `'alreadyPresentIdentical'` — met de volledige `base`
+   als hash-invoer kreeg de hervatte preview dan een ANDERE `manifestHash`,
+   waardoor `prepareRun()` de hervatting ten onrechte als een botsende TWEEDE
+   migratie zag (`blockedByExistingRunId`) i.p.v. 'm te hervatten. Gefixt door
+   `manifestHash` alleen te laten afhangen van stabiele bron-/contextidentiteit
+   (org/team-ID's, rol, contextFingerprint, per-item `kind`/`sourceId`/
+   `targetId`/`payloadHash`) — nooit van de vluchtige clouddoelstand.
+
+Beide root causes zijn geverifieerd met een nieuwe, permanente component-
+niveau reproductietest (`tests/unit/migrationE2eRepro.spec.tsx`) die de EXACTE
+`seedLocalMigrationSource()`-fixture van de e2e-suite hergebruikt tegen de
+ECHTE (niet-gemockte) domeinfuncties — bewijst `preview.allowed === true` op
+die fixture buiten een browser om, waar Playwright in deze sandbox niet kan
+draaien. Volledige v2-suite na de fix: 87 bestanden/839 tests groen; `tsc -b`/
+`eslint .`/`prettier -c .` schoon.
+
 ## D. Stopregels en faseoverdracht
 
 - Geen automatische migratie bij login of appstart.

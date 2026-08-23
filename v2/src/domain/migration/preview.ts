@@ -220,10 +220,54 @@ export function buildCloudMigrationPreview(
     requiredWrites: counts.create,
   };
 
+  // `manifestHash` (werk 4/`MigrationCoordinator.prepareRun()`'s `runId`) hoort
+  // UITSLUITEND af te hangen van de LOKALE brondata (per item alleen `payloadHash`,
+  // nooit `action`) en de vaste context — niet van `counts`/`requiredWrites`/
+  // conflict-`warnings`, die alle drie AFGELEID zijn van `existingCloud` (de
+  // huidige clouddoelstand op het moment van bouwen). Reproduceerbaar bevestigd
+  // (externe review, aug. 2026, tegen een echte Firestore-emulator): zodra een
+  // run gedeeltelijk voltooid is (bijv. het settings-item is al geschreven) en de
+  // gebruiker herlaadt/hervat, verandert dat item se `action` van `'create'` naar
+  // `'alreadyPresentIdentical'` in de HERVATTE preview — met de volledige `base`
+  // (incl. `action`/`counts`) als hash-invoer kreeg die hervatte preview dan een
+  // ANDERE `manifestHash` dan de oorspronkelijke run, waardoor `prepareRun()` de
+  // hervatting ten onrechte als een botsende TWEEDE migratie zag en blokkeerde
+  // (`blockedByExistingRunId`) i.p.v. 'm te hervatten — precies het scenario dat
+  // `migration-flow.spec.ts` werk 4.3/4.4 ("crash/reload ná bevestiging, hervat
+  // dezelfde run") test. Dit spiegelt exact de bestaande determinisme-eis
+  // hierboven ("dezelfde bron/doelcombinatie levert exact hetzelfde manifest") —
+  // "bron/doelcombinatie" is per definitie lokale data + context, nooit de
+  // vluchtige clouddoelstand.
+  //
+  // Zelfde reden om ALLEEN `organizationId`/`teamId` te hashen, nooit de
+  // volledige `source`/`target`-ref: `organizationName`/`teamName` zijn pure
+  // WEERGAVELABELS — `app/App.tsx` geeft `teamName` door als
+  // `settings.teamName || teamId` (fallback op de team-ID zolang er nog geen
+  // teamnaam bekend is). Zodra het settings-item in een eerdere ronde al
+  // gemigreerd is, verandert die live cloud-`settings`-listener de PROP-
+  // waarde van "teamId-fallback" naar de zojuist gemigreerde teamnaam — een
+  // hervatte preview zou zo, via exact hetzelfde partial-progress-mechanisme
+  // als hierboven, alsnog een andere `manifestHash` krijgen (gereproduceerd
+  // tegen een echte Firestore-emulator). `organizationId`/`teamId` zijn de
+  // enige STABIELE identiteit van de doelcontext.
+  const manifestIdentity = {
+    source: { organizationId: input.source.organizationId, teamId: input.source.teamId },
+    target: { organizationId: input.target.organizationId, teamId: input.target.teamId },
+    callerRole: input.callerRole,
+    contextFingerprint,
+    trackingGame,
+    items: items.map((item) => ({
+      kind: item.kind,
+      sourceId: item.sourceId,
+      targetId: item.targetId,
+      payloadHash: item.payloadHash,
+    })),
+  };
+
   return {
     ...base,
     builtAt: input.now,
-    manifestHash: payloadHash(base),
+    manifestHash: payloadHash(manifestIdentity),
   };
 }
 
