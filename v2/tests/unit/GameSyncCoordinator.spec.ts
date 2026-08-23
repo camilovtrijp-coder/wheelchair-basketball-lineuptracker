@@ -196,6 +196,12 @@ function mockGateway(script: GatewayScript): GameCloudGateway & {
     async tombstoneCompletedGame(_org, _team, _completedGameId, _deletedBy, expectedRevision) {
       return { ok: true, revision: expectedRevision + 1 };
     },
+    subscribeToGame() {
+      // PR 7.3b: niet gebruikt door de bestaande sync/finalize-scenario's
+      // hierboven — `subscribeGame()`'s eigen doorgeeftest hieronder gebruikt
+      // een eigen minimalistische gateway-stub, geen `mockGateway()`.
+      return () => undefined;
+    },
   };
 }
 
@@ -499,6 +505,7 @@ describe('application/game/GameSyncCoordinator (PR 7.1c)', () => {
       patchSnapshot,
       finalizeCompletedGame,
       tombstoneCompletedGame,
+      subscribeToGame: () => () => undefined,
     };
     const coordinator = new GameSyncCoordinator({ gateway, checkpoints });
     await coordinator.sync(gameWithActions(['a1']), writer);
@@ -895,5 +902,31 @@ describe('application/game/GameSyncCoordinator.takeoverWriter() (PR 7.3a)', () =
     const status = await coordinator.takeoverWriter(game, writer, 1, 5);
 
     expect(status).toEqual({ kind: 'blocked', code: 'stale-revision' });
+  });
+});
+
+describe('application/game/GameSyncCoordinator.subscribeGame() (PR 7.3b)', () => {
+  it('is een dunne doorgeefluik naar gateway.subscribeToGame() — zelfde parameters, zelfde unsubscribe-referentie', () => {
+    const checkpoints = new LocalStorageGameSyncCheckpointRepository(new MemoryStorage());
+    const calls: unknown[] = [];
+    const unsubscribe = () => undefined;
+    const gateway: GameCloudGateway = {
+      ...mockGateway({}),
+      subscribeToGame(organizationId, teamId, gameId, callbacks) {
+        calls.push([organizationId, teamId, gameId, callbacks]);
+        return unsubscribe;
+      },
+    };
+    const coordinator = new GameSyncCoordinator({ gateway, checkpoints, now: fixedClock() });
+    const callbacks = {
+      onParent: () => undefined,
+      onActions: () => undefined,
+      onError: () => undefined,
+    };
+
+    const result = coordinator.subscribeGame('org-1', 'team-1', 'game-1', callbacks);
+
+    expect(calls).toEqual([['org-1', 'team-1', 'game-1', callbacks]]);
+    expect(result).toBe(unsubscribe);
   });
 });

@@ -42,7 +42,11 @@ import {
   type GameSyncCheckpoint,
 } from '../../domain/game/syncCheckpoint';
 import type { CloudClaimStatus } from '../../domain/game/writerClaim';
-import type { GameCloudGateway } from './GameCloudGateway';
+import type {
+  GameCloudGateway,
+  GameCloudSubscriptionCallbacks,
+  GameCloudUnsubscribe,
+} from './GameCloudGateway';
 import type { GameSyncCheckpointRepository } from './GameSyncCheckpointRepository';
 import {
   projectGameActions,
@@ -186,6 +190,22 @@ export class GameSyncCoordinator {
     );
     if (!takeover.ok) return { kind: 'blocked', code: takeover.code };
     return { kind: 'confirmed', identity: takeover.identity };
+  }
+
+  /**
+   * PR 7.3b (docs/pr-7.3-plan.md §C 7.3b werk 2): dunne doorgeefluik naar
+   * `gateway.subscribeToGame()` — de UI praat, net als bij elke andere
+   * cloud-aanroep, nooit rechtstreeks met Firestore. Geen eigen state/
+   * afleiding hier (die leeft in `GameCloudViewerState.ts`, puur en apart
+   * testbaar) — deze coordinator blijft uitsluitend orkestratie.
+   */
+  subscribeGame(
+    organizationId: string,
+    teamId: string,
+    gameId: string,
+    callbacks: GameCloudSubscriptionCallbacks,
+  ): GameCloudUnsubscribe {
+    return this.gateway.subscribeToGame(organizationId, teamId, gameId, callbacks);
   }
 
   /**

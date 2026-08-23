@@ -1,7 +1,8 @@
 # Voorbereidingsplan PR 7.3 — actieve wedstrijd single-writer
 
-Status: 7.3a geïmplementeerd (claim/epoch/overname-plumbing + pre-game-gate +
-contextlock); 7.3b/7.3c nog niet gestart.
+Status: 7.3a en 7.3b geïmplementeerd (claim/epoch/overname-plumbing +
+pre-game-gate + contextlock + live writer-sync/read-only viewer); 7.3c nog
+niet gestart.
 
 ## A. Doel
 
@@ -211,6 +212,154 @@ Geverifieerd: volledige `test:e2e:auth`-suite (59 specs) en `test:e2e`-suite
 
 Acceptatie: viewer kan nooit schrijven; writer blokkeert niet offline; beide
 apparaten convergeren na reconnect zonder dubbele of terugwerkende actie.
+
+**Geïmplementeerd:**
+
+- Werk 1 (epoch/sequence per actie, geordende idempotente upload) bleek al
+  volledig aanwezig sinds PR 7.3a: `projectGameActions()`
+  (`application/game/projectGameForCloud.ts`) stempelt elke actie met het
+  ECHTE serverepoch en `sequence == arrayindex`, en
+  `FirestoreGameCloudGateway.uploadActions()` is create-only + per-actie
+  idempotent via een readback (`alreadyConfirmed`). Alleen geverifieerd/
+  gedocumenteerd, niets herbouwd.
+- `v2/src/domain/game/deriveGameStateFromCloud.ts` (nieuw, puur, geen
+  Firestore-/`firebase-base`-import): `CloudGameActionPayload`/
+  `CloudGameActionEnvelope` — structureel identiek aan `firebase-base/
+  documents`' `GameActionPayloadDocument`/`GameActionEnvelopeDocument`, dus
+  een `GameActionEnvelopeDocument[]` is zonder mapping bruikbaar.
+  `sortCloudActions()` sorteert op `sequence` en dedupliceert op `actionId`
+  (eerste occurrence wint — action-documenten zijn create-only/onveranderlijk,
+  dus een retry is altijd identiek). `deriveCloudGameHistory()` vouwt de
+  gesorteerde envelopes samen met `tracking.ts`'s BESTAANDE `applyAction()`-
+  reducer vanaf hetzelfde `EMPTY_HISTORY`-startpunt (nu geëxporteerd) — de
+  viewer gebruikt dus letterlijk dezelfde berekeningslogica als de lokale
+  writer, geen tweede divergerend pad. Dit lost werk 2's "viewer deriveert
+  dezelfde historie" en werk 5's late/uit-volgorde/duplicated-retry-eisen
+  volledig op domeinniveau op (unit-getest, geen emulator nodig).
+- `v2/src/application/game/GameCloudGateway.ts`: nieuwe
+  `subscribeToGame()`-poortmethode + `GameCloudSnapshotMeta`/
+  `GameCloudParentUpdate`/`GameCloudActionsUpdate`/
+  `GameCloudSubscriptionCallbacks`/`GameCloudUnsubscribe`-types. Bewust GEEN
+  Rules-uitbreiding nodig: `canReadTeam` (firestore.rules, punt "games"/
+  "actions") staat sinds vóór PR 7.1b elke teamrol — inclusief 'viewer' — al
+  toe te lezen; de volledige bestaande Rules-suite (11 bestanden, 216 tests)
+  bleef ongewijzigd groen. `FirestoreGameCloudGateway.subscribeToGame()`
+  (infrastructure) zet twee onafhankelijke `onSnapshot()`-listeners (parent +
+  een `actions`-query op `sequence`), elk met `includeMetadataChanges: true`
+  voor de cache-/serveractualiteitsindicator; GEEN `withTimeout()` (dat
+  patroon is voor request/response, een listener heeft geen zinvolle
+  "geen-antwoord-binnen-Xms"-eindtoestand) — een fatale listenerfout komt via
+  een eigen `onError`-callback terug, de andere listener blijft onafhankelijk
+  actief.
+- `v2/src/application/game/GameCloudViewerState.ts` (nieuw, puur): combineert
+  de twee onafhankelijke streams tot één `GameCloudViewerSnapshot`
+  (`parent`/`history`/`writerClaim`/`freshness`/`loading`).
+  `deriveGameCloudViewerSnapshot()` hergebruikt `domain/game/writerClaim.ts`'s
+  bestaande `deriveWriterClaimState()` (geen tweede afleiding) en
+  `deriveCloudGameHistory()` hierboven. `freshness: 'server'|'cache'|'error'`
+  spiegelt Firestore's eigen `fromCache`/`hasPendingWrites` plus een
+  listenerfout-vlag — dit is de "cache-/serveractualiteit" uit werk 3.
+  `GameSyncCoordinator.subscribeGame()` is een dunne doorgeefluik naar
+  `gateway.subscribeToGame()`, zelfde patroon als `ensureWriterClaim()`/
+  `takeoverWriter()` (PR 7.3a) — de UI praat nooit rechtstreeks met Firestore.
+- `v2/src/ui/game/useGameCloudViewer.ts` (nieuwe hook): bewaart de laatst
+  ontvangen parent-/actions-/foutstaat in refs (`onParent`/`onActions`/
+  `onError` vuren onafhankelijk van elkaar) en herberekent bij elke update de
+  volledige, pure snapshot. Meldt zich automatisch af bij unmount of een
+  gewijzigd `organizationId`/`teamId`/`gameId` (nieuw abonnement, oude
+  listeners gestopt — dit is het "reload"-scenario uit werk 5: een
+  heropend/herladen scherm start gewoon een vers abonnement). `coordinator:
+  null` (alleen-lokale modus) levert de blijvende lege snapshot op zonder een
+  enkele Firestore-aanroep.
+- `v2/src/app/App.tsx`: `isSelfBlockedByOtherWriter` — `true` alleen als er
+  ECHT een bevestigde ANDERE writer bekend is (nooit tijdens de initiële
+  laadstaat of offline, `!gameCloudViewer.loading`-guard) — dit is werk 4's
+  "geen UI-await op server": vóór de eerste parent-snapshot, of zonder
+  netwerk, blijft dit apparaat gewoon kunnen scoren. Zodra bevestigd:
+  `LiveTrackingPanel`'s BESTAANDE `canWrite`-poort (PR 6.2, al vóór 7.3b
+  consequent op elke schrijfbediening in het hele component toegepast — score,
+  klok, wissel, segment-opslaan/-bewerken/-verwijderen, afronden) krijgt
+  `canWriteGame && !isSelfBlockedByOtherWriter`, en een nieuwe
+  `cloud-viewer-banner` toont wie er scoort plus de freshness-tekst
+  (`viewerActiveScorerNotice`/`viewerFreshness*`-i18n-sleutels, NL/EN). Geen
+  nieuwe disable-props nodig op individuele knoppen — dit lost werk 3
+  ("verberg/disable alle schrijfbediening") volledig via de bestaande poort
+  op. **Bewuste scopekeuze**: het abonnement hangt aan DIT apparaat se eigen
+  `game.id` (het lokale `LocalStorageGameRepository`-slot) — v2 heeft geen
+  teambreed "welke wedstrijden lopen nu"-overzicht waarmee een apparaat een
+  wedstrijd kan opzoeken die het nooit zelf opzette. Het praktische nut is
+  de vaakst voorkomende viewer-situatie: NA een overname
+  (`takeoverWriter()`, PR 7.3a) blijft het apparaat dat de wedstrijd ooit
+  zelf startte op hetzelfde `game.id` — de cloudclaim wijst dan naar een
+  ander apparaat, en deze hook detecteert dat automatisch. Een teambreed
+  "bekijk een lopende wedstrijd die ik nooit zelf startte"-overzicht is
+  expliciet 7.3c-scope (samen met de overname-bevestigings-UI).
+- i18n (`v2/src/i18n/strings.ts`): nieuwe NL/EN-sleutels
+  `viewerActiveScorerNotice`/`viewerFreshnessServer`/`viewerFreshnessCache`/
+  `viewerFreshnessError`, zelfde plek/stijl als de bestaande
+  `claimBlocked*`/`contextSwitchLocked*`-sleutels.
+- Werk 4 (lokale writeracties blijven bruikbaar offline, geen UI-await)
+  bleek al volledig aanwezig: `app/App.tsx` se `handleGameChange()` schrijft
+  synchroon lokaal (`gameRepo.write()`) vóórdat de fire-and-forget
+  cloud-sync (`runGameSync()`) start — score/klok/wissel/segment-opslaan
+  wachten dus nooit op de server. Alleen geverifieerd/gedocumenteerd (plus
+  de nieuwe `isSelfBlockedByOtherWriter`-guard hierboven, die dat gedrag
+  bewust niet doorbreekt), niets herbouwd.
+- Tests (werk 5): `deriveGameStateFromCloud.spec.ts` (nieuw, puur — in-
+  volgorde/uit-volgorde/laat-afgeleverd/gedupliceerde-retry-envelopes leveren
+  allemaal dezelfde historie op als de lokale reducer, ook na een
+  segment-deleted-herberekening). `GameCloudViewerState.spec.ts` (nieuw —
+  alle `writerClaim`-varianten, alle `freshness`-combinaties, inclusief "een
+  listenerfout overschrijft freshness maar behoudt de laatst bekende
+  parent/historie"). `useGameCloudViewer.spec.ts` (nieuw, `renderHook` —
+  alleen-lokale modus zonder abonnement, gameId:null zonder abonnement,
+  parent+actions-combinatie, listenerfout, een gewijzigd gameId meldt het
+  oude abonnement af en start een nieuw (reload/heropen-scenario), unmount
+  meldt af). `GameSyncCoordinator.spec.ts` uitgebreid met een
+  `subscribeGame()`-doorgeeftest. `AppGameCloudViewer.spec.tsx` (nieuw,
+  component-integratietest door `App` heen — een bevestigde ANDERE writer
+  schakelt de tracking-UI naar read-only + toont de banner; dit apparaat als
+  bevestigde writer blijft schrijven; alleen-lokale modus blijft ongewijzigd
+  zonder abonnement). `v2/tests/e2e-auth/game-sync-live-viewer.spec.ts`
+  (nieuw, ECHTE Firebase-emulator, `FirestoreGameCloudGateway.
+  subscribeToGame()` vanaf een onafhankelijke, apart ingelogde tweede client
+  — zelfde patroon als PR 7.1c's `game-sync-second-client-readback.spec.ts`
+  — met `canReadTeam` daadwerkelijk gehandhaafd): bewijst live updates zonder
+  actie van de viewer, een offline schrijver die de viewer niet blokkeert
+  (laatst bekende stand blijft staan), en convergentie na reconnect zonder
+  dubbele/terugwerkende actie (`deriveCloudGameHistory()` op de daadwerkelijk
+  ontvangen actions komt exact overeen met de lokale eindstand). Firestore
+  Security Rules zelf zijn ONGEWIJZIGD (zie hierboven) — de volledige
+  bestaande Rules-suite (11 bestanden, 216 tests) en de volledige v2-
+  unit-suite (77 bestanden, 741 tests, incl. de nieuwe hierboven) zijn groen;
+  `tsc -b`/`eslint .`/`prettier -c` zijn schoon.
+
+**Niet geverifieerd in deze omgeving:** de Playwright-`test:e2e`/
+`test:e2e:auth`-browsersuites (incl. de nieuwe `game-sync-live-viewer.spec.ts`
+hierboven) konden hier NIET daadwerkelijk draaien — `npx playwright install
+chromium` faalt in deze sandbox op een geblokkeerde download
+(`cdn.playwright.dev` niet bereikbaar, geen lokale Chromium-install
+beschikbaar). De nieuwe spec is wel `tsc -b`/`eslint`/`prettier`-schoon en
+volgt exact het bestaande fixture-patroon van de al-groene 7.1c/7.2b-specs;
+de onderliggende Firestore Rules-emulator-suite (die geen browser nodig
+heeft) is wél daadwerkelijk gedraaid en groen. Deze spec moet in een
+omgeving met een installeerbare Chromium (bijv. CI) alsnog daadwerkelijk
+uitgevoerd worden vóórdat PR 7.3b als volledig geverifieerd geldt.
+
+**Nog niet gedaan (bewust doorgeschoven naar 7.3c, per de bestaande
+scopesplitsing in dit document):**
+
+- Een teambreed "welke wedstrijden lopen nu"-overzicht waarmee een apparaat
+  een cloudwedstrijd kan vinden/bekijken die het zelf nooit opzette — de
+  huidige viewer-integratie hangt aan het eigen `game.id`-slot (zie hierboven).
+- De sterke overname-bevestigingsflow/UI-knop ("Take over") — al in 7.3a als
+  doorgeschoven genoteerd, blijft 7.3c-scope.
+- Een nieuwe epoch/sequence bij overname (7.3c werk 2) en crashherstel tussen
+  lokale actie/upload/checkpoint (7.3c werk 3).
+- Echte twee-browser-/mobiel-apparaatvalidatie (7.3c werk 4) — deze PR bewijst
+  het protocol op Rules-/coordinator-/component-/emulator-niveau (inclusief
+  één live-listener-e2e-spec, nog niet daadwerkelijk in browser gedraaid in
+  deze omgeving, zie hierboven), niet op echte iOS/Android-hardware.
 
 ### 7.3c — overname, recovery en echte-apparaatvalidatie
 

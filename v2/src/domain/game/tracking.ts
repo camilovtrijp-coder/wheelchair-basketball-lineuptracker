@@ -111,7 +111,10 @@ export interface DerivedGameHistory {
   segments: Segment[];
 }
 
-const EMPTY_HISTORY: DerivedGameHistory = {
+/** Geëxporteerd voor hergebruik door `deriveGameStateFromCloud.ts` (PR 7.3b)
+ * — de viewer vouwt cloud-actionenvelopes samen met dezelfde `applyAction()`-
+ * reducer vanaf hetzelfde startpunt, geen tweede afgeleide leegstartwaarde. */
+export const EMPTY_HISTORY: DerivedGameHistory = {
   scoreFor: 0,
   scoreAgainst: 0,
   segStartFor: 0,

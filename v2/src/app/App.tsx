@@ -36,6 +36,7 @@ import type { ActiveGame, CompletedGame } from '../domain/game/types';
 import type { CloudClaimStatus } from '../domain/game/writerClaim';
 import { GameSetupPanel } from '../ui/game/GameSetupPanel';
 import { LiveTrackingPanel } from '../ui/game/LiveTrackingPanel';
+import { useGameCloudViewer } from '../ui/game/useGameCloudViewer';
 import { V1MigrationPrompt } from '../ui/game/V1MigrationPrompt';
 import { HistoryPanel } from '../ui/game/HistoryPanel';
 import { StatsPanel } from '../ui/stats/StatsPanel';
@@ -615,6 +616,43 @@ export function App({
     const locked = game?.phase === 'tracking' || cloudClaim.kind === 'confirmed';
     onGameLockChange?.(locked);
   }, [game?.phase, cloudClaim, onGameLockChange]);
+
+  /**
+   * PR 7.3b (docs/pr-7.3-plan.md §C 7.3b werk 2/3): live cloudviewer-
+   * abonnement op DIT apparaat se eigen `game.id` zodra de fase `'tracking'`
+   * is — dit is bewust de writer se eigen ActiveGame-slot (v2 heeft geen
+   * gedeeld/discoverable "welke wedstrijden lopen nu"-overzicht; het
+   * bekijken van een wedstrijd die dit apparaat nooit zelf opzette/claimde,
+   * via een teambrede lijst, is expliciet 7.3c-scope, zie
+   * docs/pr-7.3-plan.md). Het praktische nut hier is de vaakst voorkomende
+   * viewer-situatie: NA een overname (`takeoverWriter()`, PR 7.3a) blijft dit
+   * apparaat, dat de wedstrijd ooit zelf startte, gewoon op hetzelfde
+   * `game.id` zitten — de cloudclaim wijst dan naar een ANDER apparaat, en
+   * deze hook detecteert dat (`writerClaim.kind === 'other'`) zodat de UI
+   * hieronder meteen naar read-only + "wordt gescoord door"-weergave omslaat,
+   * zonder dat de gebruiker handmatig hoeft te verversen.
+   *
+   * `isCloudGameActive` is alleen-lokale-modusveilig: `coordinator`/`self`
+   * zijn dan `null`, dus `useGameCloudViewer()` doet geen enkele
+   * Firestore-aanroep (zie die hook se eigen docstring) en levert de
+   * blijvende lege snapshot op (`loading: true`, `writerClaim: 'unclaimed'`)
+   * — `isSelfBlockedByOtherWriter` hieronder blijft dan altijd `false`, dus
+   * `canWrite` verandert niet t.o.v. vóór PR 7.3b.
+   */
+  const isCloudGameActive = repositories.gameSync !== null && game?.phase === 'tracking';
+  const gameCloudViewer = useGameCloudViewer(
+    repositories.gameSync,
+    organizationId,
+    teamId,
+    isCloudGameActive ? (game?.id ?? null) : null,
+    repositories.gameWriterContext,
+  );
+  // Alleen als er ECHT een bevestigde ANDERE writer bekend is (nooit tijdens
+  // de initiële laadstaat/offline — dan blijft dit apparaat gewoon zelf
+  // kunnen scoren, docs/pr-7.3-plan.md §C 7.3b werk 4: "geen UI-await op
+  // server voor score, klok, wissel of segment-save").
+  const isSelfBlockedByOtherWriter =
+    isCloudGameActive && !gameCloudViewer.loading && gameCloudViewer.writerClaim.kind === 'other';
 
   /**
    * PR 7.2a (docs/pr-7.2-plan.md §C 7.2a werk 4): per-`CompletedGame.id`
@@ -1288,27 +1326,47 @@ export function App({
             onConfirm={handleConfirmV1Migration}
           />
         ) : game?.phase === 'tracking' ? (
-          <LiveTrackingPanel
-            lang={lang}
-            game={game}
-            quarterCount={settings.quarterCount as number}
-            periodLabel={settings.periodLabel as string}
-            classification={{
-              useClassLimit: settings.useClassLimit === true,
-              classBaseLimit: settings.classBaseLimit as number,
-              maxBonus: settings.maxBonus as number,
-              bonusTag1Only: settings.bonusTag1Only as number,
-              bonusTag2Only: settings.bonusTag2Only as number,
-              bonusBoth: settings.bonusBoth as number,
-            }}
-            teamName={(settings.teamName as string) || ''}
-            tag1Label={tag1Label}
-            tag2Label={tag2Label}
-            onGameChange={handleGameChange}
-            onFinishGame={handleFinishGame}
-            canWrite={canWriteGame}
-            saveError={gameSaveError}
-          />
+          <>
+            {isSelfBlockedByOtherWriter ? (
+              <p
+                className="cloud-viewer-banner"
+                data-testid="cloud-viewer-banner"
+                role="status"
+                aria-live="polite"
+              >
+                {t('viewerActiveScorerNotice')}
+                {' — '}
+                {t(
+                  gameCloudViewer.freshness === 'server'
+                    ? 'viewerFreshnessServer'
+                    : gameCloudViewer.freshness === 'cache'
+                      ? 'viewerFreshnessCache'
+                      : 'viewerFreshnessError',
+                )}
+              </p>
+            ) : null}
+            <LiveTrackingPanel
+              lang={lang}
+              game={game}
+              quarterCount={settings.quarterCount as number}
+              periodLabel={settings.periodLabel as string}
+              classification={{
+                useClassLimit: settings.useClassLimit === true,
+                classBaseLimit: settings.classBaseLimit as number,
+                maxBonus: settings.maxBonus as number,
+                bonusTag1Only: settings.bonusTag1Only as number,
+                bonusTag2Only: settings.bonusTag2Only as number,
+                bonusBoth: settings.bonusBoth as number,
+              }}
+              teamName={(settings.teamName as string) || ''}
+              tag1Label={tag1Label}
+              tag2Label={tag2Label}
+              onGameChange={handleGameChange}
+              onFinishGame={handleFinishGame}
+              canWrite={canWriteGame && !isSelfBlockedByOtherWriter}
+              saveError={gameSaveError}
+            />
+          </>
         ) : (
           <GameSetupPanel
             lang={lang}

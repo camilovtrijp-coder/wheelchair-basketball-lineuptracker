@@ -92,6 +92,11 @@ const nl = {
   contextSwitchLockedWhileTracking:
     'Je kunt niet van team wisselen terwijl er een wedstrijd loopt. Rond de wedstrijd eerst af.',
   contextSwitchLockedDismiss: 'Oké',
+  viewerActiveScorerNotice:
+    'Alleen-lezen: een ander apparaat scoort nu deze wedstrijd. Je bediening is uitgeschakeld.',
+  viewerFreshnessServer: 'live',
+  viewerFreshnessCache: 'uit cache, mogelijk niet actueel',
+  viewerFreshnessError: 'verbinding verbroken — laatst bekende stand',
   v1MigrationTitle: 'Oude actieve wedstrijd gevonden',
   v1MigrationDesc:
     'Deze wedstrijd stond nog klaar van vóór de update. Controleer of onderstaand team klopt voordat je hem overneemt.',
@@ -421,6 +426,11 @@ const en = {
   contextSwitchLockedWhileTracking:
     "You can't switch teams while a match is in progress. Finish the match first.",
   contextSwitchLockedDismiss: 'OK',
+  viewerActiveScorerNotice:
+    'Read-only: another device is scoring this match right now. Your controls are disabled.',
+  viewerFreshnessServer: 'live',
+  viewerFreshnessCache: 'from cache, may be out of date',
+  viewerFreshnessError: 'connection lost — showing last known state',
   v1MigrationTitle: 'Old active game found',
   v1MigrationDesc:
     'This game was still in progress from before the update. Check that the team below is correct before taking it over.',

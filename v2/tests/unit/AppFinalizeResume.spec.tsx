@@ -198,6 +198,9 @@ function alwaysSucceedsGateway(): GameCloudGateway {
     ) {
       return { ok: true, revision: expectedRevision + 1 };
     },
+    subscribeToGame() {
+      return () => undefined;
+    },
   };
 }
 
@@ -628,6 +631,9 @@ function controlledFinalizeGateway(): {
       expectedRevision: number,
     ) {
       return { ok: true, revision: expectedRevision + 1 };
+    },
+    subscribeToGame() {
+      return () => undefined;
     },
   };
   return { gateway, finalizeCalls };
