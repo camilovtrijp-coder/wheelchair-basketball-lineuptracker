@@ -722,6 +722,14 @@ export function App({
       } else {
         setTakeoverBlockedCode(result.code);
       }
+    } catch {
+      // Onverwachte throw (geen normale `{ok:false, code}`-uitkomst, bv. een
+      // SDK-interne fout) — zonder deze catch blijft het dialoog na een
+      // afgewezen promise onbeperkt in de "bezig…"-staat hangen (regressie:
+      // hetzelfde "altijd zichtbaar, nooit stilzwijgend"-principe als de
+      // pre-game-claimflow hierboven, zie regel ~593 se `.then(..., () =>
+      // setCloudClaim({kind:'blocked', code:'unknown'}))`).
+      setTakeoverBlockedCode('unknown');
     } finally {
       setTakeoverInFlight(false);
     }

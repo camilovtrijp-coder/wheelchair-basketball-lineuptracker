@@ -31,6 +31,7 @@ afterEach(() => {
   cleanup();
   window.localStorage.clear();
   vi.restoreAllMocks();
+  vi.unstubAllGlobals();
 });
 
 const SYNCED: SyncState = { status: 'gesynchroniseerd', fromCache: false, hasPendingWrites: false };
@@ -732,5 +733,87 @@ describe('app/App: overname-bevestigingsflow (PR 7.3c werk 1)', () => {
     expect(takeoverCalls).toEqual([]);
     // Nog steeds read-only — annuleren verandert niets aan de writerstatus.
     expect((getByTestId('score-plus1-for') as HTMLButtonElement).disabled).toBe(true);
+  });
+});
+
+describe('app/App: exporteerbare "Actie nodig"-acties tijdens tracking (PR 7.3c werk 2/3)', () => {
+  /**
+   * Review fix (minimax, PR #69 punt 3): alle overige tests in dit bestand
+   * gebruiken `fakeSyncStatusApi()` (altijd `'gesynchroniseerd'`) en
+   * `fakeGameSync()`/`fakeGameSyncWithTakeover()` se `sync()` die altijd
+   * `{status:'idle'}` teruggeeft — geen van beide oefent ooit de
+   * `gameSyncStatus === 'actie-nodig'`-tak uit die de exportknop toont (zie
+   * App.tsx: `runGameSync()` zet de status op basis van `coordinator.sync()`
+   * se checkpoint, regel ~476). Deze coordinator geeft bewust een
+   * niet-`'idle'`-checkpoint terug zodat die tak ECHT gerenderd wordt, en
+   * stelt `readUnconfirmedActions()` bloot zodat de exportknop se
+   * klikhandler (`handleExportPendingGameActions`) een echte aanroep
+   * bewijsbaar maakt.
+   */
+  function fakeGameSyncActieNodig(): {
+    coordinator: GameSyncCoordinator;
+    readUnconfirmedActionsCalls: ActiveGame[];
+  } {
+    const readUnconfirmedActionsCalls: ActiveGame[] = [];
+    const coordinator = {
+      subscribeGame() {
+        return () => undefined;
+      },
+      async sync() {
+        return { status: 'actie-nodig' as const, confirmedActionIds: [], serverRevision: 0 };
+      },
+      readUnconfirmedActions(game: ActiveGame) {
+        readUnconfirmedActionsCalls.push(game);
+        return [];
+      },
+    } as unknown as GameSyncCoordinator;
+    return { coordinator, readUnconfirmedActionsCalls };
+  }
+
+  it('"actie-nodig"-syncstatus toont de exportknop; een klik roept readUnconfirmedActions() aan', async () => {
+    window.localStorage.setItem(
+      activeGameStorageKey(ORG_ID, TEAM_ID),
+      JSON.stringify(trackingGame()),
+    );
+    const { coordinator, readUnconfirmedActionsCalls } = fakeGameSyncActieNodig();
+    const repositories = {
+      mode: 'cloud' as const,
+      settings: new ImmediateSettingsRepository(),
+      roster: new ImmediateRosterRepository(),
+      gameSync: coordinator,
+      gameWriterContext: SELF,
+      completedGames: null,
+    };
+
+    // jsdom implementeert `URL.createObjectURL`/`revokeObjectURL` niet
+    // (bevestigd: `typeof new JSDOM().window.URL.createObjectURL ===
+    // 'undefined'`) — `downloadPendingGameActions()` (infrastructure/game/
+    // exportPendingGameActions.ts) roept ze rechtstreeks aan, dus stub ze
+    // hier zodat de echte klikhandler zonder te crashen kan draaien.
+    const createObjectURL = vi.fn(() => 'blob:mock');
+    const revokeObjectURL = vi.fn();
+    vi.stubGlobal('URL', { ...URL, createObjectURL, revokeObjectURL });
+
+    const { getByTestId, queryByTestId } = render(
+      <App
+        repositories={repositories}
+        syncStatus={fakeSyncStatusApi()}
+        canWrite={true}
+        canWriteGame={true}
+        organizationId={ORG_ID}
+        teamId={TEAM_ID}
+        organizationName="Org Viewer Test"
+      />,
+    );
+    act(() => getByTestId('nav-game').click());
+
+    await waitFor(() => expect(queryByTestId('game-sync-export-btn')).not.toBeNull());
+    expect(getByTestId('game-sync-status-indicator').textContent).toBeTruthy();
+
+    act(() => getByTestId('game-sync-export-btn').click());
+
+    expect(readUnconfirmedActionsCalls).toHaveLength(1);
+    expect(readUnconfirmedActionsCalls[0]?.id).toBe('game-live');
+    expect(createObjectURL).toHaveBeenCalledTimes(1);
   });
 });
