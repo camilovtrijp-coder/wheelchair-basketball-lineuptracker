@@ -429,6 +429,20 @@ const nl = {
   // initiële load faalt. De data blijft de laatst geziene waarde; de
   // gebruiker kan handmatig refreshen.
   listenerErrorIndicator: 'Verbinding met cloud weggevallen',
+
+  // 8.1a (docs/pr-8.1-plan.md §C 8.1a werk 3): update-beschikbaar-banner —
+  // eigen, aparte UI-locatie (zie ui/pwa/PwaUpdateBanner.tsx), niet via
+  // actionNeeded*.
+  pwaUpdateAvailable: 'Er is een nieuwe versie beschikbaar. Wordt zo automatisch bijgewerkt.',
+  pwaUpdateAvailableLocked:
+    'Er is een nieuwe versie beschikbaar. Bijwerken wacht tot de wedstrijd is afgerond.',
+  pwaUpdateReloading: 'Wordt bijgewerkt…',
+  pwaUpdateConfirmBtn: 'Nu bijwerken',
+  // Herstelbaar foutscenario (mislukte SW-install/blijvend uitblijvende
+  // controllerchange) — zie ui/sync/PwaActionNeededPanel.tsx.
+  pwaActionNeededTitle: 'Update mislukt',
+  pwaActionNeededMessage:
+    'Bijwerken van de app is niet gelukt. Je kunt gewoon doorgaan met de huidige versie.',
 } as const;
 
 const en = {
@@ -833,6 +847,13 @@ const en = {
   settingsReadOnly: "Read-only — your role doesn't have edit permission for this data.",
   rosterReadOnly: "Read-only — your role doesn't have edit permission for this data.",
   listenerErrorIndicator: 'Cloud connection lost',
+
+  pwaUpdateAvailable: 'A new version is available. It will update automatically shortly.',
+  pwaUpdateAvailableLocked: 'A new version is available. It will update once the game has ended.',
+  pwaUpdateReloading: 'Updating…',
+  pwaUpdateConfirmBtn: 'Update now',
+  pwaActionNeededTitle: 'Update failed',
+  pwaActionNeededMessage: 'Updating the app failed. You can keep using the current version.',
 } as const;
 
 export const STRINGS = { nl, en } as const;

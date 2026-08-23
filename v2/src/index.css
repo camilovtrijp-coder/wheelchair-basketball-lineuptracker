@@ -479,6 +479,17 @@ button:focus-visible {
   flex-wrap: wrap;
 }
 
+.pwa-update-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--lt-space-2);
+  flex-wrap: wrap;
+  padding: var(--lt-space-2) var(--lt-space-4);
+  border-bottom: var(--lt-border-thin);
+  background: var(--lt-color-surface);
+}
+
 .context-switcher__orgs,
 .context-switcher__teams {
   list-style: none;

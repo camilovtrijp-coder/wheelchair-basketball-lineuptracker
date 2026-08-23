@@ -197,6 +197,185 @@ Acceptatie:
   apparaat actief is, tenzij de gebruiker expliciet bevestigt;
 - unit-, type-, lint-, format- en buildcontroles zijn groen.
 
+**Geïmplementeerd:**
+
+- `v2/src/sw.ts`: het vroegere ongeconditioneerde `self.skipWaiting()` is
+  vervangen door een `message`-listener die alleen op `{ type:
+'SKIP_WAITING' }` reageert. `self.clients.claim()` op `activate` blijft
+  ongewijzigd (dat claimt uitsluitend AL open tabs zodra `activate`
+  daadwerkelijk vuurt — geen skipWaiting-omzeiling). Een eerste installatie
+  (geen concurrerende oude worker) activeert nog steeds vanzelf zonder
+  `skipWaiting()` nodig te hebben (standaard Service-Worker-gedrag) — dit is
+  precies waarom `v2/tests/e2e/pwa.spec.ts`'s bestaande "wordt actief"-
+  scenario ongewijzigd blijft werken (geverifieerd op de `dist/sw.js`-
+  buildoutput na `npm run build`: bevat de nieuwe `message`-listener, geen
+  losstaande `skipWaiting()`-aanroep meer).
+- `v2/src/infrastructure/pwa/PwaUpdateAdapter.ts` (nieuw): de klasse die de
+  registratie uit `main.tsx` overneemt. De constructor raakt
+  `navigator.serviceWorker` NOOIT aan — alleen `init()` doet dat, en `init()`
+  is idempotent (een tweede aanroep zonder tussentijdse `retry()` is een
+  no-op). Reactief via een simpel `subscribe()`/`getState()`-contract (geen
+  Preact-import in deze laag). Vier statussen: `idle` |
+  `update-available` (`registration.waiting` gezet, of een installerende
+  worker wordt `installed` terwijl er al een controller is — dat tweede pad
+  dekt een update die aankomt terwijl de pagina al open staat) | `reloading`
+  (na `confirmUpdate()`, wachtend op `controllerchange`) | `error`
+  (mislukte registratie, OF een `controllerchange` die
+  `CONTROLLERCHANGE_TIMEOUT_MS` = 15s uitbleef na een bevestigde
+  `skipWaiting`-aanroep). `confirmUpdate()` stuurt `{ type: 'SKIP_WAITING'
+}` naar `registration.waiting` en herlaadt UITSLUITEND op de
+  daaropvolgende `controllerchange` van deze eigen bevestiging (een
+  `controllerchange` zonder voorafgaande eigen `confirmUpdate()` — bijv. een
+  andere tab die zelf bijwerkt — wordt genegeerd) en exact één keer (een
+  `reloadRequested`-vlag beschermt tegen een dubbele browserfire). De
+  reload-functie is injecteerbaar (`reload: () => void` in de constructor,
+  default `location.reload()`) — puur voor testbaarheid, geen gedragswijziging.
+- `v2/src/application/pwa/usePwaUpdate.ts` (nieuw): Preact-hook, zelfde
+  laagconventie als `application/sync/useSyncStatus.ts` (een hook in de
+  applicatielaag rond een infrastructuuradapter). Gebruikt de gedeelde
+  `pwaUpdateAdapter`-singleton (zie hieronder, "CI-regressie ontdekt en
+  gefixed") i.p.v. per hook-mount een eigen instantie aan te maken — de
+  constructor raakt `navigator.serviceWorker` NOOIT aan, dus het importeren
+  van de singleton blijft veilig in jsdom-componenttests zonder
+  `serviceWorker`-global, precies de garantie die de constructor-restrictie
+  hierboven bedoelt. Roept `init()` zelf ook aan in een mount-effect
+  (idempotent, dus veilig naast `main.tsx`'s eigen `.init()`-aanroep), en
+  uitsluitend als `import.meta.env.PROD` waar is (zelfde gate als de
+  vroegere `main.tsx`-registratie, voorkomt een 404 op een niet-gebouwde
+  `/sw.js` tijdens `vite dev`) én `'serviceWorker' in navigator`. Werk 3's
+  niet-opdringerige auto-bevestiging (`AUTO_CONFIRM_DELAY_MS` = 8s) zit hier:
+  een `setTimeout` die alleen loopt terwijl `status === 'update-available'`
+  én `locked === false`; een `locked`-wijziging tijdens het wachten annuleert
+  de timer via de effect-cleanup (unit-getest).
+- `v2/src/ui/pwa/PwaUpdateBanner.tsx` (nieuw): de update-beschikbaar-banner —
+  een EIGEN, aparte UI-locatie (niet via `ActionNeededPanel`). Rendert
+  uitsluitend bij `status === 'update-available' | 'reloading'`, nooit bij
+  `'error'`. Toont een andere, taalgevoelige tekst afhankelijk van `locked`
+  (de knop zelf blijft in beide gevallen identiek werkend) — puur om de
+  gebruiker duidelijk te maken of bijwerken automatisch gebeurt of wacht tot
+  de wedstrijd is afgerond.
+- `v2/src/ui/sync/PwaActionNeededPanel.tsx` (nieuw): het herstelbare-
+  foutpad (mislukte SW-install / blijvend uitblijvende `controllerchange`),
+  bewust een aparte component naast `ActionNeededPanel.tsx` — zelfde
+  `action-needed-*`-CSS-klassen en dezelfde "Opnieuw proberen"/"Negeren"-
+  vertaalsleutels (hergebruikt, geen duplicaat), maar NIET in
+  `ActionNeededPanel`'s eigen `PendingAction`-lijst opgenomen. Reden: dat
+  contract (`application/sync/useSyncStatus.ts`) is specifiek voor een te
+  herzenden settings-/roster-PAYLOAD (`retry()` schrijft 'm opnieuw) — een
+  PWA-registratiefout heeft geen payload, alleen een registratie om opnieuw
+  te proberen. Dit is het "equivalente herstelpad binnen hetzelfde
+  `SyncStatus`-diagnosecontract" waar het plan het over heeft: zelfde
+  `actie-nodig`-semantiek/UI-taal, geen nieuw ongerelateerd foutkanaal, en
+  bewust NIET vermengd met `PwaUpdateBanner` (dat dekt een ander scenario).
+- `v2/src/app/App.tsx`: de bestaande inline `locked`-afleiding
+  (`game?.phase === 'tracking' || cloudClaim.kind === 'confirmed'`, eerder
+  alleen binnen één effect gebruikt voor `onGameLockChange`) is opgetild tot
+  een gewone render-variabele en hergebruikt als `usePwaUpdate(locked)`'s
+  argument — één bron van waarheid voor "is dit apparaat vergrendeld",
+  geen tweede, potentieel uit de pas lopende afleiding. Banner en
+  foutpaneel worden direct onder de header gerenderd (vóór de tab-nav) —
+  zichtbaar ongeacht welk tabblad actief is.
+- `v2/src/main.tsx`: de directe `navigator.serviceWorker.register(...)`-
+  aanroep is vervangen door `pwaUpdateAdapter.init()` op hetzelfde
+  `window`-`load`-moment als vóór 8.1a — zie "CI-regressie ontdekt en
+  gefixed" hieronder voor waarom dit expliciet hier moet blijven staan i.p.v.
+  volledig aan `usePwaUpdate`/`App` overgelaten te worden.
+- `v2/src/i18n/strings.ts`: nieuwe sleutels `pwaUpdateAvailable`,
+  `pwaUpdateAvailableLocked`, `pwaUpdateReloading`, `pwaUpdateConfirmBtn`,
+  `pwaActionNeededTitle`, `pwaActionNeededMessage` — in beide taalblokken
+  (nl/en), `actionNeededRetryBtn`/`actionNeededDismissBtn` bewust hergebruikt
+  i.p.v. gedupliceerd (zie `PwaActionNeededPanel.tsx` hierboven).
+- `v2/src/index.css`: `.pwa-update-banner` — zelfde ruimte-/rand-tokens als
+  `.action-needed-panel`, eigen klasse (geen gedeelde stijl-identiteit met
+  het foutpaneel, dat blijft bewust op `.action-needed-panel` zelf).
+- Tests (allemaal nieuw, allemaal groen —
+  `npx vitest run`: 91 bestanden/866 tests):
+  `tests/unit/PwaUpdateAdapter.spec.ts` (13 tests: constructor-restrictie,
+  init-idempotentie, update-available via beide paden, mislukte registratie,
+  confirmUpdate→controllerchange→exact-één-reload, een niet-eigen
+  controllerchange wordt genegeerd, de 15s-timeout→`error`, retry/
+  dismissError, subscribe/unsubscribe), `tests/unit/usePwaUpdate.spec.ts`
+  (5 tests: geen `init()` buiten productie, auto-bevestiging met/zonder
+  lock, annulering bij een lock-wijziging tijdens het wachten, delegatie
+  van de drie acties), `tests/unit/PwaUpdateBanner.spec.tsx` (4 tests),
+  `tests/unit/PwaActionNeededPanel.spec.tsx` (2 tests).
+- `v2/tests/e2e/pwa-update.spec.ts` (nieuw, werk 5): simuleert een "tweede
+  build" door het al gebouwde `dist/sw.js`-bestand rechtstreeks op DISK
+  (via `node:fs`, in het Playwright-testproces zelf) een testcomment te
+  laten krijgen ZODRA de eerste worker al actief is, en roept
+  `registration.update()` aan om de browsers eigen byte-vergelijking te
+  triggeren — geen mock van het updatemechanisme zelf, alleen van de bron
+  van de "nieuwe" bytes; het bestand wordt in een `finally`-blok
+  teruggezet zodat latere tests in dezelfde CI-run een ongewijzigde
+  `sw.js` blijven zien. Bevestigt: de banner verschijnt zodra
+  `registration.waiting` gezet is; een marker die alleen een reload
+  overleeft bewijst dat de oude pagina tot bevestiging op haar eigen,
+  consistente asset-set blijft draaien; na een klik op "Nu bijwerken" volgt
+  precies één `load`-event en is de marker weg (echte reload, niet slechts
+  een client-side statuswissel); ten slotte is de registratie `active`
+  zonder overgebleven `waiting`-worker.
+  **Kon in deze sessie niet lokaal worden uitgevoerd** —
+  Playwright/Chromium is in deze ontwikkelsandbox netwerkgeblokkeerd
+  (`npx playwright install chromium` geeft 403, zelfde beperking als
+  7.3c/7.4c se restpunten). Verificatie liep via de bestaande v2-e2e-CI-job
+  (GitHub Actions, met voorgeïnstalleerde Chromium) — zie hieronder voor de
+  twee CI-rondes die daadwerkelijk nodig waren om dit werkitem te laten
+  slagen.
+
+**CI-regressie ontdekt en gefixed (twee rondes, alleen via GitHub Actions
+mogelijk aangezien Playwright hier niet lokaal draait):**
+
+1. **Netwerkinterceptie werkte niet.** De eerste versie van
+   `pwa-update.spec.ts` probeerde de "nieuwe" `sw.js`-bytes te leveren via
+   eerst `page.route('**/sw.js', ...)`, daarna (na de eerste CI-faal) via
+   `page.context().route(...)` — beide faalden identiek: de banner
+   verscheen nooit (`registration.waiting` bleef leeg). Chromium's
+   browser-interne update-checkfetch voor een geregistreerde service
+   worker bleek in de praktijk niet interceptbaar via een van beide
+   Playwright-routing-API's in deze CI-omgeving. Opgelost door de "tweede
+   build" niet via netwerkinterceptie te simuleren, maar door het echte,
+   op disk gebouwde `dist/sw.js`-bestand te wijzigen dat de
+   preview-server (`vite preview`) rechtstreeks serveert — zie de
+   testbeschrijving hierboven.
+2. **Echte regressie in de registratietiming.** Na fix 1 slaagde
+   `pwa-update.spec.ts` zelf, maar een bestaande, ongerelateerde test
+   (`tests/e2e-auth/completed-history-offline-cache.spec.ts`, scenario "een
+   team dat nog nooit geopend is") faalde nieuw. Root cause: vóór 8.1a
+   registreerde `main.tsx` de service worker onvoorwaardelijk op het
+   `window`-`load`-event, volledig los van login/contextselectie. Na 8.1a's
+   eerste implementatie gebeurde initialisatie alleen nog via
+   `usePwaUpdate()`'s mount-effect — en die hook mount pas binnen `App`,
+   dat zelf pas ná login + org-/teamselectie rendert (`AuthGate` staat
+   daarvóór). Resultaat: op een nog nooit geopend team begon
+   SW-registratie pas ná teamselectie i.p.v. bij paginaload, wat de
+   bestaande offline-gereedheidsaanname van die test (en van
+   `offline-reload-cache-write-second-client.spec.ts`) brak. Opgelost door
+   `PwaUpdateAdapter` een gedeelde singleton te maken
+   (`pwaUpdateAdapter`, geëxporteerd uit `PwaUpdateAdapter.ts`) die
+   `main.tsx` zelf op `window load` initialiseert — exact dezelfde timing
+   als vóór 8.1a — terwijl `usePwaUpdate()` dezelfde instantie alleen nog
+   abonneert (en voor de zekerheid ook zelf `init()` aanroept, idempotent,
+   dus veilig als dubbele aanroep). Deze fix is lokaal geverifieerd
+   (`npx vitest run`: 91 bestanden/866 tests groen, `npx tsc -b`/`eslint`/
+   `prettier -c`/`npm run build` allemaal schoon) en gepusht als derde
+   commit op PR #75; de eerstvolgende CI-run bevestigde dat zowel
+   `pwa-update.spec.ts` als `completed-history-offline-cache.spec.ts`
+   (en de rest van beide suites, 91 `test:e2e`- + 67 `test:e2e:auth`-tests)
+   weer groen zijn.
+
+- **Bewuste scope-afbakening t.o.v. het plan**: `vite.config.ts`'s
+  `registerType: 'autoUpdate'` is NIET aangepast/verwijderd. Die optie stuurt
+  `vite-plugin-pwa`'s eigen, hier niet-gebruikte auto-registratiescript aan
+  (`injectRegister: null` staat al vóór 8.1a vast — de registratie is
+  altijd al volledig handmatig, eerst in `main.tsx`, nu in
+  `PwaUpdateAdapter`); met `injectRegister: null` heeft `registerType` in de
+  praktijk geen effect. Laten staan i.p.v. verwijderen voorkomt een
+  ongerelateerde configwijziging in een sub-PR die daar niet over gaat; een
+  latere opruiming kan dit desgewenst meenemen.
+- **Geen wijziging aan `GameSetupPanel.tsx`/`gameStartBlockReason()`** — dat
+  is expliciet 8.1b-scope (de vierde `GameStartBlockReason`-variant), hier
+  bewust niet vooruitgelopen.
+
 ### 8.1b — pre-game offline-readinesscheck
 
 Werk:
