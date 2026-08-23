@@ -532,3 +532,205 @@ describe('app/App: epoch-bewuste supersessie tijdens tracking (regressiefix na P
     expect((getByTestId('score-plus1-for') as HTMLButtonElement).disabled).toBe(true);
   });
 });
+
+describe('app/App: overname-bevestigingsflow (PR 7.3c werk 1)', () => {
+  function fakeGameSyncWithTakeover(takeoverResult: {
+    kind: 'confirmed' | 'blocked';
+    identity?: { writerUid: string; deviceId: string; writerEpoch: number };
+    code?:
+      | 'offline'
+      | 'already-claimed'
+      | 'stale-revision'
+      | 'role-denied'
+      | 'game-completed'
+      | 'unknown';
+  }): {
+    coordinator: GameSyncCoordinator;
+    emitParent: (u: GameCloudParentUpdate) => void;
+    takeoverCalls: unknown[][];
+  } {
+    let callbacks: GameCloudSubscriptionCallbacks | null = null;
+    const takeoverCalls: unknown[][] = [];
+    const coordinator = {
+      subscribeGame(
+        _org: string,
+        _team: string,
+        _gameId: string,
+        cb: GameCloudSubscriptionCallbacks,
+      ) {
+        callbacks = cb;
+        return () => undefined;
+      },
+      async sync() {
+        return { status: 'idle' as const, confirmedActionIds: [], serverRevision: 0 };
+      },
+      async takeoverWriter(
+        game: ActiveGame,
+        writer: GameCloudWriterContext,
+        currentEpoch: number,
+        currentRevision: number,
+      ) {
+        takeoverCalls.push([game.id, writer, currentEpoch, currentRevision]);
+        return takeoverResult.kind === 'confirmed'
+          ? { kind: 'confirmed' as const, identity: takeoverResult.identity! }
+          : { kind: 'blocked' as const, code: takeoverResult.code! };
+      },
+      readSyncDiagnostics() {
+        return {
+          gameId: 'game-live',
+          status: 'idle' as const,
+          totalActionCount: 3,
+          confirmedActionCount: 1,
+          pendingActionCount: 2,
+          serverRevision: 2,
+          updatedAt: '2026-01-01T00:00:00.000Z',
+        };
+      },
+    } as unknown as GameSyncCoordinator;
+    return { coordinator, emitParent: (u) => callbacks?.onParent(u), takeoverCalls };
+  }
+
+  it('toont de huidige writer/laatste activiteit/pending-acties, en bevestigen roept takeoverWriter() aan met het huidige epoch/revisie', async () => {
+    window.localStorage.setItem(
+      activeGameStorageKey(ORG_ID, TEAM_ID),
+      JSON.stringify(trackingGame()),
+    );
+    const { coordinator, emitParent, takeoverCalls } = fakeGameSyncWithTakeover({
+      kind: 'confirmed',
+      identity: { writerUid: SELF.authorUid, deviceId: SELF.deviceId, writerEpoch: 2 },
+    });
+    const repositories = {
+      mode: 'cloud' as const,
+      settings: new ImmediateSettingsRepository(),
+      roster: new ImmediateRosterRepository(),
+      gameSync: coordinator,
+      gameWriterContext: SELF,
+      completedGames: null,
+    };
+
+    const { getByTestId, queryByTestId } = render(
+      <App
+        repositories={repositories}
+        syncStatus={fakeSyncStatusApi()}
+        canWrite={true}
+        canWriteGame={true}
+        organizationId={ORG_ID}
+        teamId={TEAM_ID}
+        organizationName="Org Viewer Test"
+      />,
+    );
+    act(() => getByTestId('nav-game').click());
+    await waitFor(() => expect(getByTestId('score-plus1-for')).toBeTruthy());
+
+    act(() =>
+      emitParent({ doc: parentDocFor(OTHER), meta: { fromCache: false, hasPendingWrites: false } }),
+    );
+    await waitFor(() => expect(queryByTestId('cloud-viewer-banner')).not.toBeNull());
+
+    act(() => getByTestId('takeover-open-btn').click());
+    await waitFor(() => expect(getByTestId('takeover-confirm-dialog')).toBeTruthy());
+    expect(getByTestId('takeover-current-writer').textContent).toContain('epoch 1');
+    expect(getByTestId('takeover-last-activity').textContent).toContain('2026-01-01');
+    expect(getByTestId('takeover-pending-warning').textContent).toContain('2');
+
+    act(() => getByTestId('takeover-confirm-btn').click());
+
+    await waitFor(() => expect(queryByTestId('takeover-confirm-dialog')).toBeNull());
+    expect(takeoverCalls).toEqual([['game-live', SELF, 1, 2]]);
+    // Direct na een succesvolle overname verdwijnt de conflictbanner en werkt
+    // de bediening weer, zonder te wachten op een nieuwe listener-snapshot.
+    await waitFor(() => expect(queryByTestId('cloud-viewer-banner')).toBeNull());
+    expect((getByTestId('score-plus1-for') as HTMLButtonElement).disabled).toBe(false);
+  });
+
+  it('een geweigerde overname toont de foutcode inline, sluit het dialoog niet en blijft read-only', async () => {
+    window.localStorage.setItem(
+      activeGameStorageKey(ORG_ID, TEAM_ID),
+      JSON.stringify(trackingGame()),
+    );
+    const { coordinator, emitParent } = fakeGameSyncWithTakeover({
+      kind: 'blocked',
+      code: 'stale-revision',
+    });
+    const repositories = {
+      mode: 'cloud' as const,
+      settings: new ImmediateSettingsRepository(),
+      roster: new ImmediateRosterRepository(),
+      gameSync: coordinator,
+      gameWriterContext: SELF,
+      completedGames: null,
+    };
+
+    const { getByTestId, queryByTestId } = render(
+      <App
+        repositories={repositories}
+        syncStatus={fakeSyncStatusApi()}
+        canWrite={true}
+        canWriteGame={true}
+        organizationId={ORG_ID}
+        teamId={TEAM_ID}
+        organizationName="Org Viewer Test"
+      />,
+    );
+    act(() => getByTestId('nav-game').click());
+    await waitFor(() => expect(getByTestId('score-plus1-for')).toBeTruthy());
+    act(() =>
+      emitParent({ doc: parentDocFor(OTHER), meta: { fromCache: false, hasPendingWrites: false } }),
+    );
+    await waitFor(() => expect(queryByTestId('cloud-viewer-banner')).not.toBeNull());
+
+    act(() => getByTestId('takeover-open-btn').click());
+    await waitFor(() => expect(getByTestId('takeover-confirm-dialog')).toBeTruthy());
+    act(() => getByTestId('takeover-confirm-btn').click());
+
+    await waitFor(() => expect(getByTestId('takeover-blocked-error')).toBeTruthy());
+    expect(getByTestId('takeover-confirm-dialog')).toBeTruthy();
+    expect((getByTestId('score-plus1-for') as HTMLButtonElement).disabled).toBe(true);
+  });
+
+  it('annuleren sluit het dialoog zonder takeoverWriter() aan te roepen', async () => {
+    window.localStorage.setItem(
+      activeGameStorageKey(ORG_ID, TEAM_ID),
+      JSON.stringify(trackingGame()),
+    );
+    const { coordinator, emitParent, takeoverCalls } = fakeGameSyncWithTakeover({
+      kind: 'confirmed',
+      identity: { writerUid: SELF.authorUid, deviceId: SELF.deviceId, writerEpoch: 2 },
+    });
+    const repositories = {
+      mode: 'cloud' as const,
+      settings: new ImmediateSettingsRepository(),
+      roster: new ImmediateRosterRepository(),
+      gameSync: coordinator,
+      gameWriterContext: SELF,
+      completedGames: null,
+    };
+
+    const { getByTestId, queryByTestId } = render(
+      <App
+        repositories={repositories}
+        syncStatus={fakeSyncStatusApi()}
+        canWrite={true}
+        canWriteGame={true}
+        organizationId={ORG_ID}
+        teamId={TEAM_ID}
+        organizationName="Org Viewer Test"
+      />,
+    );
+    act(() => getByTestId('nav-game').click());
+    await waitFor(() => expect(getByTestId('score-plus1-for')).toBeTruthy());
+    act(() =>
+      emitParent({ doc: parentDocFor(OTHER), meta: { fromCache: false, hasPendingWrites: false } }),
+    );
+    await waitFor(() => expect(queryByTestId('cloud-viewer-banner')).not.toBeNull());
+
+    act(() => getByTestId('takeover-open-btn').click());
+    await waitFor(() => expect(getByTestId('takeover-confirm-dialog')).toBeTruthy());
+    act(() => getByTestId('takeover-cancel-btn').click());
+
+    expect(queryByTestId('takeover-confirm-dialog')).toBeNull();
+    expect(takeoverCalls).toEqual([]);
+    // Nog steeds read-only — annuleren verandert niets aan de writerstatus.
+    expect((getByTestId('score-plus1-for') as HTMLButtonElement).disabled).toBe(true);
+  });
+});

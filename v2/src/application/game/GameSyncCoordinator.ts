@@ -33,7 +33,7 @@
 // blijft de enige bron van waarheid voor historie) en een latere `sync()`-
 // aanroep (nieuwe actie, reconnect, handmatige retry) probeert gewoon
 // opnieuw vanaf de eerste nog-niet-voltooide stap.
-import type { ActiveGame, CompletedGame } from '../../domain/game/types';
+import type { ActiveGame, CompletedGame, GameAction } from '../../domain/game/types';
 import type { SyncStatus } from '../../domain/syncState';
 import {
   createEmptyGameSyncCheckpoint,
@@ -41,6 +41,11 @@ import {
   withConfirmedActions,
   type GameSyncCheckpoint,
 } from '../../domain/game/syncCheckpoint';
+import {
+  buildGameSyncDiagnostics,
+  unconfirmedGameActions,
+  type GameSyncDiagnostics,
+} from '../../domain/game/gameSyncDiagnostics';
 import type { CloudClaimStatus } from '../../domain/game/writerClaim';
 import type {
   GameCloudGateway,
@@ -463,5 +468,31 @@ export class GameSyncCoordinator {
     }
     if (checkpoint.status === 'actie-nodig') return 'actie-nodig';
     return 'lokaal-beschikbaar';
+  }
+
+  /**
+   * PR 7.3c (docs/pr-7.3-plan.md §C 7.3c werk 1/2/3): synchrone,
+   * netwerkloze diagnose van dit apparaat se cloud-sync voor `game` — leest
+   * uitsluitend het lokale checkpoint, zelfde patroon als
+   * `readFinalizeStatus()` hierboven. Twee aanroeppunten: (1) de
+   * overname-bevestigingsflow (werk 1) toont hiermee "dit apparaat heeft nog
+   * N niet-gesynchroniseerde acties" vóórdat de gebruiker een overname
+   * bevestigt; (2) een 'actie-nodig'-checkpoint (werk 2, bijv. na een
+   * overname door een ander apparaat terwijl dit apparaat offline queued
+   * acties had) toont hiermee wat er exporteerbaar is
+   * (`exportPendingGameActions()`, infrastructure-laag).
+   */
+  readSyncDiagnostics(game: ActiveGame): GameSyncDiagnostics {
+    return buildGameSyncDiagnostics(game, this.readCheckpoint(game));
+  }
+
+  /**
+   * PR 7.3c (docs/pr-7.3-plan.md §C 7.3c werk 2): de lokale acties van
+   * `game` die dit apparaat nog niet als server-bevestigd kent — de
+   * concrete lijst achter `readSyncDiagnostics()`s `pendingActionCount`,
+   * exporteerbaar via `infrastructure/game/exportPendingGameActions.ts`.
+   */
+  readUnconfirmedActions(game: ActiveGame): GameAction[] {
+    return unconfirmedGameActions(game, this.readCheckpoint(game));
   }
 }

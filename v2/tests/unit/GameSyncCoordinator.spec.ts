@@ -957,3 +957,132 @@ describe('application/game/GameSyncCoordinator.subscribeGame() (PR 7.3b)', () =>
     expect(onError).toHaveBeenCalledWith(listenerError);
   });
 });
+
+describe('application/game/GameSyncCoordinator crashherstel tussen lokale actie/upload/checkpoint (PR 7.3c werk 3)', () => {
+  it('geheel ontbrekend checkpoint (alsof de app crashte vóór ELKE checkpointwrite): de lokale actielog is de bron van waarheid, sync() herstelt gewoon vanaf nul', async () => {
+    // `GameRepository.write()` is synchroon (localStorage) en gebeurt in
+    // `app/App.tsx` se `handleGameChange()` ALTIJD vóór de fire-and-forget
+    // `runGameSync()` — er bestaat dus geen venster waarin een lokale actie
+    // wél in `ActiveGame.actions` staat maar NIET al duurzaam op schijf. Een
+    // checkpoint dat nog nooit geschreven is (bijv. de allereerste sync na
+    // een crash vóór ooit een checkpointwrite) is daarom geen dataverlies —
+    // `readCheckpoint()` valt terug op een leeg checkpoint en `sync()`
+    // uploadt gewoon ALLE lokale acties, create-only/idempotent aan
+    // serverzijde.
+    const checkpoints = new LocalStorageGameSyncCheckpointRepository(new MemoryStorage());
+    const gateway = mockGateway({});
+    const coordinator = new GameSyncCoordinator({ gateway, checkpoints, now: fixedClock() });
+    const game = gameWithActions(['a1', 'a2']);
+
+    const result = await coordinator.sync(game, writer);
+
+    expect(result.status).toBe('idle');
+    expect(gateway.uploadedActionIds[0]?.sort()).toEqual(['a1', 'a2']);
+    expect(result.confirmedActionIds.sort()).toEqual(['a1', 'a2']);
+  });
+
+  it('crash NA een server-bevestigde upload maar VÓÓR de lokale checkpointwrite: een retry raakt de server se create-only/alreadyConfirmed-pad, geen dubbele actie, geen dataverlies', async () => {
+    // Simuleert het exacte venster uit werk 3: de server-upload van 'a1'
+    // slaagde al (server heeft het action-document), maar het lokale
+    // checkpoint dat dit had moeten vastleggen ging verloren (crash/reload
+    // vóór `this.checkpoints.write()` in `sync()` — zie de aanroep-volgorde
+    // daar: `uploadActions()` eerst, dan pas `withConfirmedActions()` +
+    // `checkpoints.write()`). Een lokaal checkpoint dat 'a1' nog als
+    // "onbevestigd" ziet, probeert 'm daarom opnieuw te uploaden — de
+    // gateway se readback (`FirestoreGameCloudGateway.uploadActions()`,
+    // create-only) hoort dat als `alreadyConfirmed: true, ok: true` terug te
+    // geven, nooit als een fout of een dubbel document.
+    const checkpoints = new LocalStorageGameSyncCheckpointRepository(new MemoryStorage());
+    const gateway = mockGateway({
+      uploadActions: (actions) =>
+        actions.map((a) => ({ actionId: a.actionId, ok: true, alreadyConfirmed: true })),
+    });
+    const coordinator = new GameSyncCoordinator({ gateway, checkpoints, now: fixedClock() });
+    const game = gameWithActions(['a1']);
+
+    const result = await coordinator.sync(game, writer);
+
+    expect(result.status).toBe('idle');
+    expect(result.confirmedActionIds).toEqual(['a1']);
+    expect(game.actions).toHaveLength(1);
+  });
+
+  it('herhaalde crashes over meerdere sync()-cycli blijven de lokale actielog VOLLEDIG en ongewijzigd behouden (§D: nooit automatisch verwijderd)', async () => {
+    const checkpoints = new LocalStorageGameSyncCheckpointRepository(new MemoryStorage());
+    const gateway = mockGateway({});
+    const coordinator = new GameSyncCoordinator({ gateway, checkpoints, now: fixedClock() });
+    const game = gameWithActions(['a1', 'a2', 'a3']);
+
+    await coordinator.sync(game, writer);
+    // Simuleer een "crash" (checkpoint-verlies) door het checkpoint handmatig
+    // te wissen — een volgende sync() start dan opnieuw vanaf nul.
+    checkpoints.write({
+      gameId: game.id,
+      organizationId: game.organizationId,
+      teamId: game.teamId,
+      confirmedActionIds: [],
+      serverRevision: 0,
+      status: 'idle',
+      updatedAt: '2026-01-01T00:00:00.000Z',
+    });
+    const secondResult = await coordinator.sync(game, writer);
+
+    expect(secondResult.status).toBe('idle');
+    // De lokale actielog zelf is op geen enkel moment aangeraakt — precies
+    // 3 acties, dezelfde ID's, voor én na het gesimuleerde checkpointverlies.
+    expect(game.actions.map((a) => a.id)).toEqual(['a1', 'a2', 'a3']);
+  });
+});
+
+describe('application/game/GameSyncCoordinator.readSyncDiagnostics()/readUnconfirmedActions() (PR 7.3c werk 1/2/3)', () => {
+  it('geeft een lege diagnose voor een wedstrijd zonder ooit een checkpoint (nooit gecrasht op een missend checkpoint)', () => {
+    const checkpoints = new LocalStorageGameSyncCheckpointRepository(new MemoryStorage());
+    const coordinator = new GameSyncCoordinator({ gateway: mockGateway({}), checkpoints });
+    const game = gameWithActions(['a1', 'a2']);
+
+    const diagnostics = coordinator.readSyncDiagnostics(game);
+
+    expect(diagnostics.status).toBe('idle');
+    expect(diagnostics.confirmedActionCount).toBe(0);
+    expect(diagnostics.pendingActionCount).toBe(2);
+    expect(coordinator.readUnconfirmedActions(game).map((a) => a.id)).toEqual(['a1', 'a2']);
+  });
+
+  it('na een geslaagde sync() zijn alle geüploade acties bevestigd — 0 pending, lege unconfirmed-lijst', async () => {
+    const checkpoints = new LocalStorageGameSyncCheckpointRepository(new MemoryStorage());
+    const coordinator = new GameSyncCoordinator({
+      gateway: mockGateway({}),
+      checkpoints,
+      now: fixedClock(),
+    });
+    const game = gameWithActions(['a1', 'a2']);
+
+    await coordinator.sync(game, writer);
+
+    const diagnostics = coordinator.readSyncDiagnostics(game);
+    expect(diagnostics.status).toBe('idle');
+    expect(diagnostics.pendingActionCount).toBe(0);
+    expect(coordinator.readUnconfirmedActions(game)).toEqual([]);
+  });
+
+  it('werk 2/3: acties die de server weigert (bijv. na een overname) blijven zichtbaar/exporteerbaar als pending — nooit stil verwijderd uit de lokale actielog', async () => {
+    const checkpoints = new LocalStorageGameSyncCheckpointRepository(new MemoryStorage());
+    const gateway = mockGateway({
+      uploadActions: (actions) =>
+        actions.map((a) => ({ actionId: a.actionId, ok: false, error: 'epoch-mismatch' })),
+    });
+    const coordinator = new GameSyncCoordinator({ gateway, checkpoints, now: fixedClock() });
+    const game = gameWithActions(['a1', 'a2']);
+
+    const result = await coordinator.sync(game, writer);
+    expect(result.status).toBe('actie-nodig');
+
+    const diagnostics = coordinator.readSyncDiagnostics(game);
+    expect(diagnostics.status).toBe('actie-nodig');
+    expect(diagnostics.pendingActionCount).toBe(2);
+    // De volledige, nog-lokale actielog blijft ongewijzigd exporteerbaar —
+    // dit is precies de bron voor `exportPendingGameActions()`.
+    expect(coordinator.readUnconfirmedActions(game).map((a) => a.id)).toEqual(['a1', 'a2']);
+    expect(game.actions).toHaveLength(2);
+  });
+});
