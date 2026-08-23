@@ -16,6 +16,7 @@ import {
   type CloudClaimStatus,
   type WriterClaimErrorCode,
 } from '../../domain/game/writerClaim';
+import type { PwaReadinessStatus } from '../../domain/pwa/pwaReadiness';
 import { translate, type Lang, type StringKey } from '../../i18n/strings';
 
 export interface GameSetupPanelProps {
@@ -36,6 +37,16 @@ export interface GameSetupPanelProps {
    */
   cloudClaim: CloudClaimStatus;
   onRetryClaim: () => void;
+  /**
+   * PR 8.1b (docs/pr-8.1-plan.md §C 8.1b): pre-game PWA-/offline-
+   * gereedheidsstatus (`application/pwa/usePwaReadiness.ts`). Alleen
+   * `'broken'` blokkeert de startknop (via `gameStartBlockReason()`'s derde
+   * `'pwa-readiness'`-variant); de overige deelstatussen tonen een
+   * niet-blokkerend informatief bericht (werk 3: nooit een generieke
+   * "kan niet starten") — `'unsupported'` blokkeert bewust NOOIT (werk 4,
+   * stopregel §D).
+   */
+  pwaReadiness: PwaReadinessStatus;
 }
 
 function t(lang: Lang, key: StringKey): string {
@@ -59,8 +70,34 @@ function claimBlockedKey(code: WriterClaimErrorCode): StringKey {
   }
 }
 
-function startButtonLabel(lang: Lang, game: ActiveGame, cloudClaim: CloudClaimStatus): string {
-  const reason = gameStartBlockReason(game, cloudClaim);
+/**
+ * PR 8.1b werk 3: niet-blokkerend informatief bericht per `PwaReadinessStatus`-
+ * deelstatus, of `null` bij `'ready'` (niets te melden). `'broken'` krijgt
+ * hier hetzelfde bericht als de blokkerende startknop-tekst hieronder — één
+ * concrete, herstelbare melding i.p.v. een generieke "kan niet starten".
+ */
+function pwaReadinessMessageKey(status: PwaReadinessStatus): StringKey | null {
+  switch (status.kind) {
+    case 'ready':
+      return null;
+    case 'unsupported':
+      return 'pwaReadinessUnsupported';
+    case 'registering':
+      return 'pwaReadinessRegistering';
+    case 'update-pending':
+      return 'pwaReadinessUpdatePending';
+    case 'broken':
+      return 'pwaReadinessBroken';
+  }
+}
+
+function startButtonLabel(
+  lang: Lang,
+  game: ActiveGame,
+  cloudClaim: CloudClaimStatus,
+  pwaReadiness: PwaReadinessStatus,
+): string {
+  const reason = gameStartBlockReason(game, cloudClaim, pwaReadiness);
   if (reason === null) return t(lang, 'startGameBtn');
   if (reason.kind === 'roster') {
     switch (reason.reason) {
@@ -74,9 +111,12 @@ function startButtonLabel(lang: Lang, game: ActiveGame, cloudClaim: CloudClaimSt
         return t(lang, 'startChooseFive');
     }
   }
-  // reason.kind === 'cloud-claim'
-  if (reason.status.kind === 'pending') return t(lang, 'claimPendingBtn');
-  return t(lang, claimBlockedKey(reason.status.code));
+  if (reason.kind === 'cloud-claim') {
+    if (reason.status.kind === 'pending') return t(lang, 'claimPendingBtn');
+    return t(lang, claimBlockedKey(reason.status.code));
+  }
+  // reason.kind === 'pwa-readiness'
+  return t(lang, 'pwaReadinessBroken');
 }
 
 export function GameSetupPanel({
@@ -89,15 +129,17 @@ export function GameSetupPanel({
   saveError,
   cloudClaim,
   onRetryClaim,
+  pwaReadiness,
 }: GameSetupPanelProps) {
   if (game === null || game.phase === 'tracking') return null;
 
   const vp = validPlayers(game);
   const dupNrs = duplicateStartNumbers(game);
   const sc = startCount(game);
-  const startBlock = gameStartBlockReason(game, cloudClaim);
+  const startBlock = gameStartBlockReason(game, cloudClaim, pwaReadiness);
   const canStartNow = startBlock === null;
   const claimBlocked = startBlock?.kind === 'cloud-claim' && startBlock.status.kind === 'blocked';
+  const pwaReadinessMsgKey = pwaReadinessMessageKey(pwaReadiness);
 
   if (vp.length === 0) {
     return (
@@ -232,6 +274,16 @@ export function GameSetupPanel({
         </p>
       ) : null}
 
+      {pwaReadinessMsgKey ? (
+        <p
+          className={pwaReadiness.kind === 'broken' ? 'settings-error' : 'settings-explainer'}
+          role={pwaReadiness.kind === 'broken' ? 'alert' : undefined}
+          data-testid="game-pwa-readiness"
+        >
+          {t(lang, pwaReadinessMsgKey)}
+        </p>
+      ) : null}
+
       {canWrite ? null : (
         <p className="settings-read-only" data-testid="game-read-only" role="status">
           {t(lang, 'gameReadOnly')}
@@ -249,7 +301,7 @@ export function GameSetupPanel({
             if (started) onGameChange(started);
           }}
         >
-          {startButtonLabel(lang, game, cloudClaim)}
+          {startButtonLabel(lang, game, cloudClaim, pwaReadiness)}
         </button>
         {claimBlocked ? (
           <button

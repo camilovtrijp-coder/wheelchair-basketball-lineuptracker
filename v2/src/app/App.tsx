@@ -54,6 +54,7 @@ import { MigrationPanel } from '../ui/migration/MigrationPanel';
 import { canBulkMigrate } from '../domain/migration/capability';
 import type { OrganizationRole } from '../domain/organizations/types';
 import { usePwaUpdate } from '../application/pwa/usePwaUpdate';
+import { usePwaReadiness } from '../application/pwa/usePwaReadiness';
 import { PwaUpdateBanner } from '../ui/pwa/PwaUpdateBanner';
 import { PwaActionNeededPanel } from '../ui/sync/PwaActionNeededPanel';
 
@@ -651,6 +652,16 @@ export function App({
    * `application/pwa/usePwaUpdate.ts` voor de volledige flow.
    */
   const pwaUpdate = usePwaUpdate(locked);
+
+  /**
+   * PR 8.1b (docs/pr-8.1-plan.md §C 8.1b werk 1/2): pre-game PWA-/offline-
+   * gereedheidsstatus, doorgegeven aan `GameSetupPanel` — die combineert 'm
+   * met roster/cloudclaim via `gameStartBlockReason()`'s derde
+   * `'pwa-readiness'`-variant. Hergebruikt de gedeelde `pwaUpdateAdapter`-
+   * status (via `usePwaReadiness()`) i.p.v. een tweede, parallelle
+   * service-worker-observatie.
+   */
+  const pwaReadiness = usePwaReadiness();
 
   /**
    * PR 7.3b (docs/pr-7.3-plan.md §C 7.3b werk 2/3): live cloudviewer-
@@ -1591,6 +1602,7 @@ export function App({
             saveError={gameSaveError}
             cloudClaim={cloudClaim}
             onRetryClaim={handleRetryClaim}
+            pwaReadiness={pwaReadiness}
           />
         )}
       </main>

@@ -8,6 +8,7 @@ import {
   type CloudClaimStatus,
   type WriterClaimState,
 } from '../../src/domain/game/writerClaim';
+import type { PwaReadinessStatus } from '../../src/domain/pwa/pwaReadiness';
 
 function player(overrides: Partial<GamePlayer> = {}): GamePlayer {
   return {
@@ -147,6 +148,72 @@ describe('domain/game/writerClaim: gameStartBlockReason/canStartGame (PR 7.3a)',
     };
     expect(gameStartBlockReason(game(), confirmed)).toBeNull();
     expect(canStartGame(game(), confirmed)).toBe(true);
+  });
+});
+
+describe('domain/game/writerClaim: gameStartBlockReason/canStartGame — PWA-readiness (PR 8.1b)', () => {
+  const notRequired: CloudClaimStatus = { kind: 'not-required' };
+  const confirmed: CloudClaimStatus = {
+    kind: 'confirmed',
+    identity: { writerUid: 'uid-alice', deviceId: 'device-alice', writerEpoch: 0 },
+  };
+
+  it('geen derde argument (bestaande 7.3a-aanroepers): exact hetzelfde gedrag als vóór 8.1b — geen regressie', () => {
+    expect(gameStartBlockReason(game(), notRequired)).toBeNull();
+    expect(canStartGame(game(), notRequired)).toBe(true);
+    expect(gameStartBlockReason(game(), { kind: 'pending' })).toEqual({
+      kind: 'cloud-claim',
+      status: { kind: 'pending' },
+    });
+    const blocked: CloudClaimStatus = { kind: 'blocked', code: 'already-claimed' };
+    expect(gameStartBlockReason(game(), blocked)).toEqual({ kind: 'cloud-claim', status: blocked });
+  });
+
+  it.each([
+    ['ready', { kind: 'ready' }],
+    ['unsupported', { kind: 'unsupported' }],
+    ['registering', { kind: 'registering' }],
+    ['update-pending', { kind: 'update-pending' }],
+  ] as const)(
+    "pwaReadiness %s blokkeert NOOIT starten wanneer roster/cloudclaim al klaar zijn (stopregel §D: 'unsupported' sluit alleen-lokaal gebruik nooit uit)",
+    (_label, status: PwaReadinessStatus) => {
+      expect(gameStartBlockReason(game(), notRequired, status)).toBeNull();
+      expect(canStartGame(game(), notRequired, status)).toBe(true);
+      expect(gameStartBlockReason(game(), confirmed, status)).toBeNull();
+    },
+  );
+
+  it("pwaReadiness 'broken' blokkeert starten met kind: 'pwa-readiness', alleen als roster+cloudclaim al klaar zijn", () => {
+    const broken: PwaReadinessStatus = { kind: 'broken' };
+    expect(gameStartBlockReason(game(), notRequired, broken)).toEqual({
+      kind: 'pwa-readiness',
+      status: broken,
+    });
+    expect(canStartGame(game(), notRequired, broken)).toBe(false);
+    expect(gameStartBlockReason(game(), confirmed, broken)).toEqual({
+      kind: 'pwa-readiness',
+      status: broken,
+    });
+  });
+
+  it("roster-redenen gaan vóór 'broken' PWA-readiness", () => {
+    const notReady = game({ players: [player({ naam: '' })] });
+    expect(gameStartBlockReason(notReady, notRequired, { kind: 'broken' })).toEqual({
+      kind: 'roster',
+      reason: 'needFivePlayers',
+    });
+  });
+
+  it("cloudclaim-redenen gaan vóór 'broken' PWA-readiness", () => {
+    expect(gameStartBlockReason(game(), { kind: 'pending' }, { kind: 'broken' })).toEqual({
+      kind: 'cloud-claim',
+      status: { kind: 'pending' },
+    });
+    const blocked: CloudClaimStatus = { kind: 'blocked', code: 'already-claimed' };
+    expect(gameStartBlockReason(game(), blocked, { kind: 'broken' })).toEqual({
+      kind: 'cloud-claim',
+      status: blocked,
+    });
   });
 });
 

@@ -61,7 +61,7 @@ describe('PwaUpdateAdapter', () => {
     vi.stubGlobal('navigator', {});
     const adapter = new PwaUpdateAdapter();
     adapter.init();
-    expect(adapter.getState()).toEqual({ status: 'idle' });
+    expect(adapter.getState()).toEqual({ status: 'idle', registered: false });
   });
 
   it('registreert pas bij init(), niet bij het aanmaken', () => {
@@ -78,6 +78,16 @@ describe('PwaUpdateAdapter', () => {
     adapter.init();
     adapter.init();
     expect(container.register).toHaveBeenCalledTimes(1);
+  });
+
+  it("8.1b: meldt registered: true zodra de registratie slaagt, ook zonder wachtende update ('idle', niet 'ready' als status)", async () => {
+    const { registration } = installFakeServiceWorker();
+    registration.waiting = null;
+    const adapter = new PwaUpdateAdapter();
+    adapter.init();
+    await vi.waitFor(() =>
+      expect(adapter.getState()).toEqual({ status: 'idle', registered: true }),
+    );
   });
 
   it('meldt update-available zodra de registratie al een wachtende worker heeft', async () => {
@@ -203,7 +213,7 @@ describe('PwaUpdateAdapter', () => {
     await vi.waitFor(() => expect(adapter.getState().status).toBe('error'));
 
     adapter.dismissError();
-    expect(adapter.getState()).toEqual({ status: 'idle' });
+    expect(adapter.getState()).toEqual({ status: 'idle', registered: false });
   });
 
   it('subscribe() levert de huidige staat meteen en bij elke wijziging', async () => {

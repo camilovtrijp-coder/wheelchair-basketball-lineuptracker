@@ -1,5 +1,14 @@
 import { startBlockReason, type StartBlockReason } from './setup';
 import type { ActiveGame } from './types';
+import type { PwaReadinessStatus } from '../pwa/pwaReadiness';
+
+/**
+ * PR 8.1b (docs/pr-8.1-plan.md §C 8.1b werk 2): default voor het nieuwe,
+ * derde `gameStartBlockReason()`-argument. Bestaande aanroepers (7.3a-tests,
+ * elke plek die de functie nog met twee argumenten aanroept) krijgen zo
+ * exact hetzelfde resultaat als vóór 8.1b — `'ready'` blokkeert nooit.
+ */
+const PWA_READY: PwaReadinessStatus = { kind: 'ready' };
 
 /**
  * PR 7.3a (docs/pr-7.3-plan.md §B/§C 7.3a): pure writer-claim-/epochtypes.
@@ -87,31 +96,50 @@ export type CloudClaimStatus =
 
 export type GameStartBlockReason =
   | { kind: 'roster'; reason: StartBlockReason }
-  | { kind: 'cloud-claim'; status: Extract<CloudClaimStatus, { kind: 'pending' | 'blocked' }> };
+  | { kind: 'cloud-claim'; status: Extract<CloudClaimStatus, { kind: 'pending' | 'blocked' }> }
+  | { kind: 'pwa-readiness'; status: Extract<PwaReadinessStatus, { kind: 'broken' }> };
 
 /**
  * Eerste reden waarom de wedstrijd nog niet gestart mag worden, of `null` als
  * starten mag — combineert de bestaande roster-voorwaarden
  * (`setup.ts` `startBlockReason()`) met de PR 7.3a-eis dat een cloudwedstrijd
  * vóór tip-off een serverbevestigde writerclaim heeft (docs/pr-7.3-plan.md
- * §B). Roster-redenen gaan altijd eerst: zonder 5 geldige spelers heeft een
- * claimpoging sowieso geen zin. Alleen-lokale modus (`cloudClaim.kind ===
- * 'not-required'`) blijft ongewijzigd zonder netwerk werken.
+ * §B), en (PR 8.1b, docs/pr-8.1-plan.md §B punt 4/§C 8.1b) de PWA-/offline-
+ * gereedheid van de app-shell zelf. Volgorde is bewust "eerst het
+ * goedkoopste/meest zinvolle signaal": roster eerst (zonder 5 geldige
+ * spelers heeft een claim-/readinesscheck sowieso geen zin), dan cloudclaim,
+ * dan PWA-gereedheid. Alleen-lokale modus (`cloudClaim.kind ===
+ * 'not-required'`) blijft ongewijzigd zonder netwerk werken. `pwaReadiness`
+ * is optioneel met een `'ready'`-default zodat bestaande aanroepers
+ * (7.3a-tests, elke plek die de functie nog met twee argumenten aanroept)
+ * exact hetzelfde resultaat blijven krijgen — geen regressie op 7.3a-gedrag
+ * (8.1b-acceptatiecriterium). Alleen `pwaReadiness.kind === 'broken'`
+ * blokkeert ooit — `'unsupported'`/`'registering'`/`'update-pending'` zijn
+ * bewust nooit een blokkerende reden (stopregel §D: geen harde eis die
+ * apparaten zonder SW-ondersteuning volledig uitsluit).
  */
 export function gameStartBlockReason(
   game: ActiveGame,
   cloudClaim: CloudClaimStatus,
+  pwaReadiness: PwaReadinessStatus = PWA_READY,
 ): GameStartBlockReason | null {
   const rosterReason = startBlockReason(game);
   if (rosterReason !== null) return { kind: 'roster', reason: rosterReason };
   if (cloudClaim.kind === 'pending' || cloudClaim.kind === 'blocked') {
     return { kind: 'cloud-claim', status: cloudClaim };
   }
+  if (pwaReadiness.kind === 'broken') {
+    return { kind: 'pwa-readiness', status: pwaReadiness };
+  }
   return null;
 }
 
-export function canStartGame(game: ActiveGame, cloudClaim: CloudClaimStatus): boolean {
-  return gameStartBlockReason(game, cloudClaim) === null;
+export function canStartGame(
+  game: ActiveGame,
+  cloudClaim: CloudClaimStatus,
+  pwaReadiness: PwaReadinessStatus = PWA_READY,
+): boolean {
+  return gameStartBlockReason(game, cloudClaim, pwaReadiness) === null;
 }
 
 /**

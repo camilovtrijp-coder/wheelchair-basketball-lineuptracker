@@ -21,6 +21,17 @@ export type PwaUpdateStatus = 'idle' | 'update-available' | 'reloading' | 'error
 
 export interface PwaUpdateAdapterState {
   status: PwaUpdateStatus;
+  /**
+   * PR 8.1b (docs/pr-8.1-plan.md §C 8.1b): of de service-worker-registratie
+   * ooit succesvol is afgerond (`register()`'s promise opgelost, ongeacht
+   * `status`). Additief bij het bestaande `status`-veld — bestaande
+   * consumenten (`PwaUpdateBanner`, `PwaActionNeededPanel`) lezen alleen
+   * `status` en blijven ongewijzigd werken. Nodig om `domain/pwa/
+   * pwaReadiness.ts`'s `'registering'` (nog geen geslaagde registratie) te
+   * onderscheiden van `'ready'` (wél) — de adapter rapporteert beide vandaag
+   * als `status: 'idle'`.
+   */
+  registered: boolean;
 }
 
 export type PwaUpdateListener = (state: PwaUpdateAdapterState) => void;
@@ -32,7 +43,7 @@ export type PwaUpdateListener = (state: PwaUpdateAdapterState) => void;
 // herstelbaar foutscenario binnen hetzelfde `SyncStatus`-diagnosecontract.
 export const CONTROLLERCHANGE_TIMEOUT_MS = 15_000;
 
-const IDLE_STATE: PwaUpdateAdapterState = { status: 'idle' };
+const IDLE_STATE: PwaUpdateAdapterState = { status: 'idle', registered: false };
 
 /**
  * Reactieve wrapper rond de service-worker-registratie voor de
@@ -74,6 +85,14 @@ export class PwaUpdateAdapter {
     for (const listener of this.listeners) listener(next);
   }
 
+  /** PR 8.1b: bouwt de volgende state met `registered` afgeleid uit
+   * `this.registration !== null` — één bron van waarheid i.p.v. een los
+   * bijgehouden vlag die uit de pas kan lopen met de daadwerkelijke
+   * registratie. */
+  private buildState(status: PwaUpdateStatus): PwaUpdateAdapterState {
+    return { status, registered: this.registration !== null };
+  }
+
   /**
    * Registreert de service worker en start de `updatefound`-/
    * `controllerchange`-luisteraars. Idempotent: een tweede aanroep zonder
@@ -92,9 +111,11 @@ export class PwaUpdateAdapter {
       .register(this.swUrl, { scope: '/', type: 'module' })
       .then((registration) => {
         this.registration = registration;
-        if (registration.waiting) {
-          this.setState({ status: 'update-available' });
-        }
+        // Geslaagde registratie — meteen zichtbaar via `registered: true`,
+        // ook als er (nog) geen wachtende update is (PR 8.1b: dit is het
+        // signaal dat `domain/pwa/pwaReadiness.ts` onderscheidt van
+        // "registering").
+        this.setState(this.buildState(registration.waiting ? 'update-available' : 'idle'));
         registration.addEventListener('updatefound', () => {
           const installing = registration.installing;
           if (!installing) return;
@@ -104,14 +125,14 @@ export class PwaUpdateAdapter {
             // installatie (geen concurrerende oude worker) activeert
             // vanzelf zonder wachtstatus, zie sw.ts se eigen commentaar.
             if (installing.state === 'installed' && navigator.serviceWorker.controller) {
-              this.setState({ status: 'update-available' });
+              this.setState(this.buildState('update-available'));
             }
           });
         });
       })
       .catch((err) => {
         console.error('Service worker registratie mislukt', err);
-        this.setState({ status: 'error' });
+        this.setState(this.buildState('error'));
       });
   }
 
@@ -146,11 +167,11 @@ export class PwaUpdateAdapter {
     this.confirmedSkipWaiting = true;
     this.reloadRequested = false;
     this.registration.waiting.postMessage({ type: 'SKIP_WAITING' });
-    this.setState({ status: 'reloading' });
+    this.setState(this.buildState('reloading'));
     this.controllerChangeTimer = setTimeout(() => {
       this.controllerChangeTimer = null;
       this.confirmedSkipWaiting = false;
-      this.setState({ status: 'error' });
+      this.setState(this.buildState('error'));
     }, CONTROLLERCHANGE_TIMEOUT_MS);
   }
 
@@ -164,14 +185,24 @@ export class PwaUpdateAdapter {
   retry(): void {
     if (this.state.status !== 'error') return;
     this.initialized = false;
+    // PR 8.1b: ook de registratieverwijzing zelf terugzetten — anders zou
+    // `buildState()` een stale `registered: true` rapporteren na een
+    // timeout-fout (registratie was al geslaagd, alleen `controllerchange`
+    // bleef uit) terwijl deze retry juist een verse `init()` start.
+    this.registration = null;
     this.setState(IDLE_STATE);
     this.init();
   }
 
   /** Verbergt de foutmelding zonder de onderliggende oorzaak op te lossen —
-   * zelfde "Negeren"-semantiek als `ActionNeededPanel.onDismiss`. */
+   * zelfde "Negeren"-semantiek als `ActionNeededPanel.onDismiss`. `buildState`
+   * i.p.v. de kale `IDLE_STATE` (PR 8.1b): een timeout-fout ná een
+   * bevestigde `skipWaiting`-aanroep kan een reeds geslaagde registratie
+   * hebben (`this.registration` niet-`null`) — dat blijft na dismiss
+   * zichtbaar als `registered: true` i.p.v. onterecht terug te vallen op
+   * `registering`. */
   dismissError(): void {
-    if (this.state.status === 'error') this.setState(IDLE_STATE);
+    if (this.state.status === 'error') this.setState(this.buildState('idle'));
   }
 }
 
