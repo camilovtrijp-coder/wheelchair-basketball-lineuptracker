@@ -44,7 +44,7 @@ import { test, expect } from '@playwright/test';
 import { adminDb, lookupUidByEmail } from './adminFixtures';
 import { signUp, answerTrustedDevice, selectContext, uniqueTestEmail } from './helpers';
 import type { OrganizationRole } from '../../src/domain/organizations/types';
-import { DEFAULT_SETTINGS } from '../../src/domain/settings/types';
+import { DEFAULT_SETTINGS, type Settings } from '../../src/domain/settings/types';
 
 const PASSWORD = 'MigrationFlow123!';
 const SETTINGS_KEY = 'lineup-tracker-settings';
@@ -96,19 +96,26 @@ async function applyRole(
  * voor het eerst inlogt op een cloudteam terwijl er nog v2-localStorage-data
  * op dit apparaat staat (plan §A). */
 async function seedLocalMigrationSource(page: import('@playwright/test').Page): Promise<void> {
+  // `validateSettingsSection()` (domain/backup/validate.ts, hergebruikt door
+  // `domain/migration/inventory.ts`) is fail-closed en eist ALLE `Settings`-
+  // sleutels (zie `SETTINGS_KEYS`) — een gedeeltelijk object levert
+  // `status: 'corrupt'` op, wat `buildCloudMigrationPreview()` vóór elke
+  // itemlijst laat afwijzen (`step: 'denied'`, nooit `migration-preview`).
+  // Spiegel daarom de unit-testfixtures (`migrationInventory.spec.ts` e.a.):
+  // begin bij `DEFAULT_SETTINGS` en override alleen wat dit scenario nodig
+  // heeft, i.p.v. een eigen, onvolledige settings-vorm te verzinnen.
+  const settings: Settings = {
+    ...DEFAULT_SETTINGS,
+    teamName: 'Migratie-Team',
+    quarterCount: 4,
+    periodLabel: 'Kwart',
+    useClassLimit: false,
+    primaryColor: '#123456',
+    accentColor: '#654321',
+  };
   await page.evaluate(
-    ({ settingsKey, rosterKey }) => {
-      window.localStorage.setItem(
-        settingsKey,
-        JSON.stringify({
-          teamName: 'Migratie-Team',
-          quarterCount: 4,
-          periodLabel: 'Kwart',
-          useClassLimit: false,
-          primaryColor: '#123456',
-          accentColor: '#654321',
-        }),
-      );
+    ({ settingsKey, rosterKey, settings }) => {
+      window.localStorage.setItem(settingsKey, JSON.stringify(settings));
       window.localStorage.setItem(
         rosterKey,
         JSON.stringify([
@@ -116,7 +123,7 @@ async function seedLocalMigrationSource(page: import('@playwright/test').Page): 
         ]),
       );
     },
-    { settingsKey: SETTINGS_KEY, rosterKey: ROSTER_KEY },
+    { settingsKey: SETTINGS_KEY, rosterKey: ROSTER_KEY, settings },
   );
 }
 
