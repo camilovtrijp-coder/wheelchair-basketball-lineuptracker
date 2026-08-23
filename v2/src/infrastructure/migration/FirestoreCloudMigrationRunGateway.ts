@@ -20,7 +20,11 @@ import type {
   MigrationRunCloudWriteResult,
   MigrationRunManifestProjection,
 } from '../../application/migration/CloudMigrationRunGateway';
-import type { MigrationRunItemCheckpoint } from '../../domain/migration/run';
+import type {
+  MigrationRunItemCheckpoint,
+  MigrationRunItemStatus,
+} from '../../domain/migration/run';
+import type { MigrationItemKind } from '../../domain/migration/types';
 
 const DEFAULT_TIMEOUT_MS = 8000;
 
@@ -28,6 +32,48 @@ class MigrationRunTimeoutError extends Error {
   constructor(label: string, ms: number) {
     super(`${label}: geen serverantwoord binnen ${ms}ms`);
     this.name = 'MigrationRunTimeoutError';
+  }
+}
+
+/** Reviewer-fix (minimax, PR #71, quick-win 1): fail-closed runtime-validatie
+ * voor `fromStoredItem()` hieronder — spiegelt `LocalStorageMigrationRunRepository`
+ * .isMigrationRunShape()`'s precedent (een corrupte/onherkenbare waarde telt
+ * als "niet te vertrouwen", nooit als een stilzwijgende cast). */
+const KNOWN_ITEM_KINDS: ReadonlySet<MigrationItemKind> = new Set([
+  'settings',
+  'roster',
+  'activeGame',
+  'completedGame',
+]);
+const KNOWN_ITEM_STATUSES: ReadonlySet<MigrationRunItemStatus> = new Set([
+  'pending',
+  'confirmed',
+  'conflict',
+  'failed',
+  'compensated',
+  'compensationFailed',
+]);
+
+export function isKnownMigrationRunItemKind(value: unknown): value is MigrationItemKind {
+  return typeof value === 'string' && KNOWN_ITEM_KINDS.has(value as MigrationItemKind);
+}
+
+export function isKnownMigrationRunItemStatus(value: unknown): value is MigrationRunItemStatus {
+  return typeof value === 'string' && KNOWN_ITEM_STATUSES.has(value as MigrationRunItemStatus);
+}
+
+/** Gegooid door `fromStoredItem()` bij een onbekende `kind`/`status` — een
+ * corrupt clouddocument of een toekomstig schema met een nieuwe enumwaarde
+ * die deze client nog niet kent. Wordt gevangen door `ensureRun()`'s
+ * bestaande try/catch (net als `MigrationRunTimeoutError` hierboven) en
+ * levert zo `{ok: false, error}` op — de cloudstand telt dan als "onbekend/
+ * nog niet bevestigd", nooit als stilzwijgend doorgegeven aan de coordinator
+ * (die valt terug op de lokale checkpointstand, zie `MigrationCoordinator`
+ * .persist()`'s `cloudRevision < 0`-pad). */
+export class MigrationRunInvalidCloudDataError extends Error {
+  constructor(field: 'kind' | 'status', value: unknown) {
+    super(`cloud-manifestitem heeft een onbekende ${field}: ${JSON.stringify(value)}`);
+    this.name = 'MigrationRunInvalidCloudDataError';
   }
 }
 
@@ -65,13 +111,19 @@ function toStoredItem(item: MigrationRunItemCheckpoint): Record<string, unknown>
 }
 
 function fromStoredItem(raw: Record<string, unknown>): MigrationRunItemCheckpoint {
+  if (!isKnownMigrationRunItemKind(raw.kind)) {
+    throw new MigrationRunInvalidCloudDataError('kind', raw.kind);
+  }
+  if (!isKnownMigrationRunItemStatus(raw.status)) {
+    throw new MigrationRunInvalidCloudDataError('status', raw.status);
+  }
   return {
-    kind: raw.kind as MigrationRunItemCheckpoint['kind'],
+    kind: raw.kind,
     sourceId: raw.sourceId as string,
     targetId: raw.targetId as string,
     label: raw.label as string,
     payloadHash: raw.payloadHash as string,
-    status: raw.status as MigrationRunItemCheckpoint['status'],
+    status: raw.status,
     lastError: raw.lastError == null ? undefined : (raw.lastError as string),
   };
 }

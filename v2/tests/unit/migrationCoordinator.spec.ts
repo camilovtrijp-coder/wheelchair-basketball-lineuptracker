@@ -429,6 +429,83 @@ describe('application/migration/MigrationCoordinator — contextwissel (werk 4)'
   });
 });
 
+describe('application/migration/MigrationCoordinator — prepareRun blokkeert een botsende run (reviewer-fix minimax PR #71, quick-win 3)', () => {
+  it('blokkeert een tweede manifest voor dezelfde doelcontext zolang de eerste run nog niet is afgerond, zonder de eerste te overschrijven', async () => {
+    const { preview: previewA } = buildPreview();
+    const runRepo = new FakeRunRepository();
+    const cloudRunGateway = new FakeCloudRunGateway();
+    const coordinator = makeCoordinator({
+      writeGateway: new FakeWriteGateway(),
+      inventoryGateway: new FakeInventoryGateway(),
+      runRepo,
+      cloudRunGateway,
+    });
+
+    const { run: runA } = await coordinator.prepareRun(previewA, 'uid-1');
+    expect(runA.status).not.toBe('completed'); // nog niet uitgevoerd — 'paused'
+
+    // Andere manifest-inhoud (afwijkende teamnaam) ⇒ andere manifestHash,
+    // maar dezelfde doelcontext (org-dst/team-dst).
+    const settingsValueB = { ...DEFAULT_SETTINGS, teamName: 'Een Andere Naam' };
+    const inventoryB = buildLocalMigrationInventory(sourceCtx.organizationId, sourceCtx.teamId, {
+      settings: settingsValueB,
+      roster: [sampleRosterPlayer],
+      activeGame: undefined,
+      completedGames: [completedGame],
+    });
+    const previewB = buildCloudMigrationPreview({
+      now,
+      source: sourceCtx,
+      target: targetCtx,
+      callerRole: 'coach',
+      inventory: inventoryB,
+      existingCloud: emptyCloudSnapshot(),
+    });
+    expect(previewB.manifestHash).not.toBe(previewA.manifestHash);
+
+    const prepareB = await coordinator.prepareRun(previewB, 'uid-2');
+
+    expect(prepareB.blockedByExistingRunId).toBe(runA.runId);
+    expect(prepareB.run.runId).toBe(runA.runId);
+    expect(prepareB.run.manifestHash).toBe(runA.manifestHash);
+
+    // De opgeslagen staat van run A is niet gemuteerd/overschreven door de blokkade.
+    const storedAfter = runRepo.read(targetCtx.organizationId, targetCtx.teamId);
+    expect(storedAfter).toEqual(runA);
+  });
+});
+
+describe('application/migration/MigrationCoordinator — ontbrekende lokale bron voor completedGame (reviewer-fix minimax PR #71, quick-win 4)', () => {
+  it('meldt {ok:false} zichtbaar als actionNeeded wanneer de lokale wedstrijd inmiddels weg is, zonder te crashen', async () => {
+    const { preview, local } = buildPreview();
+    const writeGateway = new FakeWriteGateway();
+    const coordinator = makeCoordinator({
+      writeGateway,
+      inventoryGateway: new FakeInventoryGateway(),
+      runRepo: new FakeRunRepository(),
+      cloudRunGateway: new FakeCloudRunGateway(),
+    });
+    const { run } = await coordinator.prepareRun(preview, 'uid-1');
+
+    // Simuleert een concurrente backup-import die de lokale wedstrijd verwijderde
+    // tussen run-creatie en run-uitvoering.
+    const localWithoutGame: MigrationLocalSource = {
+      ...local,
+      completedGames: new Map(),
+    };
+
+    const result = await coordinator.runMigration(run, localWithoutGame, writer, callerContext);
+
+    const gameItem = result.items.find((i) => i.kind === 'completedGame');
+    expect(gameItem?.status).toBe('failed');
+    expect(gameItem?.lastError).toBe(
+      `lokale wedstrijd ${completedGame.id} ontbreekt voor deze run`,
+    );
+    expect(result.status).toBe('actionNeeded');
+    expect(writeGateway.completedGameCalls).toBe(0);
+  });
+});
+
 describe('application/migration/MigrationCoordinator — lokale bron blijft onaangeraakt (§B/werk 5)', () => {
   it('mutateert het meegegeven MigrationLocalSource-object nooit', async () => {
     const { preview, local } = buildPreview();
