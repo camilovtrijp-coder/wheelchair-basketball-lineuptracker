@@ -231,8 +231,11 @@ export function buildCloudMigrationPreview(
  * clouditem (plan §C 7.4b werk 4-precedent, hier alvast als preview-
  * rapportage): geen tegenhanger → `'create'`; gelijke hash → semantisch
  * identiek → `'alreadyPresentIdentical'` (geen write nodig); afwijkende hash
- * onder hetzelfde doel-ID → `'conflict'` (nooit stilzwijgend overwriten). */
-function resolveAction(
+ * onder hetzelfde doel-ID → `'conflict'` (nooit stilzwijgend overwriten).
+ * Geëxporteerd (PR 7.4b) — `application/migration/MigrationCoordinator.ts`
+ * hergebruikt EXACT dezelfde formule voor de "vlak voor bevestiging"-recheck
+ * (werk 4), geen tweede, divergerende implementatie. */
+export function resolveAction(
   localHash: string,
   existingPresent: boolean,
   existingHash: string | null,
