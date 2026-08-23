@@ -260,6 +260,77 @@ const nl = {
   backupImportFailed:
     'Import mislukt bij "{section}". Eerder geschreven onderdelen zijn teruggedraaid; er is niets gedeeltelijk aangepast. De zojuist gedownloade herstelback-up bevat de gegevens van vóór deze poging.',
 
+  // PR 7.4c: bulkmigratie-UI (docs/pr-7.4-plan.md §C 7.4c) — inventariseren →
+  // preview → herstelback-up → sterke bevestiging → voortgang →
+  // readback/resultaat → retry/export. Alleen zichtbaar voor
+  // organizationOwner/organizationAdmin/coach (canBulkMigrate()); een
+  // scorer/viewer krijgt dit blok nooit gerenderd, geen alleen-lezen variant.
+  migrationTitle: 'Bestaande lokale gegevens naar de cloud',
+  migrationDesc:
+    'Kopieer instellingen, team en afgeronde wedstrijden die nu alleen lokaal op dit apparaat staan naar de cloud voor dit team. Je lokale gegevens blijven ongewijzigd bewaard — dit is geen verhuizing, maar een kopie.',
+  migrationStartBtn: 'Migratie voorbereiden',
+  migrationBuildingPreview: 'Lokale gegevens en cloudstatus worden ingelezen…',
+  migrationErrorGeneric: 'Inlezen is mislukt. Probeer het opnieuw.',
+  migrationDeniedCorruptTitle: 'Lokale gegevens zijn niet leesbaar',
+  migrationDeniedCorruptDesc:
+    'Er is een probleem gevonden in de lokale gegevens. Er is niets naar de cloud geschreven. Maak eerst een back-up (tabblad Instellingen) en controleer de foutmelding hieronder.',
+  migrationPreviewTitle: 'Migratie controleren',
+  migrationPreviewTarget: 'Doelteam: {org} / {team}',
+  migrationSectionSettings: 'Instellingen',
+  migrationSectionRoster: 'Team',
+  migrationSectionCompletedGames: 'Wedstrijdhistorie',
+  migrationLocalLabel: 'lokaal',
+  migrationCloudLabel: 'cloud',
+  migrationActionCreate: 'wordt aangemaakt',
+  migrationActionAlreadyPresent: 'al gelijk aanwezig — geen write nodig',
+  migrationActionConflict: 'conflict — cloudversie wijkt af, wordt nooit overschreven',
+  migrationTrackingGameTitle: 'Actieve wedstrijd',
+  migrationTrackingGameNone: 'Geen actieve wedstrijd op dit apparaat.',
+  migrationTrackingGameExcludedTracking:
+    "Deze wedstrijd wordt getrackt en gaat NIET mee met deze bulkmigratie. Neem 'm apart over via het overnamescherm bij Wedstrijd (writerclaim), zodat er eerst één geldige schrijver is.",
+  migrationTrackingGameNeedsDecision:
+    'Deze wedstrijd staat in opzetfase en gaat NIET automatisch mee — dat vereist een aparte beslissing, buiten deze bulkmigratie.',
+  migrationRequiredWritesLabel: 'Deze migratie schrijft {n} onderdeel/onderdelen naar de cloud.',
+  migrationWarningsTitle: 'Waarschuwingen',
+  migrationNextToBackupBtn: 'Volgende: herstelback-up',
+  migrationCancelBtn: 'Annuleren',
+  migrationBackupTitle: 'Herstelback-up',
+  migrationBackupDesc:
+    "Download eerst een herstelback-up van je huidige lokale gegevens. Deze is nodig om terug te kunnen vallen — je kunt 'm later gewoon importeren via de back-upfunctie.",
+  migrationBackupDownloadBtn: '⬇ Download herstelback-up',
+  migrationBackupConfirmLabel: 'Ik heb de herstelback-up gedownload en bewaard',
+  migrationBackupNextBtn: 'Volgende: bevestigen',
+  migrationConfirmTitle: 'Migratie bevestigen',
+  migrationConfirmDesc:
+    'Dit voegt {n} onderdeel/onderdelen toe aan de cloud voor {team}. Je lokale gegevens blijven ongewijzigd staan. Dit is geen automatische verwijdering en kan niet met één klik worden teruggedraaid.',
+  migrationConfirmBtn: 'Bevestig migratie',
+  migrationConfirmInProgress: 'Bezig…',
+  migrationBlockedExistingRun:
+    'Er loopt al een niet-afgeronde migratie voor dit team. Rond die eerst af of probeer het later opnieuw.',
+  migrationRunningTitle: 'Migratie loopt',
+  migrationRunningStatus: 'Bezig met schrijven naar de cloud…',
+  migrationItemStatusPending: 'wacht',
+  migrationItemStatusConfirmed: 'bevestigd',
+  migrationItemStatusConflict: 'conflict',
+  migrationItemStatusFailed: 'mislukt',
+  migrationItemStatusCompensated: 'teruggedraaid',
+  migrationItemStatusCompensationFailed: 'terugdraaien mislukt',
+  migrationResultCompletedTitle: 'Migratie voltooid',
+  migrationResultCompletedDesc:
+    'Alle onderdelen zijn bevestigd in de cloud. Je lokale gegevens zijn niet gewijzigd of verwijderd.',
+  migrationResultActionNeededTitle: 'Actie nodig',
+  migrationResultActionNeededDesc:
+    'Niet alles kon worden bevestigd. Gebruik hieronder "Opnieuw proberen" (hervat vanaf het laatste checkpoint) of exporteer de vastzittende onderdelen.',
+  migrationResultCompensationFailedTitle: 'Terugdraaien mislukt',
+  migrationResultCompensationFailedDesc:
+    'Een eerder geschreven onderdeel kon niet worden teruggedraaid. Exporteer de details en probeer het later opnieuw.',
+  migrationResultPausedTitle: 'Migratie onderbroken',
+  migrationResultPausedDesc:
+    'Nog niet alle onderdelen zijn verwerkt. Ga verder met opnieuw proberen.',
+  migrationRetryBtn: 'Opnieuw proberen',
+  migrationExportBtn: '⬇ Exporteer vastzittende onderdelen',
+  migrationCloseBtn: 'Sluiten',
+
   cloudImportPrompt:
     'Kopieer je lokale gegevens eenmalig naar de cloud. De cloud-versie wordt dan leidend; je lokale kopie blijft bewaard.',
   cloudImportButton: 'Eenmalig naar cloud kopiëren',
@@ -605,6 +676,72 @@ const en = {
   backupImportSuccess: 'Import succeeded. The page shows the new data.',
   backupImportFailed:
     'Import failed at "{section}". Previously written parts were rolled back; nothing was left partially changed. The recovery backup just downloaded contains the data from before this attempt.',
+
+  // PR 7.4c: bulk migration UI — mirrors the NL block above key-for-key.
+  migrationTitle: 'Move existing local data to the cloud',
+  migrationDesc:
+    'Copy settings, team and completed games that currently only exist locally on this device to the cloud for this team. Your local data stays unchanged — this is a copy, not a move.',
+  migrationStartBtn: 'Prepare migration',
+  migrationBuildingPreview: 'Reading local data and cloud status…',
+  migrationErrorGeneric: 'Reading failed. Please try again.',
+  migrationDeniedCorruptTitle: 'Local data could not be read',
+  migrationDeniedCorruptDesc:
+    'A problem was found in the local data. Nothing was written to the cloud. Make a backup first (Settings tab) and check the error below.',
+  migrationPreviewTitle: 'Review migration',
+  migrationPreviewTarget: 'Target team: {org} / {team}',
+  migrationSectionSettings: 'Settings',
+  migrationSectionRoster: 'Team',
+  migrationSectionCompletedGames: 'Match history',
+  migrationLocalLabel: 'local',
+  migrationCloudLabel: 'cloud',
+  migrationActionCreate: 'will be created',
+  migrationActionAlreadyPresent: 'already identical — no write needed',
+  migrationActionConflict: 'conflict — cloud version differs, never overwritten',
+  migrationTrackingGameTitle: 'Active match',
+  migrationTrackingGameNone: 'No active match on this device.',
+  migrationTrackingGameExcludedTracking:
+    'This match is being tracked and is NOT included in this bulk migration. Take it over separately via the match takeover screen (writer claim), so a single valid writer exists first.',
+  migrationTrackingGameNeedsDecision:
+    'This match is in setup phase and is NOT included automatically — that needs a separate decision outside this bulk migration.',
+  migrationRequiredWritesLabel: 'This migration will write {n} item(s) to the cloud.',
+  migrationWarningsTitle: 'Warnings',
+  migrationNextToBackupBtn: 'Next: recovery backup',
+  migrationCancelBtn: 'Cancel',
+  migrationBackupTitle: 'Recovery backup',
+  migrationBackupDesc:
+    'Download a recovery backup of your current local data first. You need this to fall back — you can import it later via the regular backup feature.',
+  migrationBackupDownloadBtn: '⬇ Download recovery backup',
+  migrationBackupConfirmLabel: 'I downloaded and kept the recovery backup',
+  migrationBackupNextBtn: 'Next: confirm',
+  migrationConfirmTitle: 'Confirm migration',
+  migrationConfirmDesc:
+    'This adds {n} item(s) to the cloud for {team}. Your local data stays unchanged. This is not an automatic deletion and cannot be undone with a single click.',
+  migrationConfirmBtn: 'Confirm migration',
+  migrationConfirmInProgress: 'Working…',
+  migrationBlockedExistingRun:
+    'A migration for this team is already in progress. Finish it first or try again later.',
+  migrationRunningTitle: 'Migration in progress',
+  migrationRunningStatus: 'Writing to the cloud…',
+  migrationItemStatusPending: 'pending',
+  migrationItemStatusConfirmed: 'confirmed',
+  migrationItemStatusConflict: 'conflict',
+  migrationItemStatusFailed: 'failed',
+  migrationItemStatusCompensated: 'rolled back',
+  migrationItemStatusCompensationFailed: 'rollback failed',
+  migrationResultCompletedTitle: 'Migration completed',
+  migrationResultCompletedDesc:
+    'All items are confirmed in the cloud. Your local data was not changed or removed.',
+  migrationResultActionNeededTitle: 'Action needed',
+  migrationResultActionNeededDesc:
+    'Not everything could be confirmed. Use "Retry" below (resumes from the last checkpoint) or export the stuck items.',
+  migrationResultCompensationFailedTitle: 'Rollback failed',
+  migrationResultCompensationFailedDesc:
+    'A previously written item could not be rolled back. Export the details and try again later.',
+  migrationResultPausedTitle: 'Migration paused',
+  migrationResultPausedDesc: 'Not all items have been processed yet. Continue with retry.',
+  migrationRetryBtn: 'Retry',
+  migrationExportBtn: '⬇ Export stuck items',
+  migrationCloseBtn: 'Close',
 
   cloudImportPrompt:
     'Copy your local data to the cloud once. The cloud version becomes the source of truth; your local copy is kept as a fallback.',

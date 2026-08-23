@@ -14,6 +14,8 @@ import type { AsyncSettingsRepository } from '../../application/settings/AsyncSe
 import type { CompletedGameRepository } from '../../application/game/CompletedGameRepository';
 import type { GameSyncCoordinator } from '../../application/game/GameSyncCoordinator';
 import type { GameCloudWriterContext } from '../../application/game/projectGameForCloud';
+import type { CloudMigrationInventoryGateway } from '../../application/migration/CloudMigrationInventoryGateway';
+import type { MigrationCoordinator } from '../../application/migration/MigrationCoordinator';
 import type { KeyValueStorage } from '../../i18n/persistence';
 import type { RepositorySelection } from './selectRepositories';
 import { LocalAsyncRosterRepository } from '../roster/LocalAsyncRosterRepository';
@@ -35,6 +37,10 @@ export interface ResolvedAppRepositories {
    * `AuthGate.tsx`'s `organizationId={selectedContext?.orgId ?? ''}`).
    */
   completedGames: CompletedGameRepository | null;
+  /** PR 7.4c: `null` in lokale modus — er is geen cloudteam om naartoe te
+   * migreren, `app/App.tsx` rendert `MigrationPanel` dan sowieso niet. */
+  migrationInventoryGateway: CloudMigrationInventoryGateway | null;
+  migrationCoordinator: MigrationCoordinator | null;
 }
 
 export function resolveAppRepositories(
@@ -49,6 +55,8 @@ export function resolveAppRepositories(
       gameSync: selection.gameSync,
       gameWriterContext: selection.gameWriterContext,
       completedGames: selection.completedGames,
+      migrationInventoryGateway: selection.migrationInventoryGateway,
+      migrationCoordinator: selection.migrationCoordinator,
     };
   }
   return {
@@ -58,5 +66,7 @@ export function resolveAppRepositories(
     gameSync: null,
     gameWriterContext: null,
     completedGames: null,
+    migrationInventoryGateway: null,
+    migrationCoordinator: null,
   };
 }

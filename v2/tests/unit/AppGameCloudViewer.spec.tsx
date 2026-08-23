@@ -280,6 +280,8 @@ describe('app/App: cloud-viewer-gating tijdens tracking (PR 7.3b)', () => {
       gameSync: coordinator,
       gameWriterContext: SELF,
       completedGames: null,
+      migrationInventoryGateway: null,
+      migrationCoordinator: null,
     };
 
     const { getByTestId, queryByTestId } = render(
@@ -322,6 +324,8 @@ describe('app/App: cloud-viewer-gating tijdens tracking (PR 7.3b)', () => {
       gameSync: coordinator,
       gameWriterContext: SELF,
       completedGames: null,
+      migrationInventoryGateway: null,
+      migrationCoordinator: null,
     };
 
     const { getByTestId, queryByTestId } = render(
@@ -362,6 +366,8 @@ describe('app/App: cloud-viewer-gating tijdens tracking (PR 7.3b)', () => {
       gameSync: null,
       gameWriterContext: null,
       completedGames: null,
+      migrationInventoryGateway: null,
+      migrationCoordinator: null,
     };
 
     const { getByTestId, queryByTestId } = render(
@@ -396,6 +402,8 @@ describe('app/App: cloud-viewer-gating tijdens tracking (PR 7.3b)', () => {
       gameSync: coordinator,
       gameWriterContext: SELF,
       completedGames: null,
+      migrationInventoryGateway: null,
+      migrationCoordinator: null,
     };
 
     const { getByTestId, queryByTestId } = render(
@@ -450,6 +458,8 @@ describe('app/App: epoch-bewuste supersessie tijdens tracking (regressiefix na P
       gameSync: coordinator,
       gameWriterContext: SELF,
       completedGames: null,
+      migrationInventoryGateway: null,
+      migrationCoordinator: null,
     };
 
     const { getByTestId, queryByTestId } = render(
@@ -499,6 +509,8 @@ describe('app/App: epoch-bewuste supersessie tijdens tracking (regressiefix na P
       gameSync: coordinator,
       gameWriterContext: SELF,
       completedGames: null,
+      migrationInventoryGateway: null,
+      migrationCoordinator: null,
     };
 
     const { getByTestId, queryByTestId } = render(
@@ -607,6 +619,8 @@ describe('app/App: overname-bevestigingsflow (PR 7.3c werk 1)', () => {
       gameSync: coordinator,
       gameWriterContext: SELF,
       completedGames: null,
+      migrationInventoryGateway: null,
+      migrationCoordinator: null,
     };
 
     const { getByTestId, queryByTestId } = render(
@@ -660,6 +674,8 @@ describe('app/App: overname-bevestigingsflow (PR 7.3c werk 1)', () => {
       gameSync: coordinator,
       gameWriterContext: SELF,
       completedGames: null,
+      migrationInventoryGateway: null,
+      migrationCoordinator: null,
     };
 
     const { getByTestId, queryByTestId } = render(
@@ -705,6 +721,8 @@ describe('app/App: overname-bevestigingsflow (PR 7.3c werk 1)', () => {
       gameSync: coordinator,
       gameWriterContext: SELF,
       completedGames: null,
+      migrationInventoryGateway: null,
+      migrationCoordinator: null,
     };
 
     const { getByTestId, queryByTestId } = render(
@@ -783,6 +801,8 @@ describe('app/App: exporteerbare "Actie nodig"-acties tijdens tracking (PR 7.3c 
       gameSync: coordinator,
       gameWriterContext: SELF,
       completedGames: null,
+      migrationInventoryGateway: null,
+      migrationCoordinator: null,
     };
 
     // jsdom implementeert `URL.createObjectURL`/`revokeObjectURL` niet

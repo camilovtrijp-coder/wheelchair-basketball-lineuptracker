@@ -506,6 +506,12 @@ export function AuthGate({ authGateway }: AuthGateProps) {
               ''
             }
             onGameLockChange={setGameLocked}
+            // PR 7.4c: dezelfde membership-lookup als organizationName
+            // hierboven, geen extra Firestore-read — bepaalt of
+            // `MigrationPanel` (bulkmigratie) getoond wordt.
+            organizationRole={
+              memberships?.find((m) => m.orgId === selectedContext?.orgId)?.role ?? null
+            }
           />
         </>
       );

@@ -147,6 +147,8 @@ const repositories = {
   gameSync: null,
   gameWriterContext: null,
   completedGames: null,
+  migrationInventoryGateway: null,
+  migrationCoordinator: null,
 };
 
 describe('app/App — listener-fout-detectie na initiële load (PR 5.4a)', () => {
@@ -192,6 +194,8 @@ describe('app/App — listener-fout-detectie na initiële load (PR 5.4a)', () =>
       gameSync: null,
       gameWriterContext: null,
       completedGames: null,
+      migrationInventoryGateway: null,
+      migrationCoordinator: null,
     };
     const { queryByTestId } = render(
       <App
