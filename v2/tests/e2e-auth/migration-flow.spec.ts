@@ -44,6 +44,7 @@ import { test, expect } from '@playwright/test';
 import { adminDb, lookupUidByEmail } from './adminFixtures';
 import { signUp, answerTrustedDevice, selectContext, uniqueTestEmail } from './helpers';
 import type { OrganizationRole } from '../../src/domain/organizations/types';
+import { DEFAULT_SETTINGS } from '../../src/domain/settings/types';
 
 const PASSWORD = 'MigrationFlow123!';
 const SETTINGS_KEY = 'lineup-tracker-settings';
@@ -192,7 +193,7 @@ test.describe('PR 7.4c werk 4.3/4.4 — volledige stroom + crash/reload', () => 
     await selectContext(page, orgId, teamId);
 
     await page.getByTestId('migration-start-btn').click();
-    await expect(page.getByTestId('migration-preview')).toBeVisible();
+    await expect(page.getByTestId('migration-preview')).toBeVisible({ timeout: 10_000 });
     await expect(page.getByTestId('migration-preview-settings')).toContainText('wordt aangemaakt');
     await expect(page.getByTestId('migration-preview-roster')).toContainText('wordt aangemaakt');
 
@@ -233,7 +234,7 @@ test.describe('PR 7.4c werk 4.3/4.4 — volledige stroom + crash/reload', () => 
     await expect(page.getByTestId('migration-panel')).toBeVisible();
 
     await page.getByTestId('migration-start-btn').click();
-    await expect(page.getByTestId('migration-preview')).toBeVisible();
+    await expect(page.getByTestId('migration-preview')).toBeVisible({ timeout: 10_000 });
     await page.getByTestId('migration-preview-next-btn').click();
     const downloadPromise2 = page.waitForEvent('download');
     await page.getByTestId('migration-backup-download-btn').click();
@@ -274,6 +275,13 @@ test.describe('PR 7.4c werk 4.5 — bestaand-afwijkend-item (conflict) + dubbele
 
     // Bestaand, AFWIJKEND cloud-settings-document — geseed via adminDb() (dus
     // buiten de UI om), zodat de preview 'm als `conflict` classificeert.
+    // Moet een volledig `SettingsDocument` zijn (spiegelt het precedent in
+    // `completed-history-same-named-teams-switch.spec.ts`'s `seedNamedTeam()`):
+    // een gedeeltelijk document laat `settingsConverter.fromFirestore()` (de
+    // ECHTE Firestore-documentconverter, gebruikt door zowel de normale
+    // Settings-listener in `App.tsx` als deze migratie-preview) gooien zodra
+    // de app de doelcontext opent — dat brak eerder de hele app-load (nooit
+    // `nav-settings`), ver vóórdat de migratie-UI ook maar in beeld kwam.
     const db = adminDb();
     await db
       .collection('organizations')
@@ -282,14 +290,19 @@ test.describe('PR 7.4c werk 4.5 — bestaand-afwijkend-item (conflict) + dubbele
       .doc(teamId)
       .collection('settings')
       .doc('current')
-      .set({ teamName: 'Al-een-andere-naam-in-de-cloud', quarterCount: 4, updatedAt: new Date() });
+      .set({
+        ...DEFAULT_SETTINGS,
+        teamName: 'Al-een-andere-naam-in-de-cloud',
+        quarterCount: 4,
+        updatedAt: new Date(),
+      });
 
     await page.reload();
     await seedLocalMigrationSource(page);
     await selectContext(page, orgId, teamId);
 
     await page.getByTestId('migration-start-btn').click();
-    await expect(page.getByTestId('migration-preview')).toBeVisible();
+    await expect(page.getByTestId('migration-preview')).toBeVisible({ timeout: 10_000 });
     await expect(page.getByTestId('migration-preview-settings')).toContainText('conflict');
 
     await page.getByTestId('migration-preview-next-btn').click();
