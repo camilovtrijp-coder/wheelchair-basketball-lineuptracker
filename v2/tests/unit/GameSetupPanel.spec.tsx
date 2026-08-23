@@ -10,6 +10,9 @@ import { render, cleanup } from '@testing-library/preact';
 import { GameSetupPanel } from '../../src/ui/game/GameSetupPanel';
 import type { ActiveGame, GamePlayer } from '../../src/domain/game/types';
 import type { CloudClaimStatus } from '../../src/domain/game/writerClaim';
+import type { PwaReadinessStatus } from '../../src/domain/pwa/pwaReadiness';
+
+const READY: PwaReadinessStatus = { kind: 'ready' };
 
 afterEach(() => cleanup());
 
@@ -53,7 +56,11 @@ function readyGame(overrides: Partial<ActiveGame> = {}): ActiveGame {
   };
 }
 
-function renderPanel(cloudClaim: CloudClaimStatus, onRetryClaim = vi.fn()) {
+function renderPanel(
+  cloudClaim: CloudClaimStatus,
+  onRetryClaim = vi.fn(),
+  pwaReadiness: PwaReadinessStatus = READY,
+) {
   return render(
     <GameSetupPanel
       lang="nl"
@@ -65,6 +72,7 @@ function renderPanel(cloudClaim: CloudClaimStatus, onRetryClaim = vi.fn()) {
       saveError={false}
       cloudClaim={cloudClaim}
       onRetryClaim={onRetryClaim}
+      pwaReadiness={pwaReadiness}
     />,
   );
 }
@@ -138,6 +146,7 @@ describe('ui/game/GameSetupPanel: pre-game cloudclaim-gate (PR 7.3a)', () => {
         saveError={false}
         cloudClaim={{ kind: 'blocked', code: 'already-claimed' }}
         onRetryClaim={vi.fn()}
+        pwaReadiness={READY}
       />,
     );
     expect(getByTestId('game-start-btn').textContent).toBe('Minimaal 5 spelers met een naam nodig');
@@ -157,9 +166,82 @@ describe('ui/game/GameSetupPanel: pre-game cloudclaim-gate (PR 7.3a)', () => {
         saveError={false}
         cloudClaim={{ kind: 'blocked', code: 'already-claimed' }}
         onRetryClaim={vi.fn()}
+        pwaReadiness={READY}
       />,
     );
     expect((getByTestId('game-start-btn') as HTMLButtonElement).disabled).toBe(true);
     expect((getByTestId('game-claim-retry') as HTMLButtonElement).disabled).toBe(true);
+  });
+});
+
+describe('ui/game/GameSetupPanel: pre-game PWA-readinesscheck (PR 8.1b)', () => {
+  it("'ready': geen meldingsregel, startknop blijft bruikbaar", () => {
+    const { getByTestId, queryByTestId } = renderPanel({ kind: 'not-required' }, vi.fn(), READY);
+    expect((getByTestId('game-start-btn') as HTMLButtonElement).disabled).toBe(false);
+    expect(queryByTestId('game-pwa-readiness')).toBeNull();
+  });
+
+  it("'unsupported': niet-blokkerend informatief bericht, startknop blijft bruikbaar (stopregel §D)", () => {
+    const { getByTestId } = renderPanel({ kind: 'not-required' }, vi.fn(), { kind: 'unsupported' });
+    const btn = getByTestId('game-start-btn') as HTMLButtonElement;
+    expect(btn.disabled).toBe(false);
+    expect(btn.textContent).toBe('Start wedstrijd');
+    expect(getByTestId('game-pwa-readiness').textContent).toBe(
+      'Geen offline-ondersteuning gedetecteerd op dit apparaat. Alleen-lokaal gebruik werkt gewoon.',
+    );
+  });
+
+  it("'registering': niet-blokkerend informatief bericht, startknop blijft bruikbaar", () => {
+    const { getByTestId } = renderPanel({ kind: 'not-required' }, vi.fn(), { kind: 'registering' });
+    expect((getByTestId('game-start-btn') as HTMLButtonElement).disabled).toBe(false);
+    expect(getByTestId('game-pwa-readiness').textContent).toBe(
+      'De app wordt nog offline-klaar gemaakt. Probeer het zo opnieuw.',
+    );
+  });
+
+  it("'update-pending': niet-blokkerend informatief bericht, startknop blijft bruikbaar", () => {
+    const { getByTestId } = renderPanel({ kind: 'not-required' }, vi.fn(), {
+      kind: 'update-pending',
+    });
+    expect((getByTestId('game-start-btn') as HTMLButtonElement).disabled).toBe(false);
+    expect(getByTestId('game-pwa-readiness').textContent).toBe(
+      'Er staat een update klaar. Overweeg die vóór de wedstrijd bij te werken.',
+    );
+  });
+
+  it("'broken': BLOKKEERT de startknop met een concrete, herstelbare melding", () => {
+    const { getByTestId } = renderPanel({ kind: 'not-required' }, vi.fn(), { kind: 'broken' });
+    const btn = getByTestId('game-start-btn') as HTMLButtonElement;
+    expect(btn.disabled).toBe(true);
+    expect(btn.textContent).toBe(
+      'De offline-gereedheidscheck is mislukt. Probeer opnieuw voordat je start.',
+    );
+    expect(getByTestId('game-pwa-readiness').textContent).toBe(
+      'De offline-gereedheidscheck is mislukt. Probeer opnieuw voordat je start.',
+    );
+  });
+
+  it('roster-redenen gaan vóór een broken PWA-status', () => {
+    const fourPlayers = readyGame().players.slice(0, 4);
+    const { getByTestId } = render(
+      <GameSetupPanel
+        lang="nl"
+        game={readyGame({ players: fourPlayers })}
+        useClassLimit={false}
+        onGameChange={vi.fn()}
+        onGoToRoster={vi.fn()}
+        canWrite={true}
+        saveError={false}
+        cloudClaim={{ kind: 'not-required' }}
+        onRetryClaim={vi.fn()}
+        pwaReadiness={{ kind: 'broken' }}
+      />,
+    );
+    expect(getByTestId('game-start-btn').textContent).toBe('Minimaal 5 spelers met een naam nodig');
+  });
+
+  it('cloudclaim-redenen gaan vóór een broken PWA-status', () => {
+    const { getByTestId } = renderPanel({ kind: 'pending' }, vi.fn(), { kind: 'broken' });
+    expect(getByTestId('game-start-btn').textContent).toBe('Wedstrijd claimen…');
   });
 });

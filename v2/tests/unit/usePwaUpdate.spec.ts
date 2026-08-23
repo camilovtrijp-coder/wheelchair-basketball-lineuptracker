@@ -29,7 +29,7 @@ describe('usePwaUpdate', () => {
     const confirmSpy = vi
       .spyOn(PwaUpdateAdapter.prototype, 'confirmUpdate')
       .mockImplementation(() => undefined);
-    const stateRef = { status: 'update-available' as const };
+    const stateRef = { status: 'update-available' as const, registered: true };
     vi.spyOn(PwaUpdateAdapter.prototype, 'getState').mockImplementation(() => stateRef);
     vi.spyOn(PwaUpdateAdapter.prototype, 'subscribe').mockImplementation((listener) => {
       listener(stateRef);
@@ -47,7 +47,7 @@ describe('usePwaUpdate', () => {
     const confirmSpy = vi
       .spyOn(PwaUpdateAdapter.prototype, 'confirmUpdate')
       .mockImplementation(() => undefined);
-    const stateRef = { status: 'update-available' as const };
+    const stateRef = { status: 'update-available' as const, registered: true };
     vi.spyOn(PwaUpdateAdapter.prototype, 'getState').mockImplementation(() => stateRef);
     vi.spyOn(PwaUpdateAdapter.prototype, 'subscribe').mockImplementation((listener) => {
       listener(stateRef);
@@ -64,7 +64,7 @@ describe('usePwaUpdate', () => {
     const confirmSpy = vi
       .spyOn(PwaUpdateAdapter.prototype, 'confirmUpdate')
       .mockImplementation(() => undefined);
-    const stateRef = { status: 'update-available' as const };
+    const stateRef = { status: 'update-available' as const, registered: true };
     vi.spyOn(PwaUpdateAdapter.prototype, 'getState').mockImplementation(() => stateRef);
     vi.spyOn(PwaUpdateAdapter.prototype, 'subscribe').mockImplementation((listener) => {
       listener(stateRef);

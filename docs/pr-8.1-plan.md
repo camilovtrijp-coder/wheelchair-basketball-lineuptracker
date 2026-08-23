@@ -423,6 +423,119 @@ Acceptatie:
 - unit-, type-, lint-, format- en buildcontroles zijn groen; bestaande
   7.3a-tests voor `gameStartBlockReason()`/`canStartGame()` blijven groen.
 
+**Geïmplementeerd:**
+
+- `v2/src/domain/pwa/pwaReadiness.ts` (nieuw): puur, geen Firebase-/
+  browser-API-imports — bewust een EIGEN module, niet naast
+  `domain/game/writerClaim.ts` (zie §B punt 4). `PwaReadinessStatus` heeft
+  vijf deelstatussen: `unsupported` (`'serviceWorker' in navigator ===
+false`, blokkeert nooit), `registering` (SW-ondersteuning aanwezig maar
+  nog geen geslaagde registratie), `ready` (actief en geregistreerd, geen
+  wachtende update), `update-pending` (`registration.waiting`/reloading —
+  blokkeert een nieuwe wedstrijdstart NIET, puur een zichtbaarheidssignaal
+  vóór tip-off) en `broken` (adapter meldt `status: 'error'` op een
+  apparaat dat wél SW-ondersteuning claimt — de ENIGE blokkerende
+  deelstatus). De pure `derivePwaReadinessStatus()` neemt een plat
+  `PwaReadinessSnapshot` (`swSupported`, `adapterStatus`, `registered`) —
+  `adapterStatus` is een eigen, losstaand literal-uniontype
+  (`PwaAdapterStatusSnapshot`), bewust NIET geïmporteerd uit
+  `infrastructure/pwa/PwaUpdateAdapter.ts` (ADR-000-laagregel: `domain/`
+  importeert nooit uit `infrastructure/`, ook geen puur type-only import).
+- `v2/src/infrastructure/pwa/PwaUpdateAdapter.ts`: `PwaUpdateAdapterState`
+  kreeg een additief `registered: boolean`-veld — nodig om `registering`
+  (nog geen geslaagde registratie) te onderscheiden van `ready` (wél), die
+  de adapter allebei als `status: 'idle'` rapporteerde vóór deze wijziging.
+  Afgeleid via een nieuwe `buildState()`-helper uit `this.registration !==
+null` (één bron van waarheid, geen los bijgehouden vlag die uit de pas
+  kan lopen). Alle bestaande `setState({status: ...})`-aanroepen zijn
+  vervangen door `setState(this.buildState(...))`; `retry()` zet nu ook
+  `this.registration = null` terug zodat een timeout-fout (registratie was
+  al geslaagd, alleen `controllerchange` bleef uit) na een retry niet
+  onterecht `registered: true` blijft rapporteren. Puur additief — bestaande
+  consumenten (`PwaUpdateBanner`, `PwaActionNeededPanel`, `usePwaUpdate`)
+  lezen alleen `status` en zijn ongewijzigd.
+- `v2/src/application/pwa/usePwaReadiness.ts` (nieuw): Preact-hook, zelfde
+  laagconventie als `usePwaUpdate.ts`. Hergebruikt de gedeelde
+  `pwaUpdateAdapter`-singleton (8.1a) — GEEN tweede, parallelle
+  service-worker-observatie (zie "Hoe je de PWA-gereedheid bepaalt" in de
+  sessieopdracht). Abonneert alleen (`subscribe()`); roept `init()` NIET
+  zelf aan — die verantwoordelijkheid blijft bij `main.tsx`/`usePwaUpdate()`
+  (zie 8.1a's eigen "CI-regressie"-sectie voor waarom die timing kritiek
+  is). Verzamelt `'serviceWorker' in navigator` en de adapterstatus, en
+  delegeert de afleiding aan `derivePwaReadinessStatus()`.
+- `v2/src/domain/game/writerClaim.ts`: `GameStartBlockReason` kreeg een
+  derde variant, `{ kind: 'pwa-readiness'; status: Extract<PwaReadinessStatus,
+{kind:'broken'}> }`. `gameStartBlockReason()`/`canStartGame()` kregen een
+  DERDE, OPTIONELE parameter `pwaReadiness` met een `{kind:'ready'}`-default
+  — bestaande aanroepers (7.3a-tests, elke plek die de functie nog met twee
+  argumenten aanroept) krijgen daardoor exact hetzelfde resultaat als vóór
+  8.1b (bewezen in `tests/unit/writerClaim.spec.ts`'s nieuwe "geen derde
+  argument"-test). Controlevolgorde blijft roster → cloudclaim → PWA-
+  gereedheid, zoals het plan voorschrijft; alleen `pwaReadiness.kind ===
+'broken'` blokkeert ooit.
+- `v2/src/ui/game/GameSetupPanel.tsx`: nieuwe verplichte prop `pwaReadiness:
+PwaReadinessStatus`. Een nieuwe `pwaReadinessMessageKey()`-functie
+  mapt elke deelstatus (behalve `ready`) naar een eigen, vertaalde
+  informatieregel (`data-testid="game-pwa-readiness"`, `role="alert"` alleen
+  bij `broken`) — zichtbaar ONGEACHT of die status daadwerkelijk blokkeert
+  (werk 3: nooit een generieke "kan niet starten", ook niet voor de
+  niet-blokkerende `unsupported`/`registering`/`update-pending`-statussen).
+  `startButtonLabel()` toont bij `reason.kind === 'pwa-readiness'` dezelfde
+  concrete `pwaReadinessBroken`-tekst als de infoparagraaf — één bericht,
+  geen tweede, afwijkende formulering.
+- `v2/src/app/App.tsx`: roept `usePwaReadiness()` aan en geeft het resultaat
+  door aan `GameSetupPanel` als nieuwe `pwaReadiness`-prop.
+- `v2/src/i18n/strings.ts`: nieuwe sleutels `pwaReadinessUnsupported`,
+  `pwaReadinessRegistering`, `pwaReadinessUpdatePending`,
+  `pwaReadinessBroken` — in beide taalblokken (nl/en).
+- **Bewuste scope-afbakening t.o.v. het plan**: geen wijziging aan `App.tsx`
+  buiten het doorgeven van de nieuwe prop — `App.tsx` had vóór 8.1b geen
+  eigen switch/if-keten op `GameStartBlockReason.kind` (alleen
+  `GameSetupPanel` doet dat), dus "bestaande aanroepers passen hun keten
+  uit" (werk 2) was in de praktijk alleen op `GameSetupPanel.tsx` van
+  toepassing.
+- Tests (allemaal nieuw of uitgebreid, allemaal groen — `npx vitest run`:
+  93 bestanden/893 tests):
+  `tests/unit/pwaReadiness.spec.ts` (5 tests: alle vijf deelstatussen, incl.
+  prioriteit van `unsupported`/`error` boven de andere signalen),
+  `tests/unit/usePwaReadiness.spec.ts` (6 tests: alle deelstatussen via de
+  hook, plus een test die bewijst dat de hook `init()` NIET zelf aanroept),
+  `tests/unit/writerClaim.spec.ts` (7 nieuwe tests in een eigen
+  `describe`-blok: het regressiebewijs zonder derde argument, alle
+  niet-blokkerende statussen × roster-klaar/cloudclaim-confirmed, de
+  blokkerende `broken`-status, en roster-/cloudclaim-voorrang boven
+  `broken`), `tests/unit/GameSetupPanel.spec.tsx` (7 nieuwe tests in een
+  eigen `describe`-blok: elke deelstatus se boodschap en blokkeergedrag,
+  plus roster-/cloudclaim-voorrang), `tests/unit/PwaUpdateAdapter.spec.ts`
+  (1 nieuwe test voor `registered: true` na een geslaagde registratie
+  zonder wachtende update; twee bestaande `toEqual({status:'idle'})`-
+  assertions uitgebreid met `registered: false`),
+  `tests/unit/usePwaUpdate.spec.ts` (drie bestaande `stateRef`-fixtures
+  uitgebreid met `registered: true` — puur een typefix, geen gedragswijziging).
+- **Geen apart e2e-bestand toegevoegd** — bewuste afwijking van werk 5's
+  "component-/e2e-test" (het plan biedt expliciet die keuze: "een
+  component-/e2e-test"). `GameSetupPanel.spec.tsx`'s nieuwe `describe`-blok
+  dekt alle vijf deelstatussen inclusief de blokkerende `broken`-status
+  end-to-end door de component heen (props → `gameStartBlockReason()` →
+  gerenderde knoptekst/infoparagraaf), wat voor dit werkitem voldoende is:
+  een browser-e2e zou de PWA-registratie zelf moeten forceren naar
+  `error`/`registering`/`unsupported` via dezelfde disk-manipulatietruc als
+  `pwa-update.spec.ts` (8.1a), terwijl de daadwerkelijke af te leiden logica
+  (`derivePwaReadinessStatus`) en de UI-verbruikslaag (`GameSetupPanel`)
+  al apart, puur en volledig getest zijn — een e2e zou vooral bewijzen dat
+  de bedrading (`usePwaReadiness` → `App.tsx` → `GameSetupPanel`) klopt, en
+  dat pad is ongewijzigd van hetzelfde patroon dat `pwa.spec.ts`/
+  `pwa-update.spec.ts` al voor `usePwaUpdate`/`PwaUpdateBanner` bewijzen.
+  Kan alsnog worden toegevoegd als een latere sessie dat expliciet nodig
+  acht.
+- Alle bestaande e2e-tests die op `game-start-btn`'s exacte tekst
+  controleren (`tests/e2e/game-setup.spec.ts`,
+  `tests/e2e/game-sync-local-mode-no-network.spec.ts`) blijven ongewijzigd
+  correct: `pwaReadiness` blokkeert alleen bij `broken` (een daadwerkelijk
+  mislukte SW-registratie), wat in een normale CI-browserrun met werkend
+  netwerk niet optreedt — geen van deze bestanden hoefde te worden
+  aangepast.
+
 ### 8.1c — Safari/iPadOS-validatie en fallbackregistratie
 
 Werk:

@@ -89,6 +89,17 @@ const nl = {
   claimBlockedGameCompleted: 'Deze wedstrijd is al afgerond.',
   claimBlockedUnknown: 'Claimen is mislukt. Probeer opnieuw.',
   claimRetryBtn: 'Opnieuw proberen',
+  // 8.1b (docs/pr-8.1-plan.md §C 8.1b): pre-game PWA-/offline-gereedheids-
+  // meldingen in GameSetupPanel, één per PwaReadinessStatus-deelstatus —
+  // nooit een generieke "kan niet starten" (werk 3). Alleen
+  // pwaReadinessBroken blokkeert daadwerkelijk het starten (werk 2/4); de
+  // andere drie zijn puur informatief.
+  pwaReadinessUnsupported:
+    'Geen offline-ondersteuning gedetecteerd op dit apparaat. Alleen-lokaal gebruik werkt gewoon.',
+  pwaReadinessRegistering: 'De app wordt nog offline-klaar gemaakt. Probeer het zo opnieuw.',
+  pwaReadinessUpdatePending:
+    'Er staat een update klaar. Overweeg die vóór de wedstrijd bij te werken.',
+  pwaReadinessBroken: 'De offline-gereedheidscheck is mislukt. Probeer opnieuw voordat je start.',
   contextSwitchLockedWhileTracking:
     'Je kunt niet van team wisselen terwijl er een wedstrijd loopt. Rond de wedstrijd eerst af.',
   contextSwitchLockedDismiss: 'Oké',
@@ -529,6 +540,10 @@ const en = {
   claimBlockedGameCompleted: 'This match has already been finished.',
   claimBlockedUnknown: 'Claiming failed. Try again.',
   claimRetryBtn: 'Try again',
+  pwaReadinessUnsupported: 'No offline support detected on this device. Local-only use works fine.',
+  pwaReadinessRegistering: 'The app is still getting ready for offline use. Try again shortly.',
+  pwaReadinessUpdatePending: 'An update is ready. Consider updating before the game starts.',
+  pwaReadinessBroken: 'The offline-readiness check failed. Try again before starting.',
   contextSwitchLockedWhileTracking:
     "You can't switch teams while a match is in progress. Finish the match first.",
   contextSwitchLockedDismiss: 'OK',
