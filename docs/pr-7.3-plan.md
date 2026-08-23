@@ -1,8 +1,15 @@
 # Voorbereidingsplan PR 7.3 — actieve wedstrijd single-writer
 
-Status: 7.3a en 7.3b geïmplementeerd (claim/epoch/overname-plumbing +
-pre-game-gate + contextlock + live writer-sync/read-only viewer); 7.3c nog
-niet gestart.
+Status: 7.3a, 7.3b en 7.3c geïmplementeerd (claim/epoch/overname-plumbing +
+pre-game-gate + contextlock + live writer-sync/read-only viewer + de
+overname-bevestigings-UI, exporteerbare "Actie nodig"-items en
+crashherstel-bewijs) — PR 7.3 als geheel klaar voor 7.3-acceptatie/handoff
+richting 7.4. Twee punten blijven expliciet, bewust openstaand (zie 7.3c's
+"Geïmplementeerd"-sectie hieronder): echte iOS/Android-hardwarevalidatie
+(→ 8.1/8.3, geen Apple-apparaat beschikbaar bij de eigenaar, zelfde als het
+5.5c-precedent) en een live-staging-billingmeting (deze sandbox heeft geen
+bereikbaar Firebase-staging-project — de emulatormeting hieronder is wél
+volledig uitgevoerd, zelfde methode/beperking als 7.2c's precedent).
 
 ## A. Doel
 
@@ -442,6 +449,166 @@ scopesplitsing in dit document):**
 Acceptatie: overname is auditbaar en niet dubbel; een oude writer kan niets
 stil overschrijven; beide mobiele runs slagen en open platformafwijkingen gaan
 expliciet naar 8.1/8.3.
+
+**Geïmplementeerd:**
+
+- **Werk 1 (overname-bevestigingsflow):** `takeoverWriter()` had sinds PR 7.3a
+  geen UI-aanroeppunt — dat is hier toegevoegd. Nieuwe
+  `v2/src/ui/game/TakeoverConfirmDialog.tsx`: toont de huidige (ANDERE)
+  writer (`writerUid`/`deviceId`/`writerEpoch`, verkort weergegeven — v2 heeft
+  geen client-side displaynaam-directory voor een willekeurige uid), de
+  laatste bekende serveractiviteit (`GameDocument.lastWriterActivityAt`,
+  PR 7.3a) en — als dit apparaat zelf nog niet-gesynchroniseerde lokale
+  acties heeft — een waarschuwing met het aantal (`GameSyncCoordinator.
+  readSyncDiagnostics()`, nieuw, wraps de bestaande private
+  `readCheckpoint()`+`buildGameSyncDiagnostics()`). Bevestigen is een
+  EXPLICIETE knopklik (`takeover-confirm-btn`) — nooit auto-getriggerd (§B/§D).
+  `app/App.tsx`: nieuwe `showTakeoverConfirm`/`takeoverInFlight`/
+  `takeoverBlockedCode`-state, een "Overnemen…"-knop (`takeover-open-btn`) in
+  de bestaande `cloud-viewer-banner` (PR 7.3b), en `handleConfirmTakeover()`
+  die `coordinator.takeoverWriter(game, writerContext, huidigeEpoch,
+  huidigeRevisie)` aanroept met het epoch/revisie van de ACTUELE (andere)
+  writer zoals de live-viewersubscriptie ('m al kende — geen aparte
+  voorafgaande leesoperatie nodig. Een geslaagde overname zet `cloudClaim`
+  meteen naar `'confirmed'` met de nieuwe identiteit (`isEpochPromotedTakeover()`
+  ziet het eigen nieuwe epoch onmiddellijk, geen wachten op de eerstvolgende
+  listener-snapshot) en triggert direct een `runGameSync()`; een mislukte
+  poging toont de foutcode inline in het dialoog (nieuwe `takeoverBlocked*`-
+  i18n-sleutels, zelfde stijl als `claimBlocked*`) en sluit niet vanzelf.
+  NL/EN-strings: `takeoverOpenBtn`/`takeoverConfirmTitle`/
+  `takeoverCurrentWriterLabel`/`takeoverLastActivityLabel`/
+  `takeoverPendingActionsWarning`/`takeoverConfirmBtn`/`takeoverCancelBtn`/
+  `takeoverBlocked*` (6 foutcodes).
+- **Werk 2 (nieuwe epoch/sequence + exporteerbare "Actie nodig"):**
+  geverifieerd dat sequence-numering na een overname al correct is, GEEN
+  wijziging nodig — `projectGameActions()` (PR 7.3a, `application/game/
+  projectGameForCloud.ts`) stempelt bij ELKE sync-cyclus het ECHTE,
+  actuele serverepoch en `sequence == arrayindex` opnieuw; een nieuwe writer
+  (of de oude writer die zichzelf terugneemt) krijgt dus vanzelf een schone,
+  aaneengesloten sequence vanaf de eigen `game.actions`-array, zonder botsing
+  met wat de vorige epoch al server-bevestigd had (aparte, immutable
+  `actionId`-documenten). De coordinator-brede fencing ("oude queued writes
+  falen bij reconnect") bleek eveneens al volledig aanwezig sinds PR 7.3a:
+  `GameSyncCoordinator.sync()` vergelijkt `writerUid`/`deviceId` VÓÓR
+  `uploadActions()` en stopt met `'actie-nodig'` zodra een ander apparaat de
+  claim overnam — Rules' epoch-fencing op de actions-createregel (punt 11,
+  al sinds PR 7.3a getest in `games-and-actions.spec.ts`) is het onafhankelijke
+  server-side vangnet daarachter. Nieuw is het exportpad: `domain/game/
+  gameSyncDiagnostics.ts` kreeg `unconfirmedGameActions()` (puur — filtert
+  `game.actions` op `checkpoint.confirmedActionIds`, muteert nooit de lokale
+  log), `GameSyncCoordinator.readUnconfirmedActions()` ontsluit dit voor de
+  UI, en nieuw `infrastructure/game/exportPendingGameActions.ts`
+  (`buildPendingGameActionsEnvelope()`/`downloadPendingGameActions()`) —
+  zelfde downloadpatroon als PR 5.3c-2's `exportPendingPayload.ts` voor
+  settings/roster, maar een eigen `lineup-tracker-game-actions`-envelop
+  (acties zijn geen v1-back-upconcept, dus geen misplaatst hergebruik van die
+  envelop). `app/App.tsx`: een nieuwe "Exporteer niet-gesynchroniseerde
+  acties"-knop (`game-sync-export-btn`) naast de bestaande wedstrijd-sync-
+  indicator, alleen zichtbaar bij `status === 'actie-nodig'`.
+- **Werk 3 (crashherstel):** geverifieerd, met tests, dat de bestaande
+  architectuur dit al by construction voorkomt — geen nieuwe outbox nodig
+  (zelfde uitkomst als 7.3b's werk 1/4-bevindingen). De echte schrijfvolgorde
+  in `app/App.tsx`'s `handleGameChange()` is `gameRepo.write(next)`
+  (SYNCHROON, `localStorage.setItem`) vóórdat de fire-and-forget
+  `runGameSync()` ooit start — er bestaat dus geen venster waarin een lokale
+  actie al "onderweg" is naar de cloud maar nog niet duurzaam op schijf staat.
+  Het enige overblijvende crashvenster is tussen een geslaagde server-upload
+  en de lokale checkpointwrite die dat had moeten vastleggen
+  (`GameSyncCoordinator.sync()`: `uploadActions()` eerst, dan pas
+  `checkpoints.write()`) — dat venster is AL veilig by design:
+  `FirestoreGameCloudGateway.uploadActions()` is create-only + idempotent
+  (readback → `alreadyConfirmed`, PR 7.1c/7.3b), dus een retry na zo'n crash
+  raakt gewoon het bestaande server-document i.p.v. een dubbele actie te
+  creëren. `§D "de lokale actielog wordt nooit automatisch verwijderd"` is
+  eveneens al gegarandeerd: alleen `GameRepository.write()`
+  (`app/App.tsx`/`domain/game/finish.ts`-flows) muteert
+  `ActiveGame.actions`, nooit de sync-/checkpointlaag. Nieuwe tests in
+  `GameSyncCoordinator.spec.ts` bewijzen dit expliciet: een volledig
+  ontbrekend checkpoint (alsof de app crashte vóór ELKE checkpointwrite)
+  herstelt gewoon vanaf nul; een server-bevestigde-maar-lokaal-nog-
+  onbevestigde actie (het exacte "tussen upload en checkpoint"-venster) raakt
+  de `alreadyConfirmed`-idempotentie zonder dubbele actie; en herhaalde
+  gesimuleerde checkpointverliezen over meerdere sync-cycli laten de lokale
+  actielog zelf op geen enkel moment krimpen.
+- **Werk 4 (twee-browser-/mobiel-apparaatvalidatie):** nieuwe
+  `v2/tests/e2e-auth/game-sync-takeover.spec.ts` (echte Firebase-emulator,
+  zelfde twee-apparatenpatroon als `game-sync-live-viewer.spec.ts`/
+  `game-sync-second-client-readback.spec.ts`: apparaat A is de echte
+  browser-app, apparaat B een onafhankelijk ingelogde tweede
+  `FirestoreGameCloudGateway`-client via `connectAsSecondClient()`, ECHTE
+  Rules gehandhaafd). Dekt: offline/online scorer A start en scoort, B neemt
+  écht over (`takeoverWriter()`, eigen `deviceId`) — A's eigen coordinator
+  detecteert het conflict en wordt zichtbaar `'actie-nodig'` (geen force-push,
+  §D), de live-viewerbanner + nieuwe "Overnemen…"-knop verschijnen op A, A
+  bevestigt de overname via de ECHTE UI-dialoog (werk 1, epoch+1, geen
+  reload nodig), schrijven hervat meteen, en de wedstrijd is daarna nog
+  gewoon afrondbaar (`finishGameWithOneSegment()`). Dit is GEEN
+  "twee-browsers"-test in de letterlijke zin (Chromium × 2) — het volgt
+  exact hetzelfde, al langer bestaande precedent uit 7.1c/7.3b: één echte
+  browser + één Node-side tweede Firestore-client, wat voor dit doel (Rules
+  daadwerkelijk gehandhaafd tussen twee onafhankelijke identiteiten/
+  apparaten) equivalent bewijs levert. **Kon in deze sandbox NIET
+  daadwerkelijk uitgevoerd worden**: `npx playwright install chromium` faalt
+  hier op een geblokkeerde download (`cdn.playwright.dev` niet bereikbaar,
+  zelfde bevinding als PR 7.3a/7.3b) — opnieuw geverifieerd tijdens deze PR.
+  De nieuwe spec is wél `tsc -b`/`eslint`/`prettier`-schoon en volgt exact het
+  bestaande fixture-patroon van de al in CI groene 7.1c/7.3b-specs; moet in
+  een omgeving met installeerbare Chromium (GitHub Actions) alsnog
+  daadwerkelijk draaien vóór PR 7.3c als volledig geverifieerd geldt. **Update
+  na de eerste échte CI-run (GitHub Actions, PR #69):** de spec draaide daar
+  wél, en legde een testontwerpfout bloot — de oorspronkelijke versie liet A's
+  2e lokale klik ná B's overname RACEN tegen A's eigen live parent-listener
+  (die de overname o.b.v. `isEpochPromotedTakeover()` correct en bedoeld
+  meteen kan gaan blokkeren, PR 7.3b werk 3); in CI won de listener vaak, dus
+  faalde de klik op een uitgeschakelde knop — een testfout, geen
+  app-regressie. Fix: A gaat expliciet offline (`page.context().
+  setOffline(true)`) vlak vóór B's overname, scoort lokaal terwijl offline
+  (deterministisch nooit netwerk-gate, §D), en gaat pas daarna weer online —
+  waarna de reconnect-trigger vanzelf een sync start die op het ECHTE
+  overnameconflict stuit en de listener de overname alsnog ziet. **Echte
+  iOS/Android-hardwarevalidatie is in deze sandbox principieel onmogelijk**
+  (geen fysieke/geëmuleerde mobiele apparaten beschikbaar) — dit wordt, exact
+  zoals dit werk-item's eigen acceptatiecriterium voorschrijft ("open
+  platformafwijkingen gaan expliciet naar 8.1/8.3"), NIET hier gefingeerd
+  maar doorgeschoven naar PR 8.1/8.3, net als het bestaande 5.5c-iOS-punt
+  (`docs/IMPLEMENTATION_PLAN.md`, geen Apple-apparaat beschikbaar bij de
+  eigenaar).
+- **Werk 5 (clientcalls/billable stagingreads-writes tegen de 5.5c-baseline):**
+  zelfde methode als het PR 7.2c-precedent
+  (`pilot-reads-writes-completed-games.spec.ts`) — een reproduceerbare
+  EMULATORMETING, geen live Firestore-factuurmeting. Nieuwe
+  `firebase/tests/rules/pilot-reads-writes-takeover.spec.ts` (3 scenario's,
+  tegen de echte Firestore-emulator): live-viewerabonnement se eerste
+  snapshot (`subscribeToGame()`'s `getDoc()`+`getDocs()`-equivalent) = 2 reads
+  (1 parent + 1 actiondocument); een overname (10d) = 1 write; een hervatte
+  sync ná overname (2 nieuwe action-uploads + 1 snapshotpatch) = 3 writes.
+  Totaal per volledige cyclus: 2 reads/4 writes; × 100 pilot-runs: 200
+  reads/400 writes. Volgende live-updates op een AL open listener zijn in het
+  echte Firestore-billingmodel gratis (geen nieuwe "document read" per
+  gewijzigd veld) en dus bewust niet meegeteld — zelfde afbakening als de
+  twee bestaande pilotbestanden. **Vergelijking met de daadwerkelijke
+  5.5c-staging-baseline (`docs/pr-5.5-onderzoeksrapport.md`,
+  `basketball-tracker-staging`) blijft, exact zoals bij het 7.2c-precedent,
+  een handmatige staging-stap** — deze sandbox heeft geen bereikbaar/
+  ingelogd Firebase-staging-project, dus die vergelijking kon hier niet
+  daadwerkelijk uitgevoerd worden. Wat daarvoor nodig zou zijn: een korte
+  handmatige sessie op de bestaande staging-omgeving (zelfde testaccounts
+  A-D als het 5.5c-protocol, `docs/pr-5.5-handmatig-protocol.md`) die één
+  overname + de bijbehorende hervatte sync uitvoert terwijl de Firebase
+  Console se gebruiksdashboard openstaat, en de daadwerkelijke reads/writes
+  tegen bovenstaande emulatorextrapolatie afzet.
+
+**Tests (samenvatting):** v2-unit-suite 78 bestanden/768 tests (+15 t.o.v.
+7.3b: `gameSyncDiagnostics.spec.ts`/`GameSyncCoordinator.spec.ts` uitgebreid,
+nieuw `exportPendingGameActions.spec.ts`, `AppGameCloudViewer.spec.tsx`
+uitgebreid met 3 overname-UI-scenario's), groen; `tsc -b`, `eslint .`,
+`prettier -c .` schoon. `firebase-base`: `type-check`/`test:unit` (78 tests)
+groen, volledige Rules-emulatorsuite 12 bestanden/219 tests (+3 t.o.v. 7.3b —
+`pilot-reads-writes-takeover.spec.ts`, GEEN wijziging aan `firestore.rules`
+zelf nodig, zie werk 2 hierboven) groen. Playwright-`test:e2e:auth`-suite
+(incl. de nieuwe `game-sync-takeover.spec.ts`) kon in deze sandbox niet
+daadwerkelijk draaien (chromium-installatieblokkade, zie werk 4) — moet in CI
+bevestigd worden.
 
 ## D. Stopregels
 

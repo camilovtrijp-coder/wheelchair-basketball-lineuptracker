@@ -33,10 +33,16 @@ import {
 } from '../domain/game/setup';
 import { finishGame } from '../domain/game/finish';
 import type { ActiveGame, CompletedGame } from '../domain/game/types';
-import { isEpochPromotedTakeover, type CloudClaimStatus } from '../domain/game/writerClaim';
+import {
+  isEpochPromotedTakeover,
+  type CloudClaimStatus,
+  type WriterClaimErrorCode,
+} from '../domain/game/writerClaim';
 import { GameSetupPanel } from '../ui/game/GameSetupPanel';
 import { LiveTrackingPanel } from '../ui/game/LiveTrackingPanel';
+import { TakeoverConfirmDialog } from '../ui/game/TakeoverConfirmDialog';
 import { useGameCloudViewer } from '../ui/game/useGameCloudViewer';
+import { downloadPendingGameActions } from '../infrastructure/game/exportPendingGameActions';
 import { V1MigrationPrompt } from '../ui/game/V1MigrationPrompt';
 import { HistoryPanel } from '../ui/game/HistoryPanel';
 import { StatsPanel } from '../ui/stats/StatsPanel';
@@ -663,6 +669,81 @@ export function App({
     isEpochPromotedTakeover(gameCloudViewer.writerClaim, cloudClaim);
 
   /**
+   * PR 7.3c (docs/pr-7.3-plan.md §C 7.3c werk 1): de sterke
+   * overname-bevestigingsflow — `takeoverWriter()` (PR 7.3a) had tot nu toe
+   * geen UI-aanroeppunt. `showTakeoverConfirm` opent
+   * `TakeoverConfirmDialog` uitsluitend op een expliciete klik op de
+   * "Overnemen…"-knop in de viewer-banner hieronder (§B/§D: nooit
+   * auto-getriggerd). `takeoverBlockedCode` toont een mislukte poging
+   * inline in het dialoog (blijft open, geen stille sluiting) i.p.v. een
+   * losse toast — zelfde "altijd zichtbaar, nooit stilzwijgend"-principe als
+   * de pre-game-claimflow (`GameSetupPanel`'s `claimBlocked*`).
+   */
+  const [showTakeoverConfirm, setShowTakeoverConfirm] = useState(false);
+  const [takeoverInFlight, setTakeoverInFlight] = useState(false);
+  const [takeoverBlockedCode, setTakeoverBlockedCode] = useState<WriterClaimErrorCode | null>(null);
+
+  function handleOpenTakeoverConfirm() {
+    setTakeoverBlockedCode(null);
+    setShowTakeoverConfirm(true);
+  }
+
+  function handleCancelTakeoverConfirm() {
+    if (takeoverInFlight) return;
+    setShowTakeoverConfirm(false);
+    setTakeoverBlockedCode(null);
+  }
+
+  async function handleConfirmTakeover() {
+    const coordinator = repositories.gameSync;
+    const writerContext = repositories.gameWriterContext;
+    const current = latestGameRef.current;
+    const currentClaim = gameCloudViewer.writerClaim;
+    if (!coordinator || !writerContext || !current || currentClaim.kind !== 'other') return;
+    setTakeoverInFlight(true);
+    setTakeoverBlockedCode(null);
+    try {
+      const result = await coordinator.takeoverWriter(
+        current,
+        writerContext,
+        currentClaim.identity.writerEpoch,
+        gameCloudViewer.parent?.revision ?? 0,
+      );
+      if (result.kind === 'confirmed') {
+        confirmedForGameIdRef.current = current.id;
+        setCloudClaim(result);
+        setShowTakeoverConfirm(false);
+        // Een geslaagde overname is precies het moment waarop dit apparaat
+        // weer mag schrijven — een meteen aansluitende sync-poging pikt de
+        // nog-onbevestigde lokale acties op onder het NIEUWE epoch (werk 2:
+        // `projectGameActions()` gebruikt altijd het echte serverepoch, geen
+        // handmatige herstamping hier nodig).
+        runGameSync();
+      } else {
+        setTakeoverBlockedCode(result.code);
+      }
+    } catch {
+      // Onverwachte throw (geen normale `{ok:false, code}`-uitkomst, bv. een
+      // SDK-interne fout) — zonder deze catch blijft het dialoog na een
+      // afgewezen promise onbeperkt in de "bezig…"-staat hangen (regressie:
+      // hetzelfde "altijd zichtbaar, nooit stilzwijgend"-principe als de
+      // pre-game-claimflow hierboven, zie regel ~593 se `.then(..., () =>
+      // setCloudClaim({kind:'blocked', code:'unknown'}))`).
+      setTakeoverBlockedCode('unknown');
+    } finally {
+      setTakeoverInFlight(false);
+    }
+  }
+
+  function handleExportPendingGameActions() {
+    const coordinator = repositories.gameSync;
+    const current = latestGameRef.current;
+    if (!coordinator || !current) return;
+    const unconfirmed = coordinator.readUnconfirmedActions(current);
+    downloadPendingGameActions(current.id, current.organizationId, current.teamId, unconfirmed);
+  }
+
+  /**
    * PR 7.2a (docs/pr-7.2-plan.md §C 7.2a werk 4): per-`CompletedGame.id`
    * cloudsyncstatus voor de Historie-lijst. `pendingFinalizesRef` is de
    * in-memory spiegel (voor de in-flight/retry-guard hieronder) van
@@ -1218,6 +1299,26 @@ export function App({
             testId="game-sync-status-indicator"
           />
         ) : null}
+        {repositories.mode === 'cloud' &&
+        game !== null &&
+        game.phase === 'tracking' &&
+        gameSyncStatus === 'actie-nodig' ? (
+          // PR 7.3c (docs/pr-7.3-plan.md §C 7.3c werk 2/3): exporteerbaar
+          // "Actie nodig"-punt voor de wedstrijd-actielog zelf — spiegelt
+          // `ActionNeededPanel`'s bestaande export-knop voor settings/roster
+          // (PR 5.3c-2), maar dan voor `GameSyncCheckpoint` i.p.v.
+          // `useSyncStatus`'s pending-store. De lokale actielog wordt hier
+          // nooit gewist (§D "de lokale actielog wordt nooit automatisch
+          // verwijderd") — dit downloadt alleen een kopie.
+          <button
+            type="button"
+            className="btn-outline"
+            data-testid="game-sync-export-btn"
+            onClick={handleExportPendingGameActions}
+          >
+            {t('actionNeededExportGameActionsBtn')}
+          </button>
+        ) : null}
         {tab === 'settings' ? (
           <>
             <SettingsPanel
@@ -1360,7 +1461,36 @@ export function App({
                       ? 'viewerFreshnessCache'
                       : 'viewerFreshnessError',
                 )}
+                {' — '}
+                <button
+                  type="button"
+                  className="btn-outline"
+                  data-testid="takeover-open-btn"
+                  onClick={handleOpenTakeoverConfirm}
+                >
+                  {t('takeoverOpenBtn')}
+                </button>
               </p>
+            ) : null}
+            {showTakeoverConfirm ? (
+              <TakeoverConfirmDialog
+                lang={lang}
+                currentWriter={
+                  gameCloudViewer.writerClaim.kind === 'other'
+                    ? gameCloudViewer.writerClaim.identity
+                    : null
+                }
+                lastWriterActivityAt={gameCloudViewer.parent?.lastWriterActivityAt ?? null}
+                pendingActionCount={
+                  game && repositories.gameSync
+                    ? repositories.gameSync.readSyncDiagnostics(game).pendingActionCount
+                    : 0
+                }
+                inProgress={takeoverInFlight}
+                blockedCode={takeoverBlockedCode}
+                onConfirm={handleConfirmTakeover}
+                onCancel={handleCancelTakeoverConfirm}
+              />
             ) : null}
             <LiveTrackingPanel
               lang={lang}
