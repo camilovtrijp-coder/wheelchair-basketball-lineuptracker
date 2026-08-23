@@ -62,9 +62,15 @@ test.describe('v2 PWA — update-detectie en gecontroleerde refresh', () => {
 
     // "Tweede build": dezelfde sw.js-bytes + een testcomment, zodat de
     // browser 'm bij de eerstvolgende update-check als gewijzigd herkent.
+    // `page.route()` intercepteert alleen requests die vanuit deze pagina's
+    // frames komen; de update-checkfetch die de browser zelf voor een
+    // geregistreerde service worker doet, loopt op browsercontext-niveau
+    // (niet aan één pagina gebonden) en wordt dus alleen via
+    // `browserContext.route()` bereikt — vandaar `page.context().route(...)`
+    // i.p.v. `page.route(...)` hier.
     const swResponse = await page.request.get('/sw.js');
     const originalBody = await swResponse.text();
-    await page.route('**/sw.js', async (route) => {
+    await page.context().route('**/sw.js', async (route) => {
       await route.fulfill({
         status: 200,
         contentType: 'text/javascript',
