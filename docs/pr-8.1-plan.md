@@ -157,13 +157,26 @@ Werk:
    `statechange`, en een reactieve "update beschikbaar"-status blootlegt
    zonder dat UI-componenten rechtstreeks met `navigator.serviceWorker`
    praten (zelfde laagregel als ADR-000: `ui/` praat via `application/`,
-   geen rechtstreekse browser-API's in componenten).
+   geen rechtstreekse browser-API's in componenten). De adapter roept
+   `navigator.serviceWorker` NOOIT rechtstreeks aan in z'n constructor —
+   registratie/luisteraars starten pas via een expliciete `init()`-aanroep
+   (of na eerste mount), zodat bestaande App-componenttests (die `jsdom`
+   gebruiken en zich vandaag niets van `serviceWorker` aantrekken, bv.
+   `AppGameCloudViewer.spec.tsx`) niet ongemerkt breken zodra deze adapter
+   er komt (externe review PR #74).
 3. Voeg een klein, i18n-conform UI-element toe (banner/toast) dat verschijnt
    zodra `registration.waiting` gezet is, met een "nu bijwerken"-actie.
    Buiten een `tracking`-wedstrijd mag deze zich ook automatisch na een korte
    time-out zelf bevestigen; zodra er een actieve `tracking`-wedstrijd op dit
    apparaat is (dezelfde `locked`-afleiding als `App.tsx` al gebruikt) blijft
-   de actie altijd handmatig.
+   de actie altijd handmatig. Deze updatebanner is een EIGEN, aparte UI-
+   locatie — niet via `ActionNeededPanel` (dat blijft gereserveerd voor
+   sync-acties op wedstrijd-/back-updata, zie 7.1c/7.2c/7.4b). Een mislukte
+   SW-install of een blijvend uitblijvende `controllerchange` na een
+   bevestigde `skipWaiting`-aanroep is wél een herstelbaar foutscenario en
+   loopt via `ActionNeededPanel` (of een equivalent herstelpad binnen
+   hetzelfde `SyncStatus`-diagnosecontract, zie punt 5 hierboven) — de twee
+   mogen niet door elkaar gaan lopen (externe review PR #74).
 4. Na `postMessage({ type: 'SKIP_WAITING' })` en de daaropvolgende
    `controllerchange` voert de pagina een gecontroleerde `location.reload()`
    uit — nooit een reload buiten die volgorde om, en nooit tijdens een
@@ -188,9 +201,14 @@ Acceptatie:
 
 Werk:
 
-1. Voeg een `PwaReadinessStatus`-type en een pure afleidfunctie toe
-   (`domain/pwa/` of naast `writerClaim.ts`, af te stemmen op waar de
-   bestaande `CloudClaimStatus`-buren staan) die minimaal onderscheidt:
+1. Voeg een `PwaReadinessStatus`-type en een pure afleidfunctie toe in een
+   nieuwe module `domain/pwa/` — bewust GEEN plek naast `writerClaim.ts`:
+   die module gaat specifiek over het single-writer-protocol
+   (writer-claims/epochs), terwijl PWA-gereedheid een orthogonale
+   infrastructuurdimensie is; een aparte module houdt `writerClaim.ts`'s
+   single-responsibility schoon en maakt het makkelijker om later (bv. in
+   8.3) extra PWA-readiness-signalen toe te voegen zonder die module op te
+   blazen (externe review PR #74). Onderscheid minimaal:
    geen-service-worker-ondersteuning, registratie nog bezig, actief en
    geprecached, en "wachtende update aanwezig" (die laatste blokkeert een
    nieuwe wedstrijdstart niet, maar wordt getoond zodat de gebruiker kan
@@ -249,7 +267,13 @@ Werk:
    beschikbaar) — zelfde erkenning als de echte-apparaat-restpunten in
    `docs/pr-7.3-plan.md` §C (7.3c) en `docs/pr-7.4-plan.md` §C (7.4c/werk 5).
    Dit werkitem blijft expliciet open tot iemand met toegang tot echte
-   Safari/iPadOS-hardware het uitvoert en het resultaat hier vastlegt.
+   Safari/iPadOS-hardware het uitvoert en het resultaat hier vastlegt. Zelfde
+   eigenaarschap als de al bestaande iOS-restpuntvermelding in
+   `docs/IMPLEMENTATION_PLAN.md` §17 (rij "Fase 7", 5.5c-poort: "iOS-kant
+   expliciet, apart openstaand — geen Apple-apparaat beschikbaar bij de
+   eigenaar") — geen nieuw, ongerelateerd trackingpunt aanmaken; als dit
+   werkitem klaar is, werk die bestaande §17-vermelding bij i.p.v. een
+   tweede, losse iOS-regel toe te voegen (externe review PR #74).
 4. Werk §B punt 6 van dit document bij met het daadwerkelijke
    verificatieresultaat (welke iOS/iPadOS-versies getest, module-SW of
    classic-fallback gebruikt, eventuele resterende beperkingen) zodra werk 3
@@ -262,6 +286,12 @@ Acceptatie:
   `pwa.spec.ts`-achtige emulatorscenario's als de module-variant
   (Chromium-gebaseerde e2e kan de fallback-registratie zelf al valideren,
   ook zonder echte Safari-hardware);
+- de classic-SW-bundel bevat geen enkel top-level ES-module-`import`-
+  statement (verifieerbaar via een eenvoudige build-outputcheck, bv.
+  `grep -E '^import '` op de gebundelde `sw`-output) — voorkomt een
+  toekomstige, stille regressie als een latere Workbox-versie ergens
+  intern `import`-syntax introduceert die de huidige `injectManifest`-opzet
+  vandaag niet gebruikt (externe review PR #74);
 - een apparaat waar zowel module- als classic-SW-registratie faalt krijgt een
   zichtbare, vertaalde melding en blokkeert nooit stilzwijgend alleen-lokaal
   gebruik van roster/instellingen;
