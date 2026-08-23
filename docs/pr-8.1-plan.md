@@ -358,9 +358,10 @@ mogelijk aangezien Playwright hier niet lokaal draait):**
    dus veilig als dubbele aanroep). Deze fix is lokaal geverifieerd
    (`npx vitest run`: 91 bestanden/866 tests groen, `npx tsc -b`/`eslint`/
    `prettier -c`/`npm run build` allemaal schoon) en gepusht als derde
-   commit op PR #75; bevestiging dat dit ook
-   `completed-history-offline-cache.spec.ts` in CI weer laat slagen volgt
-   uit de eerstvolgende CI-run.
+   commit op PR #75; de eerstvolgende CI-run bevestigde dat zowel
+   `pwa-update.spec.ts` als `completed-history-offline-cache.spec.ts`
+   (en de rest van beide suites, 91 `test:e2e`- + 67 `test:e2e:auth`-tests)
+   weer groen zijn.
 
 - **Bewuste scope-afbakening t.o.v. het plan**: `vite.config.ts`'s
   `registerType: 'autoUpdate'` is NIET aangepast/verwijderd. Die optie stuurt
