@@ -189,6 +189,13 @@ test.describe('PR 7.4c werk 4.3/4.4 — volledige stroom + crash/reload', () => 
   test('preview → herstelback-up → bevestiging → voortgang → completed, met hervatten na reload', async ({
     page,
   }) => {
+    // Deze test asserteert letterlijke NL-teksten uit MigrationPanel — de
+    // suite se standaardlocale is en-US (zie i18n.spec.ts), dus expliciet
+    // NL forceren via het bestaande `lineup-tracker-lang`-mechanisme
+    // (spiegelt tests/e2e/*.spec.ts, i.p.v. de globale Playwright-`locale`
+    // te wijzigen, die eerder onbedoeld de en-US-verwachtingen van andere
+    // specs brak — zie docs/pr-7.4-plan.md §C 7.4c).
+    await page.addInitScript(() => window.localStorage.setItem('lineup-tracker-lang', 'nl'));
     const email = uniqueTestEmail('migration-flow');
     await signUp(page, email, PASSWORD);
     await answerTrustedDevice(page, true);
@@ -273,6 +280,10 @@ test.describe('PR 7.4c werk 4.5 — bestaand-afwijkend-item (conflict) + dubbele
   test('een afwijkend cloud-settings-document blijft een zichtbaar conflict, nooit een overwrite; retry is idempotent', async ({
     page,
   }) => {
+    // Zie de toelichting bij werk 4.3/4.4 hierboven — deze test asserteert
+    // ook letterlijke NL-teksten, dus expliciet NL forceren i.p.v. op de
+    // suite se standaardlocale te vertrouwen.
+    await page.addInitScript(() => window.localStorage.setItem('lineup-tracker-lang', 'nl'));
     const email = uniqueTestEmail('migration-conflict');
     await signUp(page, email, PASSWORD);
     await answerTrustedDevice(page, true);

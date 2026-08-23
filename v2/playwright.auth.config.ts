@@ -19,7 +19,6 @@ export default defineConfig({
   use: {
     baseURL: BASE_URL,
     headless: true,
-    locale: 'nl-NL',
     trace: 'retain-on-failure',
   },
   projects: [
