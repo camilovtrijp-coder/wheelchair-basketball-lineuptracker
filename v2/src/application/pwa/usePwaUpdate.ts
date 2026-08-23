@@ -4,16 +4,22 @@
 // `application/sync/useSyncStatus.ts` (een Preact-hook in de
 // applicatielaag, rond een infrastructuuradapter).
 //
-// De adapter wordt hier één keer per hook-instance aangemaakt
-// (`useRef`) — de constructor raakt `navigator.serviceWorker` NIET aan
-// (zie die klasse se eigen docstring), dus dit is veilig ook in
-// jsdom-componenttests zonder `serviceWorker`-global. `init()` wordt pas in
-// een mount-effect aangeroepen, en alleen als (a) de build productie is
-// (`import.meta.env.PROD` — zelfde gate als de vroegere `main.tsx`-
-// registratie, voorkomt een 404 op een niet-gebouwde `/sw.js` tijdens
-// `vite dev`) en (b) de browser servicewerkers ondersteunt.
+// De adapter is een gedeelde singleton (`pwaUpdateAdapter`, zie
+// `PwaUpdateAdapter.ts`) i.p.v. een eigen instantie per hook-mount —
+// `main.tsx` roept daar zelf al `.init()` op aan bij `window load`, zodat
+// registratie start onafhankelijk van wanneer/of `App` (en dus deze hook)
+// ooit mount (regressie gevonden in PR #75-CI: zonder dit begon registratie
+// pas ná login + teamselectie, i.p.v. bij paginaload zoals vóór 8.1a).
+// De constructor raakt `navigator.serviceWorker` NIET aan (zie die klasse's
+// eigen docstring), dus het importeren van de singleton is veilig ook in
+// jsdom-componenttests zonder `serviceWorker`-global. Deze hook roept
+// `init()` zelf ook aan (idempotent, dus veilig als dubbele aanroep) als
+// fallback voor toekomstige scenario's zonder `main.tsx`, alleen als (a) de
+// build productie is (`import.meta.env.PROD` — voorkomt een 404 op een
+// niet-gebouwde `/sw.js` tijdens `vite dev`) en (b) de browser
+// servicewerkers ondersteunt.
 import { useEffect, useRef, useState } from 'preact/hooks';
-import { PwaUpdateAdapter, type PwaUpdateStatus } from '../../infrastructure/pwa/PwaUpdateAdapter';
+import { pwaUpdateAdapter, type PwaUpdateStatus } from '../../infrastructure/pwa/PwaUpdateAdapter';
 
 export interface PwaUpdateHookState {
   status: PwaUpdateStatus;
@@ -44,11 +50,10 @@ export function usePwaUpdate(
   locked: boolean,
   autoConfirmDelayMs: number = AUTO_CONFIRM_DELAY_MS,
 ): PwaUpdateHookState {
-  const adapterRef = useRef<PwaUpdateAdapter | null>(null);
-  if (adapterRef.current === null) {
-    adapterRef.current = new PwaUpdateAdapter();
-  }
-  const adapter = adapterRef.current;
+  // Gedeelde singleton (zie PwaUpdateAdapter.ts) i.p.v. een eigen instantie
+  // per hook-mount — `main.tsx` initialiseert 'm al op `window load`, ruim
+  // vóór `App`/deze hook ooit mount (na login + teamselectie).
+  const adapter = pwaUpdateAdapter;
 
   const [status, setStatus] = useState<PwaUpdateStatus>(() => adapter.getState().status);
 

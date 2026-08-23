@@ -174,3 +174,22 @@ export class PwaUpdateAdapter {
     if (this.state.status === 'error') this.setState(IDLE_STATE);
   }
 }
+
+// Eén gedeelde instantie voor de hele app-sessie, i.p.v. een nieuwe adapter
+// per `usePwaUpdate()`-mount. Vóór 8.1a registreerde `main.tsx` de service
+// worker onvoorwaardelijk op het `window`-`load`-event — volledig los van
+// login/contextselectie. `usePwaUpdate()` wordt echter pas gemount binnen
+// `App`, die zelf pas na login + team-/orgselectie rendert (zie
+// `main.tsx`: `render(<AuthGate .../>)` eerst, `App` pas veel later via
+// `AuthGate` → `ContextSwitcher`). Zonder een gedeelde singleton die
+// `main.tsx` zelf al op `window load` initialiseert, zou de registratie
+// dus pas beginnen zodra een gebruiker daadwerkelijk een team opent — een
+// regressie op bestaande offline-gereedheidstests
+// (`tests/e2e-auth/completed-history-offline-cache.spec.ts`,
+// `offline-reload-cache-write-second-client.spec.ts`) die verwachten dat de
+// SW al actief kan zijn vóórdat een team ooit geopend is. `main.tsx` roept
+// hierop dus zelf `.init()` aan (zie dat bestand's eigen commentaar);
+// `usePwaUpdate()` abonneert alleen nog en roept `.init()` als veilige,
+// idempotente no-op-achtige fallback aan (bijv. voor toekomstige
+// embed-scenario's zonder `main.tsx`).
+export const pwaUpdateAdapter = new PwaUpdateAdapter();
