@@ -33,7 +33,7 @@ import {
 } from '../domain/game/setup';
 import { finishGame } from '../domain/game/finish';
 import type { ActiveGame, CompletedGame } from '../domain/game/types';
-import type { CloudClaimStatus } from '../domain/game/writerClaim';
+import { isGenuineWriterSupersession, type CloudClaimStatus } from '../domain/game/writerClaim';
 import { GameSetupPanel } from '../ui/game/GameSetupPanel';
 import { LiveTrackingPanel } from '../ui/game/LiveTrackingPanel';
 import { useGameCloudViewer } from '../ui/game/useGameCloudViewer';
@@ -650,9 +650,17 @@ export function App({
   // Alleen als er ECHT een bevestigde ANDERE writer bekend is (nooit tijdens
   // de initiële laadstaat/offline — dan blijft dit apparaat gewoon zelf
   // kunnen scoren, docs/pr-7.3-plan.md §C 7.3b werk 4: "geen UI-await op
-  // server voor score, klok, wissel of segment-save").
+  // server voor score, klok, wissel of segment-save") ÉN alleen als dat een
+  // ECHTE, epoch-bevorderde overname is — een gelijk-epoch writerUid/
+  // deviceId-mismatch (corrupte/anomale serverstaat, PR 7.1c
+  // `game-sync-claim-conflict.spec.ts`) mag de lokale scorebediening nooit
+  // blokkeren, alleen de cloud-syncstatus (`isGenuineWriterSupersession()`,
+  // `domain/game/writerClaim.ts` — regressiefix na PR 7.3b, zie
+  // docs/pr-7.3-plan.md §C 7.3b).
   const isSelfBlockedByOtherWriter =
-    isCloudGameActive && !gameCloudViewer.loading && gameCloudViewer.writerClaim.kind === 'other';
+    isCloudGameActive &&
+    !gameCloudViewer.loading &&
+    isGenuineWriterSupersession(gameCloudViewer.writerClaim, cloudClaim);
 
   /**
    * PR 7.2a (docs/pr-7.2-plan.md §C 7.2a werk 4): per-`CompletedGame.id`

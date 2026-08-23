@@ -54,16 +54,32 @@ class ImmediateSettingsRepository implements AsyncSettingsRepository {
 }
 
 class ImmediateRosterRepository implements AsyncRosterRepository {
+  constructor(private readonly roster: Roster = []) {}
   async read(): Promise<Roster> {
-    return [];
+    return this.roster;
   }
   async write(): Promise<never> {
     throw new Error('niet gebruikt in deze test');
   }
   subscribe(onNext: (roster: Roster, sync: SyncState) => void): () => void {
-    onNext([], SYNCED);
+    onNext(this.roster, SYNCED);
     return () => undefined;
   }
+}
+
+/** Roster die exact overeenkomt met `setupPhaseGame()`'s vijf spelers —
+ * voorkomt dat `App`'s roster-syncEffect (`setup.ts`
+ * `syncGamePlayersWithRoster()`) de vooraf ingestelde `participate`/`start`-
+ * vlaggen tijdens het testen terugzet. */
+function fiveReadyRoster(): Roster {
+  return [1, 2, 3, 4, 5].map((n) => ({
+    id: n,
+    nr: String(n),
+    naam: `Speler ${n}`,
+    kl: '3.0',
+    vrouw: false,
+    jeugd: false,
+  }));
 }
 
 function fakeSyncStatusApi(): SyncStatusApi {
@@ -175,6 +191,77 @@ function fakeGameSync(): {
   return {
     coordinator,
     emitParent: (u) => callbacks?.onParent(u),
+  };
+}
+
+/**
+ * PR 7.3b regressiefix: net als `fakeGameSync()` hierboven, maar inclusief
+ * een `ensureWriterClaim()`-mock die meteen `'confirmed'` teruggeeft met een
+ * gekozen epoch — nodig om `App`'s eigen `cloudClaim`-staat (de
+ * epoch-baseline voor `isGenuineWriterSupersession()`) via de ECHTE
+ * pre-game-claimflow te bereiken i.p.v. rechtstreeks te injecteren.
+ */
+function fakeGameSyncWithClaim(ownEpoch: number): {
+  coordinator: GameSyncCoordinator;
+  emitParent: (u: GameCloudParentUpdate) => void;
+} {
+  let callbacks: GameCloudSubscriptionCallbacks | null = null;
+  const coordinator = {
+    subscribeGame(
+      _org: string,
+      _team: string,
+      _gameId: string,
+      cb: GameCloudSubscriptionCallbacks,
+    ) {
+      callbacks = cb;
+      return () => undefined;
+    },
+    async ensureWriterClaim() {
+      return {
+        kind: 'confirmed' as const,
+        identity: { writerUid: SELF.authorUid, deviceId: SELF.deviceId, writerEpoch: ownEpoch },
+      };
+    },
+    async sync() {
+      return { status: 'idle' as const, confirmedActionIds: [], serverRevision: 0 };
+    },
+  } as unknown as GameSyncCoordinator;
+  return {
+    coordinator,
+    emitParent: (u) => callbacks?.onParent(u),
+  };
+}
+
+function setupPhaseGame(): ActiveGame {
+  const players = [1, 2, 3, 4, 5].map((n) => ({
+    id: `gp-${n}`,
+    rosterId: n,
+    nr: String(n),
+    naam: `Speler ${n}`,
+    kl: '3.0',
+    vrouw: false,
+    jeugd: false,
+    participate: true,
+    start: true,
+  }));
+  return {
+    id: 'game-live',
+    organizationId: ORG_ID,
+    teamId: TEAM_ID,
+    phase: 'setup',
+    players,
+    opponent: 'Tegenstander',
+    competition: '',
+    clockDown: true,
+    limitStr: '14.5',
+    onCourt: [],
+    curQuarter: 1,
+    beginSec: 600,
+    endSec: 600,
+    pendingSwapLineup: null,
+    actions: [],
+    createdAt: '2026-01-01T00:00:00.000Z',
+    startedAt: null,
   };
 }
 
@@ -293,5 +380,103 @@ describe('app/App: cloud-viewer-gating tijdens tracking (PR 7.3b)', () => {
       expect((getByTestId('score-plus1-for') as HTMLButtonElement).disabled).toBe(false),
     );
     expect(queryByTestId('cloud-viewer-banner')).toBeNull();
+  });
+});
+
+describe('app/App: epoch-bewuste supersessie tijdens tracking (regressiefix na PR 7.3b)', () => {
+  it('gelijk-epoch writerUid-mismatch (PR 7.1c-conflictscenario, geen echte overname) blokkeert NIET', async () => {
+    window.localStorage.setItem(
+      activeGameStorageKey(ORG_ID, TEAM_ID),
+      JSON.stringify(setupPhaseGame()),
+    );
+    const { coordinator, emitParent } = fakeGameSyncWithClaim(1);
+    const repositories = {
+      mode: 'cloud' as const,
+      settings: new ImmediateSettingsRepository(),
+      roster: new ImmediateRosterRepository(fiveReadyRoster()),
+      gameSync: coordinator,
+      gameWriterContext: SELF,
+      completedGames: null,
+    };
+
+    const { getByTestId, queryByTestId } = render(
+      <App
+        repositories={repositories}
+        syncStatus={fakeSyncStatusApi()}
+        canWrite={true}
+        canWriteGame={true}
+        organizationId={ORG_ID}
+        teamId={TEAM_ID}
+        organizationName="Org Viewer Test"
+      />,
+    );
+    act(() => getByTestId('nav-game').click());
+    await waitFor(() =>
+      expect((getByTestId('game-start-btn') as HTMLButtonElement).disabled).toBe(false),
+    );
+    act(() => getByTestId('game-start-btn').click());
+    await waitFor(() => expect(getByTestId('score-plus1-for')).toBeTruthy());
+
+    // Serverdocument toont een ANDER apparaat als writer, maar op HETZELFDE
+    // epoch (1) waarop dit apparaat zelf bevestigd claimde — exact het
+    // Admin-SDK-scenario uit `game-sync-claim-conflict.spec.ts`. Geen echte
+    // overname (`takeoverWriter()` verhoogt het epoch altijd), dus de lokale
+    // scorebediening mag niet blokkeren.
+    act(() =>
+      emitParent({
+        doc: { ...parentDocFor(OTHER), writerEpoch: 1 },
+        meta: { fromCache: false, hasPendingWrites: false },
+      }),
+    );
+
+    await waitFor(() => expect(queryByTestId('cloud-viewer-banner')).toBeNull());
+    expect((getByTestId('score-plus1-for') as HTMLButtonElement).disabled).toBe(false);
+  });
+
+  it('strikt hoger epoch (echte takeoverWriter()-overname) blokkeert WEL', async () => {
+    window.localStorage.setItem(
+      activeGameStorageKey(ORG_ID, TEAM_ID),
+      JSON.stringify(setupPhaseGame()),
+    );
+    const { coordinator, emitParent } = fakeGameSyncWithClaim(1);
+    const repositories = {
+      mode: 'cloud' as const,
+      settings: new ImmediateSettingsRepository(),
+      roster: new ImmediateRosterRepository(fiveReadyRoster()),
+      gameSync: coordinator,
+      gameWriterContext: SELF,
+      completedGames: null,
+    };
+
+    const { getByTestId, queryByTestId } = render(
+      <App
+        repositories={repositories}
+        syncStatus={fakeSyncStatusApi()}
+        canWrite={true}
+        canWriteGame={true}
+        organizationId={ORG_ID}
+        teamId={TEAM_ID}
+        organizationName="Org Viewer Test"
+      />,
+    );
+    act(() => getByTestId('nav-game').click());
+    await waitFor(() =>
+      expect((getByTestId('game-start-btn') as HTMLButtonElement).disabled).toBe(false),
+    );
+    act(() => getByTestId('game-start-btn').click());
+    await waitFor(() => expect(getByTestId('score-plus1-for')).toBeTruthy());
+
+    // Serverdocument toont een ANDER apparaat als writer op een HOGER epoch
+    // (2) dan dit apparaat zelf bevestigde (1) — een echte
+    // `takeoverWriter()`-overname. Dit moet wél naar read-only omschakelen.
+    act(() =>
+      emitParent({
+        doc: { ...parentDocFor(OTHER), writerEpoch: 2 },
+        meta: { fromCache: false, hasPendingWrites: false },
+      }),
+    );
+
+    await waitFor(() => expect(queryByTestId('cloud-viewer-banner')).not.toBeNull());
+    expect((getByTestId('score-plus1-for') as HTMLButtonElement).disabled).toBe(true);
   });
 });

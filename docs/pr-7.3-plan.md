@@ -346,6 +346,48 @@ heeft) is wél daadwerkelijk gedraaid en groen. Deze spec moet in een
 omgeving met een installeerbare Chromium (bijv. CI) alsnog daadwerkelijk
 uitgevoerd worden vóórdat PR 7.3b als volledig geverifieerd geldt.
 
+**Regressiefix (na CI-run op PR #68, commit `0cdce2c`):** de eerste versie
+van `isSelfBlockedByOtherWriter` hierboven gebruikte kaal
+`gameCloudViewer.writerClaim.kind === 'other'` — `deriveWriterClaimState()`
+vergelijkt alleen platte `writerUid`/`deviceId`, zonder `writerEpoch`. Dat
+brak de PRE-EXISTING PR 7.1c-test `game-sync-claim-conflict.spec.ts`: die
+test simuleert via de Admin SDK een onverwachte `writerUid` op het
+serverdocument ZONDER `writerEpoch` te verhogen (nooit een ECHTE overname,
+bewust vanuit de client onbereikbaar) en verwacht dat de lokale
+scorebediening dat NOOIT blokkeert — alleen de cloud-sync mag 'actie-nodig'
+melden. Met de kale vergelijking werd deze anomale/corrupte staat ten
+onrechte hetzelfde behandeld als een ECHTE, epoch-bevorderde overname
+(`takeoverWriter()`, PR 7.3a — verhoogt `writerEpoch` altijd met exact 1),
+en schakelde `LiveTrackingPanel` onterecht naar read-only.
+
+Fix: `domain/game/writerClaim.ts` kreeg een nieuwe pure functie
+`isGenuineWriterSupersession(claim, ownClaim)` — `true` alleen als
+`claim.kind === 'other'` ÉN het geobserveerde `writerEpoch` STRIKT hoger is
+dan het epoch dat DIT apparaat zelf bevestigde bij de claim
+(`cloudClaim.identity.writerEpoch`, gezet via `ensureWriterClaim()` — niet
+de statische `GameCloudWriterContext.writerEpoch`, die vóór een claim altijd
+op 0 blijft staan). Ontbreekt een bevestigde eigen claim (`ownClaim.kind !==
+'confirmed'`, bijv. een pagina-herlaad midden in tracking) dan valt de
+functie conservatief terug op de oude platte vergelijking. `deriveWriterClaimState()`
+zelf is ONGEWIJZIGD gebleven — de pre-game-gate (`gameStartBlockReason()`)
+blijft bewust de platte vergelijking gebruiken, want vóór tip-off is elke
+mismatch een legitieme "iemand anders heeft al geclaimd". `app/App.tsx`'s
+`isSelfBlockedByOtherWriter` roept nu `isGenuineWriterSupersession(
+gameCloudViewer.writerClaim, cloudClaim)` aan i.p.v. de kale
+`writerClaim.kind === 'other'`-check.
+
+Nieuwe tests: `writerClaim.spec.ts` (unit, alle combinaties: gelijk epoch,
+lager epoch, hoger epoch, geen bevestigde eigen claim) en twee nieuwe
+component-tests in `AppGameCloudViewer.spec.tsx` die de volledige
+pre-game-claimflow doorlopen (`ensureWriterClaim()` → `game-start-btn` →
+tracking) en bewijzen dat een gelijk-epoch mismatch NIET blokkeert terwijl
+een strikt hoger epoch WEL blokkeert — dit sluit de test-gap die
+`game-sync-live-viewer.spec.ts` (die test een onafhankelijke tweede-client-
+viewer, niet de schrijver se eigen UI-gating) open liet. Volledige v2-
+unit-suite (77 bestanden, 748 tests, incl. de nieuwe hierboven), `tsc -b`,
+`eslint .`, `prettier -c .` en `firebase/` se `type-check`/`test:unit`
+opnieuw gedraaid en groen na deze fix.
+
 **Nog niet gedaan (bewust doorgeschoven naar 7.3c, per de bestaande
 scopesplitsing in dit document):**
 
