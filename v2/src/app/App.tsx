@@ -53,6 +53,9 @@ import type { SyncState, SyncStatus } from '../domain/syncState';
 import { MigrationPanel } from '../ui/migration/MigrationPanel';
 import { canBulkMigrate } from '../domain/migration/capability';
 import type { OrganizationRole } from '../domain/organizations/types';
+import { usePwaUpdate } from '../application/pwa/usePwaUpdate';
+import { PwaUpdateBanner } from '../ui/pwa/PwaUpdateBanner';
+import { PwaActionNeededPanel } from '../ui/sync/PwaActionNeededPanel';
 
 export interface AppProps {
   repositories: ResolvedAppRepositories;
@@ -633,10 +636,21 @@ export function App({
    * een contextwissel na afronden (`game` wordt een verse `'setup'`-opzet
    * zonder claim) moet de lock weer meteen opheffen.
    */
+  const locked = game?.phase === 'tracking' || cloudClaim.kind === 'confirmed';
+
   useEffect(() => {
-    const locked = game?.phase === 'tracking' || cloudClaim.kind === 'confirmed';
     onGameLockChange?.(locked);
-  }, [game?.phase, cloudClaim, onGameLockChange]);
+  }, [locked, onGameLockChange]);
+
+  /**
+   * 8.1a (docs/pr-8.1-plan.md §C 8.1a): update-detectie en gecontroleerde
+   * refresh. Hergebruikt exact dezelfde `locked`-afleiding als hierboven —
+   * zolang die waar is (een `tracking`-wedstrijd of een bevestigde
+   * cloudclaim op dit apparaat) blijft bevestigen altijd handmatig, nooit
+   * een automatische reload (stopregel §D). Zie
+   * `application/pwa/usePwaUpdate.ts` voor de volledige flow.
+   */
+  const pwaUpdate = usePwaUpdate(locked);
 
   /**
    * PR 7.3b (docs/pr-7.3-plan.md §C 7.3b werk 2/3): live cloudviewer-
@@ -1235,6 +1249,19 @@ export function App({
           </button>
         </div>
       </header>
+
+      <PwaUpdateBanner
+        lang={lang}
+        status={pwaUpdate.status}
+        locked={locked}
+        onConfirm={pwaUpdate.confirmUpdate}
+      />
+      <PwaActionNeededPanel
+        lang={lang}
+        visible={pwaUpdate.status === 'error'}
+        onRetry={pwaUpdate.retry}
+        onDismiss={pwaUpdate.dismissError}
+      />
 
       <nav className="app-nav" aria-label={t('settingsTitle')}>
         <button
