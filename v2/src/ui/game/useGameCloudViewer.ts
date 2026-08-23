@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'preact/hooks';
+import { useEffect, useMemo, useRef, useState } from 'preact/hooks';
 import type { GameDocument, GameActionEnvelopeDocument } from 'firebase-base/documents';
 import type { GameSyncCoordinator } from '../../application/game/GameSyncCoordinator';
 import type { GameCloudSnapshotMeta } from '../../application/game/GameCloudGateway';
@@ -40,6 +40,30 @@ export function useGameCloudViewer(
   const actionsMetaRef = useRef<GameCloudSnapshotMeta | null>(null);
   const hadErrorRef = useRef(false);
 
+  // Review-fix (minimax, PR #68 punt 1): ECHT gememoized op `self`s
+  // PRIMITIEVE velden (`authorUid`/`deviceId`), niet op de `self`-
+  // objectreferentie zelf. `self` komt hier binnen als
+  // `repositories.gameWriterContext` (App.tsx), vandaag exact één keer
+  // aangemaakt bij opstart (`selectRepositories.ts`) — dus in de praktijk al
+  // referentiestabiel, maar NIET via `useMemo` gegarandeerd (de oude
+  // docstring hier beweerde dat ten onrechte). Een toekomstige logout/login-
+  // of contextwisselflow die `repositories` herbouwt, zou een
+  // object-identity-dependency stilzwijgend een verouderde `self` laten
+  // vasthouden. Door hier zelf op primitieven te memoizen is `stableSelf`
+  // zowel een geldige effect-dependency (react-hooks/exhaustive-deps is
+  // tevreden, geen eslint-disable meer nodig) als correct reactief op een
+  // gewijzigde identiteit, ongeacht of de aanroeper zelf een stabiele
+  // `self`-referentie doorgeeft.
+  const selfAuthorUid = self?.authorUid ?? null;
+  const selfDeviceId = self?.deviceId ?? null;
+  const stableSelf = useMemo(
+    () =>
+      selfAuthorUid !== null && selfDeviceId !== null
+        ? { authorUid: selfAuthorUid, deviceId: selfDeviceId }
+        : null,
+    [selfAuthorUid, selfDeviceId],
+  );
+
   useEffect(() => {
     parentRef.current = null;
     parentMetaRef.current = null;
@@ -58,7 +82,7 @@ export function useGameCloudViewer(
           actions: actionsRef.current,
           actionsMeta: actionsMetaRef.current,
           hadError: hadErrorRef.current,
-          self,
+          self: stableSelf,
         }),
       );
     }
@@ -80,14 +104,7 @@ export function useGameCloudViewer(
       },
     });
     return unsubscribe;
-    // `self` bewust buiten de dependency-array: in de praktijk een stabiele
-    // referentie (App.tsx memoized `gameWriterContext`), en opnieuw
-    // abonneren puur op een `self`-identiteitswijziging is niet nodig — de
-    // writerclaim-vergelijking in `deriveGameCloudViewerSnapshot()` gebeurt
-    // toch bij elke `recompute()`, dus een gewijzigde `self` komt bij de
-    // eerstvolgende parent-/actions-update alsnog mee.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [coordinator, organizationId, teamId, gameId]);
+  }, [coordinator, organizationId, teamId, gameId, stableSelf]);
 
   return snapshot;
 }

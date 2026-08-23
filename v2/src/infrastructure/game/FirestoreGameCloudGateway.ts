@@ -620,6 +620,14 @@ export class FirestoreGameCloudGateway implements GameCloudGateway {
     callbacks: GameCloudSubscriptionCallbacks,
   ): GameCloudUnsubscribe {
     const gameRef = this.gameRef(organizationId, teamId, gameId).withConverter(gameConverter);
+    // Review-fix (minimax, PR #68 punt 7): deze `orderBy('sequence')` draait
+    // vandaag op Firestore's automatische single-field index — geen entry in
+    // `firestore.indexes.json` nodig. Zodra hier ooit een `where()` aan
+    // toegevoegd wordt (bijv. filteren op een subset acties), heeft Firestore
+    // een COMPOSIETE index nodig die niet automatisch bestaat: dat werkt dan
+    // in de emulator (die composiete indexen niet afdwingt) maar faalt in
+    // productie met een "index niet gevonden"-fout. Vergeet dan niet
+    // `firestore.indexes.json` bij te werken.
     const actionsQuery = query(
       this.actionsCollectionRef(organizationId, teamId, gameId),
       orderBy('sequence'),

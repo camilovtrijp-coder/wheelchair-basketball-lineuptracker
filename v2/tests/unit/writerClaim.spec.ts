@@ -4,7 +4,7 @@ import {
   canStartGame,
   deriveWriterClaimState,
   gameStartBlockReason,
-  isGenuineWriterSupersession,
+  isEpochPromotedTakeover,
   type CloudClaimStatus,
   type WriterClaimState,
 } from '../../src/domain/game/writerClaim';
@@ -150,7 +150,7 @@ describe('domain/game/writerClaim: gameStartBlockReason/canStartGame (PR 7.3a)',
   });
 });
 
-describe('domain/game/writerClaim: isGenuineWriterSupersession (regressiefix na PR 7.3b)', () => {
+describe('domain/game/writerClaim: isEpochPromotedTakeover (regressiefix na PR 7.3b)', () => {
   const ownConfirmed: CloudClaimStatus = {
     kind: 'confirmed',
     identity: { writerUid: 'uid-alice', deviceId: 'device-alice', writerEpoch: 1 },
@@ -161,8 +161,8 @@ describe('domain/game/writerClaim: isGenuineWriterSupersession (regressiefix na 
       kind: 'own',
       identity: { writerUid: 'uid-alice', deviceId: 'device-alice', writerEpoch: 1 },
     };
-    expect(isGenuineWriterSupersession(own, ownConfirmed)).toBe(false);
-    expect(isGenuineWriterSupersession({ kind: 'unclaimed' }, ownConfirmed)).toBe(false);
+    expect(isEpochPromotedTakeover(own, ownConfirmed)).toBe(false);
+    expect(isEpochPromotedTakeover({ kind: 'unclaimed' }, ownConfirmed)).toBe(false);
   });
 
   it('gelijk epoch (PR 7.1c-conflictscenario, Admin SDK zonder overname) blokkeert NIET', () => {
@@ -170,7 +170,7 @@ describe('domain/game/writerClaim: isGenuineWriterSupersession (regressiefix na 
       kind: 'other',
       identity: { writerUid: 'uid-ander-apparaat', deviceId: 'ander-device', writerEpoch: 1 },
     };
-    expect(isGenuineWriterSupersession(otherSameEpoch, ownConfirmed)).toBe(false);
+    expect(isEpochPromotedTakeover(otherSameEpoch, ownConfirmed)).toBe(false);
   });
 
   it('lager epoch dan het eigen bevestigde epoch blokkeert NIET (kan in de praktijk niet voorkomen, maar defensief)', () => {
@@ -178,7 +178,7 @@ describe('domain/game/writerClaim: isGenuineWriterSupersession (regressiefix na 
       kind: 'other',
       identity: { writerUid: 'uid-ander-apparaat', deviceId: 'ander-device', writerEpoch: 0 },
     };
-    expect(isGenuineWriterSupersession(otherLowerEpoch, ownConfirmed)).toBe(false);
+    expect(isEpochPromotedTakeover(otherLowerEpoch, ownConfirmed)).toBe(false);
   });
 
   it('strikt hoger epoch (echte takeoverWriter()-overname) blokkeert WEL', () => {
@@ -186,7 +186,7 @@ describe('domain/game/writerClaim: isGenuineWriterSupersession (regressiefix na 
       kind: 'other',
       identity: { writerUid: 'uid-ander-apparaat', deviceId: 'ander-device', writerEpoch: 2 },
     };
-    expect(isGenuineWriterSupersession(otherHigherEpoch, ownConfirmed)).toBe(true);
+    expect(isEpochPromotedTakeover(otherHigherEpoch, ownConfirmed)).toBe(true);
   });
 
   it('geen bevestigde eigen claim bekend: valt terug op de platte "other"-vergelijking', () => {
@@ -194,8 +194,8 @@ describe('domain/game/writerClaim: isGenuineWriterSupersession (regressiefix na 
       kind: 'other',
       identity: { writerUid: 'uid-ander-apparaat', deviceId: 'ander-device', writerEpoch: 0 },
     };
-    expect(isGenuineWriterSupersession(other, { kind: 'not-required' })).toBe(true);
-    expect(isGenuineWriterSupersession(other, { kind: 'pending' })).toBe(true);
-    expect(isGenuineWriterSupersession(other, { kind: 'blocked', code: 'unknown' })).toBe(true);
+    expect(isEpochPromotedTakeover(other, { kind: 'not-required' })).toBe(true);
+    expect(isEpochPromotedTakeover(other, { kind: 'pending' })).toBe(true);
+    expect(isEpochPromotedTakeover(other, { kind: 'blocked', code: 'unknown' })).toBe(true);
   });
 });

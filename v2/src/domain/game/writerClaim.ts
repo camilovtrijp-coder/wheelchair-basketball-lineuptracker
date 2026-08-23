@@ -144,7 +144,7 @@ export function canStartGame(game: ActiveGame, cloudClaim: CloudClaimStatus): bo
  * writerUid/deviceId-mismatch een legitieme "iemand anders heeft al
  * geclaimd, start niet", los van welk epoch dat andere apparaat draagt.
  */
-export function isGenuineWriterSupersession(
+export function isEpochPromotedTakeover(
   claim: WriterClaimState,
   ownClaim: CloudClaimStatus,
 ): boolean {

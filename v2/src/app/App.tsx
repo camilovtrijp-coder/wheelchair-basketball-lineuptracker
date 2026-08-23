@@ -33,7 +33,7 @@ import {
 } from '../domain/game/setup';
 import { finishGame } from '../domain/game/finish';
 import type { ActiveGame, CompletedGame } from '../domain/game/types';
-import { isGenuineWriterSupersession, type CloudClaimStatus } from '../domain/game/writerClaim';
+import { isEpochPromotedTakeover, type CloudClaimStatus } from '../domain/game/writerClaim';
 import { GameSetupPanel } from '../ui/game/GameSetupPanel';
 import { LiveTrackingPanel } from '../ui/game/LiveTrackingPanel';
 import { useGameCloudViewer } from '../ui/game/useGameCloudViewer';
@@ -654,13 +654,13 @@ export function App({
   // ECHTE, epoch-bevorderde overname is — een gelijk-epoch writerUid/
   // deviceId-mismatch (corrupte/anomale serverstaat, PR 7.1c
   // `game-sync-claim-conflict.spec.ts`) mag de lokale scorebediening nooit
-  // blokkeren, alleen de cloud-syncstatus (`isGenuineWriterSupersession()`,
+  // blokkeren, alleen de cloud-syncstatus (`isEpochPromotedTakeover()`,
   // `domain/game/writerClaim.ts` — regressiefix na PR 7.3b, zie
   // docs/pr-7.3-plan.md §C 7.3b).
   const isSelfBlockedByOtherWriter =
     isCloudGameActive &&
     !gameCloudViewer.loading &&
-    isGenuineWriterSupersession(gameCloudViewer.writerClaim, cloudClaim);
+    isEpochPromotedTakeover(gameCloudViewer.writerClaim, cloudClaim);
 
   /**
    * PR 7.2a (docs/pr-7.2-plan.md §C 7.2a werk 4): per-`CompletedGame.id`
@@ -1336,6 +1336,15 @@ export function App({
         ) : game?.phase === 'tracking' ? (
           <>
             {isSelfBlockedByOtherWriter ? (
+              // Review-note (minimax, PR #68 punt 9, bewust niet opgelost hier
+              // — "Voor 7.3b prima, maar noteer 'm voor 7.3c"): `role="status"`/
+              // `aria-live="polite"` kondigt de STRUCTURELE verschijning van
+              // deze banner aan, maar niet noodzakelijk elke latere
+              // freshness-flip (cache→server→error) — alleen de `innerText`
+              // wijzigt dan, het element blijft aanwezig, en sommige
+              // schermlezers herhalen een `aria-live`-regio niet bij een pure
+              // tekstwijziging zonder nieuwe DOM-node. Bekend gat, gepland voor
+              // 7.3c's bredere UX-pas — geen fix nu.
               <p
                 className="cloud-viewer-banner"
                 data-testid="cloud-viewer-banner"

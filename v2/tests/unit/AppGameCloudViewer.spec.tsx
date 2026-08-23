@@ -198,7 +198,7 @@ function fakeGameSync(): {
  * PR 7.3b regressiefix: net als `fakeGameSync()` hierboven, maar inclusief
  * een `ensureWriterClaim()`-mock die meteen `'confirmed'` teruggeeft met een
  * gekozen epoch — nodig om `App`'s eigen `cloudClaim`-staat (de
- * epoch-baseline voor `isGenuineWriterSupersession()`) via de ECHTE
+ * epoch-baseline voor `isEpochPromotedTakeover()`) via de ECHTE
  * pre-game-claimflow te bereiken i.p.v. rechtstreeks te injecteren.
  */
 function fakeGameSyncWithClaim(ownEpoch: number): {
@@ -380,6 +380,58 @@ describe('app/App: cloud-viewer-gating tijdens tracking (PR 7.3b)', () => {
       expect((getByTestId('score-plus1-for') as HTMLButtonElement).disabled).toBe(false),
     );
     expect(queryByTestId('cloud-viewer-banner')).toBeNull();
+  });
+
+  it('review-fix (minimax, PR #68 punt 6): canWriteGame=false (geen schrijfrecht, los van writerclaim-status) houdt de bediening uit, zonder de viewer-conflictbanner te tonen', async () => {
+    window.localStorage.setItem(
+      activeGameStorageKey(ORG_ID, TEAM_ID),
+      JSON.stringify(trackingGame()),
+    );
+    const { coordinator, emitParent } = fakeGameSync();
+    const repositories = {
+      mode: 'cloud' as const,
+      settings: new ImmediateSettingsRepository(),
+      roster: new ImmediateRosterRepository(),
+      gameSync: coordinator,
+      gameWriterContext: SELF,
+      completedGames: null,
+    };
+
+    const { getByTestId, queryByTestId } = render(
+      <App
+        repositories={repositories}
+        syncStatus={fakeSyncStatusApi()}
+        canWrite={true}
+        canWriteGame={false}
+        organizationId={ORG_ID}
+        teamId={TEAM_ID}
+        organizationName="Org Viewer Test"
+      />,
+    );
+    act(() => getByTestId('nav-game').click());
+
+    // Vóór de eerste parent-snapshot: dit apparaat is niet "geblokkeerd door
+    // een andere writer" (`isSelfBlockedByOtherWriter` is nog false), dus
+    // geen conflictbanner — maar de bediening blijft uit, puur op
+    // `canWriteGame=false` (los van elke writerclaim-status).
+    await waitFor(() => expect(getByTestId('score-plus1-for')).toBeTruthy());
+    expect(queryByTestId('cloud-viewer-banner')).toBeNull();
+    expect((getByTestId('score-plus1-for') as HTMLButtonElement).disabled).toBe(true);
+
+    // Ook nadat dit apparaat zelf als bevestigde writer binnenkomt (dus
+    // `writerClaim.kind === 'own'`, geen supersessie mogelijk) blijft de
+    // bediening uit: `canWriteGame=false` is een permissiegrens los van de
+    // writer-supersessiestatus, en de twee banners/staten mogen niet
+    // conflateren.
+    act(() =>
+      emitParent({
+        doc: parentDocFor(SELF),
+        meta: { fromCache: false, hasPendingWrites: false },
+      }),
+    );
+
+    await waitFor(() => expect(queryByTestId('cloud-viewer-banner')).toBeNull());
+    expect((getByTestId('score-plus1-for') as HTMLButtonElement).disabled).toBe(true);
   });
 });
 

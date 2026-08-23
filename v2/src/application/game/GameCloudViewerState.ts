@@ -49,13 +49,27 @@ export function createEmptyGameCloudViewerSnapshot(): GameCloudViewerSnapshot {
   };
 }
 
+/**
+ * Review-fix (minimax, PR #68 punt 2): vóórdat ZOWEL de parent- als de
+ * actions-listener minstens één snapshot hebben afgeleverd, is er nog geen
+ * samenhangende ("coherente") stand om als `'server'` (live/gezaghebbend) te
+ * tonen — `history` kan dan nog leeg zijn terwijl `parentMeta` al wél
+ * server-bevestigd is (de twee streams zijn onafhankelijk, zie
+ * `deriveGameCloudViewerSnapshot()`s eigen docstring). `actionsMeta === null`
+ * telt daarom NIET simpelweg als "buiten beschouwing" (het oude gedrag —
+ * uitfilteren uit `metas` hieronder liet `'server'` al vóór de eerste
+ * actions-snapshot doorkomen); zolang één van beide nog nooit is aangekomen
+ * valt dit terug op `'cache'` (nooit `'server'`), analoog aan hoe `loading`
+ * hieronder ook al specifiek op "nog geen enkele parent-snapshot" checkt.
+ */
 function combineFreshness(
   parentMeta: GameCloudSnapshotMeta | null,
   actionsMeta: GameCloudSnapshotMeta | null,
   hadError: boolean,
 ): GameCloudFreshness {
   if (hadError) return 'error';
-  const metas = [parentMeta, actionsMeta].filter((m): m is GameCloudSnapshotMeta => m !== null);
+  if (parentMeta === null || actionsMeta === null) return 'cache';
+  const metas = [parentMeta, actionsMeta];
   if (metas.some((m) => m.fromCache || m.hasPendingWrites)) return 'cache';
   return 'server';
 }

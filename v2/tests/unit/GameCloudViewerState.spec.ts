@@ -145,6 +145,32 @@ describe('application/game/GameCloudViewerState (PR 7.3b)', () => {
     expect(snap.history.scoreAgainst).toBe(0);
   });
 
+  it('review-fix (minimax, PR #68 punt 2): freshness is NIET "server" zolang de actions-listener nog geen enkele snapshot leverde, ook al is de parent al server-bevestigd', () => {
+    const snap = deriveGameCloudViewerSnapshot({
+      parent: parentDoc(OTHER),
+      parentMeta: SERVER_META,
+      actions: [],
+      actionsMeta: null,
+      hadError: false,
+      self: SELF,
+    });
+    expect(snap.freshness).not.toBe('server');
+    expect(snap.freshness).toBe('cache');
+  });
+
+  it('review-fix (minimax, PR #68 punt 2): freshness is NIET "server" zolang de parent-listener nog geen enkele snapshot leverde, ook al is actions al server-bevestigd', () => {
+    const snap = deriveGameCloudViewerSnapshot({
+      parent: null,
+      parentMeta: null,
+      actions: [],
+      actionsMeta: SERVER_META,
+      hadError: false,
+      self: SELF,
+    });
+    expect(snap.freshness).not.toBe('server');
+    expect(snap.freshness).toBe('cache');
+  });
+
   it('self: null (defensief) valt terug op een lege identiteit i.p.v. te crashen', () => {
     const snap = deriveGameCloudViewerSnapshot({
       parent: parentDoc(OTHER),

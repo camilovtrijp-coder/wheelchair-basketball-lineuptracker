@@ -136,7 +136,13 @@ describe('ui/game/useGameCloudViewer (PR 7.3b)', () => {
       useGameCloudViewer(fake.coordinator, 'org-1', 'team-1', 'game-1', SELF),
     );
 
-    act(() => fake.emitParent({ doc: parentDoc(OTHER), meta: SERVER_META }));
+    act(() => {
+      fake.emitParent({ doc: parentDoc(OTHER), meta: SERVER_META });
+      // Review-fix (minimax, PR #68 punt 2): freshness is pas 'server' zodra
+      // BEIDE streams minstens één snapshot leverden — ook de actions-stream
+      // moet hier dus eerst emitten.
+      fake.emitActions({ actions: [], meta: SERVER_META });
+    });
     expect(result.current.freshness).toBe('server');
 
     act(() => fake.emitError(new Error('listener failed')));
@@ -166,6 +172,29 @@ describe('ui/game/useGameCloudViewer (PR 7.3b)', () => {
       useGameCloudViewer(fake.coordinator, 'org-1', 'team-1', 'game-1', SELF),
     );
     unmount();
+    expect(fake.unsubscribeSpy).toHaveBeenCalledTimes(1);
+  });
+
+  it('een gewijzigde `self`-identiteit (andere authorUid/deviceId primitieven) meldt het oude abonnement af en start een nieuw (review-fix: geen object-identity-dependency meer)', () => {
+    const fake = fakeCoordinator();
+    const { rerender } = renderHook(
+      ({ self }: { self: { authorUid: string; deviceId: string } }) =>
+        useGameCloudViewer(fake.coordinator, 'org-1', 'team-1', 'game-1', self),
+      { initialProps: { self: SELF } },
+    );
+    expect(fake.subscribeCalls).toEqual(['game-1']);
+    expect(fake.unsubscribeSpy).not.toHaveBeenCalled();
+
+    // Een NIEUW object met dezelfde primitieven mag NIET opnieuw abonneren
+    // (voorkomt onnodige re-subscribes bij elke render).
+    rerender({ self: { authorUid: SELF.authorUid, deviceId: SELF.deviceId } });
+    expect(fake.subscribeCalls).toEqual(['game-1']);
+    expect(fake.unsubscribeSpy).not.toHaveBeenCalled();
+
+    // Andere primitieve waarden (bijv. een toekomstige logout/login-flow die
+    // `repositories.gameWriterContext` herbouwt) MOET wel opnieuw abonneren.
+    rerender({ self: OTHER });
+    expect(fake.subscribeCalls).toEqual(['game-1', 'game-1']);
     expect(fake.unsubscribeSpy).toHaveBeenCalledTimes(1);
   });
 });

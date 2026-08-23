@@ -361,7 +361,7 @@ onrechte hetzelfde behandeld als een ECHTE, epoch-bevorderde overname
 en schakelde `LiveTrackingPanel` onterecht naar read-only.
 
 Fix: `domain/game/writerClaim.ts` kreeg een nieuwe pure functie
-`isGenuineWriterSupersession(claim, ownClaim)` — `true` alleen als
+`isEpochPromotedTakeover(claim, ownClaim)` — `true` alleen als
 `claim.kind === 'other'` ÉN het geobserveerde `writerEpoch` STRIKT hoger is
 dan het epoch dat DIT apparaat zelf bevestigde bij de claim
 (`cloudClaim.identity.writerEpoch`, gezet via `ensureWriterClaim()` — niet
@@ -372,7 +372,7 @@ functie conservatief terug op de oude platte vergelijking. `deriveWriterClaimSta
 zelf is ONGEWIJZIGD gebleven — de pre-game-gate (`gameStartBlockReason()`)
 blijft bewust de platte vergelijking gebruiken, want vóór tip-off is elke
 mismatch een legitieme "iemand anders heeft al geclaimd". `app/App.tsx`'s
-`isSelfBlockedByOtherWriter` roept nu `isGenuineWriterSupersession(
+`isSelfBlockedByOtherWriter` roept nu `isEpochPromotedTakeover(
 gameCloudViewer.writerClaim, cloudClaim)` aan i.p.v. de kale
 `writerClaim.kind === 'other'`-check.
 
@@ -386,7 +386,10 @@ een strikt hoger epoch WEL blokkeert — dit sluit de test-gap die
 viewer, niet de schrijver se eigen UI-gating) open liet. Volledige v2-
 unit-suite (77 bestanden, 748 tests, incl. de nieuwe hierboven), `tsc -b`,
 `eslint .`, `prettier -c .` en `firebase/` se `type-check`/`test:unit`
-opnieuw gedraaid en groen na deze fix.
+opnieuw gedraaid en groen na deze fix. De PRE-EXISTING
+`game-sync-claim-conflict.spec.ts` (het scenario dat deze regressiefix
+rechtstreeks raakt) is opnieuw expliciet geverifieerd in de CI-run op commit
+`a6fc08d` (GitHub Actions, `v2-e2e`-job) — nog steeds groen na deze fix.
 
 **Nog niet gedaan (bewust doorgeschoven naar 7.3c, per de bestaande
 scopesplitsing in dit document):**
@@ -402,6 +405,26 @@ scopesplitsing in dit document):**
   het protocol op Rules-/coordinator-/component-/emulator-niveau (inclusief
   één live-listener-e2e-spec, nog niet daadwerkelijk in browser gedraaid in
   deze omgeving, zie hierboven), niet op echte iOS/Android-hardware.
+- **Persistente epoch-baseline over een paginaherlaad heen (review-note,
+  minimax, PR #68 punt 3):** `isEpochPromotedTakeover()` valt terug op de
+  platte `writerClaim.kind === 'other'`-vergelijking zolang `cloudClaim.kind
+  !== 'confirmed'` — o.a. het venster vlak ná een paginaherlaad midden in
+  tracking, wanneer een verse `ensureWriterClaim()` nog `'pending'` is. In
+  dat venster kan een gelijk-epoch writerUid/deviceId-mismatch (het
+  anomale/corrupte-staat-scenario, zie de regressiefix hierboven) de
+  scorebediening opnieuw TIJDELIJK/onterecht naar read-only laten omschakelen
+  totdat de herclaim bevestigt — een transiënt fout-positief, geen
+  dataverliesrisico, maar wel een UX-hobbel. Een echte oplossing vergt een
+  PERSISTENTE `confirmedEpochBaselineRef` (het laatst bevestigde eigen
+  writerEpoch voor deze wedstrijd, bewaard over een reload heen — bijv. via
+  een nieuw veld op `LocalStorageGameSyncCheckpointRepository` — i.p.v. alleen
+  in-memory `cloudClaim`-state) zodat de epoch-vergelijking ook tijdens het
+  'pending'-venster de juiste baseline heeft. Dit is een echte
+  product-/architectuurkeuze (welke garanties geeft zo'n bewaarde baseline na
+  bijv. een `takeoverWriter()` door een ANDER apparaat terwijl dit apparaat
+  offline was?) en daarom bewust NIET blind gefixed in 7.3b — reviewer noemt
+  dit zelf "misschien voor 7.3c; nu niet blokkerend". Opgenomen als expliciete
+  7.3c-kandidaat.
 
 ### 7.3c — overname, recovery en echte-apparaatvalidatie
 
