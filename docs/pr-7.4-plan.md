@@ -1,8 +1,8 @@
 # Voorbereidingsplan PR 7.4 — bestaande gebruiker naar cloud
 
-Status: 7.4a (inventarisatie, mapping en preview) geïmplementeerd — zie
-"Geïmplementeerd" onder §C 7.4a. 7.4b (hervatbare migratiecoordinator) en
-7.4c (migratie-UI en volledige e2e) nog niet gestart.
+Status: 7.4a (inventarisatie, mapping en preview) en 7.4b (hervatbare
+migratiecoordinator) geïmplementeerd — zie "Geïmplementeerd" onder §C 7.4a/
+7.4b. 7.4c (migratie-UI en volledige e2e) nog niet gestart.
 
 ## A. Doel en relatie met PR 6.6
 
@@ -190,6 +190,215 @@ scorer/viewer krijgt geen bulkactie.
 
 Acceptatie: retry/reload is idempotent; gedeeltelijke fout meldt nooit succes;
 context- of Rules-afwijzing blijft herstelbaar en exporteerbaar.
+
+**Geïmplementeerd:**
+
+- `v2/src/domain/migration/run.ts` (nieuw, puur): de vijf-statusverzameling
+  (`MigrationRunStatus`) en de per-item-statusverzameling
+  (`MigrationRunItemStatus`: `pending`/`confirmed`/`conflict`/`failed`/
+  `compensated`/`compensationFailed`). `createMigrationRun()` bouwt een verse
+  run uit een `allowed: true`-preview — neemt UITSLUITEND items mee met
+  actie `create`/`alreadyPresentIdentical`/`conflict`
+  (`excludedTrackingGame`/`needsSeparateDecision` horen nooit tot een
+  bulkrun, §D: "Geen trackinggame via bulkpad om de writerclaim heen").
+  `alreadyPresentIdentical` start meteen als `confirmed` (werk 4: "Detecteer
+  semantisch gelijke bestaande items als bevestigd", geen write), `conflict`
+  start meteen als `conflict` (nooit een write-poging). `runId` is bewust
+  altijd `preview.manifestHash` — dezelfde preview levert dus altijd
+  dezelfde run-ID op (§B "Retry maakt geen duplicaat" ook op runniveau
+  toegepast). `deriveSettledMigrationRunStatus()` is de ENIGE plek die
+  `status` mag berekenen (nooit los van de itemset gezet): `'running'`
+  bestaat expliciet NIET als opgeslagen waarde — dat is een transiënte
+  live-status, uitsluitend zichtbaar terwijl een coordinator-aanroep
+  in-flight is. Volgorde: `rollbackRequested` domineert alles
+  (`compensationFailed` als een compensatie faalde, anders altijd `paused`
+  — NOOIT `completed`, zie §B "geen vals 'alles teruggedraaid'"); dan
+  `conflict`/`failed` → `actionNeeded`; dan alles `confirmed` → `completed`;
+  anders `paused`.
+- `v2/src/domain/migration/recoveryBackup.ts` (nieuw, puur): werk 1's
+  "downloadbare lokale herstelback-up" hergebruikt LETTERLIJK PR 6.6's
+  back-upformaat (`domain/backup/export.ts` `buildBackupPayload()` +
+  `infrastructure/backup/downloadBackupFile.ts`, ongewijzigd) i.p.v. een
+  tweede exportformaat — de herstelback-up is een gewone, met de bestaande
+  back-upflow importeerbare v2-back-up. `buildMigrationRecoveryBackupData()`
+  neemt uitsluitend `status: 'ok'`-secties mee (een `'corrupt'`-sectie
+  bereikt dit nooit, `preview.ts` weigert de hele preview al eerder).
+- `v2/src/domain/migration/preview.ts`: `resolveAction()` GEËXPORTEERD
+  (was module-privaat in 7.4a) — `MigrationCoordinator` hergebruikt exact
+  dezelfde create/alreadyPresentIdentical/conflict-formule voor de
+  "vlak voor bevestiging"-recheck, geen tweede implementatie.
+- `v2/src/application/migration/` (nieuw):
+  - `MigrationRunRepository.ts`: lokale poort, sleutel = DOELcontext
+    (spiegelt `GameSyncCheckpointRepository`/`PendingFinalizeRepository`'s
+    synchrone boolean-faalcontract).
+  - `CloudMigrationRunGateway.ts`: cloudpoort voor het manifest —
+    `ensureRun()` (create-only kernvelden) + `patchRunCheckpoint()`
+    (revisie-bewaakte checkpointpatch), spiegelt `GameCloudGateway`'s
+    `ensureGame()`/`patchSnapshot()`-paar.
+  - `MigrationWriteGateway.ts`: poort voor de daadwerkelijke itemwrite —
+    `writeSettings()`/`writeRoster()`/`writeCompletedGame()`/
+    `compensateCompletedGame()`. De implementatie componeert UITSLUITEND
+    bestaande gateways (werk 3-eis: "Maak geen tweede afwijkend
+    Firestorepad").
+  - `projectMigratedGameForCloud.ts`: `projectMigratedGameParentSnapshot()`
+    bouwt een synthetische `games/{sourceGameId}`-parentsnapshot uit een
+    reeds-bevroren `CompletedGame` — nodig omdat firestore.rules'
+    `completedGames`-createregel (punt 16/17) een `games/{sourceGameId}`-
+    document met de aanroeper als writer eist, ook al bestaat de
+    bijbehorende `ActiveGame` allang niet meer lokaal. `phase: 'tracking'`
+    (een afgeronde wedstrijd heeft per definitie getrackt), score/
+    segmentcount 1:1 van de bevroren `CompletedGame` (geen `deriveGameHistory()`-
+    herberekening — er is geen actielog meer).
+  - `MigrationCoordinator.ts`: de orkestrator zelf, mirrort
+    `GameSyncCoordinator`'s opzet volledig.
+    - `prepareRun(preview, createdBy)`: hervat een bestaande lokale run met
+      hetzelfde `manifestHash`, of bouwt een verse run
+      (`runId === manifestHash`) en `ensureRun()`t 'm op de cloud
+      (best-effort — zie hieronder). Een bestaande, nog niet afgeronde run
+      onder een ANDER manifest voor dezelfde doelcontext wordt nooit
+      stilzwijgend vervangen (`blockedByExistingRunId`).
+    - `runMigration(run, local, writer, currentContext)`: (1)
+      capability-/contextrecheck (`isPreviewStillValid()`) — bij mismatch
+      worden alle nog-herprobeerbare items `failed` met een zichtbare
+      reden, nooit stil genegeerd; (2) een VERSE
+      `CloudMigrationInventoryGateway.readTargetSnapshot()`-lezing +
+      herclassificatie van elk nog niet bevestigd item via `resolveAction()`
+      (werk 4's "vlak voor bevestiging"-recheck); (3) itemsgewijs schrijven
+      met server-readback + checkpoint per stap (lokaal ÉN cloud, zie
+      ontwerpbeslissing hieronder), stopt bij de eerste ECHTE fout
+      (netwerk/Rules-afwijzing) — een gedetecteerd `conflict` blokkeert
+      alleen dát item, niet de andere (onafhankelijke domeinobjecten).
+      Veilig herhaaldelijk aan te roepen: `isMigrationRunItemRetryable()`
+      slaat alle al-afgehandelde items over.
+    - `abortAndCompensate(run, deletedBy)`: zet `rollbackRequested` (stopt
+      onmiddellijk verdere writes), compenseert daarna elk al geschreven
+      (`confirmed`) `completedGame`-item via
+      `tombstoneCompletedGame()` (PR 7.2c-precedent, hergebruikt).
+      Settings/roster blijven bewust ONGECOMPENSEERD — zie ontwerpbeslissing
+      hieronder.
+- `v2/src/infrastructure/migration/` (uitgebreid):
+  - `LocalStorageMigrationRunRepository.ts`: fail-closed shape-check +
+    contextvalidatie, spiegelt `LocalStorageGameSyncCheckpointRepository`.
+  - `FirestoreCloudMigrationRunGateway.ts`: bewaart
+    `organizations/{orgId}/teams/{teamId}/migrationRuns/{runId}`. Elke
+    aanroep aan `withTimeout()` gebonden (zelfde patroon als
+    `FirestoreGameCloudGateway.ts`).
+  - `FirestoreMigrationWriteGateway.ts`: componeert
+    `FirestoreSettingsRepository`/`FirestoreRosterRepository` (settings/
+    roster, wacht op hun `settled`-Promise voor een echte server-
+    bevestiging) en `GameCloudGateway.ensureGame()`/`claimWriter()`/
+    `finalizeCompletedGame()`/`tombstoneCompletedGame()` (completedGame +
+    compensatie) — GEEN nieuwe rauwe `setDoc()`/`updateDoc()` op een nieuw
+    pad, exact werk 3's eis.
+- **Firestore Rules** (`firebase/firestore.rules`, nieuw pad
+  `migrationRuns/{runId}`, zusje van `games/{gameId}`): lezen voor elk
+  teamlid (`canReadTeam`, zelfde precedent als settings/roster/games/
+  completedGames); create/update alleen voor bulkmigratie-rollen
+  (`canManageTeamData` — vandaag exact `canBulkMigrate()`'s allowlist,
+  zie `domain/migration/capability.ts`'s docstring voor waarom dit toch
+  aparte predikaten blijven); create-only kernvelden (manifestHash/source/
+  target/callerRole/contextFingerprint/createdBy/createdAt blijven
+  onveranderlijk bij een update); optimistische concurrency op `revision`
+  (spiegelt `games`); `rollbackRequested` mag alleen `false → true`, nooit
+  terug; geen hard delete (auditbewijs, spiegelt completedGames' tombstone-
+  in-plaats-van-delete). Nieuwe suite `firebase/tests/rules/migration-
+  runs.spec.ts` (8 tests: rolgebaseerde create/read, `createdBy`-eis,
+  cross-org-isolatie, kernveld-immutabiliteit, revisie-concurrency,
+  eenrichtings-`rollbackRequested`, geen delete) — volledige Rules-suite
+  blijft groen (13 bestanden/227 tests, was 12/219).
+- **Ontwerpbeslissing — lokaal-vs-cloud manifest-split** (§B: "Migratie
+  gebruikt een cloud `migrationRun`-manifest..."): een `MigrationRun`
+  bestaat in TWEE vormen. De LOKALE kopie
+  (`MigrationRunRepository`/`LocalStorageMigrationRunRepository`) is de
+  offline-hervatbare bron — spiegelt exact `GameSyncCheckpoint`/
+  `PendingFinalizeRepository`'s rol: reload/crash zonder netwerk mag nooit
+  de voortgang kwijtraken. De CLOUD-kopie
+  (`CloudMigrationRunGateway`/`FirestoreCloudMigrationRunGateway`) is het
+  audit-/cross-apparaatbewijs — "een volledig bevestigde run" (§B)
+  impliceert een serverbron, niet uitsluitend een lokale claim.
+  `MigrationCoordinator.persist()` schrijft na elke itemstap naar BEIDE
+  (eerst lokaal — de bron van waarheid voor hervatten — dan best-effort
+  naar de cloud). Cloud-checkpointpersistentie is BEWUST best-effort: de
+  daadwerkelijke voortgang zit in settings/roster/completedGames zelf
+  (via `MigrationWriteGateway`), niet in het manifest — een tijdelijk
+  falende cloud-patch blokkeert de migratie zelf niet, een latere
+  `persist()`-aanroep probeert opnieuw (eerst `ensureRun()` als er nog
+  nooit een geslaagde cloud-create was, herkenbaar aan `cloudRevision < 0`).
+- **Ontwerpbeslissing — settings/roster hebben géén Firestore-optimistische-
+  concurrency** (anders dan games/completedGames): firestore.rules'
+  bestaande `settings`/`roster`-paden (PR 5.3) kennen geen revisie-/
+  create-only-eis, dus een `setDoc()` overschrijft onvoorwaardelijk. Om
+  werk 4's "nooit een overwrite" bij een conflict tóch waar te maken, doet
+  `runMigration()` VLAK VOOR elke schrijfronde een verse
+  `readTargetSnapshot()` en herclassificeert elk nog niet bevestigd item —
+  pas een verse `create`-classificatie leidt tot een write. Dit sluit het
+  racevenster niet volledig (er blijft een klein venster tussen recheck en
+  de write open, zolang firestore.rules zelf geen concurrency-veld voor
+  settings/roster afdwingt), maar dat is een BESTAAND gat uit PR 5.3, geen
+  nieuw gat van 7.4b — bewust niet "gefixed" met een Rules-wijziging buiten
+  scope (een cross-cutting wijziging aan settings/roster's schrijfcontract
+  raakt elke bestaande aanroeper, niet alleen migratie). `completedGames`
+  zelf zijn wél volledig race-veilig: firestore.rules' create-only-regel
+  (punt 16/17, `getAfter()`-binding) beschermt daar al onvoorwaardelijk
+  tegen een overwrite, ongeacht deze recheck.
+- **Ontwerpbeslissing — rollback/compensatiescope** (§B: "reeds geschreven
+  migratie-items worden veilig gecompenseerd of getombstoned"): alleen
+  `completedGame`-items worden daadwerkelijk gecompenseerd (tombstone,
+  PR 7.2c-precedent hergebruikt via `MigrationWriteGateway
+  .compensateCompletedGame()`). Settings/roster blijven bewust
+  ONGECOMPENSEERD — ze zijn SINGLETON-documenten (`settings/current`/
+  `roster/current`), geen append-only geschiedenis zoals `completedGames`.
+  "Compenseren" zou moeten betekenen: terug naar de staat vóór deze
+  migratie — maar die is voor een bestaande-gebruikersmigratie (§A: een
+  team dat lokaal-only was) typisch "nog niet aanwezig", en er bestaat
+  sowieso geen Rules-toegestaan delete-pad voor settings/roster. Reversie
+  naar "weer afwezig" zou bovendien, als een ander teamlid inmiddels op de
+  net-aangemaakte settings/roster verder werkt, een ECHTE wijziging ongedaan
+  maken — riskanter dan laten staan. §B eist "veilig gecompenseerd OF
+  getombstoned", niet "elk itemtype letterlijk ongedaan maken" — voor deze
+  twee itemtypes is "stoppen, laten staan, zichtbaar documenteren in het
+  manifest" de veiligere lezing. Een rollback-run wordt daarom NOOIT
+  `completed` gerapporteerd (`deriveSettledMigrationRunStatus()`, zie
+  boven) — de opgeslagen status blijft `paused` (of `compensationFailed`
+  als de completedGame-tombstone zelf faalt), nooit een vals "alles
+  teruggedraaid".
+- **Werk item 5 — "lokale bron nooit automatisch verwijderd"**: geen enkel
+  bestand in 7.4b importeert een verwijder-/clear-methode van
+  settings/roster/activeGame/completedGame-lokale-repositories. De enige
+  `clear()` in deze PR (`MigrationRunRepository.clear()`) ruimt UITSLUITEND
+  het lokale RUN-checkpoint op, wordt door `MigrationCoordinator` zelf
+  NERGENS aangeroepen (expliciet gereserveerd voor een toekomstige 7.4c-
+  "nieuwe migratie starten"-actie), en raakt nooit de gemigreerde
+  brondata zelf. Bewezen via `migrationCoordinator.spec.ts`'s
+  "lokale bron blijft onaangeraakt"-test (het meegegeven
+  `MigrationLocalSource`-object wordt na een volledige `runMigration()`
+  byte-voor-byte ongewijzigd teruggevonden).
+- **Bewust NIET gebouwd (buiten scope van 7.4b)**: geen App.tsx-wiring/UI
+  (7.4c-scope, plan §C 7.4c werk 1), geen `activeGame`-migratiepad (§D:
+  "Geen trackinggame via bulkpad om de writerclaim heen" —
+  `createMigrationRun()` neemt `activeGame`-items nooit mee, `writeItem()`
+  bewaakt dit defensief nogmaals), geen volledige race-sluiting voor
+  settings/roster-conflicten (zie ontwerpbeslissing hierboven — een
+  bestaand PR-5.3-gat, geen nieuw 7.4b-gat).
+- Tests: `v2/tests/unit/migrationRun.spec.ts` (11 tests, domeinlaag:
+  run-opbouw uit preview, statusderivatie inclusief rollback-/
+  compensatiedominantie, item-predikaten) en
+  `v2/tests/unit/migrationCoordinator.spec.ts` (9 tests, application-laag
+  met fakes voor alle vier poorten: happy path, hervatten na een mislukte
+  stap zonder al-bevestigde items opnieuw te schrijven, idempotente
+  herhaalde aanroep op een voltooide run, vlak-voor-bevestiging-conflict
+  zonder write, reeds-bekend-conflict-vanaf-het-begin, rollback +
+  compensatie, compensationFailed bij een mislukte tombstone-poging,
+  contextwissel blokkeert zichtbaar, lokale bron blijft onaangeraakt).
+- **Testresultaten**: v2 `vitest run` 84 bestanden/825 tests groen (20
+  nieuw); v2 `tsc -b` + `eslint .` + `prettier -c .` schoon; firebase
+  `npm run verify` (type-check + unit-tests + volledige Rules-emulatorsuite,
+  13 bestanden/227 tests, 8 nieuw) groen. Playwright e2e NIET lokaal
+  uitgevoerd: `npx playwright install chromium` faalt nog steeds met `403`
+  op `cdn.playwright.dev` (geblokkeerde CDN in deze sandbox) — zelfde
+  bekende beperking als bij elke eerdere PR in deze reeks. Niet gemist:
+  7.4b heeft geen UI (dat is expliciet 7.4c-scope), dus er is niets om
+  end-to-end te bevestigen vóór die PR.
 
 ### 7.4c — migratie-UI en volledige e2e
 

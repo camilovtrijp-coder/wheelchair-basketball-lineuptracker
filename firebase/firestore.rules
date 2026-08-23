@@ -910,6 +910,58 @@ service cloud.firestore {
 
           allow delete: if false;
         }
+
+        // ---- migrationRuns/{runId}: PR 7.4b — hervatbaar migratiemanifest ----
+        // (docs/pr-7.4-plan.md §B/§C 7.4b werk 1/2). Zusje van games/{gameId}
+        // qua schrijfstijl: create-only kernvelden + revisie-bewaakte
+        // checkpointpatch. `canManageTeamData` spiegelt bewust
+        // `domain/migration/capability.ts`'s `canBulkMigrate()`-allowlist
+        // (`organizationOwner`/`organizationAdmin`/`coach` — vandaag exact
+        // dezelfde rollen, zie die docstring voor waarom dit toch een eigen
+        // predikaat blijft aan de domeinkant).
+        match /migrationRuns/{runId} {
+          allow read: if canReadTeam(orgId, teamId);
+
+          // Create-only manifest: kernvelden (bron/doel/aanmaker/hash/
+          // aanmaaktijd) liggen bij aanmaak vast; `revision` start op 0.
+          // Rules kunnen `items` (een list) niet element-voor-element
+          // valideren (zelfde gedocumenteerde taalgrens als `isValidGamePayload()`
+          // hierboven) — schrijftoegang is al beperkt tot bulkmigratie-rollen,
+          // en dit pad schrijft uitsluitend `MigrationCoordinator`-afgeleide
+          // payloads, nooit rechtstreeks gebruikersinvoer.
+          allow create: if canManageTeamData(orgId, teamId) &&
+            request.resource.data.createdBy == request.auth.uid &&
+            request.resource.data.manifestHash is string &&
+            request.resource.data.source is map &&
+            request.resource.data.target is map &&
+            request.resource.data.createdAt is string &&
+            request.resource.data.items is list &&
+            request.resource.data.revision == 0 &&
+            request.resource.data.rollbackRequested == false;
+
+          // Checkpointpatch: de kernvelden blijven byte-identiek
+          // (immutabel manifest, §B), alleen `items`/`status`/
+          // `rollbackRequested`/`revision`/`updatedAt` mogen wijzigen.
+          // `rollbackRequested` is eenmalig omkeerbaar in ÉÉN richting
+          // (`false` → `true`, nooit terug) — spiegelt de domeinlaag se
+          // "onomkeerbaar binnen deze run" (`domain/migration/run.ts`).
+          allow update: if canManageTeamData(orgId, teamId) &&
+            request.resource.data.manifestHash == resource.data.manifestHash &&
+            request.resource.data.source == resource.data.source &&
+            request.resource.data.target == resource.data.target &&
+            request.resource.data.callerRole == resource.data.callerRole &&
+            request.resource.data.contextFingerprint == resource.data.contextFingerprint &&
+            request.resource.data.createdBy == resource.data.createdBy &&
+            request.resource.data.createdAt == resource.data.createdAt &&
+            request.resource.data.items is list &&
+            request.resource.data.revision == resource.data.revision + 1 &&
+            (resource.data.rollbackRequested == request.resource.data.rollbackRequested ||
+              request.resource.data.rollbackRequested == true);
+
+          // Geen hard delete — een migratiemanifest is auditbewijs, net als
+          // een completedGame-snapshot nooit hard verwijderd wordt (punt 18).
+          allow delete: if false;
+        }
       }
     }
 
