@@ -1,10 +1,13 @@
 // @vitest-environment jsdom
-// TIJDELIJKE/PERMANENTE REPRO (CI-onderzoek na twee mislukte fixrondes op
-// `tests/e2e-auth/migration-flow.spec.ts` werk 4.3/4.4 en 4.5): reproduceert
-// de EXACTE `seedLocalMigrationSource()`-fixture en rol/flow van die e2e-
-// specs component-niveau, met de ECHTE domeinfuncties (niet gemockt) — zie
-// PR-taakomschrijving. Doel: observeren wat `preview.allowed`/`reason`
-// daadwerkelijk wordt, i.p.v. daarover te redeneren.
+// Permanente component-niveau regressietest (docs/pr-7.4-plan.md §C 7.4c):
+// draait de EXACTE `seedLocalMigrationSource()`-fixture en rol/flow van
+// `tests/e2e-auth/migration-flow.spec.ts` werk 4.3/4.4/4.5 tegen de ECHTE
+// domeinfuncties (niet gemockt), buiten een browser om. Ontstaan tijdens het
+// onderzoeken van twee echte CI-only bugs (`isUntouchedAutoSetupGame()` in
+// inventory.ts, de `manifestHash`-stabiliteit in preview.ts — zie 7.4c's
+// "Geïmplementeerd"-sectie) die de lokale `vitest`-suite niet kon vangen
+// omdat Playwright/Chromium in deze sandbox niet draait; blijft bestaan als
+// snelle, browserloze bevestiging dat die twee root causes niet terugkeren.
 import { describe, it, expect, afterEach } from 'vitest';
 import { render, fireEvent, cleanup, screen, waitFor } from '@testing-library/preact';
 import { MigrationPanel } from '../../src/ui/migration/MigrationPanel';
@@ -170,11 +173,10 @@ function makeCoordinator(inventoryGateway: CloudMigrationInventoryGateway) {
 
 const writer = { authorUid: 'uid-e2e-repro', deviceId: 'device-e2e-repro' };
 
-describe('REPRO: e2e migration-flow werk 4.3/4.4/4.5 — buildCloudMigrationPreview met echte e2e-fixture', () => {
-  it('GROUND TRUTH: collectLocalMigrationInventory + buildCloudMigrationPreview op de exacte e2e-fixture', () => {
+describe('permanente regressietest: migration-flow.spec.ts werk 4.3/4.4/4.5 op de echte domeinfuncties (docs/pr-7.4-plan.md §C 7.4c)', () => {
+  it('collectLocalMigrationInventory + buildCloudMigrationPreview op de exacte e2e-fixture staat een migratie toe', () => {
     const storage = e2eStorage();
     const inventory = collectLocalMigrationInventory(storage, ORG_ID, TEAM_ID);
-    console.log('INVENTORY', JSON.stringify(inventory, null, 2));
     const ref = {
       organizationId: ORG_ID,
       teamId: TEAM_ID,
@@ -189,12 +191,10 @@ describe('REPRO: e2e migration-flow werk 4.3/4.4/4.5 — buildCloudMigrationPrev
       inventory,
       existingCloud: emptySnapshot(),
     });
-    console.log('PREVIEW allowed=', preview.allowed, 'denialReason=', preview.denialReason);
-    console.log('PREVIEW warnings=', JSON.stringify(preview.warnings));
     expect(preview.allowed).toBe(true);
   });
 
-  it('GROUND TRUTH: volledige MigrationPanel-flow met de e2e-fixture (organizationOwner)', async () => {
+  it('volledige MigrationPanel-flow met de e2e-fixture (organizationOwner) bereikt de preview-stap', async () => {
     const storage = e2eStorage();
     const inventoryGateway = new FakeInventoryGateway();
     const coordinator = makeCoordinator(inventoryGateway);

@@ -5,6 +5,7 @@ import {
 } from '../../src/domain/migration/inventory';
 import { DEFAULT_SETTINGS } from '../../src/domain/settings/types';
 import type { ActiveGame, CompletedGame } from '../../src/domain/game/types';
+import { createGameFromRoster } from '../../src/domain/game/setup';
 
 const org = 'org1';
 const team = 'team1';
@@ -140,5 +141,71 @@ describe('domain/migration/inventory (docs/pr-7.4-plan.md §C 7.4a werk 1)', () 
       completedGames: undefined,
     });
     expect(inv.activeGame.status).toBe('empty');
+  });
+
+  /**
+   * Sluit de koppeling tussen `inventory.ts`'s `isUntouchedAutoSetupGame()`
+   * en `domain/game/setup.ts`'s `createGameFromRoster()` expliciet in een
+   * test (externe review, PR #72): `App.tsx`'s bootstrap-effect schrijft
+   * ONVOORWAARDELIJK zo'n auto-opzet naar de actieve-wedstrijdsleutel zodra
+   * settings/roster geladen zijn — ook vlak vóór de allereerste migratie op
+   * een vers cloudteam. Deze test gebruikt de ECHTE `createGameFromRoster()`
+   * (niet een losstaande fixture die toevallig overeenkomt) zodat een
+   * toekomstige wijziging aan diens defaults (`participate`/`start`) hier
+   * zichtbaar breekt i.p.v. stilzwijgend de `isUntouchedAutoSetupGame()`-
+   * herkenning te laten verlopen.
+   */
+  it('de output van createGameFromRoster([]) wordt herkend als onaangeraakte auto-opzet ("empty", niet "corrupt")', () => {
+    const autoSetup = createGameFromRoster([], org, team, 14.5);
+    const inv = buildLocalMigrationInventory(org, team, {
+      settings: undefined,
+      roster: undefined,
+      activeGame: autoSetup,
+      completedGames: undefined,
+    });
+    expect(inv.activeGame.status).toBe('empty');
+    expect(hasCorruptSection(inv)).toBe(false);
+  });
+
+  it('createGameFromRoster() mét spelers is óók een onaangeraakte auto-opzet ("empty") zolang niemand de opstelling bewerkte', () => {
+    const autoSetup = createGameFromRoster(
+      [{ id: 1, nr: '4', naam: 'X', kl: '3.0', vrouw: false, jeugd: false }],
+      org,
+      team,
+      14.5,
+    );
+    const inv = buildLocalMigrationInventory(org, team, {
+      settings: undefined,
+      roster: undefined,
+      activeGame: autoSetup,
+      completedGames: undefined,
+    });
+    // Bewust GEEN players.length===0-kortsluiting in isUntouchedAutoSetupGame()
+    // (zie de docstring in inventory.ts): een hervatte migratie kan een NIEUWE,
+    // evenzeer onaangeraakte auto-opzet mét spelers opleveren, en die moet
+    // dezelfde stabiele manifestHash blijven opleveren als de oorspronkelijke
+    // (spelerloze) run — dus ook 'empty', niet 'ok'.
+    expect(inv.activeGame.status).toBe('empty');
+  });
+
+  it('zodra de gebruiker de opstelling écht bewerkt heeft, telt de opzet weer normaal mee (geen auto-opzet meer)', () => {
+    const autoSetup = createGameFromRoster(
+      [{ id: 1, nr: '4', naam: 'X', kl: '3.0', vrouw: false, jeugd: false }],
+      org,
+      team,
+      14.5,
+    );
+    const touched: ActiveGame = {
+      ...autoSetup,
+      players: autoSetup.players.map((p) => ({ ...p, start: true })),
+    };
+    const inv = buildLocalMigrationInventory(org, team, {
+      settings: undefined,
+      roster: undefined,
+      activeGame: touched,
+      completedGames: undefined,
+    });
+    expect(inv.activeGame.status).toBe('ok');
+    expect(inv.activeGame.value?.phase).toBe('setup');
   });
 });
