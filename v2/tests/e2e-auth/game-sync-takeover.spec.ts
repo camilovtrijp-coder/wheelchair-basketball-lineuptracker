@@ -64,13 +64,30 @@ test('een echte overname door een ander apparaat wordt zichtbaar/auditbaar op de
   try {
     const gameId = await readLocalGameId(page, team);
 
+    // Apparaat A gaat offline VOORDAT B overneemt. Dat is deterministisch
+    // nodig: de eigen live parent-listener op A (`useGameCloudViewer()` in
+    // App.tsx) verwerkt overnames in real time zodra hij ze ziet, en zet
+    // `isSelfBlockedByOtherWriter` — dat is PR 7.3b's BEDOELDE gedrag
+    // (`isEpochPromotedTakeover()`), niet een bug. Zonder A offline te
+    // zetten race je dus tegen je eigen listener: in CI wint de listener
+    // vaak, en staat de score-knop dan al (terecht) uit vóórdat de test 'm
+    // opnieuw kan klikken. Offline maakt het onmogelijk voor A's listener om
+    // de overname te zien vóór de lokale klik hieronder, en bewijst zo het
+    // eigenlijke scenario: lokale scorebediening is nooit netwerk-gate
+    // (§D "geen UI-await op server voor score/klok/wissel/segment-save") —
+    // pas de daaropvolgende sync-poging stuit op het conflict.
+    await page.context().setOffline(true);
+
     // Apparaat B leest de actuele epoch/revisie via z'n eigen (Rules-
     // gehandhaafde) ensureGame()-aanroep, exact zoals de echte
     // overname-bevestigingsflow dat zou doen (`GameSyncCoordinator.
     // takeoverWriter()` verwacht een vooraf gelezen epoch/revisie). Het
     // document bestaat al (apparaat A maakte het aan) — dit
     // fallback-snapshot wordt dus nooit daadwerkelijk geschreven, alleen de
-    // vorm moet een geldige `GameSnapshotProjection` zijn.
+    // vorm moet een geldige `GameSnapshotProjection` zijn. Apparaat B is een
+    // onafhankelijke Node-side Firestore-client (`second.db`) — A's
+    // `page.context().setOffline(true)` hierboven raakt alleen A's
+    // browsernetwerk, B blijft gewoon verbonden.
     const ensured = await gatewayB.ensureGame(team.orgId, team.teamId, gameId, {
       organizationId: team.orgId,
       teamId: team.teamId,
@@ -116,14 +133,25 @@ test('een echte overname door een ander apparaat wordt zichtbaar/auditbaar op de
     expect(takeover.identity.writerEpoch).toBe(expectedEpoch + 1);
     expect(takeover.identity.deviceId).toBe('apparaat-B');
 
-    // Apparaat A weet nog niets van de overname — z'n volgende lokale actie
-    // start gewoon een nieuwe sync-cyclus die nu op het conflict stuit.
-    // Geen force-push, geen crash: alleen zichtbaar 'actie-nodig'.
+    // Apparaat A is nog offline en weet dus niets van de overname — de
+    // lokale klik werkt gewoon meteen door (nooit netwerk-gate), en de
+    // daaropvolgende sync-poging faalt terwijl A nog offline is (netwerkfout,
+    // nog niet het overnameconflict zelf) — al zichtbaar 'actie-nodig', net
+    // als het offline-scenario in game-sync-live-viewer.spec.ts.
     await page.getByTestId('score-plus1-for').click();
-    await waitForGameSyncStatus(page, 'actie-nodig');
+    await expect(page.getByTestId('score-select-for')).toHaveValue('2');
+    await waitForGameSyncStatus(page, 'actie-nodig', 20_000);
 
-    // De live-viewerbanner verschijnt op A zodra de eigen
-    // parent-listener de epoch-bevorderde overname ziet
+    // Terug online: App.tsx se reconnect-trigger (de 'online'-listener bij
+    // `runGameSync()`) start vanzelf een nieuwe sync-cyclus zonder dat de
+    // test nog een keer hoeft te klikken — en die cyclus stuit nu op het
+    // ECHTE overnameconflict (nieuwe epoch via B). Geen force-push, geen
+    // crash: alleen zichtbaar 'actie-nodig'.
+    await page.context().setOffline(false);
+    await waitForGameSyncStatus(page, 'actie-nodig', 20_000);
+
+    // De live-viewerbanner verschijnt op A zodra de eigen parent-listener
+    // (nu weer online) de epoch-bevorderde overname ziet
     // (`isEpochPromotedTakeover()`), met de nieuwe "Overnemen…"-knop.
     await expect(page.getByTestId('cloud-viewer-banner')).toBeVisible({ timeout: 20_000 });
     await page.getByTestId('takeover-open-btn').click();

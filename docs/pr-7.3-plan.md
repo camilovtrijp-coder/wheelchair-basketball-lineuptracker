@@ -554,7 +554,18 @@ expliciet naar 8.1/8.3.
   De nieuwe spec is wél `tsc -b`/`eslint`/`prettier`-schoon en volgt exact het
   bestaande fixture-patroon van de al in CI groene 7.1c/7.3b-specs; moet in
   een omgeving met installeerbare Chromium (GitHub Actions) alsnog
-  daadwerkelijk draaien vóór PR 7.3c als volledig geverifieerd geldt. **Echte
+  daadwerkelijk draaien vóór PR 7.3c als volledig geverifieerd geldt. **Update
+  na de eerste échte CI-run (GitHub Actions, PR #69):** de spec draaide daar
+  wél, en legde een testontwerpfout bloot — de oorspronkelijke versie liet A's
+  2e lokale klik ná B's overname RACEN tegen A's eigen live parent-listener
+  (die de overname o.b.v. `isEpochPromotedTakeover()` correct en bedoeld
+  meteen kan gaan blokkeren, PR 7.3b werk 3); in CI won de listener vaak, dus
+  faalde de klik op een uitgeschakelde knop — een testfout, geen
+  app-regressie. Fix: A gaat expliciet offline (`page.context().
+  setOffline(true)`) vlak vóór B's overname, scoort lokaal terwijl offline
+  (deterministisch nooit netwerk-gate, §D), en gaat pas daarna weer online —
+  waarna de reconnect-trigger vanzelf een sync start die op het ECHTE
+  overnameconflict stuit en de listener de overname alsnog ziet. **Echte
   iOS/Android-hardwarevalidatie is in deze sandbox principieel onmogelijk**
   (geen fysieke/geëmuleerde mobiele apparaten beschikbaar) — dit wordt, exact
   zoals dit werk-item's eigen acceptatiecriterium voorschrijft ("open
