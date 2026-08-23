@@ -230,6 +230,8 @@ describe('app/App — hervat een openstaande afronding na reload (PR 7.2a, P1-fi
       gameSync: coordinator,
       gameWriterContext: writer,
       completedGames: null,
+      migrationInventoryGateway: null,
+      migrationCoordinator: null,
     };
 
     render(
@@ -273,6 +275,8 @@ describe('app/App — hervat een openstaande afronding na reload (PR 7.2a, P1-fi
       gameSync: null,
       gameWriterContext: null,
       completedGames: null,
+      migrationInventoryGateway: null,
+      migrationCoordinator: null,
     };
 
     const { queryByTestId } = render(
@@ -401,6 +405,8 @@ describe('app/App — een mislukte outbox-write is een echte precondition (PR 7.
         gameSync: coordinator,
         gameWriterContext: writer,
         completedGames: null,
+        migrationInventoryGateway: null,
+        migrationCoordinator: null,
       };
 
       const { getByTestId } = render(
@@ -474,6 +480,8 @@ describe('app/App — verwijderen van een nog niet cloud-bevestigde afronding bl
       gameSync: coordinator1,
       gameWriterContext: writer,
       completedGames: null,
+      migrationInventoryGateway: null,
+      migrationCoordinator: null,
     };
 
     const { getByTestId, unmount } = render(
@@ -534,6 +542,8 @@ describe('app/App — verwijderen van een nog niet cloud-bevestigde afronding bl
       gameSync: coordinator2,
       gameWriterContext: writer,
       completedGames: null,
+      migrationInventoryGateway: null,
+      migrationCoordinator: null,
     };
 
     render(
@@ -659,6 +669,8 @@ describe('app/App — runFinalize() start nooit twee gelijktijdige gatewaycycli 
       gameSync: coordinator,
       gameWriterContext: writer,
       completedGames: null,
+      migrationInventoryGateway: null,
+      migrationCoordinator: null,
     };
 
     const { getByTestId } = render(

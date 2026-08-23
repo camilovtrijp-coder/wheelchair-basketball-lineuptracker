@@ -187,6 +187,8 @@ function renderHistoryWith(repo: FakeCompletedGameRepo) {
     gameSync: inertGameSync,
     gameWriterContext: writer,
     completedGames: repo,
+    migrationInventoryGateway: null,
+    migrationCoordinator: null,
   };
   return render(
     <App

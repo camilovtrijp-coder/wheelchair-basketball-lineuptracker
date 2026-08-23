@@ -50,6 +50,9 @@ import { TrendsPanel } from '../ui/trends/TrendsPanel';
 import { BackupPanel } from '../ui/backup/BackupPanel';
 import { SyncStatusIndicator } from '../ui/sync/SyncStatusIndicator';
 import type { SyncState, SyncStatus } from '../domain/syncState';
+import { MigrationPanel } from '../ui/migration/MigrationPanel';
+import { canBulkMigrate } from '../domain/migration/capability';
+import type { OrganizationRole } from '../domain/organizations/types';
 
 export interface AppProps {
   repositories: ResolvedAppRepositories;
@@ -113,6 +116,17 @@ export interface AppProps {
    * werken (geen lock-gedrag als de aanroeper 'm niet leest).
    */
   onGameLockChange?: (locked: boolean) => void;
+  /**
+   * PR 7.4c (docs/pr-7.4-plan.md §C 7.4c werk 1/§B): rol van de ingelogde
+   * gebruiker IN DEZE doelcontext, `null` als die (nog) niet bekend is (bv.
+   * lokale modus, of vóór AuthGate se membershiplookup) — uitsluitend
+   * gebruikt om te bepalen of `MigrationPanel` (bulkmigratie-UI) gerenderd
+   * wordt (`canBulkMigrate()`). Bewust een APARTE prop, geen hergebruik van
+   * `canWrite`/`canWriteGame` (die twee zijn vandaag toevallig identieke
+   * rollen als bulkmigratie voor canWrite, maar drukken een ander concept
+   * uit — zie `domain/migration/capability.ts`'s docstring).
+   */
+  organizationRole?: OrganizationRole | null;
 }
 
 type Tab = 'settings' | 'roster' | 'game' | 'history' | 'stats' | 'trends';
@@ -155,6 +169,7 @@ export function App({
   teamId,
   organizationName,
   onGameLockChange,
+  organizationRole = null,
 }: AppProps) {
   const [lang, setLang] = useState<Lang>(initialLang);
   const [tab, setTab] = useState<Tab>('settings');
@@ -1356,6 +1371,30 @@ export function App({
               setLang={setLang}
               onImported={() => void handleBackupImported()}
             />
+            {/* PR 7.4c (docs/pr-7.4-plan.md §C 7.4c werk 1): alleen in
+             * cloudmodus (er is anders geen cloudteam om naartoe te
+             * migreren) EN alleen voor bulkmigratie-rollen (§B) — een
+             * scorer/viewer krijgt dit blok NOOIT gerenderd, niet eens een
+             * alleen-lezen variant (acceptatie 7.4a: "een scorer/viewer
+             * krijgt geen bulkactie"). */}
+            {repositories.mode === 'cloud' &&
+            repositories.migrationCoordinator &&
+            repositories.migrationInventoryGateway &&
+            organizationRole &&
+            canBulkMigrate(organizationRole) ? (
+              <MigrationPanel
+                lang={lang}
+                organizationId={organizationId}
+                teamId={teamId}
+                organizationName={organizationName || organizationId}
+                teamName={(settings.teamName as string) || teamId}
+                callerRole={organizationRole}
+                storage={browserStorage}
+                inventoryGateway={repositories.migrationInventoryGateway}
+                coordinator={repositories.migrationCoordinator}
+                writer={repositories.gameWriterContext ?? { authorUid: '', deviceId: '' }}
+              />
+            ) : null}
           </>
         ) : tab === 'roster' ? (
           <RosterPanel

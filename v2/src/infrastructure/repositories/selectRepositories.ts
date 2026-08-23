@@ -22,7 +22,9 @@ import type { AsyncRosterRepository } from '../../application/roster/AsyncRoster
 import type { AsyncSettingsRepository } from '../../application/settings/AsyncSettingsRepository';
 import type { CompletedGameRepository } from '../../application/game/CompletedGameRepository';
 import type { GameCloudWriterContext } from '../../application/game/projectGameForCloud';
+import type { CloudMigrationInventoryGateway } from '../../application/migration/CloudMigrationInventoryGateway';
 import { GameSyncCoordinator } from '../../application/game/GameSyncCoordinator';
+import { MigrationCoordinator } from '../../application/migration/MigrationCoordinator';
 import { FirestoreRosterRepository } from '../roster/FirestoreRosterRepository';
 import { FirestoreSettingsRepository } from '../settings/FirestoreSettingsRepository';
 import { FirestoreGameCloudGateway } from '../game/FirestoreGameCloudGateway';
@@ -30,6 +32,10 @@ import { FirestoreCompletedGameRepository } from '../game/FirestoreCompletedGame
 import { CompositeCompletedGameRepository } from '../game/CompositeCompletedGameRepository';
 import { LocalStorageCompletedGameRepository } from '../game/LocalStorageCompletedGameRepository';
 import { LocalStorageGameSyncCheckpointRepository } from '../game/LocalStorageGameSyncCheckpointRepository';
+import { FirestoreCloudMigrationInventoryGateway } from '../migration/FirestoreCloudMigrationInventoryGateway';
+import { FirestoreCloudMigrationRunGateway } from '../migration/FirestoreCloudMigrationRunGateway';
+import { FirestoreMigrationWriteGateway } from '../migration/FirestoreMigrationWriteGateway';
+import { LocalStorageMigrationRunRepository } from '../migration/LocalStorageMigrationRunRepository';
 import { readOrCreateDeviceId } from '../device/deviceId';
 import { strictReadBrowserStorage } from '../../i18n/browserStorage';
 import type { KeyValueStorage } from '../../i18n/persistence';
@@ -59,6 +65,16 @@ export interface CloudRepositorySelection {
    * blijven, geen stille lege lijst, zie `i18n/browserStorage.ts`).
    */
   completedGames: CompletedGameRepository;
+  /**
+   * PR 7.4c (docs/pr-7.4-plan.md §C 7.4c werk 1): de bulkmigratie-UI se
+   * poorten — `null` in lokale modus (er is geen cloudteam om naartoe te
+   * migreren, dus `MigrationPanel` wordt door `app/App.tsx` daar sowieso
+   * niet gerenderd; deze twee velden bestaan alleen zodat de UI zelf nooit
+   * een Firestore-import nodig heeft, exact zoals elk ander poortpaar
+   * hierboven).
+   */
+  migrationInventoryGateway: CloudMigrationInventoryGateway;
+  migrationCoordinator: MigrationCoordinator;
 }
 
 export type RepositorySelection = CloudRepositorySelection | { kind: 'local' };
@@ -76,6 +92,13 @@ export function selectRepositories(input: {
   const gateway = new FirestoreGameCloudGateway(input.firestoreDb);
   const checkpoints = new LocalStorageGameSyncCheckpointRepository(input.storage);
   const { orgId, teamId } = input.selectedContext;
+  const migrationInventoryGateway = new FirestoreCloudMigrationInventoryGateway(input.firestoreDb);
+  const migrationCoordinator = new MigrationCoordinator({
+    writeGateway: new FirestoreMigrationWriteGateway(input.firestoreDb, gateway),
+    inventoryGateway: migrationInventoryGateway,
+    runRepo: new LocalStorageMigrationRunRepository(input.storage),
+    cloudRunGateway: new FirestoreCloudMigrationRunGateway(input.firestoreDb),
+  });
   return {
     kind: 'cloud',
     settings: new FirestoreSettingsRepository(input.firestoreDb, orgId, teamId),
@@ -96,5 +119,7 @@ export function selectRepositories(input: {
       deviceId: readOrCreateDeviceId(input.storage),
       writerEpoch: 0,
     },
+    migrationInventoryGateway,
+    migrationCoordinator,
   };
 }
