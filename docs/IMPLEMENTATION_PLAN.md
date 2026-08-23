@@ -775,6 +775,8 @@ sandbox worden uitgevoerd en staat expliciet open voor fase-7-acceptatie.
 
 ### PR 8.1 — PWA-updates en herstel
 
+Voorbereidingsplan: [`docs/pr-8.1-plan.md`](pr-8.1-plan.md).
+
 - eerste installatie, offline reload en app-shellupdate;
 - geen mix van oude HTML en nieuwe gehashte assets;
 - zichtbare updatebeschikbaarheid en gecontroleerde refresh;
