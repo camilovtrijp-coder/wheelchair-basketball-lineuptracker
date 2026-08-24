@@ -99,7 +99,17 @@ const nl = {
   pwaReadinessRegistering: 'De app wordt nog offline-klaar gemaakt. Probeer het zo opnieuw.',
   pwaReadinessUpdatePending:
     'Er staat een update klaar. Overweeg die vóór de wedstrijd bij te werken.',
-  pwaReadinessBroken: 'De offline-gereedheidscheck is mislukt. Probeer opnieuw voordat je start.',
+  // 8.1c (docs/pr-8.1-plan.md §C 8.1c werk 2): dezelfde `broken`-deelstatus
+  // dekt nu ook het gedegradeerde pad waarin zowel de module- als de
+  // classic-SW-registratie op dit apparaat zijn mislukt (geen nieuwe,
+  // aparte deelstatus nodig — zie `domain/pwa/pwaReadiness.ts`'s eigen
+  // commentaar). Tekst expliciet gemaakt: offline-gebruik is op dit
+  // apparaat niet gegarandeerd (i.p.v. alleen "check mislukt"), zodat de
+  // scorer begrijpt dat dit apparaatspecifiek is — alleen-lokaal
+  // roster-/instellingengebruik blijft buiten wedstrijdstart gewoon
+  // werken.
+  pwaReadinessBroken:
+    'Offline-gebruik is op dit apparaat niet gegarandeerd. Probeer opnieuw voordat je start.',
   contextSwitchLockedWhileTracking:
     'Je kunt niet van team wisselen terwijl er een wedstrijd loopt. Rond de wedstrijd eerst af.',
   contextSwitchLockedDismiss: 'Oké',
@@ -543,7 +553,7 @@ const en = {
   pwaReadinessUnsupported: 'No offline support detected on this device. Local-only use works fine.',
   pwaReadinessRegistering: 'The app is still getting ready for offline use. Try again shortly.',
   pwaReadinessUpdatePending: 'An update is ready. Consider updating before the game starts.',
-  pwaReadinessBroken: 'The offline-readiness check failed. Try again before starting.',
+  pwaReadinessBroken: 'Offline use is not guaranteed on this device. Try again before starting.',
   contextSwitchLockedWhileTracking:
     "You can't switch teams while a match is in progress. Finish the match first.",
   contextSwitchLockedDismiss: 'OK',

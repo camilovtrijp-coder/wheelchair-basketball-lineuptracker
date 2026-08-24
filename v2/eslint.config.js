@@ -24,4 +24,16 @@ export default tseslint.config(
       ...jsxA11y.configs.recommended.rules,
     },
   },
+  {
+    // 8.1c (docs/pr-8.1-plan.md §C 8.1c): build-outputcheck-scripts (`npm
+    // run build`, buiten de Vite-bundeling om) draaien rechtstreeks onder
+    // Node, niet als browser-/appcode — vandaar alleen `globals.node`, geen
+    // `globals.browser`.
+    files: ['scripts/**/*.mjs'],
+    languageOptions: {
+      ecmaVersion: 2022,
+      sourceType: 'module',
+      globals: { ...globals.node },
+    },
+  },
 );

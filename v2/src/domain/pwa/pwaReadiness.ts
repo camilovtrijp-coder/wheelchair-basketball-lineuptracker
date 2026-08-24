@@ -33,6 +33,18 @@
  * - `broken`: een AANTOONBAAR kapotte registratie op een apparaat dat wél
  *   SW-ondersteuning claimt (de adapter meldt `status: 'error'`). Dit is de
  *   ENIGE deelstatus die een wedstrijdstart blokkeert (werk 4).
+ *
+ *   8.1c (docs/pr-8.1-plan.md §C 8.1c werk 2): dekt sinds de classic-SW-
+ *   fallback (`infrastructure/pwa/PwaUpdateAdapter.ts`) ook het volledig
+ *   gedegradeerde pad — de adapter probeert bij ontbrekende module-SW-
+ *   ondersteuning eerst de classic-fallbackbundel; pas als OOK die
+ *   registratie mislukt, meldt de adapter `status: 'error'`, en dus
+ *   `broken` hier. Bewust GEEN eigen, zesde deelstatus: `swSupported` blijft
+ *   op zo'n apparaat `true` (`'serviceWorker' in navigator` is aanwezig,
+ *   alleen de registratie zelf faalt) en `adapterStatus: 'error'` is precies
+ *   hetzelfde signaal als elke andere aantoonbaar kapotte registratie — de
+ *   oorzaak (module vs. classic vs. allebei geprobeerd) is voor de
+ *   pre-game-gate irrelevant, alleen het eindresultaat telt.
  */
 export type PwaReadinessStatus =
   | { kind: 'unsupported' }

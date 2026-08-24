@@ -214,10 +214,10 @@ describe('ui/game/GameSetupPanel: pre-game PWA-readinesscheck (PR 8.1b)', () => 
     const btn = getByTestId('game-start-btn') as HTMLButtonElement;
     expect(btn.disabled).toBe(true);
     expect(btn.textContent).toBe(
-      'De offline-gereedheidscheck is mislukt. Probeer opnieuw voordat je start.',
+      'Offline-gebruik is op dit apparaat niet gegarandeerd. Probeer opnieuw voordat je start.',
     );
     expect(getByTestId('game-pwa-readiness').textContent).toBe(
-      'De offline-gereedheidscheck is mislukt. Probeer opnieuw voordat je start.',
+      'Offline-gebruik is op dit apparaat niet gegarandeerd. Probeer opnieuw voordat je start.',
     );
   });
 

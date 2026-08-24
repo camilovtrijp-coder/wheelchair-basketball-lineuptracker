@@ -592,6 +592,136 @@ Acceptatie:
   gedocumenteerd — pas dan mag "Safari + iPadOS-ondersteuning geverifieerd"
   in `docs/IMPLEMENTATION_PLAN.md` §17 als voltooid worden genoteerd.
 
+**Geïmplementeerd:**
+
+- `v2/src/infrastructure/pwa/PwaUpdateAdapter.ts`: nieuwe geëxporteerde
+  functie `detectModuleServiceWorkerSupport()` — een korte runtime-
+  capability-check (GEEN user-agent-sniffing, zoals §B punt 6 expliciet
+  vereist), gebaseerd op de bekende feature-detectietruc voor module-
+  `Worker`s: een `WorkerOptions`-object met een `type`-getter die alleen
+  wordt aangeroepen als de UA de eigenschap daadwerkelijk uitleest (wat
+  alleen UA's met module-Workerondersteuning doen); een UA zonder die
+  ondersteuning negeert de onbekende optie stilzwijgend en roept de getter
+  dus nooit aan. Module-service-workers draaien op dezelfde ES-module-
+  machinery als reguliere `type: 'module'`-`Worker`s (§B punt 6), dus is dit
+  een betrouwbare proxy zonder zelf al een service worker te moeten
+  registreren — vermijdt precies het "`register()` geeft geen duidelijke
+  throw op alle faalpaden"-risico dat §B punt 6 beschrijft. Retourneert
+  `true` (module-ondersteuning aannemen, hetzelfde gedrag als vóór 8.1c)
+  wanneer `Worker` niet bestaat of de detectie zelf een throw geeft — o.a.
+  het geval in jsdom-componenttests, die geen `Worker`-global hebben, dus
+  geen van de bestaande 8.1a-/8.1b-tests hoefde te veranderen.
+- `PwaUpdateAdapter`'s constructor kreeg twee nieuwe, injecteerbare
+  parameters (zelfde testbaarheidspatroon als het bestaande `reload`-
+  argument): `classicSwUrl` (default `/sw-classic.js`) en
+  `supportsModuleServiceWorker` (default de echte capability-check
+  hierboven). `init()` roept de capability-check ÉÉN keer aan, vóór de
+  registratiepoging zelf, en kiest daarmee definitief tussen de module- en
+  de classic-bundel — bewust GEEN "probeer module, val terug op classic bij
+  een mislukte poging"-keten: een module-SW-registratie die niet lukt geeft
+  vaak geen throw (§B punt 6), dus wachten op een gefaalde registratie-
+  promise om alsnog naar classic over te schakelen zou juist op de
+  apparaten waar dit ertoe doet nooit vuren. Faalt de op basis van de
+  capability-check gekozen registratie zelf alsnog (een échte netwerk-/
+  scope-fout), dan is dat een aantoonbaar kapotte registratie — geen tweede
+  fallbackpoging, gewoon `status: 'error'` (werk 2).
+- `v2/src/sw-classic.ts` (nieuw): apart, zeer klein entrypoint dat
+  letterlijk dezelfde `sw.ts`-broninhoud hergebruikt via `import './sw'`.
+  Nodig omdat `vite-plugin-pwa` de naam van het uitvoerbestand afleidt van
+  de naam van het brongebruikte bestand (`sw.ts` → `sw.js`) — een tweede
+  build-target met dezelfde bronnaam zou het bestaande `sw.js` overschrijven
+  in plaats van een apart `sw-classic.js` ernaast te laten bestaan.
+- `v2/vite.config.ts`: een tweede, losse `vite build`-aanroep — gestuurd via
+  de nieuwe env-variabele `SW_BUILD_TARGET=classic` (zie `package.json`) —
+  bouwt `sw-classic.ts` met `rollupFormat: 'iife'` i.p.v. `'es'`, en met
+  `build.write: false` zodat de al door de eerste aanroep geschreven
+  app-assets (JS/CSS-chunks, `index.html`) niet opnieuw naar disk worden
+  geschreven; alleen vite-plugin-pwa's eigen, aparte interne SW-build (die
+  altijd naar disk schrijft, ongeacht `build.write`) levert `sw-classic.js`
+  op. `globIgnores: ['sw.js', 'sw-classic.js']` toegevoegd zodat geen van
+  beide builds de SW-bundel van de ANDERE als gewoon te precachen asset
+  meeneemt. Lokaal geverifieerd: beide bundels precachen exact dezelfde
+  asset-URL's (bytegelijke manifestlijst, alleen het SW-bestand zelf
+  verschilt in formaat).
+- `v2/package.json`: `build`-script uitgebreid tot
+  `tsc -b && vite build && SW_BUILD_TARGET=classic vite build && node
+scripts/verify-sw-classic-bundle.mjs` — de classic-bundel wordt bij elke
+  `npm run build` daadwerkelijk (opnieuw) geproduceerd en gecontroleerd, niet
+  als losstaand, makkelijk te vergeten extra commando.
+- `v2/scripts/verify-sw-classic-bundle.mjs` (nieuw): de build-outputcheck
+  uit het acceptatiecriterium — leest `dist/sw-classic.js` en faalt de build
+  (`process.exit(1)`, met de exacte regelnummers) zodra er een top-level
+  `^import\s`-statement in staat. Draait als laatste stap van `npm run
+build`. Lokaal geverifieerd (`npm run build`): `verify-sw-classic-bundle:
+OK — dist/sw-classic.js bevat geen top-level ES-module-import-statements.`
+- `v2/eslint.config.js`: nieuw `files: ['scripts/**/*.mjs']`-blok met alleen
+  `globals.node` (geen `globals.browser`) — deze build-outputcheck-scripts
+  draaien rechtstreeks onder Node, niet als browser-/appcode.
+- `v2/src/domain/pwa/pwaReadiness.ts`: GEEN nieuwe, zesde deelstatus voor
+  "zowel module- als classic-SW-registratie mislukt" (werk 2) — de
+  bestaande `broken`-deelstatus dekt dit al exact: `swSupported` blijft op
+  zo'n apparaat `true` (`'serviceWorker' in navigator` is aanwezig, alleen
+  de registratie zelf faalt) en `adapterStatus: 'error'` is precies hetzelfde
+  signaal als elke andere aantoonbaar kapotte registratie — de oorzaak
+  (module vs. classic vs. allebei geprobeerd) is voor de pre-game-gate
+  irrelevant, alleen het eindresultaat telt. `pwaReadinessBroken`-vertaling
+  (nl/en) aangescherpt van "de offline-gereedheidscheck is mislukt" naar
+  "offline-gebruik is op dit apparaat niet gegarandeerd" — expliciet maakt
+  dat dit apparaatspecifiek is, niet een algemene storing; alleen-lokaal
+  roster-/instellingengebruik blijft buiten wedstrijdstart gewoon werken
+  (stopregel §D).
+- Tests (allemaal groen — `npx vitest run`: 93 bestanden/900 tests):
+  `PwaUpdateAdapter.spec.ts` kreeg 3 nieuwe tests (registreert classic bij
+  ontbrekende module-ondersteuning, registreert module bij wél
+  ondersteuning, meldt `error` bij een mislukte classic-registratie met
+  precies één `register()`-aanroep — geen tweede fallbackpoging) plus een
+  eigen `describe`-blok van 4 tests voor `detectModuleServiceWorkerSupport()`
+  zelf (geen `Worker`-global, een "oude" fake-UA die de `type`-getter nooit
+  uitleest, een "moderne" fake-UA die 'm wél uitleest, een throwende
+  `Worker`-constructor). `GameSetupPanel.spec.tsx` bijgewerkt voor de
+  aangescherpte `pwaReadinessBroken`-tekst.
+- `v2/tests/e2e/pwa-classic-fallback.spec.ts` (nieuw, werk 1/acceptatie):
+  forceert de capability-check naar "geen module-ondersteuning" via
+  `page.addInitScript()` (dus vóór enige app-/adaptercode draait) door de
+  globale `Worker`-constructor te vervangen door een fake die de
+  `type`-optie-getter nooit uitleest — exact het capability-detectiesignaal
+  dat de adapter zelf gebruikt. Bewust GEEN netwerkinterceptie van de
+  service-worker-registratie zelf: 8.1a's CI toonde dat zowel `page.route()`
+  als `page.context().route()` de browser-interne SW-update-checkfetch niet
+  betrouwbaar onderscheppen (zie `pwa-update.spec.ts`'s eigen
+  moduledocstring) — hier wordt daarom een laag gemockt die ver van de
+  servicewerker-netwerkmachinery af staat: puur de JS-level capability-
+  probe die de adapter aanroept vóórdat 'ie ooit
+  `navigator.serviceWorker.register()` aanroept. Bevestigt: de geregistreerde
+  worker se `scriptURL` bevat `/sw-classic.js` (niet het standaard `/sw.js`-
+  pad), en dezelfde offline-app-shell-serving als het bestaande
+  `pwa.spec.ts`-modulescenario werkt ook via de classic-fallback.
+  **Kon in deze sessie niet lokaal worden uitgevoerd** (Playwright/Chromium
+  is in deze ontwikkelsandbox netwerkgeblokkeerd, zelfde beperking als
+  7.3c/7.4c/8.1a se restpunten) — verificatie loopt via de bestaande
+  v2-e2e-CI-job.
+- **Werkitem 3 (echte-Safari/iPadOS-hardwarevalidatie): expliciet NIET
+  uitgevoerd, blijft open.** Deze ontwikkelsandbox heeft geen fysieke
+  iOS/iPadOS-hardware of Safari-browserinstance — precies de situatie die
+  het plan al voorzag. Zodra een operator met toegang tot een courtside-
+  representatief Safari/iPadOS-toestel dit uitvoert (installatie via "Zet
+  op beginscherm", eerste offline reload, de 8.1a-updateflow, de
+  8.1b-readinesscheck — nu ook geverifieerd tegen de daadwerkelijke
+  module-of-classic-keuze die dat toestel krijgt), wordt het resultaat hier
+  in §B punt 6 vastgelegd (werk 4) en de bestaande §17-rij in
+  `docs/IMPLEMENTATION_PLAN.md` bijgewerkt — geen nieuwe, losse iOS-regel.
+  §B punt 6 blijft daarom letterlijk ongewijzigd staan als open
+  beslispunt totdat dat resultaat er is.
+- Lokale verificatie (orchestrerende sessie, na een onderbroken
+  achtergrond-agent-run die op de spendlimiet liep vlak vóór de
+  verificatiestap): `npx vitest run` — 93 bestanden/900 tests groen;
+  `npx tsc -b` — schoon; `npx eslint .` — schoon (na het toevoegen van het
+  `scripts/**/*.mjs`-eslintblok en het verwijderen van twee ongebruikte
+  fake-Worker-constructorparameters, beide hierboven al genoemd);
+  `npx prettier -c .` — schoon; `npm run build` — beide bundels gebouwd,
+  bytegelijke precache-manifesten, `verify-sw-classic-bundle.mjs` bevestigt
+  geen top-level `import` in `dist/sw-classic.js`.
+
 ## D. Stopregels
 
 - Geen stille SW-overname (`skipWaiting`/`clients.claim()`) tijdens een
