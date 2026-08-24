@@ -9,7 +9,7 @@
   },
   "scripts": {
     "dev": "vite",
-    "build": "tsc -b && vite build",
+    "build": "tsc -b && vite build && SW_BUILD_TARGET=classic vite build && node scripts/verify-sw-classic-bundle.mjs",
     "preview": "vite preview",
     "lint": "eslint .",
     "format": "prettier -w .",

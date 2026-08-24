@@ -17,6 +17,50 @@
 // ongemerkte regressie op die tests zodra jsdom ooit een gedeeltelijke
 // `serviceWorker`-global zou krijgen. `init()` wordt in de praktijk pas
 // aangeroepen door `usePwaUpdate()`'s mount-effect, ná de eerste render.
+/**
+ * 8.1c (docs/pr-8.1-plan.md §C 8.1c werk 1): korte runtime-capability-check
+ * voor module-service-worker-ondersteuning — GEEN user-agent-sniffing (§B
+ * punt 6 noemt dat expliciet fragieler dan een echte capability-check).
+ *
+ * Gebaseerd op de bekende feature-detectietruc voor module-`Worker`s: een
+ * UA die de `type`-optie daadwerkelijk begrijpt LEEST 'm ook (via de getter
+ * hieronder, die alleen wordt aangeroepen als de UA de eigenschap
+ * daadwerkelijk opvraagt); een UA zonder module-workerondersteuning negeert
+ * onbekende opties op een `Worker`-constructor gewoon en roept die getter
+ * dus nooit aan. Module-service-workers draaien op dezelfde ES-module-
+ * machinery als reguliere `type: 'module'`-workers (§B punt 6: "achter
+ * dezelfde ES-module-machinery als reguliere `<script type=\"module\">`"),
+ * dus is deze `Worker`-detectie een betrouwbare proxy voor module-SW-
+ * ondersteuning — zonder zelf al een service worker te moeten registreren,
+ * en dus zonder het "`register()` geeft geen duidelijke throw op alle
+ * faalpaden"-risico dat §B punt 6 beschrijft (een module-SW-registratie die
+ * gewoon nooit `active` wordt, i.p.v. een zichtbare fout).
+ *
+ * Retourneert `true` (module-ondersteuning aannemen) wanneer `Worker` hier
+ * niet bestaat of de detectie zelf een throw geeft — bewust dezelfde
+ * default als het bestaande, ongewijzigde gedrag (`type: 'module'`,
+ * `/sw.js`) voor elke omgeving waar deze truc niet uitvoerbaar is (bv.
+ * jsdom in componenttests, die geen `Worker`-global heeft) — geen van de
+ * bestaande 8.1a-/8.1b-tests hoeft hierdoor te veranderen.
+ */
+export function detectModuleServiceWorkerSupport(): boolean {
+  if (typeof Worker === 'undefined') return true;
+  let supportsModule = false;
+  const options = {
+    get type() {
+      supportsModule = true;
+      return 'module';
+    },
+  } as WorkerOptions;
+  try {
+    const probe = new Worker('data:,', options);
+    probe.terminate();
+  } catch {
+    return true;
+  }
+  return supportsModule;
+}
+
 export type PwaUpdateStatus = 'idle' | 'update-available' | 'reloading' | 'error';
 
 export interface PwaUpdateAdapterState {
@@ -66,6 +110,14 @@ export class PwaUpdateAdapter {
     private readonly reload: () => void = () => {
       if (typeof location !== 'undefined') location.reload();
     },
+    // 8.1c (§C 8.1c werk 1): pad naar de classic (niet-module) fallback-
+    // bundel — zie `vite.config.ts`/`src/sw-classic.ts` voor hoe die apart
+    // gebouwd wordt.
+    private readonly classicSwUrl = '/sw-classic.js',
+    // Injecteerbaar voor testbaarheid (net als `reload`), default de echte
+    // capability-check hierboven — geen gedragswijziging voor bestaande
+    // aanroepers.
+    private readonly supportsModuleServiceWorker: () => boolean = detectModuleServiceWorkerSupport,
   ) {}
 
   getState(): PwaUpdateAdapterState {
@@ -107,8 +159,23 @@ export class PwaUpdateAdapter {
 
     navigator.serviceWorker.addEventListener('controllerchange', this.boundHandleControllerChange);
 
+    // 8.1c (§C 8.1c werk 1): de capability-check kiest ÉÉN keer, vóór de
+    // registratiepoging zelf, tussen de module-bundel en de classic-
+    // fallbackbundel — geen "probeer module, val terug op classic bij een
+    // mislukte poging"-keten. Dat is bewust: een module-SW-registratie die
+    // niet lukt geeft vaak geen throw (§B punt 6), dus wachten op een
+    // gefaalde registratie-promise om te beslissen of classic nodig is zou
+    // op precies de apparaten waar dit ertoe doet nooit vuren. Faalt de op
+    // basis van deze capability-check GEKOZEN registratie zelf alsnog (bv.
+    // een échte netwerk-/scope-fout), dan is dat een aantoonbaar kapotte
+    // registratie — werk 2: geen tweede fallbackpoging, gewoon `error`
+    // (waarna `domain/pwa/pwaReadiness.ts` dat als `broken` rapporteert).
+    const useModule = this.supportsModuleServiceWorker();
+    const swUrl = useModule ? this.swUrl : this.classicSwUrl;
+    const swType: 'module' | 'classic' = useModule ? 'module' : 'classic';
+
     navigator.serviceWorker
-      .register(this.swUrl, { scope: '/', type: 'module' })
+      .register(swUrl, { scope: '/', type: swType })
       .then((registration) => {
         this.registration = registration;
         // Geslaagde registratie — meteen zichtbaar via `registered: true`,
@@ -131,7 +198,7 @@ export class PwaUpdateAdapter {
         });
       })
       .catch((err) => {
-        console.error('Service worker registratie mislukt', err);
+        console.error(`Service worker registratie mislukt (${swType})`, err);
         this.setState(this.buildState('error'));
       });
   }

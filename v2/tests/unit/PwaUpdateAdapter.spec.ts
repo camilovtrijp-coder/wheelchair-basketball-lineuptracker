@@ -8,6 +8,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   CONTROLLERCHANGE_TIMEOUT_MS,
+  detectModuleServiceWorkerSupport,
   PwaUpdateAdapter,
 } from '../../src/infrastructure/pwa/PwaUpdateAdapter';
 
@@ -214,6 +215,91 @@ describe('PwaUpdateAdapter', () => {
 
     adapter.dismissError();
     expect(adapter.getState()).toEqual({ status: 'idle', registered: false });
+  });
+
+  // 8.1c (docs/pr-8.1-plan.md §C 8.1c werk 1): de capability-check bepaalt
+  // welke bundel/`type` gebruikt wordt — geïnjecteerd i.p.v. via een echte
+  // `Worker`-probe, zodat deze tests niet afhankelijk zijn van of jsdom
+  // `Worker` implementeert.
+  it('registreert de classic-fallbackbundel wanneer de capability-check geen module-ondersteuning meldt', async () => {
+    const { container } = installFakeServiceWorker();
+    const adapter = new PwaUpdateAdapter('/sw.js', undefined, '/sw-classic.js', () => false);
+    adapter.init();
+    await vi.waitFor(() =>
+      expect(container.register).toHaveBeenCalledWith('/sw-classic.js', {
+        scope: '/',
+        type: 'classic',
+      }),
+    );
+  });
+
+  it('registreert de module-bundel wanneer de capability-check module-ondersteuning meldt', async () => {
+    const { container } = installFakeServiceWorker();
+    const adapter = new PwaUpdateAdapter('/sw.js', undefined, '/sw-classic.js', () => true);
+    adapter.init();
+    await vi.waitFor(() =>
+      expect(container.register).toHaveBeenCalledWith('/sw.js', { scope: '/', type: 'module' }),
+    );
+  });
+
+  it('8.1c werk 2: meldt een herstelbare fout (later "broken" via de readinesscheck) als zelfs de classic-fallbackregistratie mislukt — geen tweede fallbackpoging, exact één register()-aanroep', async () => {
+    const container = new FakeServiceWorkerContainer();
+    container.register.mockRejectedValue(new Error('classic ook kapot'));
+    vi.stubGlobal('navigator', { serviceWorker: container });
+    vi.spyOn(console, 'error').mockImplementation(() => undefined);
+
+    const adapter = new PwaUpdateAdapter('/sw.js', undefined, '/sw-classic.js', () => false);
+    adapter.init();
+    await vi.waitFor(() => expect(adapter.getState().status).toBe('error'));
+    expect(container.register).toHaveBeenCalledTimes(1);
+    expect(container.register).toHaveBeenCalledWith('/sw-classic.js', {
+      scope: '/',
+      type: 'classic',
+    });
+  });
+
+  describe('detectModuleServiceWorkerSupport() — de echte capability-check', () => {
+    afterEach(() => {
+      vi.unstubAllGlobals();
+    });
+
+    it('neemt module-ondersteuning aan als Worker hier niet bestaat (bv. jsdom)', () => {
+      vi.stubGlobal('Worker', undefined);
+      expect(detectModuleServiceWorkerSupport()).toBe(true);
+    });
+
+    it('detecteert GEEN module-ondersteuning als de UA de type-getter nooit uitleest', () => {
+      class FakeLegacyWorker {
+        constructor() {
+          // Een "oude" UA leest onbekende workeropties niet uit — de
+          // `type`-getter uit de probe wordt dus nooit aangeroepen.
+        }
+        terminate(): void {}
+      }
+      vi.stubGlobal('Worker', FakeLegacyWorker);
+      expect(detectModuleServiceWorkerSupport()).toBe(false);
+    });
+
+    it('detecteert WEL module-ondersteuning als de UA de type-getter uitleest', () => {
+      class FakeModernWorker {
+        constructor(_url: string, opts: { type: string }) {
+          void opts.type; // leest de getter uit, zoals een UA met module-Worker-ondersteuning doet
+        }
+        terminate(): void {}
+      }
+      vi.stubGlobal('Worker', FakeModernWorker);
+      expect(detectModuleServiceWorkerSupport()).toBe(true);
+    });
+
+    it('neemt module-ondersteuning aan als de Worker-constructor zelf een throw geeft', () => {
+      class FakeThrowingWorker {
+        constructor() {
+          throw new Error('geen Worker-ondersteuning hier');
+        }
+      }
+      vi.stubGlobal('Worker', FakeThrowingWorker);
+      expect(detectModuleServiceWorkerSupport()).toBe(true);
+    });
   });
 
   it('subscribe() levert de huidige staat meteen en bij elke wijziging', async () => {
