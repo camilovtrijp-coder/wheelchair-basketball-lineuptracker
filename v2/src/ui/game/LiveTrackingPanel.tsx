@@ -85,6 +85,7 @@ function TimeSelect({
   pad,
   testId,
   disabled,
+  ariaLabel,
   onChange,
 }: {
   value: number;
@@ -92,6 +93,7 @@ function TimeSelect({
   pad: boolean;
   testId: string;
   disabled: boolean;
+  ariaLabel: string;
   onChange: (v: number) => void;
 }) {
   const options = Array.from({ length: max + 1 }, (_, i) => i);
@@ -101,6 +103,7 @@ function TimeSelect({
       value={value}
       disabled={disabled}
       data-testid={testId}
+      aria-label={ariaLabel}
       onChange={(e) => onChange(Number((e.target as HTMLSelectElement).value))}
     >
       {options.map((n) => (
@@ -351,6 +354,7 @@ export function LiveTrackingPanel({
             value={score}
             disabled={!canWrite}
             data-testid={`score-select-${team}`}
+            aria-label={t(lang, 'scoreSelectLabel').replace('{team}', name)}
             onChange={(e) =>
               onGameChange({
                 ...game,
@@ -555,6 +559,7 @@ export function LiveTrackingPanel({
             pad={false}
             disabled={!canWrite}
             testId="begin-min"
+            ariaLabel={`${t(lang, 'beginLabel')} ${t(lang, 'minutesUnitLabel')}`}
             onChange={(v) => onGameChange({ ...game, beginSec: withMinutes(game.beginSec, v) })}
           />
           <span>:</span>
@@ -564,6 +569,7 @@ export function LiveTrackingPanel({
             pad
             disabled={!canWrite}
             testId="begin-sec"
+            ariaLabel={`${t(lang, 'beginLabel')} ${t(lang, 'secondsUnitLabel')}`}
             onChange={(v) => onGameChange({ ...game, beginSec: withSeconds(game.beginSec, v) })}
           />
         </div>
@@ -575,6 +581,7 @@ export function LiveTrackingPanel({
             pad={false}
             disabled={!canWrite}
             testId="end-min"
+            ariaLabel={`${t(lang, 'endLabel')} ${t(lang, 'minutesUnitLabel')}`}
             onChange={(v) => {
               onGameChange({ ...game, endSec: withMinutes(game.endSec, v) });
               setEndTouched(true);
@@ -587,6 +594,7 @@ export function LiveTrackingPanel({
             pad
             disabled={!canWrite}
             testId="end-sec"
+            ariaLabel={`${t(lang, 'endLabel')} ${t(lang, 'secondsUnitLabel')}`}
             onChange={(v) => {
               onGameChange({ ...game, endSec: withSeconds(game.endSec, v) });
               setEndTouched(true);
@@ -689,6 +697,7 @@ export function LiveTrackingPanel({
                 pad={false}
                 disabled={!canWrite}
                 testId="swap-confirm-min"
+                ariaLabel={`${t(lang, 'timeLabel')} ${t(lang, 'minutesUnitLabel')}`}
                 onChange={(v) => setSwapConfirmEndSec(withMinutes(swapConfirmEndSec, v))}
               />
               <span>:</span>
@@ -698,6 +707,7 @@ export function LiveTrackingPanel({
                 pad
                 disabled={!canWrite}
                 testId="swap-confirm-sec"
+                ariaLabel={`${t(lang, 'timeLabel')} ${t(lang, 'secondsUnitLabel')}`}
                 onChange={(v) => setSwapConfirmEndSec(withSeconds(swapConfirmEndSec, v))}
               />
             </div>
@@ -790,6 +800,7 @@ export function LiveTrackingPanel({
                 pad={false}
                 disabled={false}
                 testId="edit-begin-min"
+                ariaLabel={`${t(lang, 'beginLabel')} ${t(lang, 'minutesUnitLabel')}`}
                 onChange={(v) =>
                   setEditDraft({ ...editDraft, beginSec: withMinutes(editDraft.beginSec, v) })
                 }
@@ -801,6 +812,7 @@ export function LiveTrackingPanel({
                 pad
                 disabled={false}
                 testId="edit-begin-sec"
+                ariaLabel={`${t(lang, 'beginLabel')} ${t(lang, 'secondsUnitLabel')}`}
                 onChange={(v) =>
                   setEditDraft({ ...editDraft, beginSec: withSeconds(editDraft.beginSec, v) })
                 }
@@ -814,6 +826,7 @@ export function LiveTrackingPanel({
                 pad={false}
                 disabled={false}
                 testId="edit-end-min"
+                ariaLabel={`${t(lang, 'endLabel')} ${t(lang, 'minutesUnitLabel')}`}
                 onChange={(v) =>
                   setEditDraft({ ...editDraft, endSec: withMinutes(editDraft.endSec, v) })
                 }
@@ -825,6 +838,7 @@ export function LiveTrackingPanel({
                 pad
                 disabled={false}
                 testId="edit-end-sec"
+                ariaLabel={`${t(lang, 'endLabel')} ${t(lang, 'secondsUnitLabel')}`}
                 onChange={(v) =>
                   setEditDraft({ ...editDraft, endSec: withSeconds(editDraft.endSec, v) })
                 }
