@@ -2,6 +2,20 @@
   "$schema": "https://opencode.ai/config.json",
   "instructions": [
     "docs/IMPLEMENTATION_PLAN.md"
-  ]
+  ],
+  "provider": {
+    "ollama": {
+      "npm": "@ai-sdk/openai-compatible",
+      "name": "Ollama (local)",
+      "options": {
+        "baseURL": "http://localhost:11434/v1"
+      },
+      "models": {
+        "qwen2.5-coder:latest": {
+          "name": "Qwen 2.5 Coder (local)"
+        }
+      }
+    }
+  }
 }
 
