@@ -12,8 +12,8 @@
         "apiKey": "ollama"
       },
       "models": {
-        "qwen2.5-coder:latest": {
-          "name": "Qwen 2.5 Coder (local)"
+        "qwen2.5-coder:7b": {
+          "name": "Qwen 2.5 Coder 7B (local)"
         }
       }
     }
