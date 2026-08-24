@@ -746,3 +746,49 @@ OK — dist/sw-classic.js bevat geen top-level ES-module-import-statements.`
   loggingkanaal dat op 8.3's privacyveilige-logging-eis vooruitloopt.
 - Geen productiecutover; na 8.1 volgen eerst 8.2 en 8.3, en pas daarna de
   expliciete fase-8-acceptatie uit `docs/IMPLEMENTATION_PLAN.md` §13.
+
+## E. Post-merge review (minimax, PR #75–#78)
+
+PR 75/76/77/78 (heel PR 8.1 + de roadmap-update) zijn gemerged vóórdat de
+externe review geplaatst kon worden — een afwijking van de afgesproken
+volgorde (eerst review, dan mergen). De review is alsnog uitgevoerd tegen de
+gemergede staat op `main`; dit is de vastlegging daarvan, zodat de
+bevindingen niet alleen in de chatgeschiedenis blijven staan.
+
+**Verdict: geen blokkers.** Architectuur, laagscheiding en teststrategie
+volgen het 8.1-plan getrouw; alle CI groen op alle vier PR's; geen hotfix of
+revert vereist.
+
+Vijf niet-blokkerende observaties, elk hieronder met de gekozen opvolging:
+
+1. **`pwaUpdateAdapter`-singleton is ongetest als singleton** (alleen losse
+   `new PwaUpdateAdapter()`-instanties zijn unit-getest) —
+   **doorgeschoven naar PR 8.3**: als 8.3 extra PWA-diagnose toevoegt, dan
+   een `forTesting()`/reset-methode op de adapter overwegen. Geen actie in
+   8.1 zelf; de reviewer beval dit expliciet als 8.3-follow-up aan, niet als
+   iets om nu nog aan een al gemergede PR toe te voegen.
+2. **`usePwaUpdate`'s effect-dependency op `autoConfirmDelayMs`** —
+   reviewer bevestigt expliciet "geen bug, alleen goed om te weten" (de
+   enige aanroeper, `App.tsx`, geeft nooit een dynamische waarde door).
+   **Geen actie.**
+3. **`verify-sw-classic-bundle.mjs`'s `/^import\s/`-regex mist een geneste
+   `import` die toevallig aan het begin van een regel staat** (praktisch
+   risico klein bij de huidige Workbox-versie) — **doorgeschoven naar
+   PR 8.3**: bij een toekomstige Workbox-upgrade een breder patroon
+   overwegen (bv. `/\bimport\b[^=]*\bfrom\b/`). Geen actie nu.
+4. **`App.tsx`'s `locked`-const staat nu vóór de `useEffect` i.p.v. erin**
+   (nodig omdat `usePwaUpdate(locked)` dezelfde waarde nodig heeft) —
+   zuiver een leesbaarheidsobservatie, functioneel correct bevestigd.
+   **Geen actie.**
+5. **`docs/IMPLEMENTATION_PLAN.md` is nog niet prettier-clean** — een
+   pre-existing probleem van vóór PR 78 (bevestigd via `git stash`-
+   vergelijking, niet door PR 78 veroorzaakt). Reviewer: "niet urgent,
+   1-commit-PR waardig zodra er een docs-only moment is." **Nog niet
+   ingepland** — wordt opgepakt zodra er expliciet om gevraagd wordt of bij
+   een volgend docs-only-moment.
+
+**Procesconclusie:** vanaf nu wordt geen enkele PR meer automatisch
+gemerged zodra CI groen is — eerst wordt op een geplaatste review gewacht,
+pas daarna mergen (zie ook de PR 8.3-sectie in
+`docs/IMPLEMENTATION_PLAN.md` §13 voor de twee hierboven genoemde
+follow-uppunten).

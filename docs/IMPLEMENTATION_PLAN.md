@@ -802,6 +802,13 @@ Voorbereidingsplan: [`docs/pr-8.1-plan.md`](pr-8.1-plan.md).
 
 ### PR 8.3 — beveiliging, privacy, kosten en beheer
 
+**Follow-ups uit de post-merge review van PR 8.1** (`docs/pr-8.1-plan.md`
+§E, minimax-review op PR #75–#78, niet-blokkerend): (1) een
+`forTesting()`/reset-methode op `PwaUpdateAdapter` overwegen als 8.3 extra
+PWA-diagnose toevoegt aan de gedeelde singleton; (2) `verify-sw-classic-
+bundle.mjs`'s importdetectieregex verbreden bij een toekomstige
+Workbox-upgrade.
+
 - volledige Emulator Rules-suite en review zonder open hoge bevindingen;
 - rate limits/misbruikscenario's, App Check-besluit en privacyveilige logging;
 - organisatie-export, account-/organisatieverwijdering, back-up en herstelproef;
