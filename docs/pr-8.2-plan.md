@@ -90,6 +90,16 @@ e2e/mobile.spec.ts` en de auth-e2e-suite al aanraken, geen aparte
    Geen scan tegen de v1-referentie (`index.html`) — die blijft
    ongewijzigd en buiten scope, zelfde afbakening als ADR-000's
    teststrategie voor v2-migratie.
+
+   **Expliciete WCAG-tags (externe review PR #80):**
+   `new AxeBuilder({ page }).withTags(['wcag2a', 'wcag2aa', 'wcag21a',
+'wcag21aa'])` — WCAG 2.0 A/AA plus WCAG 2.1 A/AA, bewust NIET de bredere
+   `axe-core`-standaardregelset (die ook `best-practice`-regels meeneemt
+   die geen formele WCAG-tag hebben en dus geen stabiel, versie-onafhankelijk
+   contract vormen). Vastleggen van de exacte tags voorkomt dat een
+   toekomstige `axe-core`-major-upgrade (bv. 5.x → 6.x/7.x) stilzwijgend de
+   gescande regelset — en dus wat "groen" betekent — laat verschuiven.
+
 2. **Een echte focus-trap/-restore-module, in `infrastructure/a11y/`, niet
    in `ui/` of `domain/`.** Focus-trapping is fundamenteel een
    browser-DOM-concern (`document.activeElement`, `focus()`,
@@ -139,7 +149,17 @@ e2e/mobile.spec.ts` en de auth-e2e-suite al aanraken, geen aparte
    10 (CSS custom properties `--team-primary`/`--team-accent` op
    root-niveau, toegepast op de knoppen/headers die daadwerkelijk
    merkbaar zijn — dezelfde scope als bug 10's eigen "aparte
-   implementatiestap"-aantekening), en pas dáárna een pure
+   implementatiestap"-aantekening). **Concrete elementenlijst (externe
+   review PR #80):** minimaal `.btn-primary` (alle primaire actieknoppen —
+   startknop, opslaan, bevestigen) krijgt `--team-primary` als
+   achtergrondkleur, en de app-header/`<h1>` krijgt `--team-accent` als
+   accentkleur — de acceptatietest in 8.2b werk 3 verifieert expliciet dat
+   minstens dít ene zichtbaar-merkbare element de custom property
+   daadwerkelijk gebruikt (niet slechts dat de property ergens in de CSS
+   gedefinieerd staat), zodat "bug 10 opgelost" niet kan worden geclaimd op
+   basis van een property die nergens renderend wordt toegepast. Verdere
+   elementen (bv. de PWA-updatebanner) zijn optioneel binnen dezelfde
+   8.2b-scope, niet vereist voor de acceptatiecriteria. Pas dáárna een pure
    `domain/settings/`-contrastcontrolefunctie (WCAG-contrastratio, AA-
    drempel 4.5:1 voor tekst) die de gekozen kleur tegen de vaste
    achtergrond-/tekstkleuren van het thema toetst en een waarschuwing
@@ -166,6 +186,39 @@ firebaseClient.ts`) wist alleen Firestore's IndexedDB-persistentie.
      (`lineup-tracker-lang`) of de vertrouwd-apparaatvlag zelf (die blijft
      zoals nu bewust een apparaateigenschap, zie de bestaande code-
      commentaar in `AuthGate.tsx`).
+
+     **Expliciete witte-/zwarte-lijst (externe review PR #80), geverifieerd
+     tegen de huidige codebase:**
+
+     WEL wissen: `lineup-tracker-settings` (`domain/settings/types.ts`),
+     `lineup-tracker-roster` (`domain/roster/types.ts`),
+     `lineup-tracker-games` (v1-sleutel, `domain/backup/migrateV1.ts`),
+     `lineup-tracker-v1` (v1-migratieblob, `domain/game/v1Migration.ts`),
+     `lineup-tracker-v2-active-game:${orgId}:${teamId}`
+     (`infrastructure/game/LocalStorageGameRepository.ts`),
+     `lineup-tracker-v2-completed-games:${orgId}:${teamId}`
+     (`infrastructure/game/LocalStorageCompletedGameRepository.ts`),
+     `lineup-tracker-v2-device-id`
+     (`infrastructure/device/deviceId.ts`),
+     `lineup-tracker-v2-game-sync-checkpoint:${gameId}`
+     (`infrastructure/game/LocalStorageGameSyncCheckpointRepository.ts`),
+     `lineup-tracker-v2-pending-finalize:${orgId}:${teamId}`
+     (`infrastructure/game/LocalStoragePendingFinalizeRepository.ts`),
+     `lineup-tracker-v2-migration-run:${orgId}:${teamId}`
+     (`infrastructure/migration/LocalStorageMigrationRunRepository.ts`).
+
+     NOOIT wissen: `lineup-tracker-lang` (taalvoorkeur),
+     `lineup-tracker-trusted-device` (de vertrouwd-apparaatvlag zelf —
+     blijft een apparaateigenschap), `lineup-tracker-bootstrap-org-id`
+     (bootstrap-hervattingsstatus, PR 5.x), en de
+     `lineup-tracker-cloud-imported-settings`/`-roster`-vlaggen (cloud-
+     import-markers — per ongeluk wissen kan een ongewenste "herimport"-
+     knop triggeren bij de volgende cloud-sessie). 8.2c werk 1 implementeert
+     dit als een expliciete key-lijst in code (geen `localStorage.clear()`
+     of prefix-wildcard-wis), zodat een toekomstige nieuwe key bewust moet
+     worden toegevoegd aan een van beide lijsten i.p.v. stilzwijgend mee te
+     wissen of stilzwijgend te blijven staan.
+
    - Er is vandaag geen UI-pad om de vertrouwd-apparaatkeuze ná de
      initiële `TrustedDevicePrompt` te herzien (bijv. een gedeeld
      clubtablet dat per ongeluk als "vertrouwd" is gemarkeerd). 8.2c voegt
@@ -190,6 +243,15 @@ firebaseClient.ts`) wist alleen Firestore's IndexedDB-persistentie.
    trager _fysiek_ toestel (lagere CPU, oudere WebKit/Chromium-engine) is
    in deze sandbox niet emuleerbaar — zie §D voor de bijbehorende
    restpunt-erkenning.
+
+   **Eigenaarschap van dit besluit (externe review PR #80):** de 375×667-
+   keuze is een voorstel, geen vastgelegd feit — degene die 8.2c
+   implementeert kiest het definitieve profiel, met expliciete bevestiging
+   van de repo-eigenaar vóór 8.2c gemerged wordt (niet vóór implementatie
+   start — dat zou de sub-PR onnodig blokkeren). Zelfde "beslissing bij een
+   echte-apparaat-gate, geen aanname"-discipline als de Safari/iPadOS-
+   fallbackkeuze in `docs/pr-8.1-plan.md` §B punt 6/§C 8.1c.
+
 7. **Zwakke/offline verbinding: hergebruik het bestaande PWA-/offline-
    testfundament, geen tweede parallelle suite.** PR 8.1 heeft al
    `v2/tests/e2e/pwa.spec.ts`, `pwa-update.spec.ts` en
@@ -328,7 +390,17 @@ Werk:
 4. Voeg CDP-netwerkemulatie (trage, niet-onderbroken verbinding) toe aan
    minstens één live-wedstrijdscenario (§B punt 7) — bevestigt dat score-
    /wisselbediening bruikbaar blijft tijdens een langzame achtergrondsync,
-   zonder de bestaande volledig-offline-suites te dupliceren.
+   zonder de bestaande volledig-offline-suites te dupliceren. **Concreet
+   scenario (externe review PR #80):** via
+   `client.send('Network.emulateNetworkConditions', { offline: false,
+latency: 1500, downloadThroughput: <3G-achtige bandbreedte>,
+uploadThroughput: <idem> })` krijgt de Firestore-writeronde van een
+   scoretoekenning ~1500ms vertraging; de test bevestigt dat (a) de
+   score-knop tijdens die vertraging klikbaar blijft (geen UI-lock), en
+   (b) een tweede score-toekenning binnen 5 seconden na de eerste — dus
+   vóórdat de eerste upload klaar is — in de juiste volgorde verwerkt
+   wordt (geen dubbele/omgewisselde acties, zelfde garantie als de
+   bestaande actielog-idempotentie uit PR 7.1c).
 5. Voeg unit-/component-tests toe voor de nieuwe uitloglogica (§B punt 5,
    eerste subpunt: welke sleutels wél/niet gewist worden) en voor het
    herroepbare instellingspad.
