@@ -1,3 +1,5 @@
+import { useFocusTrap } from '../../application/a11y/useFocusTrap';
+
 /**
  * Gedeeld modaal-dialoogpatroon (verplaatst uit `ui/stats/StatsPanel.tsx`
  * bij PR 6.5, zodat `GamesFilterModal` — nu gedeeld tussen Stats en Trends —
@@ -6,6 +8,11 @@
  * `aria-modal` en keyboard handler), terwijl de binnenste `.modal` de
  * click-propagation stopt zodat interacties binnen het dialoog de backdrop
  * niet sluiten.
+ *
+ * PR 8.2a (docs/pr-8.2-plan.md §C 8.2a werk 4): `useFocusTrap` vangt focus
+ * zodra dit dialoog mount en geeft 'm terug bij unmount — een AANVULLING op
+ * het bestaande backdrop-click-/Escape-sluitgedrag hierboven, geen
+ * vervanging.
  */
 export function ModalDialog({
   title,
@@ -26,6 +33,7 @@ export function ModalDialog({
   testId: string;
   children: preact.ComponentChildren;
 }) {
+  const trapRef = useFocusTrap<HTMLDivElement>(true);
   return (
     // eslint-disable-next-line jsx-a11y/no-noninteractive-element-interactions
     <div
@@ -40,7 +48,7 @@ export function ModalDialog({
       }}
     >
       {/* eslint-disable-next-line jsx-a11y/click-events-have-key-events, jsx-a11y/no-noninteractive-element-interactions */}
-      <div className="modal" role="document" onClick={(e) => e.stopPropagation()}>
+      <div className="modal" role="document" ref={trapRef} onClick={(e) => e.stopPropagation()}>
         <div className="modal__title-row">
           {onClear ? (
             <button
