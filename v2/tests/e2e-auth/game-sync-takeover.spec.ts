@@ -154,16 +154,46 @@ test('een echte overname door een ander apparaat wordt zichtbaar/auditbaar op de
     // (nu weer online) de epoch-bevorderde overname ziet
     // (`isEpochPromotedTakeover()`), met de nieuwe "Overnemen…"-knop.
     await expect(page.getByTestId('cloud-viewer-banner')).toBeVisible({ timeout: 20_000 });
-    await page.getByTestId('takeover-open-btn').click();
+    // Opent puur via het toetsenbord — geen `click()` — om de focus-trap
+    // van dit APART geïmplementeerde dialoog (`TakeoverConfirmDialog.tsx`
+    // hergebruikt `ModalDialog` niet, zie dat bestand se eigen commentaar)
+    // te bewijzen (PR 8.2a, docs/pr-8.2-plan.md §C 8.2a; externe review
+    // PR #81 wees erop dat de bestaande `a11y-keyboard.spec.ts` alleen de
+    // gedeelde filtermodal raakt).
+    const openBtn = page.getByTestId('takeover-open-btn');
+    await openBtn.focus();
+    await page.keyboard.press('Enter');
 
-    await expect(page.getByTestId('takeover-confirm-dialog')).toBeVisible();
+    const dialog = page.getByTestId('takeover-confirm-dialog');
+    await expect(dialog).toBeVisible();
     // Toont de huidige (ANDERE) writer — apparaat B — en een bekende
     // laatste serveractiviteit (niet "nog nooit", want A had al gesynct).
     await expect(page.getByTestId('takeover-current-writer')).toContainText('apparaat');
     await expect(page.getByTestId('takeover-last-activity')).not.toContainText('nog nooit');
 
-    // Bevestigt de overname vanuit de UI — A neemt het schrijverschap
+    // De focus-trap verplaatst focus meteen naar het eerste focusbare
+    // element (de bevestigknop) — nooit op de openende knop erachter.
+    await expect(page.getByTestId('takeover-confirm-btn')).toBeFocused();
+
+    // Tab/Shift+Tab cyclen tussen bevestigen/annuleren, nooit naar de
+    // achtergrondpagina.
+    await page.keyboard.press('Tab');
+    await expect(page.getByTestId('takeover-cancel-btn')).toBeFocused();
+    await page.keyboard.press('Tab');
+    await expect(page.getByTestId('takeover-confirm-btn')).toBeFocused();
+    await page.keyboard.press('Shift+Tab');
+    await expect(page.getByTestId('takeover-cancel-btn')).toBeFocused();
+
+    // Escape sluit en geeft focus terug aan de knop die het dialoog
+    // opende.
+    await page.keyboard.press('Escape');
+    await expect(dialog).not.toBeVisible();
+    await expect(openBtn).toBeFocused();
+
+    // Heropenen en daadwerkelijk bevestigen — A neemt het schrijverschap
     // terug, een nieuwe epoch (3), zonder reload.
+    await openBtn.click();
+    await expect(dialog).toBeVisible();
     await page.getByTestId('takeover-confirm-btn').click();
     await expect(page.getByTestId('takeover-confirm-dialog')).not.toBeVisible({ timeout: 20_000 });
     await expect(page.getByTestId('cloud-viewer-banner')).not.toBeVisible();

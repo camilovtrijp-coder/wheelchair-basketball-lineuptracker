@@ -52,12 +52,21 @@ export class FocusTrap {
   private previouslyFocused: HTMLElement | null = null;
   private active = false;
   private readonly handleKeyDown = (e: KeyboardEvent) => this.onKeyDown(e);
+  private readonly handleFocusIn = (e: FocusEvent) => this.onFocusIn(e);
 
   /**
    * (a) onthoudt het element dat op dit moment focus heeft (voor restore
    * bij `deactivate()`), (b) verplaatst focus naar het eerste focusbare
    * element binnen `container` (of `container` zelf als er geen focusbaar
    * kind is — zodat Tab/Escape sowieso binnen het dialoog blijven werken).
+   *
+   * Beide listeners hangen op `document`, niet op `container`: een dynamisch
+   * `disabled`-geworden knop (bijv. `TakeoverConfirmDialog` tijdens
+   * `inProgress`) verliest focus naar `<body>` ZONDER een Tab-toetsaanslag —
+   * externe review PR #81 reproduceerde dit in Chromium. Een listener die
+   * alleen op `container` hangt, hoort die focusverplaatsing dan niet meer
+   * (het event vuurt op/vanaf `<body>`, buiten `container`). `focusin` op
+   * `document` vangt élke focusverplaatsing, ook die zonder toetsenbord.
    */
   activate(container: HTMLElement): void {
     if (this.active && this.container === container) return;
@@ -65,15 +74,10 @@ export class FocusTrap {
     this.previouslyFocused =
       document.activeElement instanceof HTMLElement ? document.activeElement : null;
     this.active = true;
-    container.addEventListener('keydown', this.handleKeyDown);
+    document.addEventListener('keydown', this.handleKeyDown, true);
+    document.addEventListener('focusin', this.handleFocusIn, true);
 
-    const [first] = queryFocusable(container);
-    if (first) {
-      first.focus();
-    } else {
-      if (!container.hasAttribute('tabindex')) container.setAttribute('tabindex', '-1');
-      container.focus();
-    }
+    this.focusFirstOrContainer();
   }
 
   /** (d) zet focus terug naar het onthouden element — een no-op als dat
@@ -82,12 +86,35 @@ export class FocusTrap {
   deactivate(): void {
     if (!this.active) return;
     this.active = false;
-    this.container?.removeEventListener('keydown', this.handleKeyDown);
+    document.removeEventListener('keydown', this.handleKeyDown, true);
+    document.removeEventListener('focusin', this.handleFocusIn, true);
     this.container = null;
     if (this.previouslyFocused && document.contains(this.previouslyFocused)) {
       this.previouslyFocused.focus();
     }
     this.previouslyFocused = null;
+  }
+
+  private focusFirstOrContainer(): void {
+    if (!this.container) return;
+    const [first] = queryFocusable(this.container);
+    if (first) {
+      first.focus();
+    } else {
+      if (!this.container.hasAttribute('tabindex')) this.container.setAttribute('tabindex', '-1');
+      this.container.focus();
+    }
+  }
+
+  /** Vangt elke focusverplaatsing buiten `container` terwijl de trap actief
+   * is — ook eentje die de browser zelf veroorzaakt (het gefocuste element
+   * wordt `disabled`) in plaats van een gebruikers-Tab. Trekt focus meteen
+   * terug naar het eerste focusbare element (of `container` zelf). */
+  private onFocusIn(e: FocusEvent): void {
+    if (!this.container) return;
+    const target = e.target;
+    if (target instanceof Node && this.container.contains(target)) return;
+    this.focusFirstOrContainer();
   }
 
   /** (c) laat Tab/Shift+Tab binnen de focusbare kinderen van `container`

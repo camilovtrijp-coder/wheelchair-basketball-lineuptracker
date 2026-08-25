@@ -34,6 +34,7 @@ describe('FocusTrap', () => {
     trap.activate(modal);
 
     expect(document.activeElement?.getAttribute('data-testid')).toBe('first');
+    trap.deactivate();
   });
 
   it('negeert geneste, verborgen en disabled elementen bij het bepalen van het eerste focusbare element', () => {
@@ -52,6 +53,7 @@ describe('FocusTrap', () => {
     trap.activate(modal);
 
     expect(document.activeElement?.getAttribute('data-testid')).toBe('nested-visible');
+    trap.deactivate();
   });
 
   it('verplaatst focus naar het dialoog zelf als er geen focusbaar kind is', () => {
@@ -63,6 +65,7 @@ describe('FocusTrap', () => {
 
     expect(document.activeElement).toBe(modal);
     expect(modal.getAttribute('tabindex')).toBe('-1');
+    trap.deactivate();
   });
 
   it('laat Tab cyclen van het laatste naar het eerste focusbare element', () => {
@@ -83,6 +86,7 @@ describe('FocusTrap', () => {
 
     expect(event.defaultPrevented).toBe(true);
     expect(document.activeElement).toBe(a);
+    trap.deactivate();
   });
 
   it('laat Shift+Tab cyclen van het eerste naar het laatste focusbare element', () => {
@@ -108,6 +112,7 @@ describe('FocusTrap', () => {
 
     expect(event.defaultPrevented).toBe(true);
     expect(document.activeElement).toBe(b);
+    trap.deactivate();
   });
 
   it('laat Tab tussen twee middelste elementen ongemoeid (geen preventDefault)', () => {
@@ -125,6 +130,7 @@ describe('FocusTrap', () => {
     modal.dispatchEvent(event);
 
     expect(event.defaultPrevented).toBe(false);
+    trap.deactivate();
   });
 
   it('herstelt focus naar het onthouden element bij deactivate()', () => {
@@ -158,6 +164,55 @@ describe('FocusTrap', () => {
     opener.remove();
 
     expect(() => trap.deactivate()).not.toThrow();
+  });
+
+  it('trekt focus terug binnen container zodra het buiten container terechtkomt zonder een Tab-toetsaanslag (bijv. dynamisch disabled)', () => {
+    // Regressie uit externe review PR #81: `TakeoverConfirmDialog` zet
+    // beide knoppen `disabled` tijdens `inProgress`, waardoor Chromium de
+    // gefocuste knop zelf, zonder Tab-toetsaanslag, defocust naar `<body>`
+    // — een listener die alleen aan `container` hing miste dat. jsdom
+    // volgt dat specifieke `disabled`-defocusgedrag niet (geverifieerd),
+    // dus simuleert deze test het geobserveerde eindresultaat generiek:
+    // focus komt via een `focusin` buiten `container` terecht, zonder Tab.
+    // `document`-brede `focusin`-afvang (`onFocusIn`) moet dat herstellen.
+    const outside = document.createElement('button');
+    outside.setAttribute('data-testid', 'outside');
+    document.body.appendChild(outside);
+
+    const dialog = mount(
+      '<div class="modal"><button data-testid="confirm">Bevestig</button></div>',
+    );
+    const modal = dialog.querySelector('.modal') as HTMLElement;
+    const confirmBtn = modal.querySelector('button') as HTMLButtonElement;
+
+    const trap = new FocusTrap();
+    trap.activate(modal);
+    expect(document.activeElement).toBe(confirmBtn);
+
+    outside.focus();
+    expect(document.activeElement).not.toBe(outside);
+    expect(document.activeElement).toBe(confirmBtn);
+
+    trap.deactivate();
+  });
+
+  it('houdt Tab binnen container gevangen als er geen focusbaar kind meer over is', () => {
+    const dialog = mount(
+      '<div class="modal"><button data-testid="confirm" disabled>Bevestig</button></div>',
+    );
+    const modal = dialog.querySelector('.modal') as HTMLElement;
+
+    const trap = new FocusTrap();
+    trap.activate(modal);
+    expect(document.activeElement).toBe(modal);
+
+    const event = new KeyboardEvent('keydown', { key: 'Tab', bubbles: true, cancelable: true });
+    modal.dispatchEvent(event);
+
+    expect(event.defaultPrevented).toBe(true);
+    expect(document.activeElement).toBe(modal);
+
+    trap.deactivate();
   });
 
   it('is idempotent: een tweede activate()/deactivate() zonder toestandswijziging is een no-op', () => {
