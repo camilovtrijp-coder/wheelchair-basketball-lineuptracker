@@ -13,18 +13,18 @@
 // axe-core-major-upgrade stilzwijgend de gescande regelset laat verschuiven.
 // `impact: 'minor'` wordt NIET uitgesloten.
 //
-// Scope-beslissing: `TakeoverConfirmDialog` (het enige modaal op het
-// live-trackingscherm) verschijnt uitsluitend tijdens een ECHTE cloud-
-// wedstrijd met een tweede apparaat (`app/App.tsx`'s `isCloudGameActive`) —
-// deze suite draait tegen de standaard `tests/e2e/fixtures.ts`-opzet
-// ("onvertrouwd apparaat", lokale modus, zie die fixture se eigen
-// commentaar), waarin dat dialoog dus niet bereikbaar is zonder de
-// twee-apparaten-Firestore-emulatoropzet uit `tests/e2e-auth/
-// game-sync-takeover.spec.ts`. Live tracking wordt hier daarom gescand
-// zonder open modaal; de modaal-scandekking van werk 1 komt van Stats/
-// Trends' `GamesFilterModal` (die dezelfde gedeelde `ModalDialog`
-// gebruikt als `TakeoverConfirmDialog` se eigen structuurpatroon, zie
-// `ui/game/TakeoverConfirmDialog.tsx` se eigen commentaar).
+// Scope-correctie (externe review PR #81): een eerdere versie van deze
+// suite scande live tracking zonder open modaal, met als onderbouwing dat
+// `TakeoverConfirmDialog` (dat uitsluitend tijdens een ECHTE cloud-
+// wedstrijd met een tweede apparaat verschijnt, `app/App.tsx`'s
+// `isCloudGameActive`) het enige modaal op dit scherm zou zijn — dat
+// klopte niet: `LiveTrackingPanel.tsx` heeft ook `swap-confirm-modal`
+// (wissel-kloktijd-bevestiging) en `edit-segment-modal` (segment
+// bewerken), allebei bereikbaar in de standaard lokale-modus-fixture
+// hieronder, zonder cloud/tweede apparaat. De "live tracking"-scan opent
+// nu `swap-confirm-modal`. `TakeoverConfirmDialog` blijft wél buiten deze
+// suite — zie nog steeds `ui/game/TakeoverConfirmDialog.tsx` se eigen
+// commentaar voor die specifieke, cloud-only afbakening.
 import AxeBuilder from '@axe-core/playwright';
 import { expect, type Page } from '@playwright/test';
 import { test } from './fixtures';
@@ -38,17 +38,19 @@ async function expectNoViolations(page: Page): Promise<void> {
 
 /** Zie game-tracking.spec.ts/game-history.spec.ts `startTrackedGame()` —
  * zelfde opzet, hergebruikt hier zodat de live-trackingscan op het echte
- * scherm draait i.p.v. een lege/onbereikbare staat. */
-async function startTrackedGame(page: Page): Promise<void> {
+ * scherm draait i.p.v. een lege/onbereikbare staat. `playerCount` is
+ * instelbaar op 6 voor de wisselflow hieronder (5 op de vloer + 1 op de
+ * bank, nodig om `swap-confirm-modal` te kunnen openen). */
+async function startTrackedGame(page: Page, playerCount = 5): Promise<void> {
   await page.addInitScript(() => window.localStorage.setItem('lineup-tracker-lang', 'nl'));
   await page.goto('/');
   await page.getByTestId('nav-roster').click();
-  for (let i = 0; i < 5; i += 1) {
+  for (let i = 0; i < playerCount; i += 1) {
     await page.getByTestId('roster-add').click();
   }
   const names = page.locator('[data-testid^="roster-naam-"]');
-  await expect(names).toHaveCount(5);
-  for (let i = 0; i < 5; i += 1) {
+  await expect(names).toHaveCount(playerCount);
+  for (let i = 0; i < playerCount; i += 1) {
     await names.nth(i).fill(`Speler ${i + 1}`);
   }
   await page.getByTestId('roster-save').click();
@@ -80,6 +82,37 @@ test.describe('v2 a11y — axe-core-nulmeting kernschermen (PR 8.2a)', () => {
     await page.getByTestId('nav-game').click();
     await page.getByTestId('game-start-btn').click();
     await expect(page.getByTestId('score-row-for')).toBeVisible();
+    await expectNoViolations(page);
+  });
+
+  test('live tracking incl. open wissel-kloktijd-modaal', async ({ page }) => {
+    // 6 spelers zodat er één bankspeler over is om mee te wisselen — zelfde
+    // opzet als game-tracking.spec.ts's wisselflow-test.
+    await startTrackedGame(page, 6);
+    await page.getByTestId('nav-game').click();
+    await page.getByTestId('game-start-btn').click();
+    await expect(page.getByTestId('score-row-for')).toBeVisible();
+
+    await page.locator('[data-testid^="court-chip-"]').first().click();
+    await page.locator('[data-testid^="bench-chip-"]').first().click();
+    await page.getByTestId('swap-done-btn').click();
+    await expect(page.getByTestId('swap-confirm-modal')).toBeVisible();
+
+    await expectNoViolations(page);
+  });
+
+  test('live tracking incl. open segment-bewerken-modaal', async ({ page }) => {
+    await startTrackedGame(page);
+    await page.getByTestId('nav-game').click();
+    await page.getByTestId('game-start-btn').click();
+    await page.getByTestId('score-plus2-for').click();
+    await page.getByTestId('end-min').selectOption('5');
+    await page.getByTestId('save-segment-btn').click();
+    await expect(page.locator('[data-testid^="segment-item-"]')).toHaveCount(1);
+
+    await page.locator('[data-testid^="segment-item-"]').first().click();
+    await expect(page.getByTestId('edit-segment-modal')).toBeVisible();
+
     await expectNoViolations(page);
   });
 

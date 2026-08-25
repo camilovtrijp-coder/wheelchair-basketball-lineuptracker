@@ -17,6 +17,7 @@ import {
   type ClassificationConfig,
 } from '../../domain/game/tracking';
 import { translate, type Lang, type StringKey } from '../../i18n/strings';
+import { useFocusTrap } from '../../application/a11y/useFocusTrap';
 
 export interface LiveTrackingPanelProps {
   lang: Lang;
@@ -177,6 +178,16 @@ export function LiveTrackingPanel({
   const [endTouched, setEndTouched] = useState(false);
   const [editSegmentId, setEditSegmentId] = useState<string | null>(null);
   const [editDraft, setEditDraft] = useState<EditDraft | null>(null);
+  // PR 8.2a (docs/pr-8.2-plan.md §C 8.2a werk 4): deze twee modals zijn
+  // echte live-wedstrijdmodals (wissel-kloktijd-bevestiging, segment
+  // bewerken) met hun eigen `modal-overlay`/`modal`-structuur — geen
+  // `ModalDialog`-hergebruik (net als `TakeoverConfirmDialog`, om dezelfde
+  // reden: een ander knoppenpaar dan het clear/done-paar). Zelfde
+  // focus-trap-aanvulling.
+  const swapConfirmTrapRef = useFocusTrap<HTMLDivElement>(swapConfirmEndSec != null);
+  const editSegmentTrapRef = useFocusTrap<HTMLDivElement>(
+    editDraft != null && editSegmentId != null,
+  );
 
   const history = deriveGameHistory(game);
   const courtLimit = isOverLimit(game, game.onCourt, classification);
@@ -686,6 +697,7 @@ export function LiveTrackingPanel({
             role="dialog"
             aria-label={t(lang, 'swapConfirmTitle')}
             data-testid="swap-confirm-modal"
+            ref={swapConfirmTrapRef}
           >
             <h2>{t(lang, 'swapConfirmTitle')}</h2>
             <p className="modal__desc">{t(lang, 'swapConfirmDesc')}</p>
@@ -764,6 +776,7 @@ export function LiveTrackingPanel({
             role="dialog"
             aria-label={t(lang, 'editSegmentTitle')}
             data-testid="edit-segment-modal"
+            ref={editSegmentTrapRef}
           >
             <div className="modal__title-row">
               <h2>{t(lang, 'editSegmentTitle')}</h2>

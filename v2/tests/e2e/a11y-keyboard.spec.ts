@@ -67,4 +67,65 @@ test.describe('v2 a11y — keyboard-only modaalbediening (PR 8.2a)', () => {
     await expect(modal).toBeHidden();
     await expect(opener).toBeFocused();
   });
+
+  // Externe review PR #81: de bovenstaande test bewijst alleen de gedeelde
+  // `ModalDialog`/`GamesFilterModal`-implementatie, niet de twee losse
+  // live-wedstrijdmodals (`swap-confirm-modal`, `edit-segment-modal` in
+  // `LiveTrackingPanel.tsx`) die hun eigen `modal-overlay`/`modal`-opbouw
+  // hebben (zelfde reden als `TakeoverConfirmDialog`: een ander
+  // knoppenpaar dan clear/done). Beide kregen in dezelfde PR de
+  // focus-trap; deze test bewijst 'm op `swap-confirm-modal`. Deze twee
+  // modals hebben (net als vóór deze PR) geen Escape-sluitgedrag — alleen
+  // de focus-trap zelf is hier getest, geen Escape-regressie geïntroduceerd.
+  test('swap-confirm-modal (live-wedstrijdmodaal, geen ModalDialog-hergebruik): Tab-cyclus blijft binnen het dialoog, "Terug" geeft focus terug aan de openende knop', async ({
+    page,
+  }) => {
+    await page.addInitScript(() => window.localStorage.setItem('lineup-tracker-lang', 'nl'));
+    await page.goto('/');
+    await page.getByTestId('nav-roster').click();
+    for (let i = 0; i < 6; i += 1) {
+      await page.getByTestId('roster-add').click();
+    }
+    const names = page.locator('[data-testid^="roster-naam-"]');
+    await expect(names).toHaveCount(6);
+    for (let i = 0; i < 6; i += 1) {
+      await names.nth(i).fill(`Speler ${i + 1}`);
+    }
+    await page.getByTestId('roster-save').click();
+    await page.reload();
+
+    await page.getByTestId('nav-game').click();
+    await page.getByTestId('game-start-btn').click();
+    await expect(page.getByTestId('score-row-for')).toBeVisible();
+
+    await page.locator('[data-testid^="court-chip-"]').first().click();
+    await page.locator('[data-testid^="bench-chip-"]').first().click();
+    const swapDoneBtn = page.getByTestId('swap-done-btn');
+    await swapDoneBtn.click();
+
+    const modal = page.getByTestId('swap-confirm-modal');
+    await expect(modal).toBeVisible();
+
+    // De focus-trap verplaatst focus meteen naar het eerste focusbare
+    // element (de minuten-select).
+    await expect(page.getByTestId('swap-confirm-min')).toBeFocused();
+
+    // Vier focusbare elementen: min-select, sec-select, terug-knop,
+    // bevestig-knop. Tab vanaf het laatste cyclet terug naar het eerste.
+    await page.keyboard.press('Tab');
+    await expect(page.getByTestId('swap-confirm-sec')).toBeFocused();
+    await page.keyboard.press('Tab');
+    await expect(page.getByTestId('swap-confirm-back')).toBeFocused();
+    await page.keyboard.press('Tab');
+    await expect(page.getByTestId('swap-confirm-confirm')).toBeFocused();
+    await page.keyboard.press('Tab');
+    expect(await activeTestId(page)).toBe('swap-confirm-min');
+    expect(await activeIsInsideModal(page)).toBe(true);
+
+    // "Terug" sluit het dialoog en geeft focus terug aan de knop die het
+    // opende (geen Escape-ondersteuning op dit dialoog, zie boven).
+    await page.getByTestId('swap-confirm-back').click();
+    await expect(modal).not.toBeVisible();
+    await expect(swapDoneBtn).toBeFocused();
+  });
 });
