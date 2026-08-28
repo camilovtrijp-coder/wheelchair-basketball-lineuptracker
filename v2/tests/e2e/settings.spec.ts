@@ -235,4 +235,91 @@ test.describe('v2 settings', () => {
     await expect(page.getByRole('heading', { name: 'Settings', exact: true })).toBeVisible();
     await expect(page.getByText('Team name', { exact: true })).toBeVisible();
   });
+
+  // PR 8.2b (bug 10, docs/pr-5.5c-bugfixes.md #10, docs/pr-8.2-plan.md §C
+  // 8.2b werk 3): vóór deze PR hadden primaryColor/accentColor geen enkel
+  // zichtbaar effect. Deze test bewijst niet alleen dat de CSS custom
+  // property gezet wordt, maar dat 'm daadwerkelijk gerenderd wordt op een
+  // zichtbaar-merkbaar element (`.btn-primary`-achtergrond, `.app-title`-
+  // tekstkleur) — precies het onderscheid dat §B punt 4 vereist.
+  test('primaryColor/accentColor worden toegepast als CSS custom property én daadwerkelijk gerenderd (bug 10)', async ({
+    page,
+  }) => {
+    await page.goto('/');
+    const appRoot = page.locator('.app');
+
+    await expect(appRoot).toHaveCSS('--team-primary', '#2563eb');
+    await expect(appRoot).toHaveCSS('--team-accent', '#c2410c');
+
+    await page.getByTestId('primaryColor-8b5cf6').click();
+    await page.getByTestId('accentColor-ef4444').click();
+
+    await expect(appRoot).toHaveCSS('--team-primary', '#8b5cf6');
+    await expect(appRoot).toHaveCSS('--team-accent', '#ef4444');
+
+    await expect(page.getByTestId('settings-save')).toHaveCSS(
+      'background-color',
+      'rgb(139, 92, 246)',
+    );
+    await expect(page.locator('.app-title')).toHaveCSS('color', 'rgb(239, 68, 68)');
+  });
+
+  test('primaire-kleur-contrastwaarschuwing verschijnt bij onvoldoende contrast, maar blokkeert opslaan niet', async ({
+    page,
+  }) => {
+    await page.goto('/');
+
+    // DEFAULT_SETTINGS.primaryColor (#2563eb) haalt de AA-tekstdrempel
+    // (4.5:1) tegen de witte knoptekst — geen waarschuwing bij het laden.
+    await expect(page.getByTestId('primaryColor-contrast-warning')).toHaveCount(0);
+
+    // #f59e0b (~2.15:1 tegen wit) haalt de drempel niet.
+    await page.getByTestId('primaryColor-f59e0b').click();
+    await expect(page.getByTestId('primaryColor-contrast-warning')).toBeVisible();
+
+    // Opslaan blijft mogelijk ondanks de waarschuwing (niet-blokkerend).
+    await page.getByTestId('settings-save').click();
+    const stored = await readSettings(page);
+    expect(stored.primaryColor).toBe('#f59e0b');
+
+    // Een aangepaste, voldoende donkere kleur laat de waarschuwing weer verdwijnen.
+    const nativeInput = page.getByTestId('primaryColor-native');
+    await nativeInput.evaluate((el: HTMLInputElement) => {
+      el.value = '#1e3a8a';
+      el.dispatchEvent(new Event('input', { bubbles: true }));
+      el.dispatchEvent(new Event('change', { bubbles: true }));
+    });
+    await expect(page.getByTestId('primaryColor-contrast-warning')).toHaveCount(0);
+  });
+
+  test('accentkleur-contrastwaarschuwing verschijnt bij onvoldoende contrast, maar blokkeert opslaan niet', async ({
+    page,
+  }) => {
+    await page.goto('/');
+
+    // DEFAULT_SETTINGS.accentColor (#c2410c, ~4.96:1 tegen #f9fafb) haalt de
+    // AA-tekstdrempel — geen waarschuwing bij het laden.
+    await expect(page.getByTestId('accentColor-contrast-warning')).toHaveCount(0);
+
+    // Geen enkele preset in COLOR_PRESETS haalt de 4.5:1-drempel tegen de
+    // headerachtergrond (het beste preset, #8b5cf6, geeft slechts ~4.05:1)
+    // — elke preset toont dus de waarschuwing; #f97316 (~2.68:1) is de
+    // vroegere, inmiddels vervangen default.
+    await page.getByTestId('accentColor-f97316').click();
+    await expect(page.getByTestId('accentColor-contrast-warning')).toBeVisible();
+
+    // Opslaan blijft mogelijk ondanks de waarschuwing (niet-blokkerend).
+    await page.getByTestId('settings-save').click();
+    const stored = await readSettings(page);
+    expect(stored.accentColor).toBe('#f97316');
+
+    // Een aangepaste, voldoende donkere kleur laat de waarschuwing weer verdwijnen.
+    const nativeInput = page.getByTestId('accentColor-native');
+    await nativeInput.evaluate((el: HTMLInputElement) => {
+      el.value = '#7c2d12';
+      el.dispatchEvent(new Event('input', { bubbles: true }));
+      el.dispatchEvent(new Event('change', { bubbles: true }));
+    });
+    await expect(page.getByTestId('accentColor-contrast-warning')).toHaveCount(0);
+  });
 });

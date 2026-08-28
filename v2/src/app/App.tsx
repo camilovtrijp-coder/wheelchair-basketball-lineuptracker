@@ -1244,7 +1244,18 @@ export function App({
   }
 
   return (
-    <div className="app">
+    <div
+      className="app"
+      // PR 8.2b (bug 10, docs/pr-5.5c-bugfixes.md #10): geeft
+      // `settings.primaryColor`/`accentColor` eindelijk een zichtbaar effect
+      // — `--team-primary` op `.btn-primary`, `--team-accent` op
+      // `.app-title` (index.css). Cascadeert naar alle nakomelingen, dus
+      // geen los per-scherm-doorgeef-werk nodig.
+      style={{
+        '--team-primary': settings.primaryColor as string,
+        '--team-accent': settings.accentColor as string,
+      }}
+    >
       <header className="app-header">
         <h1 className="app-title">
           {(settings.teamName as string) || translate(lang, 'appNameFallback')}

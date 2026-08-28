@@ -48,6 +48,11 @@ main {
   margin: 0;
   font-size: var(--lt-font-size-lg);
   font-weight: 600;
+  /* PR 8.2b (bug 10, docs/pr-5.5c-bugfixes.md #10): `--team-accent` wordt
+     door App.tsx als inline custom property op `.app` gezet vanuit
+     `settings.accentColor`; de fallback houdt niet-teamgekleurde schermen
+     (bijv. vóór settings geladen zijn) op de bestaande vaste kleur. */
+  color: var(--team-accent, var(--lt-color-fg));
 }
 
 .app-header__actions {
@@ -79,7 +84,11 @@ button:focus-visible {
 }
 
 .btn-primary {
-  background: var(--lt-color-accent);
+  /* PR 8.2b (bug 10, docs/pr-5.5c-bugfixes.md #10): `--team-primary` wordt
+     door App.tsx als inline custom property op `.app` gezet vanuit
+     `settings.primaryColor`; de fallback houdt de vaste kleur aan totdat
+     settings geladen zijn. */
+  background: var(--team-primary, var(--lt-color-accent));
   color: var(--lt-color-accent-fg);
 }
 
@@ -229,6 +238,15 @@ button:focus-visible {
   margin: 0;
   font-size: var(--lt-font-size-sm);
   color: var(--lt-color-success, #166534);
+}
+
+/* PR 8.2b (§C werk 4): niet-blokkerende contrastwaarschuwing — bewust géén
+   `--lt-color-danger` (dat suggereert een blokkerende fout; opslaan blijft
+   hier mogelijk). */
+.settings-warning {
+  margin: 0;
+  font-size: var(--lt-font-size-sm);
+  color: var(--lt-color-warning, #92400e);
 }
 
 .cloud-import-banner {
@@ -1365,6 +1383,25 @@ button:focus-visible {
   border-radius: var(--lt-radius-lg) var(--lt-radius-lg) 0 0;
   background: var(--lt-color-bg);
   color: var(--lt-color-fg);
+  /* PR 8.2b (§A/§C werk 5): vóór deze PR bevatte v2 geen enkele CSS
+     `transition`/`animation`, waardoor het bestaande globale
+     `prefers-reduced-motion: reduce`-blok hieronder in de praktijk niets
+     te onderdrukken had. Deze korte intrede-animatie is het minimale,
+     daadwerkelijk zichtbare geanimeerde element dat de regressietest
+     nodig heeft; `opacity` blijft ≥ 0.85 zodat `toBeVisible()`-checks in
+     bestaande e2e-tests niet flaky worden tijdens de animatie. */
+  animation: modal-enter 150ms ease-out;
+}
+
+@keyframes modal-enter {
+  from {
+    transform: translateY(8px);
+    opacity: 0.85;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
 }
 
 .modal h2 {

@@ -3,6 +3,7 @@ import { LOGO_MAX_BYTES, type Settings, type SettingsKey } from '../../domain/se
 import { translate, type Lang, type StringKey } from '../../i18n/strings';
 import type { KeyValueStorage } from '../../i18n/persistence';
 import { updateSetting } from '../../application/settings/usecases';
+import { checkTeamColorContrast } from '../../domain/settings/colorContrast';
 import { CloudImportBanner } from '../cloud/CloudImportBanner';
 import { LastModified } from '../sync/LastModified';
 import { useSaveStatus } from '../sync/useSaveStatus';
@@ -121,6 +122,10 @@ export function SettingsPanel({
   }
 
   const useClass = settings.useClassLimit === true;
+  const colorContrast = checkTeamColorContrast(
+    settings.primaryColor as string,
+    settings.accentColor as string,
+  );
 
   return (
     <section className="settings-panel" aria-label={t(lang, 'settingsTitle')}>
@@ -203,6 +208,15 @@ export function SettingsPanel({
             customLabel={t(lang, 'customColorBtn')}
             canWrite={canWrite}
           />
+          {colorContrast.primaryOk ? null : (
+            <p
+              className="settings-warning"
+              role="alert"
+              data-testid="primaryColor-contrast-warning"
+            >
+              {t(lang, 'primaryColorContrastWarning')}
+            </p>
+          )}
         </div>
 
         <div className="settings-field">
@@ -214,6 +228,11 @@ export function SettingsPanel({
             customLabel={t(lang, 'customColorBtn')}
             canWrite={canWrite}
           />
+          {colorContrast.accentOk ? null : (
+            <p className="settings-warning" role="alert" data-testid="accentColor-contrast-warning">
+              {t(lang, 'accentColorContrastWarning')}
+            </p>
+          )}
         </div>
       </fieldset>
 

@@ -39,6 +39,10 @@ const nl = {
   classLimitExplain:
     'Dit systeem beperkt de totale classificatie van de 5 spelers op de vloer, met een bonus voor twee optionele categorieën - oorspronkelijk bedacht als categorie 1 = Vrouw en categorie 2 = Jeugd/U19, om gemixte en jonge line-ups te stimuleren. Je kunt de labels en bonuswaarden hieronder naar wens aanpassen.',
   customColorBtn: 'Aangepast',
+  primaryColorContrastWarning:
+    'Deze primaire kleur heeft onvoldoende contrast met de witte knoptekst — lastig leesbaar. Opslaan blijft mogelijk.',
+  accentColorContrastWarning:
+    'Deze accentkleur heeft onvoldoende contrast met de header-achtergrond — lastig leesbaar. Opslaan blijft mogelijk.',
   saveBtn: 'Opslaan',
   settingsResetBtn: 'Standaardinstellingen herstellen',
   logoTooLargeError: 'Logo is te groot (max 500 KB). Kies een kleinere afbeelding.',
@@ -503,6 +507,10 @@ const en = {
   classLimitExplain:
     'This system caps the total classification of the 5 players on court, with a bonus for two optional categories - originally conceived as category 1 = Female and category 2 = Youth/U19, to encourage mixed and young lineups. You can adjust the labels and bonus values below as you like.',
   customColorBtn: 'Custom',
+  primaryColorContrastWarning:
+    'This primary color has insufficient contrast with the white button text — hard to read. Saving is still possible.',
+  accentColorContrastWarning:
+    'This accent color has insufficient contrast with the header background — hard to read. Saving is still possible.',
   saveBtn: 'Save',
   settingsResetBtn: 'Reset to defaults',
   logoTooLargeError: 'Logo is too large (max 500 KB). Choose a smaller image.',
