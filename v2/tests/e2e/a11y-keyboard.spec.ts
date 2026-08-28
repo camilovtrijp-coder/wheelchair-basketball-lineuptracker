@@ -128,4 +128,90 @@ test.describe('v2 a11y — keyboard-only modaalbediening (PR 8.2a)', () => {
     await expect(modal).not.toBeVisible();
     await expect(swapDoneBtn).toBeFocused();
   });
+
+  // Externe review PR #81, vierde ronde: de bovenstaande test bewijst
+  // swap-confirm-modal, maar `edit-segment-modal` — de TWEEDE, apart
+  // geïmplementeerde live-wedstrijdmodaal in LiveTrackingPanel.tsx (ook
+  // géén ModalDialog-hergebruik, ook géén Escape-sluitgedrag, zelfde reden
+  // als hierboven) — had nog geen eigen browserbewijs, ondanks al wel
+  // `useFocusTrap` en axe-dekking te hebben (a11y-axe.spec.ts). Dit dialoog
+  // heeft een grillige, datagedreven hoeveelheid focusbare elementen
+  // (kwartaalknoppen × quarterCount, vier tijd-selects, een chip per
+  // rosterspeler, twee puntenvelden, opslaan/verwijderen) — in plaats van
+  // elk element hard te coderen, telt deze test hoeveel Tabs nodig zijn om
+  // helemaal rond te komen (terug bij het eerste element) en bewijst dat
+  // focus op ELKE stap binnen `.modal` blijft: dat bewijst containment
+  // ongeacht de exacte, datagedreven elementenlijst.
+  test('edit-segment-modal (live-wedstrijdmodaal, geen ModalDialog-hergebruik): Tab-cyclus blijft binnen het dialoog, sluiten geeft focus terug aan de segmentregel die het opende', async ({
+    page,
+  }) => {
+    await page.addInitScript(() => window.localStorage.setItem('lineup-tracker-lang', 'nl'));
+    await page.goto('/');
+    await page.getByTestId('nav-roster').click();
+    for (let i = 0; i < 5; i += 1) {
+      await page.getByTestId('roster-add').click();
+    }
+    const names = page.locator('[data-testid^="roster-naam-"]');
+    await expect(names).toHaveCount(5);
+    for (let i = 0; i < 5; i += 1) {
+      await names.nth(i).fill(`Speler ${i + 1}`);
+    }
+    await page.getByTestId('roster-save').click();
+    await page.reload();
+
+    await page.getByTestId('nav-game').click();
+    await page.getByTestId('game-start-btn').click();
+    await expect(page.getByTestId('score-row-for')).toBeVisible();
+
+    // Eén segment opslaan zodat er een `segment-item-*`-rij bestaat om het
+    // dialoog vanaf te openen — zelfde opzet als a11y-axe.spec.ts se
+    // "live tracking incl. open segment-bewerken-modaal".
+    await page.getByTestId('score-plus2-for').click();
+    await page.getByTestId('end-min').selectOption('5');
+    await page.getByTestId('save-segment-btn').click();
+    const segmentItem = page.locator('[data-testid^="segment-item-"]').first();
+    await expect(segmentItem).toBeVisible();
+
+    // Openen puur via toetsenbord — geen `click()`.
+    await segmentItem.focus();
+    await expect(segmentItem).toBeFocused();
+    await page.keyboard.press('Enter');
+
+    const modal = page.getByTestId('edit-segment-modal');
+    await expect(modal).toBeVisible();
+
+    // De focus-trap verplaatst focus meteen naar het eerste focusbare
+    // element: de ✕-sluitknop (staat vóór de kwartaalknoppen/tijd-
+    // selects/chips in de DOM).
+    const closeBtn = page.getByTestId('edit-segment-close');
+    await expect(closeBtn).toBeFocused();
+
+    // Shift+Tab vanaf het eerste element cyclet terug naar het LAATSTE —
+    // bewijst de achterwaartse cyclus zonder de exacte elementenlijst hard
+    // te coderen — en Tab daarna weer terug naar het eerste.
+    await page.keyboard.press('Shift+Tab');
+    expect(await activeTestId(page)).not.toBe('edit-segment-close');
+    expect(await activeIsInsideModal(page)).toBe(true);
+    await page.keyboard.press('Tab');
+    await expect(closeBtn).toBeFocused();
+
+    // Voorwaartse cyclus: Tab net zo vaak als nodig om weer bij de
+    // sluitknop uit te komen, en bewijs op ELKE stap dat focus binnen
+    // `.modal` blijft — nooit een Tab die naar de achtergrondpagina lekt.
+    let steps = 0;
+    do {
+      await page.keyboard.press('Tab');
+      expect(await activeIsInsideModal(page)).toBe(true);
+      steps += 1;
+    } while ((await activeTestId(page)) !== 'edit-segment-close' && steps < 30);
+    expect(steps).toBeLessThan(30);
+    await expect(closeBtn).toBeFocused();
+
+    // Sluiten puur via toetsenbord (Enter op de al-gefocuste ✕-knop; geen
+    // Escape-ondersteuning op dit dialoog, zie boven) — geeft focus terug
+    // aan de segmentregel die het opende.
+    await page.keyboard.press('Enter');
+    await expect(modal).not.toBeVisible();
+    await expect(segmentItem).toBeFocused();
+  });
 });
