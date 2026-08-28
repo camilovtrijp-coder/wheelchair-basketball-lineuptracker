@@ -653,15 +653,31 @@ export class FirestoreGameCloudGateway implements GameCloudGateway {
         // vergiftigen: ELKE daaropvolgende Firestore-aanroep op deze client
         // (ook een volledig ongerelateerde `updateDoc()`/`getDoc()` in
         // `GameSyncCoordinator.sync()`) faalde daarna met exact dezelfde
-        // foutmelding. Vangen en deze ene tussentijdse snapshot overslaan
-        // is dus geen verlies van informatie — de eerstvolgende,
-        // serverbevestigde snapshot komt vanzelf alsnog binnen — en
-        // voorkomt dat een verwacht, tijdelijk conversieprobleem de hele
-        // cloud-sync van dit apparaat platlegt.
+        // foutmelding.
+        //
+        // P1-fix (vierde ronde externe review PR #81): de eerste versie
+        // van deze catch sloeg ELKE conversiefout stil over, ongeacht de
+        // oorzaak — dat verbergt ook een bevestigd, echt corrupt
+        // parentdocument (of een programmeer-/converterfout) net zo
+        // stilzwijgend als de hierboven beschreven, aantoonbaar tijdelijke
+        // toestand, precies zoals `FirestoreCompletedGameRepository.
+        // subscribe()` dat al sinds de externe review op PR #64 NIET doet
+        // voor `completedGames`. Alleen wanneer deze snapshot zelf een
+        // onbevestigde lokale schrijfactie van dit apparaat draagt
+        // (`hasPendingWrites`) is een onopgeloste `serverTimestamp()` de
+        // verwachte, onschadelijke verklaring — de eerstvolgende,
+        // serverbevestigde snapshot komt vanzelf alsnog binnen, dus
+        // overslaan is dan geen verlies van informatie. Een conversiefout
+        // op een snapshot ZONDER `hasPendingWrites` kan dat verklaring niet
+        // hebben (geen eigen pending write in de weg) en gaat daarom, net
+        // als bij `completedGames`, via `callbacks.onError()` — nooit
+        // stilzwijgend overgeslagen.
         let data;
         try {
           data = snapshot.exists() ? snapshot.data() : null;
-        } catch {
+        } catch (error) {
+          if (snapshot.metadata.hasPendingWrites) return;
+          callbacks.onError(error);
           return;
         }
         callbacks.onParent({
@@ -679,13 +695,24 @@ export class FirestoreGameCloudGateway implements GameCloudGateway {
       actionsQuery,
       { includeMetadataChanges: true },
       (snapshot) => {
-        // Zelfde reden als `onParent` hierboven — `gameActionConverter`
-        // valideert net zo streng en dezelfde tussentijdse-snapshotstaat kan
-        // zich hier voordoen.
+        // P1-fix (vierde ronde externe review PR #81): in tegenstelling tot
+        // `onParent` hierboven heeft `gameActionConverter` (firebase/src/
+        // documents/gameAction.ts) HELEMAAL GEEN `serverTimestamp()`-veld —
+        // `occurredAt` is client-autoritatief (een gewone ISO-string, geen
+        // `Timestamp`), juist om deterministische projectie mogelijk te
+        // maken. Er bestaat voor action-documenten dus NOOIT een aantoonbaar
+        // tijdelijke, verklaarbare conversiefout zoals bij het parentdocument
+        // — elke fout hier wijst op een echt corrupt of onverwacht document.
+        // Zelfde behandeling als `FirestoreCompletedGameRepository.
+        // subscribe()` (externe review PR #64): altijd via `callbacks.
+        // onError()`, nooit een gedeeltelijke `onActions()` met de overige,
+        // wél geconverteerde acties — een onvolledige actielijst zou een
+        // onjuiste wedstrijdstand tonen zonder zichtbare waarschuwing.
         let actions;
         try {
           actions = snapshot.docs.map((d) => d.data());
-        } catch {
+        } catch (error) {
+          callbacks.onError(error);
           return;
         }
         callbacks.onActions({
