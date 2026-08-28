@@ -194,7 +194,69 @@ test('een echte overname door een ander apparaat wordt zichtbaar/auditbaar op de
     // terug, een nieuwe epoch (3), zonder reload.
     await openBtn.click();
     await expect(dialog).toBeVisible();
+
+    // Tweede-ronde regressie uit externe review PR #81: focus mag niet
+    // BLIJVEND uit het dialoog "lekken" tijdens de async `inProgress`-staat
+    // (beide knoppen worden dan `disabled` — precies het moment waarop
+    // Chromium `document.activeElement` zonder Tab-toetsaanslag en zonder
+    // een enkel `focusin`-event naar `<body>` verplaatst, geverifieerd tegen
+    // echte Chromium). Geen netwerk-interceptie nodig (dat bleek eerder
+    // onbetrouwbaar tegen Firestore's WebChannel, zie `pwa-update.spec.ts`)
+    // — een `requestAnimationFrame`-sampler in de pagina zelf bewaakt élk
+    // frame tussen de klik en het sluiten van het dialoog (dus ook de echte,
+    // meerdere-frames-durende Firestore-roundtrip van de overname), en start
+    // VOORDAT de klik het dialoog laat sluiten. Precies ÉÉN geïsoleerd
+    // ontsnapt frame is de fundamentele, empirisch bevestigde ondergrens van
+    // deze browserquirk zelf: `activeElement` springt synchroon naar
+    // `<body>` op het moment van disablen, en geen enkele JS-hook kan dat
+    // BINNEN datzelfde frame corrigeren — `onFocusOut()`'s eigen
+    // `requestAnimationFrame`-hercheck herstelt het pas op het EERSTVOLGENDE
+    // frame (zie `focusTrap.ts`). De bug die deze test moet vangen is een
+    // BLIJVEND ontsnapte focus (`escapes` in de tientallen/honderden, zoals
+    // vóór deze fix, over de volledige duur van de overnameaanroep) — niet
+    // dat ene onvermijdelijke overgangsframe.
+    const focusMonitor = page.evaluate(() => {
+      return new Promise<{ maxConsecutiveEscapes: number; closed: boolean; timedOut: boolean }>(
+        (resolve) => {
+          const dialogEl = document.querySelector('[data-testid="takeover-confirm-dialog"]');
+          if (!dialogEl) {
+            resolve({ maxConsecutiveEscapes: 0, closed: true, timedOut: false });
+            return;
+          }
+          let consecutiveEscapes = 0;
+          let maxConsecutiveEscapes = 0;
+          let rafId = 0;
+          let timeoutId = 0;
+          const sample = () => {
+            if (!document.body.contains(dialogEl)) {
+              clearTimeout(timeoutId);
+              resolve({ maxConsecutiveEscapes, closed: true, timedOut: false });
+              return;
+            }
+            const active = document.activeElement;
+            if (!active || !dialogEl.contains(active)) {
+              consecutiveEscapes += 1;
+              maxConsecutiveEscapes = Math.max(maxConsecutiveEscapes, consecutiveEscapes);
+            } else {
+              consecutiveEscapes = 0;
+            }
+            rafId = requestAnimationFrame(sample);
+          };
+          rafId = requestAnimationFrame(sample);
+          timeoutId = window.setTimeout(() => {
+            cancelAnimationFrame(rafId);
+            resolve({ maxConsecutiveEscapes, closed: false, timedOut: true });
+          }, 20_000);
+        },
+      );
+    });
     await page.getByTestId('takeover-confirm-btn').click();
+    const focusReport = await focusMonitor;
+    expect(focusReport.timedOut).toBe(false);
+    // Ruime marge boven het theoretische minimum (1) voor schedulingjitter
+    // tussen deze sampler se eigen rAF-lus en onFocusOut()'s rAF-hercheck —
+    // blijft niettemin een orde van grootte onder een sustained-escape-bug.
+    expect(focusReport.maxConsecutiveEscapes).toBeLessThanOrEqual(2);
     await expect(page.getByTestId('takeover-confirm-dialog')).not.toBeVisible({ timeout: 20_000 });
     await expect(page.getByTestId('cloud-viewer-banner')).not.toBeVisible();
 

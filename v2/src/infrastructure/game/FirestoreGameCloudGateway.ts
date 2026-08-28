@@ -637,8 +637,35 @@ export class FirestoreGameCloudGateway implements GameCloudGateway {
       gameRef,
       { includeMetadataChanges: true },
       (snapshot) => {
+        // Gevonden tijdens PR 8.2a se derde-ronde focus-trap-fix (externe
+        // review PR #81): een `includeMetadataChanges: true`-snapshot
+        // levert BEWUST ook een tussentijdse, nog-niet-serverbevestigde
+        // versie op zodra deze client zelf net geschreven heeft
+        // (`hasPendingWrites: true`) — zie het commentaar hierboven bij
+        // `subscribeToGame()`. Op zo'n tussentijdse snapshot staat een net
+        // geschreven `serverTimestamp()`-veld nog als `null` (nog niet door
+        // de server ingevuld) totdat de eerstvolgende, wél
+        // serverbevestigde snapshot binnenkomt. `gameConverter.data()`
+        // verwerpt dat terecht (`assertTimestamp()`) — maar die throw hier
+        // ONgevangen laten ontsnappen uit een `onSnapshot()`-callback bleek
+        // in de praktijk (gereproduceerd via `game-sync-takeover.spec.ts`)
+        // de gedeelde Firestore-AsyncQueue van deze client blijvend te
+        // vergiftigen: ELKE daaropvolgende Firestore-aanroep op deze client
+        // (ook een volledig ongerelateerde `updateDoc()`/`getDoc()` in
+        // `GameSyncCoordinator.sync()`) faalde daarna met exact dezelfde
+        // foutmelding. Vangen en deze ene tussentijdse snapshot overslaan
+        // is dus geen verlies van informatie — de eerstvolgende,
+        // serverbevestigde snapshot komt vanzelf alsnog binnen — en
+        // voorkomt dat een verwacht, tijdelijk conversieprobleem de hele
+        // cloud-sync van dit apparaat platlegt.
+        let data;
+        try {
+          data = snapshot.exists() ? snapshot.data() : null;
+        } catch {
+          return;
+        }
         callbacks.onParent({
-          doc: snapshot.exists() ? snapshot.data() : null,
+          doc: data,
           meta: {
             fromCache: snapshot.metadata.fromCache,
             hasPendingWrites: snapshot.metadata.hasPendingWrites,
@@ -652,8 +679,17 @@ export class FirestoreGameCloudGateway implements GameCloudGateway {
       actionsQuery,
       { includeMetadataChanges: true },
       (snapshot) => {
+        // Zelfde reden als `onParent` hierboven — `gameActionConverter`
+        // valideert net zo streng en dezelfde tussentijdse-snapshotstaat kan
+        // zich hier voordoen.
+        let actions;
+        try {
+          actions = snapshot.docs.map((d) => d.data());
+        } catch {
+          return;
+        }
         callbacks.onActions({
-          actions: snapshot.docs.map((d) => d.data()),
+          actions,
           meta: {
             fromCache: snapshot.metadata.fromCache,
             hasPendingWrites: snapshot.metadata.hasPendingWrites,
