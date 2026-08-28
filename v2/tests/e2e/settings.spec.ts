@@ -257,69 +257,19 @@ test.describe('v2 settings', () => {
     await expect(appRoot).toHaveCSS('--team-primary', '#8b5cf6');
     await expect(appRoot).toHaveCSS('--team-accent', '#ef4444');
 
+    // Achtergrond blijft de rauwe teamkleur; tekstkleur is de afgeleide
+    // leesbare voorgrond (`deriveButtonForeground`/`deriveAccentForeground`,
+    // `domain/settings/colorContrast.ts`) — #8b5cf6 haalt 4.5:1 niet tegen
+    // wit (4.23:1) maar wel tegen zwart (4.96:1), en #ef4444 haalt 4.5:1
+    // noch tegen wit (3.76:1) noch als eigen kleur tegen de lichte
+    // headerachtergrond (3.60:1), dus valt ook terug op zwart (20.10:1). Zie
+    // de dark-mode-contrastregressietest hieronder voor het donkere-
+    // modus-pad dat PR #83's review-bevinding was.
     await expect(page.getByTestId('settings-save')).toHaveCSS(
       'background-color',
       'rgb(139, 92, 246)',
     );
-    await expect(page.locator('.app-title')).toHaveCSS('color', 'rgb(239, 68, 68)');
-  });
-
-  test('primaire-kleur-contrastwaarschuwing verschijnt bij onvoldoende contrast, maar blokkeert opslaan niet', async ({
-    page,
-  }) => {
-    await page.goto('/');
-
-    // DEFAULT_SETTINGS.primaryColor (#2563eb) haalt de AA-tekstdrempel
-    // (4.5:1) tegen de witte knoptekst — geen waarschuwing bij het laden.
-    await expect(page.getByTestId('primaryColor-contrast-warning')).toHaveCount(0);
-
-    // #f59e0b (~2.15:1 tegen wit) haalt de drempel niet.
-    await page.getByTestId('primaryColor-f59e0b').click();
-    await expect(page.getByTestId('primaryColor-contrast-warning')).toBeVisible();
-
-    // Opslaan blijft mogelijk ondanks de waarschuwing (niet-blokkerend).
-    await page.getByTestId('settings-save').click();
-    const stored = await readSettings(page);
-    expect(stored.primaryColor).toBe('#f59e0b');
-
-    // Een aangepaste, voldoende donkere kleur laat de waarschuwing weer verdwijnen.
-    const nativeInput = page.getByTestId('primaryColor-native');
-    await nativeInput.evaluate((el: HTMLInputElement) => {
-      el.value = '#1e3a8a';
-      el.dispatchEvent(new Event('input', { bubbles: true }));
-      el.dispatchEvent(new Event('change', { bubbles: true }));
-    });
-    await expect(page.getByTestId('primaryColor-contrast-warning')).toHaveCount(0);
-  });
-
-  test('accentkleur-contrastwaarschuwing verschijnt bij onvoldoende contrast, maar blokkeert opslaan niet', async ({
-    page,
-  }) => {
-    await page.goto('/');
-
-    // DEFAULT_SETTINGS.accentColor (#c2410c, ~4.96:1 tegen #f9fafb) haalt de
-    // AA-tekstdrempel — geen waarschuwing bij het laden.
-    await expect(page.getByTestId('accentColor-contrast-warning')).toHaveCount(0);
-
-    // Geen enkele preset in COLOR_PRESETS haalt de 4.5:1-drempel tegen de
-    // headerachtergrond (het beste preset, #8b5cf6, geeft slechts ~4.05:1)
-    // — elke preset toont dus de waarschuwing; #f97316 (~2.68:1) is de
-    // vroegere, inmiddels vervangen default.
-    await page.getByTestId('accentColor-f97316').click();
-    await expect(page.getByTestId('accentColor-contrast-warning')).toBeVisible();
-
-    // Opslaan blijft mogelijk ondanks de waarschuwing (niet-blokkerend).
-    await page.getByTestId('settings-save').click();
-    const stored = await readSettings(page);
-    expect(stored.accentColor).toBe('#f97316');
-
-    // Een aangepaste, voldoende donkere kleur laat de waarschuwing weer verdwijnen.
-    const nativeInput = page.getByTestId('accentColor-native');
-    await nativeInput.evaluate((el: HTMLInputElement) => {
-      el.value = '#7c2d12';
-      el.dispatchEvent(new Event('input', { bubbles: true }));
-      el.dispatchEvent(new Event('change', { bubbles: true }));
-    });
-    await expect(page.getByTestId('accentColor-contrast-warning')).toHaveCount(0);
+    await expect(page.getByTestId('settings-save')).toHaveCSS('color', 'rgb(0, 0, 0)');
+    await expect(page.locator('.app-title')).toHaveCSS('color', 'rgb(0, 0, 0)');
   });
 });

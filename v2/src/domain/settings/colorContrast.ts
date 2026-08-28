@@ -1,34 +1,37 @@
 /**
- * PR 8.2b (docs/pr-8.2-plan.md §C 8.2b werk 4, bug 10 §B punt 4): pure
- * WCAG-contrastberekening voor `primaryColor`/`accentColor`. Toetst tegen
- * de vaste (niet-teamgekleurde) achtergrond-/tekstkleuren waar deze twee
- * kleuren daadwerkelijk tegen gerenderd worden (index.css):
- *  - `primaryColor` is de achtergrond van `.btn-primary`, met een vaste
- *    witte knoptekst (`--lt-color-accent-fg` in lichte modus) erop;
- *  - `accentColor` is de tekstkleur van `.app-title` op de vaste
- *    `--lt-color-surface`-achtergrond van `.app-header`.
- * Geen UI-/opslaglogica hier — enkel een niet-blokkerende waarschuwing in
- * `SettingsPanel.tsx` gebruikt dit.
+ * PR 8.2b (docs/pr-8.2-plan.md §C 8.2b werk 3/4, bug 10 §B punt 4): pure
+ * WCAG-contrastberekening en afgeleide-leesbare-voorgrondkleur-logica voor
+ * `primaryColor`/`accentColor`.
+ *
+ * Herzien na een P1-bevinding (review op PR #83, 28 aug. 2026): een eerdere
+ * versie toetste `primaryColor`/`accentColor` alleen tegen de LICHTE-modus-
+ * vaste kleuren (`--lt-color-accent-fg`/`--lt-color-surface`) en toonde bij
+ * onvoldoende contrast enkel een niet-blokkerende waarschuwing — maar
+ * `tokens.css`'s `@media (prefers-color-scheme: dark)`-blok wijzigt die
+ * vaste kleuren, waardoor de DEFAULT-teamkleuren in donkere modus daadwerkelijk
+ * onder de AA-drempel renderden (axe-core `color-contrast`-schending),
+ * zonder dat de waarschuwing dat kon zien (die rekende alleen de lichte-
+ * modus-combinatie). In plaats van per kleurenschema te waarschuwen, kiest
+ * deze module nu een daadwerkelijk leesbare voorgrondkleur (`pickReadable-
+ * Color`) — wiskundig gegarandeerd ≥4.5:1 contrast tegen ELKE achtergrond
+ * (zie `pickReadableColor`'s commentaar), dus geldig in beide
+ * kleurenschema's zonder per-schema onderscheid nodig te hebben voor de
+ * knoptekst, en met een expliciete per-schema achtergrond voor de
+ * headertitel (die achtergrond verandert wél per schema). Er is hierdoor
+ * geen "onvoldoende contrast"-toestand meer mogelijk voor deze twee
+ * toepassingen — de niet-blokkerende waarschuwing uit de eerdere versie is
+ * vervallen, niet meer nodig.
  */
 
-/**
- * `.app-title` is `font-size: var(--lt-font-size-lg)` (18px) met
- * `font-weight: 600` (index.css) — WCAG 1.4.3's "grote tekst"-uitzondering
- * (3:1 i.p.v. 4.5:1) geldt pas vanaf 24px normaal of 18.66px vetgedrukt
- * (font-weight ≥700); 18px/600 haalt geen van beide. Zowel `primaryColor`
- * als `accentColor` toetsen daarom aan dezelfde 4.5:1-tekstdrempel — geen
- * apart, lager "grotetekst"-threshold. Bevestigd door de bestaande
- * axe-core-runtime-baseline (a11y-axe.spec.ts, PR 8.2a), die een
- * `.app-title` onder 4.5:1 als "serious"-schending rapporteert.
- */
 export const AA_TEXT_CONTRAST_THRESHOLD = 4.5;
 
-/** Vaste kleuren waar `primaryColor`/`accentColor` in de lichte modus tegen
- * gerenderd worden — zie index.css/tokens.css. Bewust niet de
- * donkere-modus-varianten: die volgen `prefers-color-scheme` en zijn geen
- * vaste referentie om een teamkleur tegen te toetsen. */
-export const PRIMARY_BUTTON_TEXT_COLOR = '#ffffff';
-export const HEADER_BACKGROUND_COLOR = '#f9fafb';
+/** Vaste headerachtergrond (`.app-header`, via `--lt-color-surface`) per
+ * kleurenschema — zie tokens.css. `accentColor` wordt hiertegen getoetst;
+ * `primaryColor`/`.btn-primary` heeft geen aparte lichte/donkere achtergrond
+ * nodig omdat de knopachtergrond altijd de teamkleur zelf is, ongeacht
+ * kleurenschema (zie `deriveButtonForeground`). */
+export const HEADER_BACKGROUND_LIGHT = '#f9fafb';
+export const HEADER_BACKGROUND_DARK = '#111827';
 
 interface Rgb {
   r: number;
@@ -63,8 +66,7 @@ function relativeLuminance({ r, g, b }: Rgb): number {
 }
 
 /** WCAG-contrastratio tussen twee kleuren (1..21). Retourneert `0` bij een
- * ongeldige hex-kleur — de aanroeper behandelt dat als "geen waarschuwing
- * mogelijk", niet als een fout. */
+ * ongeldige hex-kleur. */
 export function contrastRatio(hexA: string, hexB: string): number {
   const a = hexToRgb(hexA);
   const b = hexToRgb(hexB);
@@ -76,27 +78,54 @@ export function contrastRatio(hexA: string, hexB: string): number {
   return (lighter + 0.05) / (darker + 0.05);
 }
 
-export interface TeamColorContrastResult {
-  primaryRatio: number;
-  primaryOk: boolean;
-  accentRatio: number;
-  accentOk: boolean;
+/**
+ * Kiest de eerste kandidaat die `minRatio` haalt tegen `background`; haalt
+ * geen enkele kandidaat de drempel, dan de kandidaat met de hoogste ratio
+ * (altijd een geldige, gedefinieerde terugvalwaarde — nooit `undefined`,
+ * ook niet met `noUncheckedIndexedAccess`).
+ *
+ * Reden dat `deriveButtonForeground`/`deriveAccentForeground` hieronder
+ * ALTIJD aan `AA_TEXT_CONTRAST_THRESHOLD` (4.5:1) voldoen zodra `'#ffffff'`
+ * en `'#000000'` allebei in `candidates` zitten: voor een achtergrond met
+ * relatieve luminantie L is de contrastratio tegen wit `1.05/(L+0.05)` en
+ * tegen zwart `(L+0.05)/0.05`. De grootste van deze twee functies heeft een
+ * minimum van ≈4.58 (bij L≈0.179, waar beide gelijk zijn) — dus
+ * `max(ratio(wit), ratio(zwart)) ≥ 4.58 > 4.5` voor ELKE achtergrondkleur.
+ * Geverifieerd door de "garantie geldt voor elke achtergrond"-test in
+ * `tests/unit/colorContrast.spec.ts`.
+ */
+export function pickReadableColor(
+  candidates: readonly string[],
+  background: string,
+  minRatio: number = AA_TEXT_CONTRAST_THRESHOLD,
+): string {
+  let best = candidates[0] ?? '#000000';
+  let bestRatio = -1;
+  for (const candidate of candidates) {
+    const ratio = contrastRatio(candidate, background);
+    if (ratio >= minRatio) return candidate;
+    if (ratio > bestRatio) {
+      bestRatio = ratio;
+      best = candidate;
+    }
+  }
+  return best;
 }
 
-/** `primaryOk`/`accentOk` zijn `true` bij een ongeldige hex-kleur — geen
- * waarschuwing tonen over een kleur die `normalizeSettings`/
- * `applySettingUpdate` sowieso al zou hebben afgewezen/vervangen (zie
- * `HEX_COLOR_PATTERN` in `domain/settings/normalize.ts`). */
-export function checkTeamColorContrast(
-  primaryColor: string,
-  accentColor: string,
-): TeamColorContrastResult {
-  const primaryRatio = contrastRatio(primaryColor, PRIMARY_BUTTON_TEXT_COLOR);
-  const accentRatio = contrastRatio(accentColor, HEADER_BACKGROUND_COLOR);
-  return {
-    primaryRatio,
-    primaryOk: primaryRatio === 0 || primaryRatio >= AA_TEXT_CONTRAST_THRESHOLD,
-    accentRatio,
-    accentOk: accentRatio === 0 || accentRatio >= AA_TEXT_CONTRAST_THRESHOLD,
-  };
+/** Leesbare tekstkleur voor `.btn-primary`: de achtergrond is altijd
+ * `primaryColor` zelf (kleurenschema-onafhankelijk — geen inline stijl
+ * wijzigt met `prefers-color-scheme`), dus wit-of-zwart-kiezen is hier
+ * genoeg en geldt automatisch in beide schema's (zie `pickReadableColor`). */
+export function deriveButtonForeground(primaryColor: string): string {
+  return pickReadableColor(['#ffffff', '#000000'], primaryColor);
+}
+
+/** Leesbare tekstkleur voor `.app-title` tegen een specifieke header-
+ * achtergrond (licht óf donker — de aanroeper geeft de juiste vaste
+ * achtergrond mee per schema, zie `HEADER_BACKGROUND_LIGHT`/`_DARK`).
+ * Behoudt de daadwerkelijk gekozen `accentColor` wanneer die zelf al
+ * voldoende contrast geeft (merkbaarder dan een geforceerde wit/zwart-val);
+ * valt anders terug op wit-of-zwart, met dezelfde ≥4.5:1-garantie. */
+export function deriveAccentForeground(accentColor: string, background: string): string {
+  return pickReadableColor([accentColor, '#ffffff', '#000000'], background);
 }

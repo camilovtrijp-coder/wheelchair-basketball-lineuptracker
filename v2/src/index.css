@@ -48,11 +48,20 @@ main {
   margin: 0;
   font-size: var(--lt-font-size-lg);
   font-weight: 600;
-  /* PR 8.2b (bug 10, docs/pr-5.5c-bugfixes.md #10): `--team-accent` wordt
-     door App.tsx als inline custom property op `.app` gezet vanuit
-     `settings.accentColor`; de fallback houdt niet-teamgekleurde schermen
-     (bijv. vóór settings geladen zijn) op de bestaande vaste kleur. */
-  color: var(--team-accent, var(--lt-color-fg));
+  /* PR 8.2b (bug 10, docs/pr-5.5c-bugfixes.md #10) — herzien na de dark-
+     mode-P1-bevinding op PR #83: `--team-accent-safe` is een door App.tsx
+     AFGELEIDE, gegarandeerd leesbare variant van `settings.accentColor`
+     tegen de LICHTE headerachtergrond (`domain/settings/colorContrast.ts`),
+     niet de rauwe kleur zelf. De donkere-modus-override hieronder gebruikt
+     een apart tegen de DONKERE headerachtergrond afgeleide variant, want
+     die achtergrond (`--lt-color-surface`) wisselt met het kleurenschema. */
+  color: var(--team-accent-safe, var(--lt-color-fg));
+}
+
+@media (prefers-color-scheme: dark) {
+  .app-title {
+    color: var(--team-accent-safe-dark, var(--lt-color-fg));
+  }
 }
 
 .app-header__actions {
@@ -84,12 +93,16 @@ button:focus-visible {
 }
 
 .btn-primary {
-  /* PR 8.2b (bug 10, docs/pr-5.5c-bugfixes.md #10): `--team-primary` wordt
-     door App.tsx als inline custom property op `.app` gezet vanuit
-     `settings.primaryColor`; de fallback houdt de vaste kleur aan totdat
-     settings geladen zijn. */
+  /* PR 8.2b (bug 10, docs/pr-5.5c-bugfixes.md #10) — herzien na de dark-
+     mode-P1-bevinding op PR #83: `--team-primary-fg` is een door App.tsx
+     AFGELEIDE, gegarandeerd leesbare voorgrondkleur (wit of zwart, wat de
+     hoogste contrastratio geeft — zie `deriveButtonForeground` in
+     `domain/settings/colorContrast.ts`), niet de vaste
+     `--lt-color-accent-fg`-token die van kleurenschema wisselt terwijl de
+     knopachtergrond dat niet doet. Geen aparte donkere-modus-override
+     nodig: de afgeleide voorgrond is al schema-onafhankelijk correct. */
   background: var(--team-primary, var(--lt-color-accent));
-  color: var(--lt-color-accent-fg);
+  color: var(--team-primary-fg, var(--lt-color-accent-fg));
 }
 
 .btn-outline {
@@ -238,15 +251,6 @@ button:focus-visible {
   margin: 0;
   font-size: var(--lt-font-size-sm);
   color: var(--lt-color-success, #166534);
-}
-
-/* PR 8.2b (§C werk 4): niet-blokkerende contrastwaarschuwing — bewust géén
-   `--lt-color-danger` (dat suggereert een blokkerende fout; opslaan blijft
-   hier mogelijk). */
-.settings-warning {
-  margin: 0;
-  font-size: var(--lt-font-size-sm);
-  color: var(--lt-color-warning, #92400e);
 }
 
 .cloud-import-banner {

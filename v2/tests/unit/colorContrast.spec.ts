@@ -1,9 +1,13 @@
 import { describe, it, expect } from 'vitest';
 import {
   AA_TEXT_CONTRAST_THRESHOLD,
-  checkTeamColorContrast,
+  HEADER_BACKGROUND_DARK,
+  HEADER_BACKGROUND_LIGHT,
   contrastRatio,
+  deriveAccentForeground,
+  deriveButtonForeground,
   hexToRgb,
+  pickReadableColor,
 } from '../../src/domain/settings/colorContrast';
 
 describe('domain/settings/colorContrast', () => {
@@ -32,65 +36,95 @@ describe('domain/settings/colorContrast', () => {
     );
   });
 
-  it('contrastRatio: #767676 tegen wit ligt net op de bekende AA-tekstgrens (~4.54:1)', () => {
-    const ratio = contrastRatio('#767676', '#ffffff');
-    expect(ratio).toBeGreaterThan(AA_TEXT_CONTRAST_THRESHOLD);
-    expect(ratio).toBeCloseTo(4.5422, 3);
-  });
-
   it('contrastRatio: geeft 0 terug bij een ongeldige hex-kleur', () => {
     expect(contrastRatio('niet-hex', '#ffffff')).toBe(0);
     expect(contrastRatio('#ffffff', 'niet-hex')).toBe(0);
   });
 
-  it('checkTeamColorContrast: donkerblauwe primaire kleur haalt de AA-tekstdrempel op witte knoptekst', () => {
-    const result = checkTeamColorContrast('#1e3a8a', '#000000');
-    expect(result.primaryRatio).toBeGreaterThanOrEqual(AA_TEXT_CONTRAST_THRESHOLD);
-    expect(result.primaryOk).toBe(true);
+  it('pickReadableColor: kiest de eerste kandidaat die de drempel haalt', () => {
+    // #1e3a8a (donkerblauw) haalt ruim 4.5:1 tegen wit — de eerste kandidaat
+    // in de lijst wint, ook al zou zwart een hogere ratio geven.
+    expect(pickReadableColor(['#1e3a8a', '#000000'], '#ffffff')).toBe('#1e3a8a');
   });
 
-  it('checkTeamColorContrast: felgeel als primaire kleur haalt de AA-tekstdrempel niet op witte knoptekst', () => {
-    const result = checkTeamColorContrast('#ffff00', '#000000');
-    expect(result.primaryRatio).toBeLessThan(AA_TEXT_CONTRAST_THRESHOLD);
-    expect(result.primaryOk).toBe(false);
+  it('pickReadableColor: valt terug op de kandidaat met de hoogste ratio als niemand de drempel haalt', () => {
+    // Tegen achtergrond #808080 geeft #707070 een ratio van ~1.25:1 en
+    // #606060 ~1.59:1 — geen van beide haalt de (hier kunstmatig hoge)
+    // drempel van 100, dus #606060 (de hoogste) wint.
+    expect(pickReadableColor(['#707070', '#606060'], '#808080', 100)).toBe('#606060');
   });
 
-  it('checkTeamColorContrast: zwart als accentkleur haalt de AA-tekstdrempel op de vaste headerachtergrond', () => {
-    const result = checkTeamColorContrast('#ffffff', '#000000');
-    expect(result.accentRatio).toBeGreaterThanOrEqual(AA_TEXT_CONTRAST_THRESHOLD);
-    expect(result.accentOk).toBe(true);
+  it('pickReadableColor: geeft nooit undefined terug, ook niet met een lege kandidatenlijst', () => {
+    expect(pickReadableColor([], '#ffffff')).toBe('#000000');
   });
 
-  it('checkTeamColorContrast: een lichtgele accentkleur haalt de AA-tekstdrempel niet op de vaste headerachtergrond', () => {
-    const result = checkTeamColorContrast('#ffffff', '#fff8e1');
-    expect(result.accentRatio).toBeLessThan(AA_TEXT_CONTRAST_THRESHOLD);
-    expect(result.accentOk).toBe(false);
+  it('deriveButtonForeground: kiest wit op een donkere primaire kleur', () => {
+    expect(deriveButtonForeground('#1e3a8a')).toBe('#ffffff');
   });
 
-  it('checkTeamColorContrast: accentColor toetst aan dezelfde 4.5:1-drempel als primaryColor (§8.2a-axe-baseline: .app-title is 18px/600, geen "grote tekst")', () => {
-    // #f97316 (2.68:1 tegen #f9fafb) haalt de oude 3:1-"grotetekst"-drempel
-    // wél, maar de echte 4.5:1-tekstdrempel niet — precies de regressie die
-    // a11y-axe.spec.ts (PR 8.2a) op de echte DOM ving toen deze kleur
-    // voorheen als default gold.
-    const result = checkTeamColorContrast('#ffffff', '#f97316');
-    expect(result.accentRatio).toBeCloseTo(2.68, 1);
-    expect(result.accentOk).toBe(false);
+  it('deriveButtonForeground: kiest zwart op een lichte primaire kleur', () => {
+    expect(deriveButtonForeground('#ffff00')).toBe('#000000');
   });
 
-  it('checkTeamColorContrast: primaryRatio/accentRatio worden onafhankelijk tegen hun eigen vaste referentiekleur getoetst', () => {
-    // primaryRatio toetst uitsluitend tegen PRIMARY_BUTTON_TEXT_COLOR
-    // (#ffffff), niet tegen het tweede argument — een lichte accentkleur
-    // mag de primaire uitkomst dus niet beïnvloeden.
-    const withLightAccent = checkTeamColorContrast('#1e3a8a', '#fff8e1');
-    const withDarkAccent = checkTeamColorContrast('#1e3a8a', '#000000');
-    expect(withLightAccent.primaryRatio).toBeCloseTo(withDarkAccent.primaryRatio, 10);
+  it('deriveButtonForeground: garandeert ≥4.5:1 contrast voor een reeks primaire kleuren, ongeacht kleurenschema', () => {
+    // Bewijst het wiskundige argument in colorContrast.ts: max(contrast
+    // tegen wit, contrast tegen zwart) ≥ 4.5:1 voor elke achtergrondkleur —
+    // dus de knopachtergrond zelf (die niet wisselt met het kleurenschema)
+    // maakt hier geen apart licht/donker-onderscheid nodig.
+    const primaryColorSwatches = [
+      '#22c55e',
+      '#10b981',
+      '#0ea5e9',
+      '#3b82f6',
+      '#8b5cf6',
+      '#ec4899',
+      '#f59e0b',
+      '#f97316',
+      '#ef4444',
+      '#14b8a6',
+      '#2563eb',
+      '#000000',
+      '#ffffff',
+      '#808080',
+    ];
+    for (const swatch of primaryColorSwatches) {
+      const fg = deriveButtonForeground(swatch);
+      expect(contrastRatio(fg, swatch)).toBeGreaterThanOrEqual(AA_TEXT_CONTRAST_THRESHOLD);
+    }
   });
 
-  it('checkTeamColorContrast: behandelt een ongeldige hex-kleur als geen waarschuwing (ratio 0, ok true)', () => {
-    const result = checkTeamColorContrast('niet-hex', 'ook-niet-hex');
-    expect(result.primaryRatio).toBe(0);
-    expect(result.primaryOk).toBe(true);
-    expect(result.accentRatio).toBe(0);
-    expect(result.accentOk).toBe(true);
+  it('deriveAccentForeground: behoudt de gekozen accentkleur wanneer die zelf al voldoende contrast geeft', () => {
+    // #000000 tegen de lichte headerachtergrond haalt ruim 4.5:1 — geen
+    // terugval naar wit/zwart nodig (zwart IS al de eerste kandidaat, dus
+    // dit bewijst vooral dat de functie 'm niet onnodig vervangt).
+    expect(deriveAccentForeground('#000000', HEADER_BACKGROUND_LIGHT)).toBe('#000000');
+  });
+
+  it('deriveAccentForeground: valt terug op wit wanneer de gekozen accentkleur onvoldoende contrast geeft tegen de DONKERE headerachtergrond (de PR #83-regressie)', () => {
+    // #c2410c (DEFAULT_SETTINGS.accentColor) haalt 4.96:1 tegen de LICHTE
+    // headerachtergrond (dus als tekstkleur behouden — zie de vorige test),
+    // maar slechts 3.43:1 tegen de DONKERE headerachtergrond: precies de
+    // dark-mode-P1-bevinding uit de review op PR #83, die de eerdere
+    // waarschuwing (die alleen de lichte modus toetste) niet kon zien.
+    const ratioDark = contrastRatio('#c2410c', HEADER_BACKGROUND_DARK);
+    expect(ratioDark).toBeLessThan(AA_TEXT_CONTRAST_THRESHOLD);
+    expect(deriveAccentForeground('#c2410c', HEADER_BACKGROUND_DARK)).toBe('#ffffff');
+  });
+
+  it('deriveAccentForeground: garandeert ≥4.5:1 contrast tegen zowel de lichte als de donkere headerachtergrond', () => {
+    // De exacte PR #83-regressie: DEFAULT_SETTINGS.accentColor tegen de
+    // DONKERE headerachtergrond (#c2410c op #111827 = 3.43:1, gerapporteerd
+    // in de review) moet nu via de afgeleide voorgrond alsnog voldoen.
+    const accentColorSwatches = ['#c2410c', '#f97316', '#22c55e', '#ffffff', '#000000', '#808080'];
+    for (const swatch of accentColorSwatches) {
+      const fgLight = deriveAccentForeground(swatch, HEADER_BACKGROUND_LIGHT);
+      expect(contrastRatio(fgLight, HEADER_BACKGROUND_LIGHT)).toBeGreaterThanOrEqual(
+        AA_TEXT_CONTRAST_THRESHOLD,
+      );
+      const fgDark = deriveAccentForeground(swatch, HEADER_BACKGROUND_DARK);
+      expect(contrastRatio(fgDark, HEADER_BACKGROUND_DARK)).toBeGreaterThanOrEqual(
+        AA_TEXT_CONTRAST_THRESHOLD,
+      );
+    }
   });
 });
