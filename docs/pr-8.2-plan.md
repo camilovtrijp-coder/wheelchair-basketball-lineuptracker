@@ -327,6 +327,19 @@ motion) zijn nieuw gebouwd; `DEFAULT_SETTINGS.accentColor` is daarbij
 vervangen (`#f97316` → `#c2410c`) omdat de oude default, nu daadwerkelijk
 gerenderd, de bestaande axe-core-baseline (8.2a) niet meer haalde.
 
+**P1-review-opvolging (28 aug. 2026, PR #83):** een eerste versie van
+werk 3/4 toetste alleen tegen de lichte-modus-vaste kleuren en toonde bij
+onvoldoende contrast een niet-blokkerende waarschuwing — maar
+`tokens.css`'s `@media (prefers-color-scheme: dark)`-blok wijzigt die vaste
+kleuren, waardoor `DEFAULT_SETTINGS`'s teamkleuren in donkere modus zelf
+onder de AA-drempel renderden (axe-core `color-contrast`). Opgelost door
+`colorContrast.ts` te herzien naar afgeleide, wiskundig gegarandeerd
+leesbare voorgrondkleuren (`pickReadableColor`/`deriveButtonForeground`/
+`deriveAccentForeground`) i.p.v. een vaste-referentie-waarschuwing — de
+niet-blokkerende waarschuwing zelf is daardoor vervallen (kan niet meer
+voorkomen). Nieuwe `tests/e2e/dark-mode-contrast.spec.ts` reproduceert en
+sluit de exacte reviewbevinding.
+
 Werk:
 
 1. Breid de bestaande live-wedstrijdcomponenten (`LiveTrackingPanel.tsx`
