@@ -1,6 +1,7 @@
 # Voorbereidingsplan PR 8.2 — toegankelijkheid en courtside QA
 
-Status: goedgekeurde bouwrichting; implementatie nog niet gestart. Dit plan
+Status: 8.2a **gemerged** (#81); 8.2b **geïmplementeerd**, open als draft-PR
+#83 (nog niet gemerged); 8.2c nog niet gestart. Dit plan
 splitst roadmap-PR 8.2 in drie afzonderlijk reviewbare sub-PR's, volgt de
 structuur van `docs/pr-8.1-plan.md`/`docs/pr-7.1-plan.md`, en legt vast welk
 deel van de vijf roadmap-bullets (`docs/IMPLEMENTATION_PLAN.md` §13, "PR
@@ -272,6 +273,8 @@ firebaseClient.ts`) wist alleen Firestore's IndexedDB-persistentie.
 
 ### 8.2a — focus-infrastructuur, keyboard-navigatie en axe-core-baseline
 
+**Voltooid** (#81, gemerged).
+
 Werk:
 
 1. Voeg `@axe-core/playwright` toe aan `v2/package.json` (devDependency) en
@@ -314,6 +317,15 @@ Acceptatie:
 - unit-, type-, lint-, format- en buildcontroles zijn groen.
 
 ### 8.2b — score-/wissel-/contextbediening, clubkleurcontrast en reduced-motion
+
+**Geïmplementeerd** (PR #83, in review — nog niet gemerged). Werk 1 (keyboard-
+bediening) bleek bij onderzoek al volledig aanwezig in `LiveTrackingPanel.tsx`
+en `AuthGate.tsx`'s teamswitcher (uitsluitend `<button>`/`<select>`-
+elementen) — geen codewijziging nodig, alleen het e2e-bewijs uit werk 2.
+Werk 3/4 (bug 10, `domain/settings/colorContrast.ts`) en werk 5 (reduced-
+motion) zijn nieuw gebouwd; `DEFAULT_SETTINGS.accentColor` is daarbij
+vervangen (`#f97316` → `#c2410c`) omdat de oude default, nu daadwerkelijk
+gerenderd, de bestaande axe-core-baseline (8.2a) niet meer haalde.
 
 Werk:
 
