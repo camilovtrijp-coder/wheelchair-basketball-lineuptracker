@@ -17,6 +17,7 @@ import {
   type ClassificationConfig,
 } from '../../domain/game/tracking';
 import { translate, type Lang, type StringKey } from '../../i18n/strings';
+import { useFocusTrap } from '../../application/a11y/useFocusTrap';
 
 export interface LiveTrackingPanelProps {
   lang: Lang;
@@ -85,6 +86,7 @@ function TimeSelect({
   pad,
   testId,
   disabled,
+  ariaLabel,
   onChange,
 }: {
   value: number;
@@ -92,6 +94,7 @@ function TimeSelect({
   pad: boolean;
   testId: string;
   disabled: boolean;
+  ariaLabel: string;
   onChange: (v: number) => void;
 }) {
   const options = Array.from({ length: max + 1 }, (_, i) => i);
@@ -101,6 +104,7 @@ function TimeSelect({
       value={value}
       disabled={disabled}
       data-testid={testId}
+      aria-label={ariaLabel}
       onChange={(e) => onChange(Number((e.target as HTMLSelectElement).value))}
     >
       {options.map((n) => (
@@ -174,6 +178,16 @@ export function LiveTrackingPanel({
   const [endTouched, setEndTouched] = useState(false);
   const [editSegmentId, setEditSegmentId] = useState<string | null>(null);
   const [editDraft, setEditDraft] = useState<EditDraft | null>(null);
+  // PR 8.2a (docs/pr-8.2-plan.md §C 8.2a werk 4): deze twee modals zijn
+  // echte live-wedstrijdmodals (wissel-kloktijd-bevestiging, segment
+  // bewerken) met hun eigen `modal-overlay`/`modal`-structuur — geen
+  // `ModalDialog`-hergebruik (net als `TakeoverConfirmDialog`, om dezelfde
+  // reden: een ander knoppenpaar dan het clear/done-paar). Zelfde
+  // focus-trap-aanvulling.
+  const swapConfirmTrapRef = useFocusTrap<HTMLDivElement>(swapConfirmEndSec != null);
+  const editSegmentTrapRef = useFocusTrap<HTMLDivElement>(
+    editDraft != null && editSegmentId != null,
+  );
 
   const history = deriveGameHistory(game);
   const courtLimit = isOverLimit(game, game.onCourt, classification);
@@ -351,6 +365,7 @@ export function LiveTrackingPanel({
             value={score}
             disabled={!canWrite}
             data-testid={`score-select-${team}`}
+            aria-label={t(lang, 'scoreSelectLabel').replace('{team}', name)}
             onChange={(e) =>
               onGameChange({
                 ...game,
@@ -555,6 +570,7 @@ export function LiveTrackingPanel({
             pad={false}
             disabled={!canWrite}
             testId="begin-min"
+            ariaLabel={`${t(lang, 'beginLabel')} ${t(lang, 'minutesUnitLabel')}`}
             onChange={(v) => onGameChange({ ...game, beginSec: withMinutes(game.beginSec, v) })}
           />
           <span>:</span>
@@ -564,6 +580,7 @@ export function LiveTrackingPanel({
             pad
             disabled={!canWrite}
             testId="begin-sec"
+            ariaLabel={`${t(lang, 'beginLabel')} ${t(lang, 'secondsUnitLabel')}`}
             onChange={(v) => onGameChange({ ...game, beginSec: withSeconds(game.beginSec, v) })}
           />
         </div>
@@ -575,6 +592,7 @@ export function LiveTrackingPanel({
             pad={false}
             disabled={!canWrite}
             testId="end-min"
+            ariaLabel={`${t(lang, 'endLabel')} ${t(lang, 'minutesUnitLabel')}`}
             onChange={(v) => {
               onGameChange({ ...game, endSec: withMinutes(game.endSec, v) });
               setEndTouched(true);
@@ -587,6 +605,7 @@ export function LiveTrackingPanel({
             pad
             disabled={!canWrite}
             testId="end-sec"
+            ariaLabel={`${t(lang, 'endLabel')} ${t(lang, 'secondsUnitLabel')}`}
             onChange={(v) => {
               onGameChange({ ...game, endSec: withSeconds(game.endSec, v) });
               setEndTouched(true);
@@ -678,6 +697,7 @@ export function LiveTrackingPanel({
             role="dialog"
             aria-label={t(lang, 'swapConfirmTitle')}
             data-testid="swap-confirm-modal"
+            ref={swapConfirmTrapRef}
           >
             <h2>{t(lang, 'swapConfirmTitle')}</h2>
             <p className="modal__desc">{t(lang, 'swapConfirmDesc')}</p>
@@ -689,6 +709,7 @@ export function LiveTrackingPanel({
                 pad={false}
                 disabled={!canWrite}
                 testId="swap-confirm-min"
+                ariaLabel={`${t(lang, 'timeLabel')} ${t(lang, 'minutesUnitLabel')}`}
                 onChange={(v) => setSwapConfirmEndSec(withMinutes(swapConfirmEndSec, v))}
               />
               <span>:</span>
@@ -698,6 +719,7 @@ export function LiveTrackingPanel({
                 pad
                 disabled={!canWrite}
                 testId="swap-confirm-sec"
+                ariaLabel={`${t(lang, 'timeLabel')} ${t(lang, 'secondsUnitLabel')}`}
                 onChange={(v) => setSwapConfirmEndSec(withSeconds(swapConfirmEndSec, v))}
               />
             </div>
@@ -754,6 +776,7 @@ export function LiveTrackingPanel({
             role="dialog"
             aria-label={t(lang, 'editSegmentTitle')}
             data-testid="edit-segment-modal"
+            ref={editSegmentTrapRef}
           >
             <div className="modal__title-row">
               <h2>{t(lang, 'editSegmentTitle')}</h2>
@@ -790,6 +813,7 @@ export function LiveTrackingPanel({
                 pad={false}
                 disabled={false}
                 testId="edit-begin-min"
+                ariaLabel={`${t(lang, 'beginLabel')} ${t(lang, 'minutesUnitLabel')}`}
                 onChange={(v) =>
                   setEditDraft({ ...editDraft, beginSec: withMinutes(editDraft.beginSec, v) })
                 }
@@ -801,6 +825,7 @@ export function LiveTrackingPanel({
                 pad
                 disabled={false}
                 testId="edit-begin-sec"
+                ariaLabel={`${t(lang, 'beginLabel')} ${t(lang, 'secondsUnitLabel')}`}
                 onChange={(v) =>
                   setEditDraft({ ...editDraft, beginSec: withSeconds(editDraft.beginSec, v) })
                 }
@@ -814,6 +839,7 @@ export function LiveTrackingPanel({
                 pad={false}
                 disabled={false}
                 testId="edit-end-min"
+                ariaLabel={`${t(lang, 'endLabel')} ${t(lang, 'minutesUnitLabel')}`}
                 onChange={(v) =>
                   setEditDraft({ ...editDraft, endSec: withMinutes(editDraft.endSec, v) })
                 }
@@ -825,6 +851,7 @@ export function LiveTrackingPanel({
                 pad
                 disabled={false}
                 testId="edit-end-sec"
+                ariaLabel={`${t(lang, 'endLabel')} ${t(lang, 'secondsUnitLabel')}`}
                 onChange={(v) =>
                   setEditDraft({ ...editDraft, endSec: withSeconds(editDraft.endSec, v) })
                 }

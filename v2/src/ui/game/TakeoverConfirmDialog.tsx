@@ -15,6 +15,7 @@
 
 import { translate, type Lang } from '../../i18n/strings';
 import type { WriterClaimErrorCode, WriterIdentity } from '../../domain/game/writerClaim';
+import { useFocusTrap } from '../../application/a11y/useFocusTrap';
 
 function takeoverBlockedKey(code: WriterClaimErrorCode) {
   switch (code) {
@@ -62,6 +63,10 @@ export function TakeoverConfirmDialog({
   onCancel,
 }: TakeoverConfirmDialogProps) {
   const t = (key: Parameters<typeof translate>[1]) => translate(lang, key);
+  // PR 8.2a (docs/pr-8.2-plan.md §C 8.2a werk 4): zelfde focus-trap-
+  // aanvulling als `ModalDialog.tsx` — vangt/herstelt focus, vervangt het
+  // bestaande backdrop-click-/Escape-sluitgedrag hieronder niet.
+  const trapRef = useFocusTrap<HTMLDivElement>(true);
 
   return (
     // eslint-disable-next-line jsx-a11y/no-noninteractive-element-interactions
@@ -77,7 +82,7 @@ export function TakeoverConfirmDialog({
       }}
     >
       {/* eslint-disable-next-line jsx-a11y/click-events-have-key-events, jsx-a11y/no-noninteractive-element-interactions */}
-      <div className="modal" role="document" onClick={(e) => e.stopPropagation()}>
+      <div className="modal" role="document" ref={trapRef} onClick={(e) => e.stopPropagation()}>
         <h2>{t('takeoverConfirmTitle')}</h2>
         <p className="modal__desc">{t('takeoverConfirmDesc')}</p>
 
