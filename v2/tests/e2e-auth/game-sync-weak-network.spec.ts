@@ -1,9 +1,11 @@
 // PR 8.2c emulator-e2e (docs/pr-8.2-plan.md §B punt 7 / §C 8.2c werk 4):
 // zwakke, NIET-onderbroken verbinding tijdens een lopende, live wedstrijd-
 // sync — een aanvulling op de bestaande volledig-offline-suites (§B punt 7),
-// geen dubbele "offline werkt"-suite. Concreet scenario uit de externe
-// review op PR #80: CDP-netwerkemulatie (`Network.emulateNetworkConditions`)
-// vertraagt de Firestore-writeronde van een scoretoekenning met ~1500ms.
+// geen dubbele "offline werkt"-suite. Scenario uit de externe review op PR
+// #80 (throttleprofiel bijgesteld na een CI-timeout op het aanvankelijke
+// ~1500ms/400kbps-voorstel, zie de toelichting bij `test.setTimeout()`
+// hieronder): CDP-netwerkemulatie (`Network.emulateNetworkConditions`)
+// vertraagt de Firestore-writeronde van een scoretoekenning merkbaar.
 // Bewijst (a) de score-knop blijft klikbaar tijdens die vertraging (geen
 // UI-lock — zie LiveTrackingPanel.tsx: score-knoppen zijn alleen
 // `disabled` op `!canWrite`, nooit op syncstatus) en (b) een tweede
@@ -27,10 +29,12 @@ test('score-/wisselbediening blijft bruikbaar tijdens een geëmuleerde trage ver
 }) => {
   // De standaard Playwright-testtimeout (30s) is niet genoeg zodra de CDP-
   // netwerkemulatie hieronder actief is: elke Firestore-roundtrip (claim,
-  // snapshotpatch, per actie een documentwrite) kost dan ~1500ms extra, en
-  // deze test doorloopt er meerdere sequentieel. Ruim voldoende marge i.p.v.
-  // de emulatie zelf minder realistisch te maken.
-  test.setTimeout(90_000);
+  // snapshotpatch, per actie een documentwrite) kost dan honderden ms extra,
+  // en deze test doorloopt er meerdere sequentieel — verder vertraagd doordat
+  // `firebaseClient.ts` `experimentalForceLongPolling: true` gebruikt (elke
+  // long-poll-ronde voelt de emulatie ook). Ruim voldoende marge i.p.v. de
+  // emulatie zelf minder realistisch te maken.
+  test.setTimeout(150_000);
 
   const identity = await registerPilotCoach(page, 'game-sync-weak-network');
   const team = await seedPilotTeam(identity, 'game-sync-weak-network');
@@ -46,12 +50,18 @@ test('score-/wisselbediening blijft bruikbaar tijdens een geëmuleerde trage ver
   // suite uitsluitend tegen het 'chromium'-project, dus dit is geen
   // voorwaardelijke skip voor andere browsers, puur de sessie opzetten.
   const cdp = await page.context().newCDPSession(page);
+  // "Fast 3G"-achtig profiel (Chrome DevTools-preset: ~562ms RTT, ~1.6Mbps
+  // down/750kbps up) i.p.v. het aanvankelijke ~1500ms/400kbps-profiel — dat
+  // laatste bleek in CI, gecombineerd met Firestores long-polling-transport
+  // (`experimentalForceLongPolling: true`), een volledige sync-cyclus ruim
+  // buiten elke redelijke testtimeout duwen. Nog steeds duidelijk traag/
+  // niet-onderbroken (§B punt 7), alleen niet onrealistisch traag voor een
+  // tijdgebonden test.
   await cdp.send('Network.emulateNetworkConditions', {
     offline: false,
-    latency: 1500,
-    // 3G-achtige bandbreedte (bytes/s) — traag maar niet nul, zie §B punt 7.
-    downloadThroughput: (400 * 1024) / 8,
-    uploadThroughput: (400 * 1024) / 8,
+    latency: 562,
+    downloadThroughput: (1.6 * 1024 * 1024) / 8,
+    uploadThroughput: (750 * 1024) / 8,
   });
 
   await page.getByTestId('score-plus2-for').click();
@@ -65,7 +75,7 @@ test('score-/wisselbediening blijft bruikbaar tijdens een geëmuleerde trage ver
   await page.getByTestId('score-plus1-against').click();
   await expect(page.getByTestId('score-plus1-against')).toBeEnabled();
 
-  await waitForGameSyncStatus(page, 'gesynchroniseerd', 60_000);
+  await waitForGameSyncStatus(page, 'gesynchroniseerd', 120_000);
 
   // Netwerkemulatie uitzetten vóórdat de test verder leest/opruimt.
   await cdp.send('Network.emulateNetworkConditions', {
