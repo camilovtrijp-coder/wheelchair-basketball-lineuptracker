@@ -23,11 +23,20 @@
 // lang-lopende long-polling-transport (`experimentalForceLongPolling: true`,
 // `firebaseClient.ts`) in deze CI-omgeving, niet op trage-maar-uiteindelijk-
 // succesvolle rondes. Deze test schakelt de emulatie daarom weer UIT
-// onmiddellijk na de klikken (vóórdat er op de uiteindelijke sync-uitkomst
+// onmiddellijk ná de klikken (vóórdat er op de uiteindelijke sync-uitkomst
 // gewacht wordt) — de UI-blijft-bruikbaar-tijdens-vertraging-claim (a) is al
 // bewezen zodra de knoppen na de klik nog steeds enabled zijn, en de
 // juiste-volgorde-claim (b) hoeft niet PER SE onder een nog actieve
 // vertraging geverifieerd te worden om overtuigend te zijn.
+//
+// **Herreview-opvolging (P1, PR #84):** "de knop is enabled" bewees op
+// zichzelf niet dat de eerste upload daadwerkelijk onder throttle was
+// BEGONNEN toen de tweede actie volgde. De test wacht daarom nu, nog steeds
+// terwijl de emulatie actief is, expliciet op
+// `waitForGameSyncStatus(page, 'wacht-op-synchronisatie')` vóór de tweede
+// klik — dat observeert aantoonbaar het BEGIN van de eerste trage cyclus,
+// zonder terug te vallen op de eerder vastgelopen "wacht op de volledige
+// afronding onder emulatie"-aanpak.
 import { test, expect } from '@playwright/test';
 import { openPilotTeam, registerPilotCoach, seedPilotTeam } from './twoDeviceFixtures';
 import {
@@ -74,8 +83,17 @@ test('score-/wisselbediening blijft bruikbaar tijdens een geëmuleerde trage ver
   await expect(page.getByTestId('score-plus2-for')).toBeEnabled();
   await expect(page.getByTestId('score-plus1-against')).toBeEnabled();
 
-  // Binnen 5s na de eerste, vóórdat de eerste (vertraagde) upload klaar is:
-  // een tweede, andersoortige score-toekenning.
+  // Tweede review-opvolging (PR #84): "de knop is enabled" bewijst op
+  // zichzelf niet dat de eerste upload daadwerkelijk onder throttle is
+  // BEGONNEN — alleen dat canWrite waar is. Observeer expliciet dat de
+  // eerste sync-cyclus 'wacht-op-synchronisatie' bereikt (nog steeds terwijl
+  // de emulatie actief is) vóórdat de tweede actie volgt — dat maakt de
+  // "vóórdat de eerste upload klaar is"-claim hierboven aantoonbaar i.p.v.
+  // een gok op timing.
+  await waitForGameSyncStatus(page, 'wacht-op-synchronisatie', 10_000);
+
+  // Vóórdat de eerste (vertraagde) upload klaar is: een tweede,
+  // andersoortige score-toekenning.
   await page.getByTestId('score-plus1-against').click();
   await expect(page.getByTestId('score-plus1-against')).toBeEnabled();
 
