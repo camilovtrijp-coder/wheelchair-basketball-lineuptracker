@@ -29,8 +29,10 @@ test('score-/wisselbediening blijft bruikbaar tijdens een geëmuleerde trage ver
   page,
 }) => {
   // De standaard Playwright-testtimeout (30s) is niet genoeg zodra de CDP-
-  // netwerkemulatie hieronder actief is.
-  test.setTimeout(60_000);
+  // netwerkemulatie hieronder actief is — ook met alleen latency-emulatie
+  // (geen bandbreedteplafond meer, zie hieronder) duurde de laatste
+  // waitForGameSyncStatus()-ronde in CI ~45s.
+  test.setTimeout(120_000);
 
   const identity = await registerPilotCoach(page, 'game-sync-weak-network');
   const team = await seedPilotTeam(identity, 'game-sync-weak-network');
@@ -77,7 +79,7 @@ test('score-/wisselbediening blijft bruikbaar tijdens een geëmuleerde trage ver
   await page.getByTestId('score-plus1-against').click();
   await expect(page.getByTestId('score-plus1-against')).toBeEnabled();
 
-  await waitForGameSyncStatus(page, 'gesynchroniseerd', 45_000);
+  await waitForGameSyncStatus(page, 'gesynchroniseerd', 90_000);
 
   // Netwerkemulatie uitzetten vóórdat de test verder leest/opruimt.
   await cdp.send('Network.emulateNetworkConditions', {
