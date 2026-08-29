@@ -25,6 +25,13 @@ import {
 test('score-/wisselbediening blijft bruikbaar tijdens een geëmuleerde trage verbinding, acties komen in de juiste volgorde aan', async ({
   page,
 }) => {
+  // De standaard Playwright-testtimeout (30s) is niet genoeg zodra de CDP-
+  // netwerkemulatie hieronder actief is: elke Firestore-roundtrip (claim,
+  // snapshotpatch, per actie een documentwrite) kost dan ~1500ms extra, en
+  // deze test doorloopt er meerdere sequentieel. Ruim voldoende marge i.p.v.
+  // de emulatie zelf minder realistisch te maken.
+  test.setTimeout(90_000);
+
   const identity = await registerPilotCoach(page, 'game-sync-weak-network');
   const team = await seedPilotTeam(identity, 'game-sync-weak-network');
   await seedPilotRoster(team);
@@ -58,7 +65,7 @@ test('score-/wisselbediening blijft bruikbaar tijdens een geëmuleerde trage ver
   await page.getByTestId('score-plus1-against').click();
   await expect(page.getByTestId('score-plus1-against')).toBeEnabled();
 
-  await waitForGameSyncStatus(page, 'gesynchroniseerd', 30_000);
+  await waitForGameSyncStatus(page, 'gesynchroniseerd', 60_000);
 
   // Netwerkemulatie uitzetten vóórdat de test verder leest/opruimt.
   await cdp.send('Network.emulateNetworkConditions', {
