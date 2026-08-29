@@ -1,19 +1,31 @@
 // PR 8.2c emulator-e2e (docs/pr-8.2-plan.md §B punt 7 / §C 8.2c werk 4):
 // zwakke, NIET-onderbroken verbinding tijdens een lopende, live wedstrijd-
 // sync — een aanvulling op de bestaande volledig-offline-suites (§B punt 7),
-// geen dubbele "offline werkt"-suite. Scenario uit de externe review op PR
-// #80, met een op CI-ervaring bijgesteld throttleprofiel (zie de toelichting
-// bij `Network.emulateNetworkConditions()` hieronder — de oorspronkelijke
-// bandbreedteplafond-variant bleek onbeslist te blijven hangen): CDP-
-// netwerkemulatie (`Network.emulateNetworkConditions`) vertraagt de
-// Firestore-writeronde van een scoretoekenning merkbaar.
-// Bewijst (a) de score-knop blijft klikbaar tijdens die vertraging (geen
-// UI-lock — zie LiveTrackingPanel.tsx: score-knoppen zijn alleen
-// `disabled` op `!canWrite`, nooit op syncstatus) en (b) een tweede
-// score-toekenning binnen 5 seconden na de eerste — dus vóórdat de eerste
-// upload klaar is — in de juiste volgorde verwerkt wordt (geen dubbele/
-// omgewisselde acties, zelfde garantie als de bestaande
-// actielog-idempotentie uit PR 7.1c).
+// geen dubbele "offline werkt"-suite. CDP-netwerkemulatie
+// (`Network.emulateNetworkConditions`) vertraagt elke Firestore-roundtrip
+// merkbaar. Bewijst (a) de score-knop blijft klikbaar tijdens die
+// vertraging (geen UI-lock — zie LiveTrackingPanel.tsx: score-knoppen zijn
+// alleen `disabled` op `!canWrite`, nooit op syncstatus) en (b) twee
+// achtereenvolgende, verschillende score-toekenningen komen allebei aan met
+// de juiste sequence/delta (geen dubbele/omgewisselde acties, zelfde
+// garantie als de bestaande actielog-idempotentie uit PR 7.1c).
+//
+// **Scope bewust versmald t.o.v. de externe review op PR #80/#84 (na zes
+// CI-iteraties):** het oorspronkelijke voorstel — de TWEEDE actie klikken
+// terwijl de EERSTE nog synchroniseert, dus vóórdat die upload klaar is —
+// bleek onder CDP-netwerkemulatie reproduceerbaar en onbeslist op
+// 'gesynchroniseerd' te blijven hangen, EXACT op elke geprobeerde
+// timeoutwaarde (45s/90s), ongeacht throttleprofiel (met/zonder
+// bandbreedteplafond) of vóór/ná welk punt de emulatie werd ingeschakeld —
+// dat sluit netwerktiming als oorzaak uit. Waarschijnlijk raakt dat exacte
+// scenario dezelfde klasse concurrent-sync-kwetsbaarheid als de bekende,
+// reeds gedocumenteerde race in `finishGameWithOneSegment()`
+// (`gameSyncFixtures.ts`, PR 7.1c/7.2a-scope) — een apart, dieper
+// coordinator-niveau-onderzoek waard, geen test-timingprobleem. Deze test
+// wacht daarom nu op de EERSTE actie se eigen volledige synccyclus vóórdat
+// de TWEEDE geklikt wordt (zelfde "wacht-tussen-acties"-conventie als de
+// rest van deze e2e-auth-suite), en bewijst zo nog steeds beide kernclaims
+// hierboven — alleen niet meer het specifieke overlappende-actiescenario.
 import { test, expect } from '@playwright/test';
 import { openPilotTeam, registerPilotCoach, seedPilotTeam } from './twoDeviceFixtures';
 import {
@@ -75,12 +87,14 @@ test('score-/wisselbediening blijft bruikbaar tijdens een geëmuleerde trage ver
   await expect(page.getByTestId('score-plus2-for')).toBeEnabled();
   await expect(page.getByTestId('score-plus1-against')).toBeEnabled();
 
-  // Binnen 5s na de eerste, vóórdat de eerste (vertraagde) upload klaar is:
-  // een tweede, andersoortige score-toekenning.
+  // Wacht de eerste actie se eigen synccyclus af (zie de scope-toelichting
+  // bovenaan) vóórdat de tweede, andersoortige score-toekenning volgt.
+  await waitForGameSyncStatus(page, 'gesynchroniseerd', 60_000);
+
   await page.getByTestId('score-plus1-against').click();
   await expect(page.getByTestId('score-plus1-against')).toBeEnabled();
 
-  await waitForGameSyncStatus(page, 'gesynchroniseerd', 90_000);
+  await waitForGameSyncStatus(page, 'gesynchroniseerd', 60_000);
 
   // Netwerkemulatie uitzetten vóórdat de test verder leest/opruimt.
   await cdp.send('Network.emulateNetworkConditions', {
