@@ -1,6 +1,7 @@
 # Voorbereidingsplan PR 8.2 — toegankelijkheid en courtside QA
 
-Status: goedgekeurde bouwrichting; implementatie nog niet gestart. Dit plan
+Status: 8.2a **gemerged** (#81); 8.2b **geïmplementeerd**, open als draft-PR
+#83 (nog niet gemerged); 8.2c nog niet gestart. Dit plan
 splitst roadmap-PR 8.2 in drie afzonderlijk reviewbare sub-PR's, volgt de
 structuur van `docs/pr-8.1-plan.md`/`docs/pr-7.1-plan.md`, en legt vast welk
 deel van de vijf roadmap-bullets (`docs/IMPLEMENTATION_PLAN.md` §13, "PR
@@ -150,25 +151,48 @@ e2e/mobile.spec.ts` en de auth-e2e-suite al aanraken, geen aparte
    root-niveau, toegepast op de knoppen/headers die daadwerkelijk
    merkbaar zijn — dezelfde scope als bug 10's eigen "aparte
    implementatiestap"-aantekening). **Concrete elementenlijst (externe
-   review PR #80):** minimaal `.btn-primary` (alle primaire actieknoppen —
-   startknop, opslaan, bevestigen) krijgt `--team-primary` als
-   achtergrondkleur, en de app-header/`<h1>` krijgt `--team-accent` als
-   accentkleur — de acceptatietest in 8.2b werk 3 verifieert expliciet dat
-   minstens dít ene zichtbaar-merkbare element de custom property
-   daadwerkelijk gebruikt (niet slechts dat de property ergens in de CSS
-   gedefinieerd staat), zodat "bug 10 opgelost" niet kan worden geclaimd op
-   basis van een property die nergens renderend wordt toegepast. Verdere
-   elementen (bv. de PWA-updatebanner) zijn optioneel binnen dezelfde
-   8.2b-scope, niet vereist voor de acceptatiecriteria. Pas dáárna een pure
-   `domain/settings/`-contrastcontrolefunctie (WCAG-contrastratio, AA-
-   drempel 4.5:1 voor tekst) die de gekozen kleur tegen de vaste
-   achtergrond-/tekstkleuren van het thema toetst en een waarschuwing
-   toont in `SettingsPanel.tsx` bij onvoldoende contrast — een niet-
-   blokkerende waarschuwing (net als de PWA-readinessvarianten uit 8.1b),
-   geen harde weigering om op te slaan. Dit koppelt bug 10's fix expliciet
-   aan 8.2b in plaats van 'm los, ongepland te laten hangen: zonder deze
-   stap zou "contrast van clubkleuren" in de roadmap-bullet een niet-
-   uitvoerbare eis zijn.
+   review PR #80, **gecorrigeerd in de tweede P1-review-ronde op PR #83,
+   29 aug. 2026 — zie hieronder voor de reden**):** minimaal
+   `.btn-primary` (alle primaire actieknoppen — startknop, opslaan,
+   bevestigen) krijgt `--team-primary` als achtergrondkleur mét een
+   afgeleide, wiskundig gegarandeerd leesbare knoptekst
+   (`deriveButtonForeground`, zie werk 4 hieronder), en de app-header/
+   `<h1>` krijgt `--team-accent` als een puur DECORATIEF accent
+   (`border-left` — NIET als tekstkleur, zie de correctie hieronder) — de
+   acceptatietest in 8.2b werk 3 verifieert expliciet dat minstens dít ene
+   zichtbaar-merkbare element de custom property daadwerkelijk gebruikt
+   (niet slechts dat de property ergens in de CSS gedefinieerd staat),
+   zodat "bug 10 opgelost" niet kan worden geclaimd op basis van een
+   property die nergens renderend wordt toegepast. Verdere elementen (bv.
+   de PWA-updatebanner) zijn optioneel binnen dezelfde 8.2b-scope, niet
+   vereist voor de acceptatiecriteria.
+
+   **Correctie (tweede P1-review-ronde PR #83, 29 aug. 2026):** `--team-
+accent` bleek NIET houdbaar als letterlijke `.app-title`-TEKSTkleur —
+   geen van de tien presets uit `SettingsPanel.tsx` haalt 4,5:1 tegen de
+   headerachtergrond, dus een contrastveilige afgeleide tekstvariant viel
+   voor alle tien terug op hetzelfde zwart (onzichtbare accentkeuze). De
+   accentkleur wordt daarom toegepast als een puur DECORATIEF accent
+   (`.app-title`'s `border-left`) i.p.v. als tekstkleur — WCAG 1.4.11
+   (non-text contrast) geldt niet voor zuiver decoratieve elementen, dus
+   de rauwe kleur mag daar rechtstreeks. Zie `domain/settings/
+colorContrast.ts` se bijgewerkte bestandscommentaar en de "twee-presets-
+   geven-twee-kleuren"-e2e-tests in `settings.spec.ts`/`dark-mode-
+contrast.spec.ts` voor het bewijs. `.btn-primary`'s `--team-primary`-
+   toepassing (achtergrond) is ongewijzigd.
+
+   **Vervallen (derde P2-review-ronde PR #83, 29 aug. 2026):** de
+   oorspronkelijke tekst hier eiste nog een aparte, pure
+   `domain/settings/`-contrastcontrolefunctie die een niet-blokkerende
+   waarschuwing toont in `SettingsPanel.tsx` bij onvoldoende contrast
+   (analoog aan 8.1b's PWA-readinessvarianten). Die eis is met de
+   correctie hierboven overbodig geworden: `.btn-primary`'s knoptekst is
+   nu wiskundig gegarandeerd ≥4,5:1 (`deriveButtonForeground`, welke
+   kleur ook gekozen wordt) en `.app-title`'s accent is decoratief (geen
+   WCAG-tekstcontrasteis) — een "kleurkeuze met onvoldoende contrast"-
+   toestand kan voor deze twee toepassingen niet meer voorkomen, dus is er
+   niets meer om voor te waarschuwen. Zie werk 4/de acceptatiecriteria
+   hieronder voor de bijgewerkte, actuele eis.
 5. **Gedeeld apparaat — uitbreiding, geen nieuwbouw, van de bestaande
    vertrouwd-apparaat-/uitlogflow.** Twee concrete gaten t.o.v. wat al
    bestaat (zie §A):
@@ -272,6 +296,8 @@ firebaseClient.ts`) wist alleen Firestore's IndexedDB-persistentie.
 
 ### 8.2a — focus-infrastructuur, keyboard-navigatie en axe-core-baseline
 
+**Voltooid** (#81, gemerged).
+
 Werk:
 
 1. Voeg `@axe-core/playwright` toe aan `v2/package.json` (devDependency) en
@@ -315,6 +341,57 @@ Acceptatie:
 
 ### 8.2b — score-/wissel-/contextbediening, clubkleurcontrast en reduced-motion
 
+**Geïmplementeerd** (PR #83, in review — nog niet gemerged). Werk 1 (keyboard-
+bediening) bleek bij onderzoek al volledig aanwezig in `LiveTrackingPanel.tsx`
+en `AuthGate.tsx`'s teamswitcher (uitsluitend `<button>`/`<select>`-
+elementen) — geen codewijziging nodig, alleen het e2e-bewijs uit werk 2.
+Werk 3/4 (bug 10, `domain/settings/colorContrast.ts`) en werk 5 (reduced-
+motion) zijn nieuw gebouwd. `DEFAULT_SETTINGS.accentColor` is tussentijds
+(eerste P1-ronde) kort vervangen geweest (`#f97316` → `#c2410c`) omdat de
+toenmalige aanpak `accentColor` als `.app-title`-tekstkleur gebruikte en de
+oude default de axe-core-baseline (8.2a) niet haalde — na de derde
+review-ronde (zie hieronder) is die reden vervallen en staat de default
+weer op `#f97316`.
+
+**P1-review-opvolging (28 aug. 2026, PR #83):** een eerste versie van
+werk 3/4 toetste alleen tegen de lichte-modus-vaste kleuren en toonde bij
+onvoldoende contrast een niet-blokkerende waarschuwing — maar
+`tokens.css`'s `@media (prefers-color-scheme: dark)`-blok wijzigt die vaste
+kleuren, waardoor `DEFAULT_SETTINGS`'s teamkleuren in donkere modus zelf
+onder de AA-drempel renderden (axe-core `color-contrast`). Opgelost door
+`colorContrast.ts` te herzien naar afgeleide, wiskundig gegarandeerd
+leesbare voorgrondkleuren (`pickReadableColor`/`deriveButtonForeground`/
+`deriveAccentForeground`) i.p.v. een vaste-referentie-waarschuwing — de
+niet-blokkerende waarschuwing zelf is daardoor vervallen (kan niet meer
+voorkomen). Nieuwe `tests/e2e/dark-mode-contrast.spec.ts` reproduceert en
+sluit de exacte reviewbevinding.
+
+**Tweede P1-review-opvolging (29 aug. 2026, PR #83):** `deriveAccent-
+Foreground` (hierboven) loste de dark-mode-regressie op maar bleek zelf
+een regressie te introduceren: tegen de lichte headerachtergrond haalt
+geen van de tien presets uit `SettingsPanel.tsx` 4,5:1, dus alle tien
+vielen terug op hetzelfde zwart — de accentkeuze werd onzichtbaar in de
+gangbare lichte modus. Opgelost door `accentColor` niet meer als
+`.app-title`-TEKSTkleur te gebruiken (die blijft de vaste `--lt-color-fg`)
+maar als een puur decoratief accent (`border-left`, geen WCAG-
+tekstcontrasteis) — zie de gecorrigeerde §B punt 4 hierboven.
+`deriveAccentForeground` en de dubbele lichte/donkere-headerachtergrond-
+constanten zijn daardoor uit `colorContrast.ts` verwijderd (dode code);
+alleen `deriveButtonForeground` (voor `.btn-primary`) blijft over. Nieuwe
+e2e-assertions in `settings.spec.ts`/`dark-mode-contrast.spec.ts` bewijzen
+expliciet dat twee verschillende accent-presets tot twee verschillend
+gerenderde accentranden leiden.
+
+**Derde review-opvolging (P2, 29 aug. 2026, PR #83):** twee source-of-
+truth-restpunten na de tweede ronde. (1) §B punt 4 en werk 4 hieronder
+spraken de nieuwe acceptatiecriteria nog tegen — beide eisten nog
+expliciet de inmiddels-vervallen niet-blokkerende contrastwaarschuwing;
+tekst bijgewerkt naar het huidige automatische/decoratieve contract. (2)
+`DEFAULT_SETTINGS.accentColor`'s wijziging naar `#c2410c` had geen
+bestaansreden meer zodra `accentColor` alleen nog decoratief wordt
+toegepast (geen WCAG-tekstcontrasteis) — teruggedraaid naar het
+oorspronkelijke `#f97316`, geen aparte productreden om af te wijken.
+
 Werk:
 
 1. Breid de bestaande live-wedstrijdcomponenten (`LiveTrackingPanel.tsx`
@@ -337,13 +414,22 @@ interactions` vandaag al via een `eslint-disable`-commentaar is
    zichtbaar merkbare UI-elementen (primaire knoppen, headers) —
    dezelfde scope als bug 10's eigen aantekening, geen volledige
    thema-herbouw.
-4. Voeg een pure `domain/settings/colorContrast.ts`-functie toe die een
-   WCAG-contrastratio berekent tussen een gekozen kleur en de vaste
-   achtergrond-/tekstkleur waar die kleur tegen wordt gerenderd (AA-
-   drempel 4.5:1 voor tekst, 3:1 voor grote tekst/UI-componenten). Toon
-   een niet-blokkerende waarschuwing in `SettingsPanel.tsx` (zelfde
-   patroon als 8.1b's niet-blokkerende PWA-readinessvarianten) wanneer de
-   gekozen kleur onvoldoende contrast geeft — opslaan blijft mogelijk.
+4. **Bijgewerkt (derde P2-review-ronde PR #83, 29 aug. 2026) — vervangt de
+   oorspronkelijke "waarschuwing bij onvoldoende contrast"-eis.** Voeg een
+   pure `domain/settings/colorContrast.ts`-functie toe
+   (`pickReadableColor`/`deriveButtonForeground`) die, gegeven een
+   gekozen kleur, automatisch een wiskundig gegarandeerd leesbare
+   voorgrond kiest (wit of zwart, wat de hoogste WCAG-contrastratio geeft
+   — altijd ≥4.5:1 tegen elke achtergrond, zie de garantie in
+   `colorContrast.ts`'s bestandscommentaar) i.p.v. de kleur tegen een
+   vaste referentie te toetsen en te waarschuwen. Toegepast op
+   `.btn-primary`'s knoptekst. `.app-title`'s accentkleur krijgt GEEN
+   afgeleide tekstvariant (zie de correctie in §B punt 4: dat viel voor
+   alle presets terug op zwart) maar wordt uitsluitend decoratief
+   toegepast (`border-left`), waar WCAG-tekstcontrast niet geldt. Omdat
+   beide toepassingen hierdoor altijd conform zijn, is een aparte
+   niet-blokkerende contrastwaarschuwing in `SettingsPanel.tsx` niet meer
+   nodig — die bestaat dus bewust niet (meer).
 5. Bevestig `prefers-reduced-motion` (§A): een gerichte e2e- of
    component-test die met `prefersReducedMotion: 'reduce'`
    (Playwright-contextoptie) bevestigt dat CSS-transities/-animaties
@@ -359,11 +445,19 @@ Acceptatie:
 - elke live-wedstrijdactie (score, wissel, contextwissel) is met een
   toetsenbord alleen volledig uitvoerbaar, geverifieerd door de e2e-suite;
 - `primaryColor`/`accentColor` hebben een zichtbaar effect in de app (bug
-  10 opgelost), geverifieerd door een component-/e2e-test die een
-  aangepaste kleur instelt en de gerenderde CSS-custom-property
-  controleert;
-- een kleurkeuze onder de AA-contrastdrempel toont een zichtbare,
-  vertaalde waarschuwing maar blokkeert opslaan niet;
+  10 opgelost) dat WCAG-conform blijft in beide kleurenschema's:
+  `primaryColor` als `.btn-primary`-achtergrond met een afgeleide leesbare
+  knoptekst, `accentColor` als `.app-title`'s decoratieve accentrand (géén
+  tekstkleur — zie de tweede P1-review-opvolging hierboven) — geverifieerd
+  door e2e-tests die TWEE verschillende presets instellen en bevestigen dat
+  ze tot twee verschillend gerenderde accentranden leiden, niet alleen dat
+  de CSS custom property verandert;
+- primaryColor's afgeleide knoptekst is wiskundig gegarandeerd ≥4,5:1
+  contrast tegen elke gekozen kleur (`pickReadableColor`/
+  `deriveButtonForeground`, `colorContrast.ts`) — er is dus geen "keuze
+  met onvoldoende contrast"-toestand meer mogelijk voor deze toepassing,
+  dus ook geen aparte waarschuwing nodig (de eerdere, inmiddels vervallen
+  niet-blokkerende waarschuwing ging hiervan uit);
 - `prefers-reduced-motion: reduce` onderdrukt aantoonbaar animaties/
   transities op minstens één geverifieerd element;
 - bestaande `SettingsPanel`-, `LiveTrackingPanel`- en

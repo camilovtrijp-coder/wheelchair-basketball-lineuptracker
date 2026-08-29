@@ -215,3 +215,112 @@ test.describe('v2 a11y — keyboard-only modaalbediening (PR 8.2a)', () => {
     await expect(segmentItem).toBeFocused();
   });
 });
+
+// PR 8.2b (docs/pr-8.2-plan.md §C 8.2b werk 2): de live-wedstrijdbediening
+// (score toekennen, wissel uitvoeren, kwart wisselen) puur via het
+// toetsenbord — geen `page.click()`/`page.tap()`. Onderzoek in 8.2b bevestigt
+// dat `LiveTrackingPanel.tsx` al uitsluitend `<button>`/`<select>`-elementen
+// gebruikt voor deze bediening (geen `<div onClick>`-patronen), dus dit is
+// bewijs dat de bestaande implementatie al werkt, geen nieuwe UI-code.
+test.describe('v2 a11y — keyboard-only live-wedstrijdbediening (PR 8.2b)', () => {
+  test('score toekennen, een wissel uitvoeren en van kwart wisselen zijn volledig met een toetsenbord bereikbaar', async ({
+    page,
+  }) => {
+    await page.addInitScript(() => window.localStorage.setItem('lineup-tracker-lang', 'nl'));
+    await page.goto('/');
+    await page.getByTestId('nav-roster').click();
+    for (let i = 0; i < 6; i += 1) {
+      await page.getByTestId('roster-add').click();
+    }
+    const names = page.locator('[data-testid^="roster-naam-"]');
+    await expect(names).toHaveCount(6);
+    for (let i = 0; i < 6; i += 1) {
+      await names.nth(i).fill(`Speler ${i + 1}`);
+    }
+    await page.getByTestId('roster-save').click();
+    await page.reload();
+
+    await page.getByTestId('nav-game').click();
+    await page.getByTestId('game-start-btn').click();
+    await expect(page.getByTestId('score-row-for')).toBeVisible();
+
+    // Score toekennen: focus + Enter op de "+2"-knop, geen `.click()`.
+    const scorePlus2 = page.getByTestId('score-plus2-for');
+    await scorePlus2.focus();
+    await expect(scorePlus2).toBeFocused();
+    await page.keyboard.press('Enter');
+    await expect(page.getByTestId('score-select-for')).toHaveValue('2');
+
+    // Nogmaals +3 via Spatie (native `<button>`-activatie ondersteunt beide).
+    const scorePlus3 = page.getByTestId('score-plus3-for');
+    await scorePlus3.focus();
+    await page.keyboard.press(' ');
+    await expect(page.getByTestId('score-select-for')).toHaveValue('5');
+
+    // Wissel uitvoeren: eerst een veldspeler, dan een bankspeler selecteren
+    // — allebei via focus()+Enter. Bewaar de bank-chip se testid vooraf om
+    // na de wissel te bewijzen dat die speler nu op het veld staat, zonder
+    // de exacte, data-gedreven speler-id's hard te coderen.
+    const courtChip = page.locator('[data-testid^="court-chip-"]').first();
+    await courtChip.focus();
+    await page.keyboard.press('Enter');
+    await expect(page.getByTestId('swap-selected')).toBeVisible();
+
+    const benchChip = page.locator('[data-testid^="bench-chip-"]').first();
+    const benchTestId = await benchChip.getAttribute('data-testid');
+    expect(benchTestId).toBeTruthy();
+    await benchChip.focus();
+    await page.keyboard.press('Enter');
+
+    const swappedInPlayerId = benchTestId!.replace('bench-chip-', '');
+    await expect(page.getByTestId(`court-chip-${swappedInPlayerId}`)).toBeVisible();
+
+    // Kwart wisselen: focus + Enter op kwart 2.
+    const quarter2 = page.getByTestId('quarter-btn-2');
+    await quarter2.focus();
+    await page.keyboard.press('Enter');
+    await expect(quarter2).toHaveClass(/quarter-btn--active/);
+  });
+});
+
+// PR 8.2b (§C 8.2b werk 2, tweede helft van §B punt 3): de contextwissel via
+// `AuthGate.tsx`'s teamswitcher (`SessionBar`'s "wissel"-knop → een
+// organisatie/team kiezen in `ContextSwitcher`) puur via het toetsenbord.
+// Vereist de Firebase Auth-/Firestore-emulator + seed-data (zelfde
+// afhankelijkheid als de rest van deze e2e-suite via `./fixtures`) — bob
+// heeft in de seed twee teams onder `org-rotterdam` (`team-u23`, waar
+// `fixtures.ts` 'm standaard in inlogt, en `team-u17`).
+test.describe('v2 a11y — keyboard-only contextwissel (PR 8.2b)', () => {
+  test('de contextwisselaar (organisatie + team kiezen) is volledig met een toetsenbord bereikbaar', async ({
+    page,
+  }) => {
+    await page.goto('/');
+    await expect(page.getByTestId('nav-game')).toBeVisible();
+
+    const switchBtn = page.getByTestId('switch-context');
+    await switchBtn.focus();
+    await expect(switchBtn).toBeFocused();
+    await page.keyboard.press('Enter');
+
+    const orgBtn = page.getByTestId('context-org-org-rotterdam');
+    await expect(orgBtn).toBeVisible();
+    await orgBtn.focus();
+    await page.keyboard.press('Enter');
+
+    const teamBtn = page.getByTestId('context-team-team-u17');
+    await expect(teamBtn).toBeVisible();
+    await teamBtn.focus();
+    await expect(teamBtn).toBeFocused();
+    await page.keyboard.press('Enter');
+
+    // Terug in de app, nu in team-u17's context.
+    await expect(page.getByTestId('nav-game')).toBeVisible();
+    const storedContext = await page.evaluate(() =>
+      window.localStorage.getItem('lineup-tracker-selected-context'),
+    );
+    expect(JSON.parse(storedContext ?? '{}')).toMatchObject({
+      orgId: 'org-rotterdam',
+      teamId: 'team-u17',
+    });
+  });
+});

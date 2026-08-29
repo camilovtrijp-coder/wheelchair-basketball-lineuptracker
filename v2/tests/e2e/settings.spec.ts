@@ -235,4 +235,54 @@ test.describe('v2 settings', () => {
     await expect(page.getByRole('heading', { name: 'Settings', exact: true })).toBeVisible();
     await expect(page.getByText('Team name', { exact: true })).toBeVisible();
   });
+
+  // PR 8.2b (bug 10, docs/pr-5.5c-bugfixes.md #10, docs/pr-8.2-plan.md §C
+  // 8.2b werk 3): vóór deze PR hadden primaryColor/accentColor geen enkel
+  // zichtbaar effect. Deze test bewijst niet alleen dat de CSS custom
+  // property gezet wordt, maar dat 'm daadwerkelijk gerenderd wordt op een
+  // zichtbaar-merkbaar element (`.btn-primary`-achtergrond, `.app-title`-
+  // tekstkleur) — precies het onderscheid dat §B punt 4 vereist.
+  test('primaryColor/accentColor worden toegepast als CSS custom property én daadwerkelijk gerenderd (bug 10)', async ({
+    page,
+  }) => {
+    await page.goto('/');
+    const appRoot = page.locator('.app');
+
+    await expect(appRoot).toHaveCSS('--team-primary', '#2563eb');
+    await expect(appRoot).toHaveCSS('--team-accent', '#f97316');
+
+    await page.getByTestId('primaryColor-8b5cf6').click();
+    await page.getByTestId('accentColor-ef4444').click();
+
+    await expect(appRoot).toHaveCSS('--team-primary', '#8b5cf6');
+    await expect(appRoot).toHaveCSS('--team-accent', '#ef4444');
+
+    // Achtergrond blijft de rauwe teamkleur; knoptekst is de afgeleide
+    // leesbare voorgrond (`deriveButtonForeground`, `colorContrast.ts`) —
+    // #8b5cf6 haalt 4.5:1 niet tegen wit (4.23:1) maar wel tegen zwart
+    // (4.96:1). Zie de dark-mode-regressietest hieronder voor het donkere-
+    // modus-pad dat PR #83's eerste review-bevinding was.
+    await expect(page.getByTestId('settings-save')).toHaveCSS(
+      'background-color',
+      'rgb(139, 92, 246)',
+    );
+    await expect(page.getByTestId('settings-save')).toHaveCSS('color', 'rgb(0, 0, 0)');
+
+    // `.app-title`'s TEKSTKLEUR blijft de vaste `--lt-color-fg` (tweede
+    // review-bevinding op PR #83: een uit accentColor afgeleide tekstkleur
+    // viel voor alle tien presets terug op hetzelfde zwart tegen de lichte
+    // headerachtergrond, waardoor de accentkeuze onzichtbaar werd).
+    // `accentColor` blijft wél zichtbaar en onderscheidend via een puur
+    // decoratief accent (`border-left`, geen WCAG-tekstcontrasteis) — hier
+    // bewezen met TWEE verschillende presets die twee verschillende
+    // gerenderde randkleuren opleveren, precies wat de review vroeg.
+    const appTitle = page.locator('.app-title');
+    await expect(appTitle).toHaveCSS('color', 'rgb(17, 24, 39)');
+    await expect(appTitle).toHaveCSS('border-left-color', 'rgb(239, 68, 68)');
+
+    await page.getByTestId('accentColor-22c55e').click();
+    await expect(appRoot).toHaveCSS('--team-accent', '#22c55e');
+    await expect(appTitle).toHaveCSS('color', 'rgb(17, 24, 39)');
+    await expect(appTitle).toHaveCSS('border-left-color', 'rgb(34, 197, 94)');
+  });
 });
