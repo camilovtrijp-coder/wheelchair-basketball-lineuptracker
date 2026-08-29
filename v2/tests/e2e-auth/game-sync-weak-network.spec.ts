@@ -29,44 +29,45 @@ test('score-/wisselbediening blijft bruikbaar tijdens een geëmuleerde trage ver
   page,
 }) => {
   // De standaard Playwright-testtimeout (30s) is niet genoeg zodra de CDP-
-  // netwerkemulatie hieronder actief is — ook met alleen latency-emulatie
-  // (geen bandbreedteplafond meer, zie hieronder) duurde de laatste
-  // waitForGameSyncStatus()-ronde in CI ~45s.
-  test.setTimeout(120_000);
+  // netwerkemulatie hieronder actief is.
+  test.setTimeout(150_000);
 
   const identity = await registerPilotCoach(page, 'game-sync-weak-network');
   const team = await seedPilotTeam(identity, 'game-sync-weak-network');
   await seedPilotRoster(team);
 
-  await openPilotTeam(page, team);
-  await startTrackedGame(page);
-  await waitForGameSyncStatus(page, 'gesynchroniseerd');
-
-  const gameId = await readLocalGameId(page, team);
-
   // Alleen Chromium ondersteunt CDP — playwright.auth.config.ts draait deze
   // suite uitsluitend tegen het 'chromium'-project, dus dit is geen
   // voorwaardelijke skip voor andere browsers, puur de sessie opzetten.
-  const cdp = await page.context().newCDPSession(page);
-  // Alleen latency, GEEN downloadThroughput/uploadThroughput-cap — twee
-  // eerdere CI-pogingen (~1500ms/400kbps, daarna een "Fast 3G"-achtig
-  // ~562ms/1.6Mbps-750kbps-profiel) bleven zelfs met een testtimeout tot
-  // 150s/een waitForGameSyncStatus()-timeout tot 120s onbeslist hangen op
-  // 'gesynchroniseerd'. Waarschijnlijke oorzaak: Firestores lang-lopende
-  // long-polling-GET (`experimentalForceLongPolling: true`,
+  //
+  // Bewust VÓÓR openPilotTeam()/startTrackedGame() ingeschakeld — niet pas
+  // ná de eerste sync-cyclus. Twee eerdere CI-pogingen die de emulatie pas
+  // ná een al bestaande 'gesynchroniseerd'-cyclus inschakelden (eerst een
+  // ~1500ms/400kbps-, daarna een alleen-latency-500ms-profiel) bleven
+  // consequent EXACT op de gekozen timeoutwaarde vastlopen (45s, 90s) —
+  // geen "iets meer marge nodig", maar een teken dat de sync-cyclus
+  // structureel nooit meer landde. Waarschijnlijke oorzaak: Firestores
+  // lang-lopende long-polling-GET (`experimentalForceLongPolling: true`,
   // `firebaseClient.ts`) was op het moment van `emulateNetworkConditions()`
-  // al open — een bandbreedteplafond op een reeds-openstaande stream lijkt
-  // die stream (en daarmee alle volgende schrijfacties erachter) effectief
-  // te verhongeren i.p.v. 'm alleen te vertragen. Zuivere latency-emulatie
-  // (elke ronde merkbaar trager, geen doorvoerplafond) blijft de score-/
-  // wisselbediening-tijdens-vertraging-claim (§B punt 7) bewijzen zonder dat
-  // risico.
+  // al open, en een netwerkwijziging op een reeds-openstaande stream lijkt
+  // die stream (en daarmee alle schrijfacties erachter) blijvend te
+  // verstoren i.p.v. 'm alleen te vertragen. Door de emulatie AL actief te
+  // hebben vóórdat Firestore zijn eerste verbinding opzet, wordt die
+  // verbinding vanaf het begin ONDER de vertraging opgebouwd — geen
+  // live-wijziging op een bestaande stream meer.
+  const cdp = await page.context().newCDPSession(page);
   await cdp.send('Network.emulateNetworkConditions', {
     offline: false,
     latency: 500,
     downloadThroughput: -1,
     uploadThroughput: -1,
   });
+
+  await openPilotTeam(page, team);
+  await startTrackedGame(page);
+  await waitForGameSyncStatus(page, 'gesynchroniseerd', 60_000);
+
+  const gameId = await readLocalGameId(page, team);
 
   await page.getByTestId('score-plus2-for').click();
   // Direct na de klik, terwijl de (vertraagde) uploadronde nog loopt: de
