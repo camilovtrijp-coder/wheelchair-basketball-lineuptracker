@@ -2,6 +2,7 @@ import { useState } from 'preact/hooks';
 import { translate, type Lang } from '../../i18n/strings';
 import type { SyncStatus } from '../../domain/syncState';
 import { SyncStatusIndicator } from '../sync/SyncStatusIndicator';
+import { useFocusTrap } from '../../application/a11y/useFocusTrap';
 
 export interface SessionBarProps {
   lang: Lang;
@@ -49,6 +50,11 @@ export function SessionBar({
   onChangeTrustedDevice,
 }: SessionBarProps) {
   const [confirmingRevoke, setConfirmingRevoke] = useState(false);
+  // PR 8.2a-patroon (zie ModalDialog.tsx/TakeoverConfirmDialog.tsx): vangt
+  // focus zodra de bevestiging opent, laat Tab binnen het dialoog cyclen en
+  // geeft focus terug (aan de checkbox, want die had focus vóór het openen)
+  // zodra 'confirmingRevoke' weer false wordt.
+  const trapRef = useFocusTrap<HTMLDivElement>(confirmingRevoke);
 
   function handleTrustedDeviceToggle(event: Event) {
     const checked = (event.target as HTMLInputElement).checked;
@@ -89,31 +95,45 @@ export function SessionBar({
         {translate(lang, 'authSignOutBtn')}
       </button>
       {confirmingRevoke ? (
+        // eslint-disable-next-line jsx-a11y/no-noninteractive-element-interactions
         <div
-          className="session-bar__trusted-device-confirm"
+          className="modal-overlay"
           role="alertdialog"
+          aria-label={translate(lang, 'trustedDeviceRevokeConfirmTitle')}
           aria-modal="true"
-          data-testid="trusted-device-revoke-confirm"
+          onClick={() => setConfirmingRevoke(false)}
+          onKeyDown={(e) => {
+            if (e.key === 'Escape') setConfirmingRevoke(false);
+          }}
         >
-          <p>{translate(lang, 'trustedDeviceRevokeConfirmTitle')}</p>
-          <p>{translate(lang, 'trustedDeviceRevokeConfirmBody')}</p>
-          <button
-            type="button"
-            data-testid="trusted-device-revoke-confirm-btn"
-            onClick={() => {
-              setConfirmingRevoke(false);
-              onChangeTrustedDevice(false);
-            }}
+          {/* eslint-disable-next-line jsx-a11y/click-events-have-key-events, jsx-a11y/no-noninteractive-element-interactions */}
+          <div
+            className="modal session-bar__trusted-device-confirm"
+            role="document"
+            ref={trapRef}
+            data-testid="trusted-device-revoke-confirm"
+            onClick={(e) => e.stopPropagation()}
           >
-            {translate(lang, 'trustedDeviceRevokeConfirmBtn')}
-          </button>
-          <button
-            type="button"
-            data-testid="trusted-device-revoke-cancel-btn"
-            onClick={() => setConfirmingRevoke(false)}
-          >
-            {translate(lang, 'trustedDeviceRevokeCancelBtn')}
-          </button>
+            <p>{translate(lang, 'trustedDeviceRevokeConfirmTitle')}</p>
+            <p>{translate(lang, 'trustedDeviceRevokeConfirmBody')}</p>
+            <button
+              type="button"
+              data-testid="trusted-device-revoke-confirm-btn"
+              onClick={() => {
+                setConfirmingRevoke(false);
+                onChangeTrustedDevice(false);
+              }}
+            >
+              {translate(lang, 'trustedDeviceRevokeConfirmBtn')}
+            </button>
+            <button
+              type="button"
+              data-testid="trusted-device-revoke-cancel-btn"
+              onClick={() => setConfirmingRevoke(false)}
+            >
+              {translate(lang, 'trustedDeviceRevokeCancelBtn')}
+            </button>
+          </div>
         </div>
       ) : null}
     </div>

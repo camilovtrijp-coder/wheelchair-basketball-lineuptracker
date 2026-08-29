@@ -137,4 +137,17 @@ test.describe('v2 a11y — axe-core-nulmeting kernschermen (PR 8.2a)', () => {
     await expect(page.getByTestId('trends-games-modal')).toBeVisible();
     await expectNoViolations(page);
   });
+
+  // PR 8.2c (na de externe review op PR #84): de vertrouwd-apparaat-
+  // bevestigingsdialoog in SessionBar.tsx miste aanvankelijk elke axe-
+  // dekking — deze suite opende 'm nooit.
+  test('instellingen incl. open vertrouwd-apparaat-bevestigingsdialoog', async ({ page }) => {
+    await page.goto('/');
+    const toggle = page.getByTestId('trusted-device-setting-toggle');
+    await toggle.click();
+    await page.waitForSelector('[data-testid="nav-settings"]', { timeout: 15_000 });
+    await page.getByTestId('trusted-device-setting-toggle').click();
+    await expect(page.getByTestId('trusted-device-revoke-confirm')).toBeVisible();
+    await expectNoViolations(page);
+  });
 });

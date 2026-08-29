@@ -324,3 +324,56 @@ test.describe('v2 a11y — keyboard-only contextwissel (PR 8.2b)', () => {
     });
   });
 });
+
+// PR 8.2c (docs/pr-8.2-plan.md §B punt 5, tweede subpunt — herzien na de
+// externe review op PR #84): de herroepbare vertrouwd-apparaat-instelling in
+// `SessionBar.tsx` had aanvankelijk geen `aria-label`, geen focus-trap, geen
+// Escape-afhandeling en geen focusherstel. Zelfde patroon/dekking als
+// `ModalDialog.tsx`/`TakeoverConfirmDialog.tsx` hierboven.
+test.describe('v2 a11y — herroepbare vertrouwd-apparaat-instelling (PR 8.2c)', () => {
+  test('bevestigingsdialoog bij uitzetten: toegankelijke naam, initiële focus, Tab-cyclus, Escape sluit en focus keert terug naar de toggle', async ({
+    page,
+  }) => {
+    await page.goto('/');
+    await expect(page.getByTestId('nav-settings')).toBeVisible();
+
+    // fixtures.ts kiest 'onvertrouwd apparaat' als startpunt (zie
+    // tests/e2e/fixtures.ts) — eerst aanzetten via toetsenbord (geen
+    // bevestiging nodig voor die richting), wat een paginareload triggert
+    // (AuthGate.tsx's handleChangeTrustedDevice()).
+    const toggle = page.getByTestId('trusted-device-setting-toggle');
+    await expect(toggle).not.toBeChecked();
+    await toggle.focus();
+    await page.keyboard.press('Space');
+    await page.waitForSelector('[data-testid="nav-settings"]', { timeout: 15_000 });
+    await expect(page.getByTestId('trusted-device-setting-toggle')).toBeChecked();
+
+    // Uitzetten via toetsenbord opent de bevestigingsdialoog (geen reload nog).
+    const toggleAfterReload = page.getByTestId('trusted-device-setting-toggle');
+    await toggleAfterReload.focus();
+    await page.keyboard.press('Space');
+
+    const dialog = page.getByRole('alertdialog');
+    await expect(dialog).toBeVisible();
+    await expect(dialog).toHaveAccessibleName('Apparaat als gedeeld markeren?');
+
+    // Initiële focus: het eerste focusbare element binnen het dialoog.
+    const confirmBtn = page.getByTestId('trusted-device-revoke-confirm-btn');
+    const cancelBtn = page.getByTestId('trusted-device-revoke-cancel-btn');
+    await expect(confirmBtn).toBeFocused();
+
+    // Tab-cyclus blijft binnen het dialoog.
+    await page.keyboard.press('Tab');
+    await expect(cancelBtn).toBeFocused();
+    await page.keyboard.press('Tab');
+    await expect(confirmBtn).toBeFocused();
+    await page.keyboard.press('Shift+Tab');
+    await expect(cancelBtn).toBeFocused();
+
+    // Escape sluit het dialoog en geeft focus terug aan de toggle die het opende.
+    await page.keyboard.press('Escape');
+    await expect(page.getByTestId('trusted-device-revoke-confirm')).toHaveCount(0);
+    await expect(page.getByTestId('trusted-device-setting-toggle')).toBeFocused();
+    await expect(page.getByTestId('trusted-device-setting-toggle')).toBeChecked();
+  });
+});

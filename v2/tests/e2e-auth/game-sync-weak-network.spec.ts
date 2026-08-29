@@ -87,6 +87,13 @@ test('score-/wisselbediening blijft bruikbaar tijdens een geëmuleerde trage ver
   expect(againstAction?.data().action.delta).toBe(1);
   // Geen dubbele/omgewisselde acties: precies één 'for'- en één
   // 'against'-actie, elk met de juiste delta (zelfde controle als de
-  // bestaande PR 7.1c-actielog-idempotentietests).
+  // bestaande PR 7.1c-actielog-idempotentietests). `sequence` — niet de
+  // (willekeurige) Firestore-leesvolgorde — is het daadwerkelijke
+  // volgordecontract (`projectGameActions()`/`deriveGameStateFromCloud()`):
+  // expliciet vastleggen dat de EERST geklikte 'for'-actie sequence 0 kreeg
+  // en de daaropvolgende 'against'-actie sequence 1, ook onder de
+  // netwerkvertraging hierboven (externe review PR #84, P2).
+  expect(forAction?.data().sequence).toBe(0);
+  expect(againstAction?.data().sequence).toBe(1);
   expect(actionsSnap.docs.every((d) => d.data().gameId === gameId)).toBe(true);
 });

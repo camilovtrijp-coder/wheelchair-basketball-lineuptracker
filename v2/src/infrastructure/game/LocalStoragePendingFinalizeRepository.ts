@@ -9,8 +9,11 @@ import type {
  * (zie `LocalStorageCompletedGameRepository.ts`) — deze outbox is zelf ook
  * per team-context gescheiden.
  */
+/** Zie ACTIVE_GAME_STORAGE_KEY_PREFIX (LocalStorageGameRepository.ts) — zelfde reden. */
+export const PENDING_FINALIZE_STORAGE_KEY_PREFIX = 'lineup-tracker-v2-pending-finalize:';
+
 export function pendingFinalizeStorageKey(organizationId: string, teamId: string): string {
-  return `lineup-tracker-v2-pending-finalize:${organizationId}:${teamId}`;
+  return `${PENDING_FINALIZE_STORAGE_KEY_PREFIX}${organizationId}:${teamId}`;
 }
 
 function isPendingFinalizeEntryShape(value: unknown): value is PendingFinalizeEntry {

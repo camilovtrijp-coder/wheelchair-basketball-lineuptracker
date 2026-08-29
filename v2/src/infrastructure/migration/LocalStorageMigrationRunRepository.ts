@@ -10,8 +10,11 @@ import type { MigrationRun } from '../../domain/migration/run';
  * `LocalStorageGameSyncCheckpointRepository`: een corrupte/onherkenbare
  * waarde telt als "geen run", nooit als een crash.
  */
+/** Zie ACTIVE_GAME_STORAGE_KEY_PREFIX (infrastructure/game/LocalStorageGameRepository.ts) — zelfde reden. */
+export const MIGRATION_RUN_STORAGE_KEY_PREFIX = 'lineup-tracker-v2-migration-run:';
+
 export function migrationRunStorageKey(organizationId: string, teamId: string): string {
-  return `lineup-tracker-v2-migration-run:${organizationId}:${teamId}`;
+  return `${MIGRATION_RUN_STORAGE_KEY_PREFIX}${organizationId}:${teamId}`;
 }
 
 function isMigrationRunShape(value: unknown): value is MigrationRun {

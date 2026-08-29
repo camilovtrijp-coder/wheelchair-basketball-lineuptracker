@@ -12,8 +12,11 @@ import type {
  * `activeGameStorageKey()` de actieve wedstrijd al per org/team scoped, zie
  * docs/pr-6.3-plan.md §E.3.
  */
+/** Zie ACTIVE_GAME_STORAGE_KEY_PREFIX (LocalStorageGameRepository.ts) — zelfde reden. */
+export const COMPLETED_GAMES_STORAGE_KEY_PREFIX = 'lineup-tracker-v2-completed-games:';
+
 export function completedGamesStorageKey(organizationId: string, teamId: string): string {
-  return `lineup-tracker-v2-completed-games:${organizationId}:${teamId}`;
+  return `${COMPLETED_GAMES_STORAGE_KEY_PREFIX}${organizationId}:${teamId}`;
 }
 
 function isCompletedGameShape(value: unknown): value is Record<string, unknown> {

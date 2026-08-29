@@ -470,14 +470,7 @@ button:focus-visible {
 }
 
 .session-bar__trusted-device-confirm {
-  display: flex;
-  flex-direction: column;
-  gap: var(--lt-space-2);
-  width: 100%;
-  padding: var(--lt-space-2);
-  border: var(--lt-border-thin);
-  border-radius: var(--lt-radius);
-  background: var(--lt-color-surface);
+  max-width: 26rem;
 }
 
 .sync-status-indicator {

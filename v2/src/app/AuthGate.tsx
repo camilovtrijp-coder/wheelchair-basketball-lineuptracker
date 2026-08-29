@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'preact/hooks';
-import { browserStorage } from '../i18n/browserStorage';
+import { browserStorage, listBrowserStorageKeys } from '../i18n/browserStorage';
 import { readLang, writeLang } from '../i18n/persistence';
 import { resolveInitialLang } from '../i18n/detect';
 import type { Lang } from '../i18n/strings';
@@ -274,20 +274,16 @@ export function AuthGate({ authGateway }: AuthGateProps) {
     // Vertrouwd-apparaatkeuze is een apparaateigenschap, geen sessie-eigenschap
     // — die blijft bewust staan na uitloggen (zie infrastructure/device/trustedDevice.ts).
     const trusted = readTrustedDevice(browserStorage) ?? false;
-    // Vóór signOut() lezen: na signOut is de context al leeg en weten we het
-    // org/team dat de gescoopte localStorage-sleutels (§B punt 5, docs/pr-8.2-
-    // plan.md) gebruikten niet meer.
-    const contextAtSignOut = selectedContext;
     await authGateway.signOut();
     if (!trusted) {
       await wipeLocalFirebaseData();
       // Firestore moet weer bruikbaar zijn voor een eventuele volgende login in dezelfde sessie.
       initFirebase(false);
-      clearLocalDeviceData(
-        browserStorage,
-        contextAtSignOut?.orgId ?? '',
-        contextAtSignOut?.teamId ?? '',
-      );
+      // listBrowserStorageKeys() i.p.v. alleen de huidige context: dit
+      // apparaat kan eerder AL een andere org/team gebruikt hebben (§B punt
+      // 5, na de externe review op PR #84) — clearLocalDeviceData() wist
+      // die dan mee, niet alleen de sessie die nu wordt afgesloten.
+      clearLocalDeviceData(browserStorage, listBrowserStorageKeys());
     }
   }
 
@@ -309,11 +305,7 @@ export function AuthGate({ authGateway }: AuthGateProps) {
     writeTrustedDevice(browserStorage, trusted);
     if (!trusted) {
       await wipeLocalFirebaseData();
-      clearLocalDeviceData(
-        browserStorage,
-        selectedContext?.orgId ?? '',
-        selectedContext?.teamId ?? '',
-      );
+      clearLocalDeviceData(browserStorage, listBrowserStorageKeys());
     }
     if (typeof window !== 'undefined') {
       window.location.reload();

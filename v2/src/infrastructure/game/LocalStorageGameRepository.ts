@@ -25,8 +25,16 @@ export const V1_GAME_MIGRATED_FLAG_KEY = 'lineup-tracker-v2-v1-game-migrated';
  * UI-slot dat een wissel tijdens een lopende wedstrijd blokkeert
  * ("vergrendelen") is bewust PR 7.3-scope, samen met single-writer-sync.
  */
+/**
+ * Sleutelprefix zonder org/team-suffix — nodig om ALLE actieve-wedstrijd-
+ * sleutels op dit apparaat te vinden (elke org/team die dit apparaat ooit
+ * gebruikte), niet alleen die van de huidige context. Zie
+ * `infrastructure/device/clearLocalDeviceData.ts` (PR 8.2c).
+ */
+export const ACTIVE_GAME_STORAGE_KEY_PREFIX = 'lineup-tracker-v2-active-game:';
+
 export function activeGameStorageKey(organizationId: string, teamId: string): string {
-  return `lineup-tracker-v2-active-game:${organizationId}:${teamId}`;
+  return `${ACTIVE_GAME_STORAGE_KEY_PREFIX}${organizationId}:${teamId}`;
 }
 
 /**

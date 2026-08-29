@@ -3,91 +3,71 @@ import { ROSTER_STORAGE_KEY } from '../../domain/roster/types';
 import { SETTINGS_STORAGE_KEY } from '../../domain/settings/types';
 import { V1_ACTIVE_GAME_STORAGE_KEY } from '../../domain/game/v1Migration';
 import { V1_GAMES_STORAGE_KEY } from '../../domain/backup/migrateV1';
-import { activeGameStorageKey } from '../game/LocalStorageGameRepository';
-import { completedGamesStorageKey } from '../game/LocalStorageCompletedGameRepository';
-import { pendingFinalizeStorageKey } from '../game/LocalStoragePendingFinalizeRepository';
-import { gameSyncCheckpointStorageKey } from '../game/LocalStorageGameSyncCheckpointRepository';
-import { migrationRunStorageKey } from '../migration/LocalStorageMigrationRunRepository';
+import { ACTIVE_GAME_STORAGE_KEY_PREFIX } from '../game/LocalStorageGameRepository';
+import { COMPLETED_GAMES_STORAGE_KEY_PREFIX } from '../game/LocalStorageCompletedGameRepository';
+import { PENDING_FINALIZE_STORAGE_KEY_PREFIX } from '../game/LocalStoragePendingFinalizeRepository';
+import { GAME_SYNC_CHECKPOINT_STORAGE_PREFIX } from '../game/LocalStorageGameSyncCheckpointRepository';
+import { MIGRATION_RUN_STORAGE_KEY_PREFIX } from '../migration/LocalStorageMigrationRunRepository';
 import { DEVICE_ID_STORAGE_KEY } from './deviceId';
 
 /**
- * Beste-poging `id` uit een rauwe, ongevalideerde JSON-blob halen — gebruikt
- * om de `gameId`'s te achterhalen waarvoor `lineup-tracker-v2-game-sync-
- * checkpoint:${gameId}`-sleutels gewist moeten worden (§B punt 5,
- * docs/pr-8.2-plan.md). Geen validatie van de rest van de vorm nodig: een
- * onverwachte/corrupte blob levert hier gewoon geen extra sleutel op, i.p.v.
- * te crashen.
+ * Vaste, niet-org/team-gescoopte sleutels uit de witte lijst (docs/pr-8.2-
+ * plan.md §B punt 5).
  */
-function extractGameIds(raw: string | null): string[] {
-  if (raw === null || raw === '') return [];
-  try {
-    const parsed: unknown = JSON.parse(raw);
-    if (Array.isArray(parsed)) {
-      return parsed
-        .map((entry) =>
-          entry && typeof entry === 'object' ? (entry as { id?: unknown }).id : undefined,
-        )
-        .filter((id): id is string => typeof id === 'string');
-    }
-    if (parsed && typeof parsed === 'object') {
-      const id = (parsed as { id?: unknown }).id;
-      return typeof id === 'string' ? [id] : [];
-    }
-    return [];
-  } catch {
-    return [];
-  }
-}
+const FIXED_KEYS_TO_CLEAR: readonly string[] = [
+  SETTINGS_STORAGE_KEY,
+  ROSTER_STORAGE_KEY,
+  V1_GAMES_STORAGE_KEY,
+  V1_ACTIVE_GAME_STORAGE_KEY,
+  DEVICE_ID_STORAGE_KEY,
+];
 
 /**
- * Wist, uitsluitend op het onvertrouwd-apparaat-uitlogpad, exact de
- * `localStorage`-sleutels die ADR-000's laagconventie als lokale
- * wedstrijd-/roster-/instellingendata bestempelt (docs/pr-8.2-plan.md §B
- * punt 5, witte-/zwarte-lijst uit externe review PR #80).
+ * Prefixen van org/team- of `gameId`-gescoopte sleutelfamilies uit de witte
+ * lijst. **Elke sleutel die met één van deze prefixen begint wordt gewist,
+ * voor ELKE org/team/gameId — niet alleen de huidige context.**
  *
- * Bewust een EXPLICIETE sleutellijst (geen `localStorage.clear()`, geen
- * prefix-wildcard-scan over de volledige storage) — een toekomstige nieuwe
- * sleutel moet bewust aan deze lijst toegevoegd worden, anders blijft hij
- * onaangeroerd. `gameId`-gescoopte `game-sync-checkpoint`-sleutels zijn de
- * enige uitzondering die wél een korte vooraf-lees-stap nodig heeft (de
- * sleutel zelf bevat geen org/team, alleen een `gameId`) — die `gameId`'s
- * worden opgehaald uit de actieve wedstrijd en de voltooide-wedstrijden-
- * lijst van dit org/team vóórdat die sleutels zelf gewist worden.
- *
- * NOOIT gewist: `lineup-tracker-lang` (taalvoorkeur),
- * `lineup-tracker-trusted-device` (de vertrouwd-apparaatvlag zelf blijft
- * een apparaateigenschap), `lineup-tracker-bootstrap-org-id` en de
- * `lineup-tracker-cloud-imported-*`-vlaggen.
+ * Herzien na de externe review op PR #84 (P1): een eerdere versie
+ * construeerde de te wissen sleutel uitsluitend uit de MEEGEGEVEN org/team,
+ * en liet zo stilzwijgend de wedstrijd-/synchronisatiedata van elke ANDERE
+ * org/team die dit apparaat ooit gebruikte (bijv. een eerder bezocht ander
+ * team) onaangeroerd staan — een lek op precies het gedeeld-apparaat-
+ * scenario dat 8.2c moest dichten. `listBrowserStorageKeys()`
+ * (`i18n/browserStorage.ts`) enumereert nu de daadwerkelijk aanwezige
+ * sleutels; deze prefixlijst blijft bewust EXPLICIET (dezelfde witte-lijst-
+ * discipline als voorheen, alleen niet meer org/team-geparametriseerd) — een
+ * toekomstige nieuwe sleutelfamilie moet hier bewust aan toegevoegd worden.
  */
-export function clearLocalDeviceData(
-  storage: KeyValueStorage,
-  organizationId: string,
-  teamId: string,
-): void {
-  const activeGameKey = activeGameStorageKey(organizationId, teamId);
-  const completedGamesKey = completedGamesStorageKey(organizationId, teamId);
+const DYNAMIC_KEY_PREFIXES_TO_CLEAR: readonly string[] = [
+  ACTIVE_GAME_STORAGE_KEY_PREFIX,
+  COMPLETED_GAMES_STORAGE_KEY_PREFIX,
+  PENDING_FINALIZE_STORAGE_KEY_PREFIX,
+  MIGRATION_RUN_STORAGE_KEY_PREFIX,
+  GAME_SYNC_CHECKPOINT_STORAGE_PREFIX,
+];
 
-  const gameIds = new Set<string>([
-    ...extractGameIds(storage.getItem(activeGameKey)),
-    ...extractGameIds(storage.getItem(completedGamesKey)),
-  ]);
-
-  for (const gameId of gameIds) {
-    storage.removeItem(gameSyncCheckpointStorageKey(gameId));
-  }
-
-  const keys = [
-    SETTINGS_STORAGE_KEY,
-    ROSTER_STORAGE_KEY,
-    V1_GAMES_STORAGE_KEY,
-    V1_ACTIVE_GAME_STORAGE_KEY,
-    activeGameKey,
-    completedGamesKey,
-    DEVICE_ID_STORAGE_KEY,
-    pendingFinalizeStorageKey(organizationId, teamId),
-    migrationRunStorageKey(organizationId, teamId),
-  ];
-  for (const key of keys) {
-    storage.removeItem(key);
+/**
+ * Wist, uitsluitend op het onvertrouwd-apparaat-uitlogpad (en het
+ * herroepbare-vertrouwd-apparaat-instellingspad, zie `AuthGate.tsx`'s
+ * `handleChangeTrustedDevice()`), exact de `localStorage`-sleutels die
+ * ADR-000's laagconventie als lokale wedstrijd-/roster-/instellingendata
+ * bestempelt (docs/pr-8.2-plan.md §B punt 5, witte-/zwarte-lijst uit
+ * externe review PR #80) — voor ELKE org/team-context die dit apparaat ooit
+ * gebruikte, niet alleen de huidige.
+ *
+ * Bewust geen `localStorage.clear()`: `allKeys` (in productie
+ * `listBrowserStorageKeys()`) wordt gefilterd tegen een EXPLICIETE lijst
+ * vaste sleutels en sleutelprefixen — een sleutel die aan geen van beide
+ * matcht (taalvoorkeur, de vertrouwd-apparaatvlag zelf, bootstrap-status,
+ * cloud-import-vlaggen, en elke toekomstige onbekende sleutel) blijft
+ * onaangeroerd.
+ */
+export function clearLocalDeviceData(storage: KeyValueStorage, allKeys: readonly string[]): void {
+  for (const key of allKeys) {
+    const isFixedKey = FIXED_KEYS_TO_CLEAR.includes(key);
+    const isDynamicKey = DYNAMIC_KEY_PREFIXES_TO_CLEAR.some((prefix) => key.startsWith(prefix));
+    if (isFixedKey || isDynamicKey) {
+      storage.removeItem(key);
+    }
   }
 }
