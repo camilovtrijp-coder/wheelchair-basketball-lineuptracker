@@ -334,6 +334,12 @@ test.describe('v2 a11y — herroepbare vertrouwd-apparaat-instelling (PR 8.2c)',
   test('bevestigingsdialoog bij uitzetten: toegankelijke naam, initiële focus, Tab-cyclus, Escape sluit en focus keert terug naar de toggle', async ({
     page,
   }) => {
+    // Zonder expliciete taalkeuze detecteert de app in CI-Chromium 'en'
+    // (navigator.language) i.p.v. 'nl' — zelfde addInitScript-conventie als
+    // de andere tests in dit bestand die Nederlandse tekst verwachten.
+    // Overleeft ook de paginareload verderop (addInitScript draait op elke
+    // nieuwe document-load in deze paginacontext, niet alleen page.goto()).
+    await page.addInitScript(() => window.localStorage.setItem('lineup-tracker-lang', 'nl'));
     await page.goto('/');
     await expect(page.getByTestId('nav-settings')).toBeVisible();
 
