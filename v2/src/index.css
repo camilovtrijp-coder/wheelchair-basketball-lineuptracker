@@ -48,20 +48,22 @@ main {
   margin: 0;
   font-size: var(--lt-font-size-lg);
   font-weight: 600;
-  /* PR 8.2b (bug 10, docs/pr-5.5c-bugfixes.md #10) — herzien na de dark-
-     mode-P1-bevinding op PR #83: `--team-accent-safe` is een door App.tsx
-     AFGELEIDE, gegarandeerd leesbare variant van `settings.accentColor`
-     tegen de LICHTE headerachtergrond (`domain/settings/colorContrast.ts`),
-     niet de rauwe kleur zelf. De donkere-modus-override hieronder gebruikt
-     een apart tegen de DONKERE headerachtergrond afgeleide variant, want
-     die achtergrond (`--lt-color-surface`) wisselt met het kleurenschema. */
-  color: var(--team-accent-safe, var(--lt-color-fg));
-}
-
-@media (prefers-color-scheme: dark) {
-  .app-title {
-    color: var(--team-accent-safe-dark, var(--lt-color-fg));
-  }
+  /* PR 8.2b (bug 10, docs/pr-5.5c-bugfixes.md #10) — herzien na een TWEEDE
+     P1-review-bevinding op PR #83: een eerdere versie kleurde de titeltekst
+     zelf met een uit `accentColor` afgeleide veilige variant
+     (`deriveAccentForeground`) — maar tegen de lichte headerachtergrond
+     valt élk van de tien presets in `SettingsPanel.tsx` terug op exact
+     hetzelfde zwart (geen enkele preset haalt 4.5:1), waardoor de
+     accentkeuze in de gangbare lichte modus onzichtbaar werd. De tekstkleur
+     blijft daarom de VASTE, altijd-conforme `--lt-color-fg` (geen
+     teamkleur, geen contrastrisico); `accentColor` krijgt in plaats daarvan
+     een zichtbaar, puur DECORATIEF accent hieronder (`border-left`) — WCAG
+     1.4.11 (non-text contrast) geldt niet voor zuiver decoratieve
+     elementen, dus hier is geen afgeleide/veilige variant nodig: de rauwe
+     `--team-accent` mag rechtstreeks. */
+  color: var(--lt-color-fg);
+  border-left: 4px solid var(--team-accent, transparent);
+  padding-left: var(--lt-space-2);
 }
 
 .app-header__actions {

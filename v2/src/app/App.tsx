@@ -9,12 +9,7 @@ import {
   migrateLocalStorageToCloud as migrateSettingsToCloud,
 } from '../application/settings/usecases';
 import type { Settings } from '../domain/settings/types';
-import {
-  deriveAccentForeground,
-  deriveButtonForeground,
-  HEADER_BACKGROUND_DARK,
-  HEADER_BACKGROUND_LIGHT,
-} from '../domain/settings/colorContrast';
+import { deriveButtonForeground } from '../domain/settings/colorContrast';
 import { SettingsPanel } from '../ui/settings/SettingsPanel';
 import { LocalStorageRosterRepository } from '../infrastructure/roster/LocalStorageRosterRepository';
 import {
@@ -1241,18 +1236,19 @@ export function App({
   const tag1Label = (settings.tag1Label as string) || t('toggleTag1Default');
   const tag2Label = (settings.tag2Label as string) || t('toggleTag2Default');
 
-  // PR 8.2b (bug 10) — herzien na de dark-mode-P1-bevinding op PR #83:
-  // afgeleide, gegarandeerd-leesbare voorgrondkleuren i.p.v. de rauwe
-  // teamkleur direct als tekstkleur te gebruiken. `--team-primary-fg` geldt
-  // in beide kleurenschema's (de knopachtergrond wisselt niet met het
-  // schema); `--team-accent-safe`/`--team-accent-safe-dark` zijn apart
-  // berekend omdat de headerachtergrond wél per schema wisselt (index.css
-  // kiest tussen beide via `@media (prefers-color-scheme: dark)`).
+  // PR 8.2b (bug 10) — `--team-primary-fg` is een afgeleide, gegarandeerd-
+  // leesbare voorgrondkleur voor `.btn-primary` (zie
+  // `deriveButtonForeground`'s commentaar in colorContrast.ts voor het
+  // wiskundige bewijs; geldt in beide kleurenschema's, want de
+  // knopachtergrond wisselt niet met het schema). `accentColor` krijgt
+  // GEEN afgeleide tekstvariant (tweede P1-review-bevinding op PR #83: elk
+  // van de tien presets viel tegen de headerachtergrond terug op hetzelfde
+  // zwart, waardoor de accentkeuze onzichtbaar werd) — `--team-accent`
+  // blijft de rauwe kleur, gebruikt als puur decoratief accent (zie
+  // `.app-title` in index.css).
   const primaryColor = settings.primaryColor as string;
   const accentColor = settings.accentColor as string;
   const teamPrimaryFg = deriveButtonForeground(primaryColor);
-  const teamAccentSafe = deriveAccentForeground(accentColor, HEADER_BACKGROUND_LIGHT);
-  const teamAccentSafeDark = deriveAccentForeground(accentColor, HEADER_BACKGROUND_DARK);
 
   async function handleCloudMigrateSettings() {
     return migrateSettingsToCloud(v1SettingsRepo, repositories.settings, browserStorage);
@@ -1267,17 +1263,16 @@ export function App({
       className="app"
       // PR 8.2b (bug 10, docs/pr-5.5c-bugfixes.md #10): geeft
       // `settings.primaryColor`/`accentColor` eindelijk een zichtbaar effect
-      // — `--team-primary` op `.btn-primary`-achtergrond, `--team-accent`
-      // beschikbaar als rauwe waarde; de daadwerkelijke tekstkleuren
-      // gebruiken de afgeleide `-fg`/`-safe`-varianten hierboven (index.css).
+      // — `--team-primary` op `.btn-primary`-achtergrond (met de afgeleide
+      // `--team-primary-fg` als leesbare knoptekst), `--team-accent` als
+      // rauwe waarde voor `.app-title`'s decoratieve accentrand (index.css;
+      // géén tekstkleur, zie de tweede P1-review-bevinding op PR #83).
       // Cascadeert naar alle nakomelingen, dus geen los per-scherm-
       // doorgeef-werk nodig.
       style={{
         '--team-primary': primaryColor,
         '--team-primary-fg': teamPrimaryFg,
         '--team-accent': accentColor,
-        '--team-accent-safe': teamAccentSafe,
-        '--team-accent-safe-dark': teamAccentSafeDark,
       }}
     >
       <header className="app-header">

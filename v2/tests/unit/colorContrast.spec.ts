@@ -1,10 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   AA_TEXT_CONTRAST_THRESHOLD,
-  HEADER_BACKGROUND_DARK,
-  HEADER_BACKGROUND_LIGHT,
   contrastRatio,
-  deriveAccentForeground,
   deriveButtonForeground,
   hexToRgb,
   pickReadableColor,
@@ -90,41 +87,6 @@ describe('domain/settings/colorContrast', () => {
     for (const swatch of primaryColorSwatches) {
       const fg = deriveButtonForeground(swatch);
       expect(contrastRatio(fg, swatch)).toBeGreaterThanOrEqual(AA_TEXT_CONTRAST_THRESHOLD);
-    }
-  });
-
-  it('deriveAccentForeground: behoudt de gekozen accentkleur wanneer die zelf al voldoende contrast geeft', () => {
-    // #000000 tegen de lichte headerachtergrond haalt ruim 4.5:1 — geen
-    // terugval naar wit/zwart nodig (zwart IS al de eerste kandidaat, dus
-    // dit bewijst vooral dat de functie 'm niet onnodig vervangt).
-    expect(deriveAccentForeground('#000000', HEADER_BACKGROUND_LIGHT)).toBe('#000000');
-  });
-
-  it('deriveAccentForeground: valt terug op wit wanneer de gekozen accentkleur onvoldoende contrast geeft tegen de DONKERE headerachtergrond (de PR #83-regressie)', () => {
-    // #c2410c (DEFAULT_SETTINGS.accentColor) haalt 4.96:1 tegen de LICHTE
-    // headerachtergrond (dus als tekstkleur behouden — zie de vorige test),
-    // maar slechts 3.43:1 tegen de DONKERE headerachtergrond: precies de
-    // dark-mode-P1-bevinding uit de review op PR #83, die de eerdere
-    // waarschuwing (die alleen de lichte modus toetste) niet kon zien.
-    const ratioDark = contrastRatio('#c2410c', HEADER_BACKGROUND_DARK);
-    expect(ratioDark).toBeLessThan(AA_TEXT_CONTRAST_THRESHOLD);
-    expect(deriveAccentForeground('#c2410c', HEADER_BACKGROUND_DARK)).toBe('#ffffff');
-  });
-
-  it('deriveAccentForeground: garandeert ≥4.5:1 contrast tegen zowel de lichte als de donkere headerachtergrond', () => {
-    // De exacte PR #83-regressie: DEFAULT_SETTINGS.accentColor tegen de
-    // DONKERE headerachtergrond (#c2410c op #111827 = 3.43:1, gerapporteerd
-    // in de review) moet nu via de afgeleide voorgrond alsnog voldoen.
-    const accentColorSwatches = ['#c2410c', '#f97316', '#22c55e', '#ffffff', '#000000', '#808080'];
-    for (const swatch of accentColorSwatches) {
-      const fgLight = deriveAccentForeground(swatch, HEADER_BACKGROUND_LIGHT);
-      expect(contrastRatio(fgLight, HEADER_BACKGROUND_LIGHT)).toBeGreaterThanOrEqual(
-        AA_TEXT_CONTRAST_THRESHOLD,
-      );
-      const fgDark = deriveAccentForeground(swatch, HEADER_BACKGROUND_DARK);
-      expect(contrastRatio(fgDark, HEADER_BACKGROUND_DARK)).toBeGreaterThanOrEqual(
-        AA_TEXT_CONTRAST_THRESHOLD,
-      );
     }
   });
 });

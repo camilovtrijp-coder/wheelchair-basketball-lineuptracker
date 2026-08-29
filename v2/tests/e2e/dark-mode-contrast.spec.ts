@@ -1,26 +1,32 @@
-// PR 8.2b — regressietest voor de P1-bevinding op de review van PR #83
-// (28 aug. 2026): een eerdere versie van de bug-10-fix (`--team-primary`/
-// `--team-accent` als tekstkleur) toetste `primaryColor`/`accentColor`
-// alleen tegen de LICHTE-modus-vaste kleuren. `tokens.css`'s
-// `@media (prefers-color-scheme: dark)`-blok wijzigt `--lt-color-accent-fg`
-// en `--lt-color-surface` echter, waardoor de DEFAULT-teamkleuren in
-// donkere modus onder de AA-contrastdrempel renderden (axe-core
-// `color-contrast`, "serious"): `.btn-primary` (#2563eb op de toenmalige
-// vaste donkere-modus-knoptekst #0b1220 = 3.62:1) en `.app-title` (#c2410c
-// op de donkere headerachtergrond #111827 = 3.43:1). De fix
-// (`domain/settings/colorContrast.ts`'s `deriveButtonForeground`/
-// `deriveAccentForeground`) kiest nu een daadwerkelijk leesbare voorgrond
-// per element/kleurenschema i.p.v. een vaste tekstkleur — deze suite bewijst
-// dat met dezelfde methode als de review (`@axe-core/playwright` tegen de
-// DEFAULT-instellingen, met `colorScheme: 'dark'` geëmuleerd) én met
-// expliciete, becijferde kleurassertions.
+// PR 8.2b — regressietest voor TWEE P1-bevindingen op de review van PR #83
+// (28 aug. 2026):
+//
+// 1. Een eerdere versie van de bug-10-fix kleurde `.btn-primary`/
+//    `.app-title` met vaste, alleen-lichte-modus-kleuren. `tokens.css`'s
+//    `@media (prefers-color-scheme: dark)`-blok wijzigt die vaste kleuren
+//    echter, waardoor de DEFAULT-teamkleuren in donkere modus onder de
+//    AA-contrastdrempel renderden (axe-core `color-contrast`, "serious"):
+//    `.btn-primary` (#2563eb op de toenmalige vaste donkere-modus-
+//    knoptekst #0b1220 = 3.62:1) en `.app-title` (#c2410c op de donkere
+//    headerachtergrond #111827 = 3.43:1).
+// 2. De eerste fix (een uit `accentColor` afgeleide leesbare tekstkleur
+//    voor `.app-title`) loste (1) op, maar bleek voor ALLE tien presets
+//    in `SettingsPanel.tsx` terug te vallen op exact hetzelfde zwart tegen
+//    de lichte headerachtergrond — de accentkeuze werd zo onzichtbaar.
+//
+// Eindoplossing: `.btn-primary`'s tekst gebruikt nog steeds een afgeleide
+// leesbare voorgrond (`deriveButtonForeground`, wiskundig gegarandeerd
+// ≥4.5:1 in beide schema's, want de knopachtergrond zelf wisselt niet met
+// het schema). `.app-title`'s TEKST gebruikt de vaste, altijd-conforme
+// `--lt-color-fg`; `accentColor` blijft zichtbaar en onderscheidend via
+// een puur decoratief accent (`border-left`, geen WCAG-tekstcontrasteis).
 import AxeBuilder from '@axe-core/playwright';
 import { expect } from '@playwright/test';
 import { test } from './fixtures';
 
 const WCAG_TAGS = ['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa'];
 
-test.describe('v2 a11y — dark-mode-contrast (PR 8.2b, P1-regressie PR #83)', () => {
+test.describe('v2 a11y — dark-mode-contrast (PR 8.2b, P1-regressies PR #83)', () => {
   test('instellingen met DEFAULT_SETTINGS in donkere modus: geen axe-core color-contrast-schendingen', async ({
     page,
   }) => {
@@ -33,7 +39,7 @@ test.describe('v2 a11y — dark-mode-contrast (PR 8.2b, P1-regressie PR #83)', (
     expect(colorContrastViolations, JSON.stringify(colorContrastViolations, null, 2)).toEqual([]);
   });
 
-  test('DEFAULT_SETTINGS in donkere modus: .btn-primary en .app-title renderen met een berekend leesbare voorgrond', async ({
+  test('DEFAULT_SETTINGS in donkere modus: .btn-primary rendert met een berekend leesbare voorgrond, .app-title met de vaste tekstkleur', async ({
     page,
   }) => {
     await page.emulateMedia({ colorScheme: 'dark' });
@@ -44,26 +50,38 @@ test.describe('v2 a11y — dark-mode-contrast (PR 8.2b, P1-regressie PR #83)', (
     // haalt 5.17:1 tegen #2563eb (dus meteen de eerste kandidaat, geen
     // terugval nodig) — dit is dus GEEN wijziging t.o.v. de oude vaste
     // `--lt-color-accent-fg`-lichte-modus-waarde, wel t.o.v. de oude
-    // donkere-modus-waarde (#0b1220, 3.62:1, de regressie).
+    // donkere-modus-waarde (#0b1220, 3.62:1, de eerste regressie).
     await expect(page.getByTestId('settings-save')).toHaveCSS(
       'background-color',
       'rgb(37, 99, 235)',
     );
     await expect(page.getByTestId('settings-save')).toHaveCSS('color', 'rgb(255, 255, 255)');
 
-    // .app-title: #c2410c haalt zelf slechts 3.43:1 tegen de donkere
-    // headerachtergrond (#111827) — valt terug op wit (17.74:1).
-    await expect(page.locator('.app-title')).toHaveCSS('color', 'rgb(255, 255, 255)');
+    // .app-title: tekst blijft de vaste donkere-modus-`--lt-color-fg`
+    // (#f3f4f6, tokens.css) — geen teamkleur, dus geen contrastrisico.
+    // Het accent (#c2410c) blijft zichtbaar via de decoratieve rand.
+    await expect(page.locator('.app-title')).toHaveCSS('color', 'rgb(243, 244, 246)');
+    await expect(page.locator('.app-title')).toHaveCSS('border-left-color', 'rgb(194, 65, 12)');
   });
 
-  test('DEFAULT_SETTINGS in lichte modus (regressiebescherming): .app-title behoudt de daadwerkelijke accentkleur, want die haalt zelf al 4.5:1', async ({
+  // Expliciete review-eis (tweede ronde, PR #83): bewijs dat twee
+  // verschillende accent-presets ook daadwerkelijk tot twee verschillende
+  // gerenderde accentkleuren leiden — niet alleen dat de CSS custom
+  // property verandert. Hier in donkere modus; de lichte-modus-variant
+  // staat in settings.spec.ts.
+  test('twee verschillende accentkleur-presets renderen als twee verschillende decoratieve accentranden (donkere modus)', async ({
     page,
   }) => {
-    await page.emulateMedia({ colorScheme: 'light' });
+    await page.emulateMedia({ colorScheme: 'dark' });
     await page.goto('/');
+    const appTitle = page.locator('.app-title');
 
-    // #c2410c haalt 4.96:1 tegen de lichte headerachtergrond (#f9fafb) —
-    // ruim boven de AA-drempel, dus geen terugval naar wit/zwart nodig.
-    await expect(page.locator('.app-title')).toHaveCSS('color', 'rgb(194, 65, 12)');
+    await page.getByTestId('accentColor-3b82f6').click();
+    await expect(appTitle).toHaveCSS('border-left-color', 'rgb(59, 130, 246)');
+    await expect(appTitle).toHaveCSS('color', 'rgb(243, 244, 246)');
+
+    await page.getByTestId('accentColor-14b8a6').click();
+    await expect(appTitle).toHaveCSS('border-left-color', 'rgb(20, 184, 166)');
+    await expect(appTitle).toHaveCSS('color', 'rgb(243, 244, 246)');
   });
 });

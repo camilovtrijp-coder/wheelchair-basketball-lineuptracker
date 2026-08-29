@@ -160,7 +160,23 @@ e2e/mobile.spec.ts` en de auth-e2e-suite al aanraken, geen aparte
    gedefinieerd staat), zodat "bug 10 opgelost" niet kan worden geclaimd op
    basis van een property die nergens renderend wordt toegepast. Verdere
    elementen (bv. de PWA-updatebanner) zijn optioneel binnen dezelfde
-   8.2b-scope, niet vereist voor de acceptatiecriteria. Pas dáárna een pure
+   8.2b-scope, niet vereist voor de acceptatiecriteria.
+
+   **Correctie (tweede P1-review-ronde PR #83, 29 aug. 2026):** `--team-
+accent` bleek NIET houdbaar als letterlijke `.app-title`-TEKSTkleur —
+   geen van de tien presets uit `SettingsPanel.tsx` haalt 4,5:1 tegen de
+   headerachtergrond, dus een contrastveilige afgeleide tekstvariant viel
+   voor alle tien terug op hetzelfde zwart (onzichtbare accentkeuze). De
+   accentkleur wordt daarom toegepast als een puur DECORATIEF accent
+   (`.app-title`'s `border-left`) i.p.v. als tekstkleur — WCAG 1.4.11
+   (non-text contrast) geldt niet voor zuiver decoratieve elementen, dus
+   de rauwe kleur mag daar rechtstreeks. Zie `domain/settings/
+colorContrast.ts` se bijgewerkte bestandscommentaar en de "twee-presets-
+   geven-twee-kleuren"-e2e-tests in `settings.spec.ts`/`dark-mode-
+contrast.spec.ts` voor het bewijs. `.btn-primary`'s `--team-primary`-
+   toepassing (achtergrond) is ongewijzigd.
+
+   Pas dáárna een pure
    `domain/settings/`-contrastcontrolefunctie (WCAG-contrastratio, AA-
    drempel 4.5:1 voor tekst) die de gekozen kleur tegen de vaste
    achtergrond-/tekstkleuren van het thema toetst en een waarschuwing
@@ -340,6 +356,22 @@ niet-blokkerende waarschuwing zelf is daardoor vervallen (kan niet meer
 voorkomen). Nieuwe `tests/e2e/dark-mode-contrast.spec.ts` reproduceert en
 sluit de exacte reviewbevinding.
 
+**Tweede P1-review-opvolging (29 aug. 2026, PR #83):** `deriveAccent-
+Foreground` (hierboven) loste de dark-mode-regressie op maar bleek zelf
+een regressie te introduceren: tegen de lichte headerachtergrond haalt
+geen van de tien presets uit `SettingsPanel.tsx` 4,5:1, dus alle tien
+vielen terug op hetzelfde zwart — de accentkeuze werd onzichtbaar in de
+gangbare lichte modus. Opgelost door `accentColor` niet meer als
+`.app-title`-TEKSTkleur te gebruiken (die blijft de vaste `--lt-color-fg`)
+maar als een puur decoratief accent (`border-left`, geen WCAG-
+tekstcontrasteis) — zie de gecorrigeerde §B punt 4 hierboven.
+`deriveAccentForeground` en de dubbele lichte/donkere-headerachtergrond-
+constanten zijn daardoor uit `colorContrast.ts` verwijderd (dode code);
+alleen `deriveButtonForeground` (voor `.btn-primary`) blijft over. Nieuwe
+e2e-assertions in `settings.spec.ts`/`dark-mode-contrast.spec.ts` bewijzen
+expliciet dat twee verschillende accent-presets tot twee verschillend
+gerenderde accentranden leiden.
+
 Werk:
 
 1. Breid de bestaande live-wedstrijdcomponenten (`LiveTrackingPanel.tsx`
@@ -384,11 +416,19 @@ Acceptatie:
 - elke live-wedstrijdactie (score, wissel, contextwissel) is met een
   toetsenbord alleen volledig uitvoerbaar, geverifieerd door de e2e-suite;
 - `primaryColor`/`accentColor` hebben een zichtbaar effect in de app (bug
-  10 opgelost), geverifieerd door een component-/e2e-test die een
-  aangepaste kleur instelt en de gerenderde CSS-custom-property
-  controleert;
-- een kleurkeuze onder de AA-contrastdrempel toont een zichtbare,
-  vertaalde waarschuwing maar blokkeert opslaan niet;
+  10 opgelost) dat WCAG-conform blijft in beide kleurenschema's:
+  `primaryColor` als `.btn-primary`-achtergrond met een afgeleide leesbare
+  knoptekst, `accentColor` als `.app-title`'s decoratieve accentrand (géén
+  tekstkleur — zie de tweede P1-review-opvolging hierboven) — geverifieerd
+  door e2e-tests die TWEE verschillende presets instellen en bevestigen dat
+  ze tot twee verschillend gerenderde accentranden leiden, niet alleen dat
+  de CSS custom property verandert;
+- primaryColor's afgeleide knoptekst is wiskundig gegarandeerd ≥4,5:1
+  contrast tegen elke gekozen kleur (`pickReadableColor`/
+  `deriveButtonForeground`, `colorContrast.ts`) — er is dus geen "keuze
+  met onvoldoende contrast"-toestand meer mogelijk voor deze toepassing,
+  dus ook geen aparte waarschuwing nodig (de eerdere, inmiddels vervallen
+  niet-blokkerende waarschuwing ging hiervan uit);
 - `prefers-reduced-motion: reduce` onderdrukt aantoonbaar animaties/
   transities op minstens één geverifieerd element;
 - bestaande `SettingsPanel`-, `LiveTrackingPanel`- en
