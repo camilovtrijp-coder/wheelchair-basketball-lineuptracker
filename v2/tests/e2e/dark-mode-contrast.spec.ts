@@ -7,8 +7,9 @@
 //    echter, waardoor de DEFAULT-teamkleuren in donkere modus onder de
 //    AA-contrastdrempel renderden (axe-core `color-contrast`, "serious"):
 //    `.btn-primary` (#2563eb op de toenmalige vaste donkere-modus-
-//    knoptekst #0b1220 = 3.62:1) en `.app-title` (#c2410c op de donkere
-//    headerachtergrond #111827 = 3.43:1).
+//    knoptekst #0b1220 = 3.62:1) en `.app-title` (destijds `#c2410c` op de
+//    donkere headerachtergrond #111827 = 3.43:1; de default is inmiddels
+//    weer `#f97316`, zie de derde P2-review-ronde hieronder).
 // 2. De eerste fix (een uit `accentColor` afgeleide leesbare tekstkleur
 //    voor `.app-title`) loste (1) op, maar bleek voor ALLE tien presets
 //    in `SettingsPanel.tsx` terug te vallen op exact hetzelfde zwart tegen
@@ -59,9 +60,13 @@ test.describe('v2 a11y — dark-mode-contrast (PR 8.2b, P1-regressies PR #83)', 
 
     // .app-title: tekst blijft de vaste donkere-modus-`--lt-color-fg`
     // (#f3f4f6, tokens.css) — geen teamkleur, dus geen contrastrisico.
-    // Het accent (#c2410c) blijft zichtbaar via de decoratieve rand.
+    // Het accent (DEFAULT_SETTINGS.accentColor, #f97316) blijft zichtbaar
+    // via de decoratieve rand — geen WCAG-tekstcontrasteis, dus geen
+    // reden meer om de default af te wijken van #f97316 (derde
+    // P2-review-ronde PR #83: de eerdere `#c2410c`-defaultwijziging is
+    // teruggedraaid nu accentColor geen tekstkleur meer is).
     await expect(page.locator('.app-title')).toHaveCSS('color', 'rgb(243, 244, 246)');
-    await expect(page.locator('.app-title')).toHaveCSS('border-left-color', 'rgb(194, 65, 12)');
+    await expect(page.locator('.app-title')).toHaveCSS('border-left-color', 'rgb(249, 115, 22)');
   });
 
   // Expliciete review-eis (tweede ronde, PR #83): bewijs dat twee

@@ -249,7 +249,7 @@ test.describe('v2 settings', () => {
     const appRoot = page.locator('.app');
 
     await expect(appRoot).toHaveCSS('--team-primary', '#2563eb');
-    await expect(appRoot).toHaveCSS('--team-accent', '#c2410c');
+    await expect(appRoot).toHaveCSS('--team-accent', '#f97316');
 
     await page.getByTestId('primaryColor-8b5cf6').click();
     await page.getByTestId('accentColor-ef4444').click();

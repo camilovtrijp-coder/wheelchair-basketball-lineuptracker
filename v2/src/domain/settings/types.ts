@@ -51,16 +51,7 @@ export const DEFAULT_SETTINGS: Settings = {
   teamName: '',
   logoUri: '',
   primaryColor: '#2563eb',
-  // PR 8.2b (bug 10, docs/pr-5.5c-bugfixes.md #10): vóór deze PR had
-  // `accentColor` geen enkel visueel effect, dus een zwakke defaultkleur
-  // was onopgemerkt gebleven. Nu `accentColor` daadwerkelijk als
-  // `.app-title`-tekstkleur gerenderd wordt (index.css/App.tsx), moet de
-  // default zelf de bestaande axe-core-runtime-a11y-baseline
-  // (a11y-axe.spec.ts, PR 8.2a) halen: `#f97316` gaf slechts 2.68:1 tegen
-  // de headerachtergrond (#f9fafb), ruim onder de AA-tekstdrempel van
-  // 4.5:1 — `#c2410c` (~4.96:1) is dezelfde oranje familie, met genoeg
-  // contrast.
-  accentColor: '#c2410c',
+  accentColor: '#f97316',
   quarterCount: 4,
   periodLabel: '',
   useClassLimit: false,
