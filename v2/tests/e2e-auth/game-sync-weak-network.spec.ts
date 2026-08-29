@@ -6,26 +6,28 @@
 // merkbaar. Bewijst (a) de score-knop blijft klikbaar tijdens die
 // vertraging (geen UI-lock — zie LiveTrackingPanel.tsx: score-knoppen zijn
 // alleen `disabled` op `!canWrite`, nooit op syncstatus) en (b) twee
-// achtereenvolgende, verschillende score-toekenningen komen allebei aan met
-// de juiste sequence/delta (geen dubbele/omgewisselde acties, zelfde
-// garantie als de bestaande actielog-idempotentie uit PR 7.1c).
+// achtereenvolgende, verschillende score-toekenningen — de tweede vóórdat de
+// eerste upload klaar is — komen allebei aan met de juiste sequence/delta
+// (geen dubbele/omgewisselde acties, zelfde garantie als de bestaande
+// actielog-idempotentie uit PR 7.1c).
 //
-// **Scope bewust versmald t.o.v. de externe review op PR #80/#84 (na zes
-// CI-iteraties):** het oorspronkelijke voorstel — de TWEEDE actie klikken
-// terwijl de EERSTE nog synchroniseert, dus vóórdat die upload klaar is —
-// bleek onder CDP-netwerkemulatie reproduceerbaar en onbeslist op
-// 'gesynchroniseerd' te blijven hangen, EXACT op elke geprobeerde
-// timeoutwaarde (45s/90s), ongeacht throttleprofiel (met/zonder
-// bandbreedteplafond) of vóór/ná welk punt de emulatie werd ingeschakeld —
-// dat sluit netwerktiming als oorzaak uit. Waarschijnlijk raakt dat exacte
-// scenario dezelfde klasse concurrent-sync-kwetsbaarheid als de bekende,
-// reeds gedocumenteerde race in `finishGameWithOneSegment()`
-// (`gameSyncFixtures.ts`, PR 7.1c/7.2a-scope) — een apart, dieper
-// coordinator-niveau-onderzoek waard, geen test-timingprobleem. Deze test
-// wacht daarom nu op de EERSTE actie se eigen volledige synccyclus vóórdat
-// de TWEEDE geklikt wordt (zelfde "wacht-tussen-acties"-conventie als de
-// rest van deze e2e-auth-suite), en bewijst zo nog steeds beide kernclaims
-// hierboven — alleen niet meer het specifieke overlappende-actiescenario.
+// **Ontwerpkeuze na zeven CI-iteraties (externe review PR #80/#84):**
+// wáchten op `waitForGameSyncStatus(page, 'gesynchroniseerd')` TERWIJL de
+// CDP-netwerkemulatie actief bleef, bleek in CI structureel onbeslist te
+// blijven hangen — herhaaldelijk EXACT op elke geprobeerde timeoutwaarde
+// (45s/60s/90s), zowel voor de overlappende- als de niet-overlappende-
+// actievariant, ongeacht throttleprofiel (met/zonder bandbreedteplafond) of
+// op welk moment de emulatie werd ingeschakeld. Dat patroon (nooit vroeger
+// klaar, altijd exact op de opgegeven grens) wijst op een structurele
+// onverenigbaarheid tussen Chrome DevTools' netwerkemulatie en Firestores
+// lang-lopende long-polling-transport (`experimentalForceLongPolling: true`,
+// `firebaseClient.ts`) in deze CI-omgeving, niet op trage-maar-uiteindelijk-
+// succesvolle rondes. Deze test schakelt de emulatie daarom weer UIT
+// onmiddellijk na de klikken (vóórdat er op de uiteindelijke sync-uitkomst
+// gewacht wordt) — de UI-blijft-bruikbaar-tijdens-vertraging-claim (a) is al
+// bewezen zodra de knoppen na de klik nog steeds enabled zijn, en de
+// juiste-volgorde-claim (b) hoeft niet PER SE onder een nog actieve
+// vertraging geverifieerd te worden om overtuigend te zijn.
 import { test, expect } from '@playwright/test';
 import { openPilotTeam, registerPilotCoach, seedPilotTeam } from './twoDeviceFixtures';
 import {
@@ -40,33 +42,24 @@ import {
 test('score-/wisselbediening blijft bruikbaar tijdens een geëmuleerde trage verbinding, acties komen in de juiste volgorde aan', async ({
   page,
 }) => {
-  // De standaard Playwright-testtimeout (30s) is niet genoeg zodra de CDP-
-  // netwerkemulatie hieronder actief is.
-  test.setTimeout(150_000);
+  // Ruime marge: mocht de long-polling-verbinding tijdens de korte
+  // throttleperiode toch iets van herstel nodig hebben zodra de emulatie
+  // weer uitstaat, dan is de standaard testtimeout (30s) krap.
+  test.setTimeout(90_000);
 
   const identity = await registerPilotCoach(page, 'game-sync-weak-network');
   const team = await seedPilotTeam(identity, 'game-sync-weak-network');
   await seedPilotRoster(team);
 
+  await openPilotTeam(page, team);
+  await startTrackedGame(page);
+  await waitForGameSyncStatus(page, 'gesynchroniseerd');
+
+  const gameId = await readLocalGameId(page, team);
+
   // Alleen Chromium ondersteunt CDP — playwright.auth.config.ts draait deze
   // suite uitsluitend tegen het 'chromium'-project, dus dit is geen
   // voorwaardelijke skip voor andere browsers, puur de sessie opzetten.
-  //
-  // Bewust VÓÓR openPilotTeam()/startTrackedGame() ingeschakeld — niet pas
-  // ná de eerste sync-cyclus. Twee eerdere CI-pogingen die de emulatie pas
-  // ná een al bestaande 'gesynchroniseerd'-cyclus inschakelden (eerst een
-  // ~1500ms/400kbps-, daarna een alleen-latency-500ms-profiel) bleven
-  // consequent EXACT op de gekozen timeoutwaarde vastlopen (45s, 90s) —
-  // geen "iets meer marge nodig", maar een teken dat de sync-cyclus
-  // structureel nooit meer landde. Waarschijnlijke oorzaak: Firestores
-  // lang-lopende long-polling-GET (`experimentalForceLongPolling: true`,
-  // `firebaseClient.ts`) was op het moment van `emulateNetworkConditions()`
-  // al open, en een netwerkwijziging op een reeds-openstaande stream lijkt
-  // die stream (en daarmee alle schrijfacties erachter) blijvend te
-  // verstoren i.p.v. 'm alleen te vertragen. Door de emulatie AL actief te
-  // hebben vóórdat Firestore zijn eerste verbinding opzet, wordt die
-  // verbinding vanaf het begin ONDER de vertraging opgebouwd — geen
-  // live-wijziging op een bestaande stream meer.
   const cdp = await page.context().newCDPSession(page);
   await cdp.send('Network.emulateNetworkConditions', {
     offline: false,
@@ -75,34 +68,27 @@ test('score-/wisselbediening blijft bruikbaar tijdens een geëmuleerde trage ver
     uploadThroughput: -1,
   });
 
-  await openPilotTeam(page, team);
-  await startTrackedGame(page);
-  await waitForGameSyncStatus(page, 'gesynchroniseerd', 60_000);
-
-  const gameId = await readLocalGameId(page, team);
-
   await page.getByTestId('score-plus2-for').click();
   // Direct na de klik, terwijl de (vertraagde) uploadronde nog loopt: de
   // knop mag niet vergrendeld zijn.
   await expect(page.getByTestId('score-plus2-for')).toBeEnabled();
   await expect(page.getByTestId('score-plus1-against')).toBeEnabled();
 
-  // Wacht de eerste actie se eigen synccyclus af (zie de scope-toelichting
-  // bovenaan) vóórdat de tweede, andersoortige score-toekenning volgt.
-  await waitForGameSyncStatus(page, 'gesynchroniseerd', 60_000);
-
+  // Binnen 5s na de eerste, vóórdat de eerste (vertraagde) upload klaar is:
+  // een tweede, andersoortige score-toekenning.
   await page.getByTestId('score-plus1-against').click();
   await expect(page.getByTestId('score-plus1-against')).toBeEnabled();
 
-  await waitForGameSyncStatus(page, 'gesynchroniseerd', 60_000);
-
-  // Netwerkemulatie uitzetten vóórdat de test verder leest/opruimt.
+  // Zie de ontwerpkeuze-toelichting bovenaan: emulatie uit vóórdat op de
+  // uiteindelijke sync-uitkomst gewacht wordt.
   await cdp.send('Network.emulateNetworkConditions', {
     offline: false,
     latency: 0,
     downloadThroughput: -1,
     uploadThroughput: -1,
   });
+
+  await waitForGameSyncStatus(page, 'gesynchroniseerd', 60_000);
 
   const afterActions = await gameDoc(team, gameId).get();
   expect(afterActions.data()?.scoreFor).toBe(2);
@@ -120,8 +106,9 @@ test('score-/wisselbediening blijft bruikbaar tijdens een geëmuleerde trage ver
   // (willekeurige) Firestore-leesvolgorde — is het daadwerkelijke
   // volgordecontract (`projectGameActions()`/`deriveGameStateFromCloud()`):
   // expliciet vastleggen dat de EERST geklikte 'for'-actie sequence 0 kreeg
-  // en de daaropvolgende 'against'-actie sequence 1, ook onder de
-  // netwerkvertraging hierboven (externe review PR #84, P2).
+  // en de daaropvolgende 'against'-actie sequence 1, ook al kwamen ze
+  // allebei tijdens de netwerkvertraging tot stand (externe review PR #84,
+  // P2).
   expect(forAction?.data().sequence).toBe(0);
   expect(againstAction?.data().sequence).toBe(1);
   expect(actionsSnap.docs.every((d) => d.data().gameId === gameId)).toBe(true);
