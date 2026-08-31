@@ -254,6 +254,14 @@ const nl = {
   // (index.html `backup*`/`importBackup*`-vertalingen) waar mogelijk. NL =
   // primary, EN = secondary.
   backupTitle: 'Back-up',
+  diagnosticsTitle: 'Technische diagnose',
+  diagnosticsDesc:
+    'Bewaar maximaal 50 technische statuscodes in het geheugen van dit tabblad om problemen te onderzoeken.',
+  diagnosticsPrivacy:
+    'Bevat geen spelersgegevens, e-mailadressen, organisatie-, team- of wedstrijd-ID’s en wordt nooit automatisch verzonden.',
+  diagnosticsCount: '{count} diagnosegebeurtenis(sen) in deze sessie.',
+  diagnosticsDownloadBtn: '⬇ Download diagnose',
+  diagnosticsClearBtn: 'Wis diagnose',
   backupDesc:
     'Bewaar een kopie van dit team (spelers, instellingen, wedstrijdgeschiedenis) — handig bij een nieuw toestel of gewiste browseropslag. Oudere back-ups van deze app blijven importeerbaar.',
   backupExportBtn: '⬇ Exporteer back-up',
@@ -701,6 +709,14 @@ const en = {
 
   // PR 6.6: backup, import and local migration. See NL block for rationale; v1 parity.
   backupTitle: 'Backup',
+  diagnosticsTitle: 'Technical diagnostics',
+  diagnosticsDesc:
+    'Keeps up to 50 technical status codes in this tab’s memory to help investigate problems.',
+  diagnosticsPrivacy:
+    'Contains no player data, email addresses, organization, team or game IDs and is never sent automatically.',
+  diagnosticsCount: '{count} diagnostic event(s) in this session.',
+  diagnosticsDownloadBtn: '⬇ Download diagnostics',
+  diagnosticsClearBtn: 'Clear diagnostics',
   backupDesc:
     'Keep a copy of this team (players, settings, match history) — handy for a new device or a cleared browser storage. Older backups from this app remain importable.',
   backupExportBtn: '⬇ Export backup',

@@ -1,7 +1,6 @@
 # Voorbereidingsplan PR 8.2 — toegankelijkheid en courtside QA
 
-Status: 8.2a **gemerged** (#81); 8.2b **geïmplementeerd**, open als draft-PR
-#83 (nog niet gemerged); 8.2c nog niet gestart. Dit plan
+Status: volledig gemerged — 8.2a (#81), 8.2b (#83) en 8.2c (#84). Dit plan
 splitst roadmap-PR 8.2 in drie afzonderlijk reviewbare sub-PR's, volgt de
 structuur van `docs/pr-8.1-plan.md`/`docs/pr-7.1-plan.md`, en legt vast welk
 deel van de vijf roadmap-bullets (`docs/IMPLEMENTATION_PLAN.md` §13, "PR
@@ -193,6 +192,7 @@ contrast.spec.ts` voor het bewijs. `.btn-primary`'s `--team-primary`-
    toestand kan voor deze twee toepassingen niet meer voorkomen, dus is er
    niets meer om voor te waarschuwen. Zie werk 4/de acceptatiecriteria
    hieronder voor de bijgewerkte, actuele eis.
+
 5. **Gedeeld apparaat — uitbreiding, geen nieuwbouw, van de bestaande
    vertrouwd-apparaat-/uitlogflow.** Twee concrete gaten t.o.v. wat al
    bestaat (zie §A):
@@ -356,7 +356,7 @@ Acceptatie:
 
 ### 8.2b — score-/wissel-/contextbediening, clubkleurcontrast en reduced-motion
 
-**Geïmplementeerd** (PR #83, in review — nog niet gemerged). Werk 1 (keyboard-
+**Voltooid** (PR #83, gemerged). Werk 1 (keyboard-
 bediening) bleek bij onderzoek al volledig aanwezig in `LiveTrackingPanel.tsx`
 en `AuthGate.tsx`'s teamswitcher (uitsluitend `<button>`/`<select>`-
 elementen) — geen codewijziging nodig, alleen het e2e-bewijs uit werk 2.
@@ -528,6 +528,7 @@ uploadThroughput: <idem> })` krijgt de Firestore-writeronde van een
    daarna uit vóórdat op de uiteindelijke `'gesynchroniseerd'`-uitkomst
    gewacht wordt. Beide kernclaims (a)/(b) hierboven blijven aantoonbaar
    bewezen.
+
 5. Voeg unit-/component-tests toe voor de nieuwe uitloglogica (§B punt 5,
    eerste subpunt: welke sleutels wél/niet gewist worden) en voor het
    herroepbare instellingspad.

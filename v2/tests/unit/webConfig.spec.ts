@@ -1,9 +1,53 @@
 import { describe, it, expect } from 'vitest';
 import {
+  resolveAppCheckConfig,
   resolveDeployContext,
   resolveEmulatorConfig,
   resolveWebConfig,
 } from '../../src/infrastructure/firebase/webConfig';
+
+describe('infrastructure/firebase/webConfig — resolveAppCheckConfig', () => {
+  it('development blijft altijd uit en leest geen externe providerconfig', () => {
+    expect(
+      resolveAppCheckConfig('development', {
+        VITE_FIREBASE_APP_CHECK_ENABLED_STAGING: 'true',
+        VITE_FIREBASE_APP_CHECK_RECAPTCHA_ENTERPRISE_KEY_STAGING: 'site-key',
+      }),
+    ).toEqual({ enabled: false });
+  });
+
+  it('staging is standaard uit (monitoring is expliciet opt-in)', () => {
+    expect(resolveAppCheckConfig('staging', {})).toEqual({ enabled: false });
+    expect(
+      resolveAppCheckConfig('staging', { VITE_FIREBASE_APP_CHECK_ENABLED_STAGING: 'false' }),
+    ).toEqual({ enabled: false });
+  });
+
+  it('leest de staging reCAPTCHA Enterprise-sitekey alleen wanneer expliciet ingeschakeld', () => {
+    expect(
+      resolveAppCheckConfig('staging', {
+        VITE_FIREBASE_APP_CHECK_ENABLED_STAGING: 'true',
+        VITE_FIREBASE_APP_CHECK_RECAPTCHA_ENTERPRISE_KEY_STAGING: 'staging-site-key',
+      }),
+    ).toEqual({
+      enabled: true,
+      recaptchaEnterpriseSiteKey: 'staging-site-key',
+    });
+  });
+
+  it('faalt closed bij ingeschakeld zonder sitekey of bij een ongeldige boolean', () => {
+    expect(() =>
+      resolveAppCheckConfig('production', {
+        VITE_FIREBASE_APP_CHECK_ENABLED_PRODUCTION: 'true',
+      }),
+    ).toThrow(/VITE_FIREBASE_APP_CHECK_RECAPTCHA_ENTERPRISE_KEY_PRODUCTION/);
+    expect(() =>
+      resolveAppCheckConfig('staging', {
+        VITE_FIREBASE_APP_CHECK_ENABLED_STAGING: 'yes',
+      }),
+    ).toThrow(/true.*false/);
+  });
+});
 
 describe('infrastructure/firebase/webConfig — resolveWebConfig', () => {
   it('geeft de development-defaults terug, ongeacht env', () => {

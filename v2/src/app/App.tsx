@@ -58,6 +58,8 @@ import { usePwaUpdate } from '../application/pwa/usePwaUpdate';
 import { usePwaReadiness } from '../application/pwa/usePwaReadiness';
 import { PwaUpdateBanner } from '../ui/pwa/PwaUpdateBanner';
 import { PwaActionNeededPanel } from '../ui/sync/PwaActionNeededPanel';
+import { DiagnosticsPanel } from '../ui/diagnostics/DiagnosticsPanel';
+import { diagnostics } from '../infrastructure/diagnostics/diagnostics';
 
 export interface AppProps {
   repositories: ResolvedAppRepositories;
@@ -653,6 +655,34 @@ export function App({
    * `application/pwa/usePwaUpdate.ts` voor de volledige flow.
    */
   const pwaUpdate = usePwaUpdate(locked);
+
+  // PR 8.3a: uitsluitend vaste allowlistcodes naar een begrensde in-memory
+  // buffer. Geen raw errors, IDs of payloads; de sanitizer in de diagnosepoort
+  // weigert extra velden fail closed. Een effect vuurt alleen opnieuw wanneer
+  // de bijbehorende status werkelijk verandert.
+  useEffect(() => {
+    if (listenerError === 'settings') {
+      diagnostics.record({ area: 'settings', code: 'settings-listener-failed' });
+    } else if (listenerError === 'roster') {
+      diagnostics.record({ area: 'roster', code: 'roster-listener-failed' });
+    }
+  }, [listenerError]);
+  useEffect(() => {
+    if (gameSaveError) diagnostics.record({ area: 'game', code: 'game-local-save-failed' });
+  }, [gameSaveError]);
+  useEffect(() => {
+    if (completedGamesCloudError) {
+      diagnostics.record({ area: 'history', code: 'history-cloud-read-failed' });
+    }
+  }, [completedGamesCloudError]);
+  useEffect(() => {
+    if (deleteError) diagnostics.record({ area: 'history', code: 'history-delete-failed' });
+  }, [deleteError]);
+  useEffect(() => {
+    if (pwaUpdate.status === 'error') {
+      diagnostics.record({ area: 'pwa', code: 'pwa-update-failed' });
+    }
+  }, [pwaUpdate.status]);
 
   /**
    * PR 8.1b (docs/pr-8.1-plan.md §C 8.1b werk 1/2): pre-game PWA-/offline-
@@ -1439,6 +1469,7 @@ export function App({
               setLang={setLang}
               onImported={() => void handleBackupImported()}
             />
+            <DiagnosticsPanel lang={lang} diagnostics={diagnostics} />
             {/* PR 7.4c (docs/pr-7.4-plan.md §C 7.4c werk 1): alleen in
              * cloudmodus (er is anders geen cloudteam om naartoe te
              * migreren) EN alleen voor bulkmigratie-rollen (§B) — een

@@ -13,6 +13,8 @@ const {
   persistentSingleTabManager,
   getAuth,
   connectAuthEmulator,
+  initializeAppCheck,
+  ReCaptchaEnterpriseProvider,
 } = vi.hoisted(() => ({
   initializeApp: vi.fn(() => ({ name: 'fake-app' })),
   initializeFirestore: vi.fn(() => ({ name: 'fake-firestore' })),
@@ -24,6 +26,10 @@ const {
   persistentSingleTabManager: vi.fn(() => ({})),
   getAuth: vi.fn(() => ({ name: 'fake-auth' })),
   connectAuthEmulator: vi.fn(),
+  initializeAppCheck: vi.fn(() => ({ name: 'fake-app-check' })),
+  ReCaptchaEnterpriseProvider: vi.fn(function (this: { key: string }, key: string) {
+    this.key = key;
+  }),
 }));
 
 vi.mock('firebase/app', () => ({ initializeApp }));
@@ -37,6 +43,7 @@ vi.mock('firebase/firestore', () => ({
   persistentSingleTabManager,
 }));
 vi.mock('firebase/auth', () => ({ getAuth, connectAuthEmulator }));
+vi.mock('firebase/app-check', () => ({ initializeAppCheck, ReCaptchaEnterpriseProvider }));
 
 /** Verse modulestate nodig omdat firebaseClient.ts app/db/auth/context module-globaal bijhoudt. */
 async function freshFirebaseClient() {
@@ -66,6 +73,7 @@ describe('infrastructure/firebase/firebaseClient — contextgedrag', () => {
     expect(connectAuthEmulator).toHaveBeenCalledWith(expect.anything(), 'http://127.0.0.1:9099', {
       disableWarnings: true,
     });
+    expect(initializeAppCheck).not.toHaveBeenCalled();
   });
 
   it('default-aanroep zonder context-argument (zoals main.tsx/AuthGate.tsx die gebruiken) blijft development', async () => {
@@ -95,6 +103,40 @@ describe('infrastructure/firebase/firebaseClient — contextgedrag', () => {
     });
     expect(connectFirestoreEmulator).not.toHaveBeenCalled();
     expect(connectAuthEmulator).not.toHaveBeenCalled();
+    expect(initializeAppCheck).not.toHaveBeenCalled();
+  });
+
+  it('staging: initialiseert App Check monitor-only wanneer expliciet geconfigureerd', async () => {
+    vi.stubEnv('VITE_FIREBASE_PROJECT_ID_STAGING', 'lineup-tracker-staging');
+    vi.stubEnv('VITE_FIREBASE_API_KEY_STAGING', 'staging-key');
+    vi.stubEnv('VITE_FIREBASE_AUTH_DOMAIN_STAGING', 'lineup-tracker-staging.firebaseapp.com');
+    vi.stubEnv('VITE_FIREBASE_APP_CHECK_ENABLED_STAGING', 'true');
+    vi.stubEnv('VITE_FIREBASE_APP_CHECK_RECAPTCHA_ENTERPRISE_KEY_STAGING', 'staging-site-key');
+
+    const { initFirebase } = await freshFirebaseClient();
+    initFirebase(false, 'staging');
+
+    expect(ReCaptchaEnterpriseProvider).toHaveBeenCalledWith('staging-site-key');
+    expect(initializeAppCheck).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ isTokenAutoRefreshEnabled: true }),
+    );
+  });
+
+  it('monitor-only: een App Check-initialisatiefout blokkeert Firebase niet', async () => {
+    vi.stubEnv('VITE_FIREBASE_PROJECT_ID_STAGING', 'lineup-tracker-staging');
+    vi.stubEnv('VITE_FIREBASE_API_KEY_STAGING', 'staging-key');
+    vi.stubEnv('VITE_FIREBASE_AUTH_DOMAIN_STAGING', 'lineup-tracker-staging.firebaseapp.com');
+    vi.stubEnv('VITE_FIREBASE_APP_CHECK_ENABLED_STAGING', 'true');
+    vi.stubEnv('VITE_FIREBASE_APP_CHECK_RECAPTCHA_ENTERPRISE_KEY_STAGING', 'staging-site-key');
+    initializeAppCheck.mockImplementationOnce(() => {
+      throw new Error('raw provider failure with user@example.test');
+    });
+
+    const { initFirebase } = await freshFirebaseClient();
+    expect(() => initFirebase(false, 'staging')).not.toThrow();
+    expect(initializeFirestore).toHaveBeenCalled();
+    expect(getAuth).toHaveBeenCalled();
   });
 
   it('productie: verbindt geen enkele emulator en gebruikt de productie-webconfig uit env', async () => {

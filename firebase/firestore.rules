@@ -496,9 +496,21 @@ service cloud.firestore {
 
     // ---- organizations/{orgId} ----
     match /organizations/{orgId} {
-      allow create: if signedIn() && request.resource.data.createdBy == request.auth.uid;
+      allow create: if signedIn() &&
+        request.resource.data.keys().hasAll(['name', 'createdBy', 'createdAt']) &&
+        request.resource.data.keys().hasOnly(['name', 'createdBy', 'createdAt']) &&
+        request.resource.data.name is string && request.resource.data.name.size() > 0 &&
+        request.resource.data.name.size() <= 120 &&
+        request.resource.data.createdBy == request.auth.uid &&
+        request.resource.data.createdAt == request.time;
       allow read:   if isOrgMember(orgId);
-      allow update, delete: if isOrgMember(orgId) && orgRole(orgId) == 'organizationOwner';
+      allow update: if isOrgMember(orgId) && orgRole(orgId) == 'organizationOwner' &&
+        request.resource.data.name is string && request.resource.data.name.size() > 0 &&
+        request.resource.data.name.size() <= 120 &&
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['name']);
+      // Een parent-delete laat Firestore-subcollecties staan. Een begrensde,
+      // hervatbare organisatieverwijdering wordt pas in PR 8.3c gebouwd.
+      allow delete: if false;
 
       // ---- organizationMembers/{uid} ----
       match /organizationMembers/{uid} {
@@ -600,10 +612,21 @@ service cloud.firestore {
         // zie toelichting bovenaan); geen verdere correctheidscheck nodig, de aanmaker is al
         // owner/admin van de organisatie zelf en heeft dus toch al volledige controle.
         allow create: if isOrgOwnerOrAdmin(orgId) &&
+          request.resource.data.keys().hasAll(['name', 'orgName', 'createdBy', 'createdAt']) &&
+          request.resource.data.keys().hasOnly(['name', 'orgName', 'createdBy', 'createdAt']) &&
+          request.resource.data.name is string && request.resource.data.name.size() > 0 &&
+          request.resource.data.name.size() <= 120 &&
+          request.resource.data.orgName is string && request.resource.data.orgName.size() > 0 &&
+          request.resource.data.orgName.size() <= 120 &&
           request.resource.data.createdBy == request.auth.uid &&
-          request.resource.data.orgName is string;
+          request.resource.data.createdAt == request.time;
         allow read:   if canReadTeam(orgId, teamId);
-        allow update, delete: if isOrgOwnerOrAdmin(orgId);
+        allow update: if isOrgOwnerOrAdmin(orgId) &&
+          request.resource.data.name is string && request.resource.data.name.size() > 0 &&
+          request.resource.data.name.size() <= 120 &&
+          request.resource.data.diff(resource.data).affectedKeys().hasOnly(['name']);
+        // Zelfde parent-deletegrens als organisaties; volledige cascade is 8.3c.
+        allow delete: if false;
 
         match /teamMembers/{uid} {
           // Directe GET's: bestaand gedrag. Voor de collectionGroup-LIST-query (issue #31) is
