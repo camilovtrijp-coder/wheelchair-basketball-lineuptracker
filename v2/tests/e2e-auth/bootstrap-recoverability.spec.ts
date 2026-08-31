@@ -7,6 +7,7 @@ import {
   doc,
   getDoc,
   getFirestore,
+  serverTimestamp,
   setDoc,
 } from 'firebase/firestore';
 import { FirestoreOrganizationGateway } from '../../src/infrastructure/organizations/FirestoreOrganizationGateway';
@@ -15,9 +16,9 @@ import { uniqueTestEmail } from './helpers';
 // PR 5.2-reviewbevinding [P1]: org- en owner-membership-write kunnen niet gebatcht worden (zie
 // FirestoreOrganizationGateway.createOrganizationWithOwner's toelichting — de bootstrap-Rules
 // gebruiken get(), niet getAfter()), dus een mislukking tussen beide writes in laat een
-// organisatie zonder membership achter. Zonder membership kan de gebruiker die organisatie
-// zelf niet meer verwijderen (Rules eisen een membership om te mogen deleten) — een blijvende
-// weesorganisatie. Deze test bewijst rechtstreeks tegen de gateway (geen browser-UI nodig) dat
+// organisatie zonder membership achter. PR 8.3a weigert parent-hard-delete voor iedere client,
+// dus zo'n weesorganisatie moet via hetzelfde herstelpad bruikbaar worden gemaakt. Deze test
+// bewijst rechtstreeks tegen de gateway (geen browser-UI nodig) dat
 // een resume met het bekende orgId zo'n orphan herstelt i.p.v. een tweede organisatie aan te
 // maken, en dat herhaling van dezelfde resume-aanroep veilig is (idempotent).
 test.describe('bootstrap van de eerste organisatie is herstelbaar na een gedeeltelijke mislukking', () => {
@@ -46,7 +47,11 @@ test.describe('bootstrap van de eerste organisatie is herstelbaar na een gedeelt
     // bestaat al (createdBy == deze gebruiker), maar de owner-membership ontbreekt nog —
     // exact wat overblijft als alleen de org-write slaagde en de membership-write faalde.
     const orphanOrgRef = doc(collection(db, 'organizations'));
-    await setDoc(orphanOrgRef, { name: 'Orphan Org', createdBy: uid, createdAt: new Date() });
+    await setDoc(orphanOrgRef, {
+      name: 'Orphan Org',
+      createdBy: uid,
+      createdAt: serverTimestamp(),
+    });
 
     const result = await gateway.createOrganizationWithOwner('Orphan Org', orphanOrgRef.id);
     expect(result.ok).toBe(true);
