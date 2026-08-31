@@ -461,6 +461,18 @@ button:focus-visible {
   overflow-wrap: anywhere;
 }
 
+.session-bar__trusted-device {
+  display: flex;
+  align-items: center;
+  gap: var(--lt-space-1);
+  font-size: 0.85rem;
+  color: var(--lt-color-muted);
+}
+
+.session-bar__trusted-device-confirm {
+  max-width: 26rem;
+}
+
 .sync-status-indicator {
   padding: 0.15rem var(--lt-space-2);
   border-radius: 999px;

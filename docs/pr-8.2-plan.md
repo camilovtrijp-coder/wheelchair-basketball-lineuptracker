@@ -237,11 +237,26 @@ firebaseClient.ts`) wist alleen Firestore's IndexedDB-persistentie.
      (bootstrap-hervattingsstatus, PR 5.x), en de
      `lineup-tracker-cloud-imported-settings`/`-roster`-vlaggen (cloud-
      import-markers — per ongeluk wissen kan een ongewenste "herimport"-
-     knop triggeren bij de volgende cloud-sessie). 8.2c werk 1 implementeert
-     dit als een expliciete key-lijst in code (geen `localStorage.clear()`
-     of prefix-wildcard-wis), zodat een toekomstige nieuwe key bewust moet
-     worden toegevoegd aan een van beide lijsten i.p.v. stilzwijgend mee te
-     wissen of stilzwijgend te blijven staan.
+     knop triggeren bij de volgende cloud-sessie).
+
+     **Bijgewerkt na de implementatie (P1-reviewbevinding op PR #84):** een
+     eerste versie construeerde de `${orgId}:${teamId}`-gescoopte sleutels
+     alleen voor de op dat moment geselecteerde context — data van een
+     ANDER, eerder op dit apparaat gebruikt team bleef daardoor stilzwijgend
+     staan. `infrastructure/device/clearLocalDeviceData.ts` enumereert nu
+     `listBrowserStorageKeys()` (`i18n/browserStorage.ts`) en wist elke
+     daadwerkelijk aanwezige sleutel die matcht met een van de expliciete
+     `PREFIX`-constanten (`ACTIVE_GAME_STORAGE_KEY_PREFIX`,
+     `COMPLETED_GAMES_STORAGE_KEY_PREFIX`,
+     `PENDING_FINALIZE_STORAGE_KEY_PREFIX`,
+     `MIGRATION_RUN_STORAGE_KEY_PREFIX`,
+     `GAME_SYNC_CHECKPOINT_STORAGE_PREFIX`) of de vaste witte-lijstsleutels
+     hierboven — voor ELKE org/team/gameId op dit apparaat, niet alleen de
+     huidige context. Nog steeds bewust geen `localStorage.clear()` en geen
+     blinde scan over de volledige storage: alleen sleutels die matchen met
+     een van deze welbewust gekozen prefixen/vaste sleutels worden ooit
+     verwijderd, dus een toekomstige nieuwe sleutelfamilie moet bewust aan
+     deze lijst toegevoegd worden.
 
    - Er is vandaag geen UI-pad om de vertrouwd-apparaatkeuze ná de
      initiële `TrustedDevicePrompt` te herzien (bijv. een gedeeld
@@ -484,8 +499,8 @@ Werk:
 4. Voeg CDP-netwerkemulatie (trage, niet-onderbroken verbinding) toe aan
    minstens één live-wedstrijdscenario (§B punt 7) — bevestigt dat score-
    /wisselbediening bruikbaar blijft tijdens een langzame achtergrondsync,
-   zonder de bestaande volledig-offline-suites te dupliceren. **Concreet
-   scenario (externe review PR #80):** via
+   zonder de bestaande volledig-offline-suites te dupliceren. **Oorspronkelijk
+   voorgesteld scenario (externe review PR #80):** via
    `client.send('Network.emulateNetworkConditions', { offline: false,
 latency: 1500, downloadThroughput: <3G-achtige bandbreedte>,
 uploadThroughput: <idem> })` krijgt de Firestore-writeronde van een
@@ -495,6 +510,24 @@ uploadThroughput: <idem> })` krijgt de Firestore-writeronde van een
    vóórdat de eerste upload klaar is — in de juiste volgorde verwerkt
    wordt (geen dubbele/omgewisselde acties, zelfde garantie als de
    bestaande actielog-idempotentie uit PR 7.1c).
+
+   **Bijgewerkt na implementatie-ervaring (herreview PR #84):** wáchten op
+   de uiteindelijke synchronisatie-uitkomst TERWIJL de netwerkemulatie
+   actief bleef, bleek in CI structureel onbeslist te blijven hangen —
+   herhaaldelijk exact op elke geprobeerde testtimeout, ongeacht
+   throttleprofiel (met/zonder bandbreedteplafond) of op welk moment de
+   emulatie werd ingeschakeld. Waarschijnlijke oorzaak: een structurele
+   onverenigbaarheid tussen Chrome DevTools' netwerkemulatie en Firestores
+   lang-lopende long-polling-transport
+   (`experimentalForceLongPolling: true`, `firebaseClient.ts`) in de
+   CI-omgeving, geen tekort aan wachttijd. `game-sync-weak-network.spec.ts`
+   gebruikt daarom `latency: 500` zonder bandbreedteplafond, observeert
+   `waitForGameSyncStatus(page, 'wacht-op-synchronisatie')` (nog steeds
+   onder actieve emulatie) om aantoonbaar te bewijzen dat de tweede actie
+   vóór het einde van de eerste upload komt, en schakelt de emulatie pas
+   daarna uit vóórdat op de uiteindelijke `'gesynchroniseerd'`-uitkomst
+   gewacht wordt. Beide kernclaims (a)/(b) hierboven blijven aantoonbaar
+   bewezen.
 5. Voeg unit-/component-tests toe voor de nieuwe uitloglogica (§B punt 5,
    eerste subpunt: welke sleutels wél/niet gewist worden) en voor het
    herroepbare instellingspad.

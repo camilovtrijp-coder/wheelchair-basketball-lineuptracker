@@ -386,6 +386,15 @@ const nl = {
   trustedDeviceYesBtn: 'Ja, vertrouwd apparaat',
   trustedDeviceNoBtn: 'Nee, gedeeld apparaat',
 
+  trustedDeviceSettingLabel: 'Dit is een vertrouwd apparaat',
+  trustedDeviceSettingHint:
+    'Zet uit voor een gedeeld apparaat (bijv. een clubtablet) — je gegevens worden dan bij uitloggen automatisch gewist. Uitzetten wist meteen de lokaal opgeslagen gegevens op dit apparaat.',
+  trustedDeviceRevokeConfirmTitle: 'Apparaat als gedeeld markeren?',
+  trustedDeviceRevokeConfirmBody:
+    'Dit wist meteen de lokaal opgeslagen roster-, wedstrijd- en instellingengegevens op dit apparaat. Bij uitloggen gebeurt dat voortaan automatisch.',
+  trustedDeviceRevokeConfirmBtn: 'Ja, markeer als gedeeld apparaat',
+  trustedDeviceRevokeCancelBtn: 'Annuleren',
+
   onboardingFreshSignupTitle: 'Welkom! Maak je eerste organisatie aan',
   onboardingFreshSignupBody:
     'Je hebt nog geen organisatie. Maak er hieronder één aan om te beginnen — je wordt automatisch eigenaar.',
@@ -818,6 +827,15 @@ const en = {
     'On a trusted device (e.g. your own phone or laptop), data stays available locally, even offline. On a shared device (e.g. a club tablet), your data is automatically wiped when you log out.',
   trustedDeviceYesBtn: 'Yes, trusted device',
   trustedDeviceNoBtn: 'No, shared device',
+
+  trustedDeviceSettingLabel: 'This is a trusted device',
+  trustedDeviceSettingHint:
+    'Turn off for a shared device (e.g. a club tablet) — your data will then be automatically wiped on log out. Turning it off wipes the locally stored data on this device immediately.',
+  trustedDeviceRevokeConfirmTitle: 'Mark device as shared?',
+  trustedDeviceRevokeConfirmBody:
+    'This immediately wipes the locally stored roster, game and settings data on this device. It will happen automatically on log out from now on.',
+  trustedDeviceRevokeConfirmBtn: 'Yes, mark as shared device',
+  trustedDeviceRevokeCancelBtn: 'Cancel',
 
   onboardingFreshSignupTitle: 'Welcome! Create your first organization',
   onboardingFreshSignupBody:

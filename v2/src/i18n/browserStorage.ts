@@ -114,3 +114,33 @@ export const strictReadBrowserStorage: KeyValueStorage = createBrowserStorage(
   getWindowLocalStorage,
   { swallowGetItemErrors: false },
 );
+
+/**
+ * Alle huidige sleutels in de backing `localStorage` — nodig voor
+ * `infrastructure/device/clearLocalDeviceData.ts` (PR 8.2c, na de externe
+ * review op PR #84): org/team-gescoopte sleutelfamilies (actieve wedstrijd,
+ * voltooide wedstrijden, pending-finalize, migratierun, synccheckpoints)
+ * kunnen voor MEERDERE org/team-contexten op hetzelfde apparaat bestaan
+ * (bijv. een eerder bezochte andere club/team) — een wis die alleen van de
+ * huidige `selectedContext` de exacte sleutel construeert mist die andere
+ * contexten stilzwijgend. `KeyValueStorage` zelf biedt bewust geen
+ * enumeratie (elke andere caller in de codebase kent zijn sleutel al) —
+ * deze functie is de enige, welbewuste uitzondering, en blijft beperkt tot
+ * "alle sleutels teruggeven", nooit tot een blinde `localStorage.clear()`.
+ * `Storage.key(i)` i.p.v. `Object.keys(localStorage)` — de laatste is geen
+ * gegarandeerd cross-browser contract voor `Storage`-objecten.
+ */
+export function listBrowserStorageKeys(): string[] {
+  const storage = tryGetStorage(getWindowLocalStorage);
+  if (storage === null) return [];
+  try {
+    const keys: string[] = [];
+    for (let i = 0; i < storage.length; i += 1) {
+      const key = storage.key(i);
+      if (key !== null) keys.push(key);
+    }
+    return keys;
+  } catch {
+    return [];
+  }
+}

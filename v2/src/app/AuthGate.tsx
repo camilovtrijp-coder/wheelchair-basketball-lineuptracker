@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'preact/hooks';
-import { browserStorage } from '../i18n/browserStorage';
+import { browserStorage, listBrowserStorageKeys } from '../i18n/browserStorage';
 import { readLang, writeLang } from '../i18n/persistence';
 import { resolveInitialLang } from '../i18n/detect';
 import type { Lang } from '../i18n/strings';
@@ -26,6 +26,7 @@ import {
   reinitFirestoreForTrustLevel,
   wipeLocalFirebaseData,
 } from '../infrastructure/firebase/firebaseClient';
+import { clearLocalDeviceData } from '../infrastructure/device/clearLocalDeviceData';
 import { FirestoreOrganizationGateway } from '../infrastructure/organizations/FirestoreOrganizationGateway';
 import { selectRepositories } from '../infrastructure/repositories/selectRepositories';
 import { resolveAppRepositories } from '../infrastructure/repositories/resolveAppRepositories';
@@ -278,6 +279,36 @@ export function AuthGate({ authGateway }: AuthGateProps) {
       await wipeLocalFirebaseData();
       // Firestore moet weer bruikbaar zijn voor een eventuele volgende login in dezelfde sessie.
       initFirebase(false);
+      // listBrowserStorageKeys() i.p.v. alleen de huidige context: dit
+      // apparaat kan eerder AL een andere org/team gebruikt hebben (§B punt
+      // 5, na de externe review op PR #84) — clearLocalDeviceData() wist
+      // die dan mee, niet alleen de sessie die nu wordt afgesloten.
+      clearLocalDeviceData(browserStorage, listBrowserStorageKeys());
+    }
+  }
+
+  /**
+   * PR 8.2c (docs/pr-8.2-plan.md §B punt 5, tweede subpunt): herroepbare
+   * vertrouwd-apparaat-instelling, aangeroepen vanuit `SessionBar`. Bij een
+   * wissel naar onvertrouwd triggert dit dezelfde wis-/herinitialisatie-
+   * logica als `handleSignOut()`'s onvertrouwd-apparaatpad. De actieve
+   * `organizationGateway`/`repositories` (en hun Firestore-abonnementen)
+   * zijn al gebouwd op de OUDE cachemodus/db-instantie — i.p.v. die live te
+   * proberen vervangen (breekbaar, zie `reinitFirestoreForTrustLevel()`'s
+   * `terminate()`) herlaadt dit de pagina; `main.tsx` initialiseert Firebase
+   * daarna vanaf nul met de nieuwe, net weggeschreven trustedDevice-waarde
+   * (zelfde patroon als de PWA-update-reload in `PwaUpdateAdapter.ts`).
+   */
+  async function handleChangeTrustedDevice(trusted: boolean) {
+    const wasTrusted = readTrustedDevice(browserStorage) ?? false;
+    if (trusted === wasTrusted) return;
+    writeTrustedDevice(browserStorage, trusted);
+    if (!trusted) {
+      await wipeLocalFirebaseData();
+      clearLocalDeviceData(browserStorage, listBrowserStorageKeys());
+    }
+    if (typeof window !== 'undefined') {
+      window.location.reload();
     }
   }
 
@@ -468,6 +499,8 @@ export function AuthGate({ authGateway }: AuthGateProps) {
             syncStatus={repositories.mode === 'cloud' ? syncStatus.status : undefined}
             syncFromCache={repositories.mode === 'cloud' ? syncStatus.fromCache : undefined}
             email={authUser?.email}
+            trustedDevice={readTrustedDevice(browserStorage) ?? false}
+            onChangeTrustedDevice={handleChangeTrustedDevice}
           />
           {switchBlockedNotice ? (
             <p className="settings-error" role="alert" data-testid="context-switch-locked-notice">
