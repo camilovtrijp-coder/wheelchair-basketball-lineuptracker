@@ -61,12 +61,26 @@ function sortByKey<T>(rows: T[], keyOf: (row: T) => string): T[] {
  * domeinbetekenis heeft"). De gateway leest ook déze subcollectie zonder
  * `orderBy()`, dus expliciet op `sequence` sorteren is hier nodig om
  * diezelfde ordergevoelige hash deterministisch te maken.
+ *
+ * Vervolgbevinding op dezelfde P2: converter en Rules staan GELIJKE
+ * `sequence`-waarden toe (geen unieke-index-garantie) — sorteren op alleen
+ * `sequence` liet zo bij een gelijke stand de rauwe, niet-gegarandeerde
+ * Firestore-leesvolgorde als stille tie-breaker fungeren, exact hetzelfde
+ * non-determinisme als hierboven maar dan verscholen binnen één
+ * `sequence`-waarde (reproduceerbaar: dezelfde twee acties met gelijke
+ * `sequence` in omgekeerde volgorde gaven `dc3468c6 != fa4ec542`). De
+ * document-ID (`rowId()`) is de canonieke tie-breaker bij een gelijke
+ * `sequence` — verschillende `sequence`-waarden blijven altijd bepalend voor
+ * de volgorde, dus de domeinbetekenisvolle sortering zelf verandert niet.
  */
 function sortActionsBySequence(actions: OrganizationExportRow[]): OrganizationExportRow[] {
   return [...actions].sort((a, b) => {
     const sa = typeof a.sequence === 'number' ? a.sequence : 0;
     const sb = typeof b.sequence === 'number' ? b.sequence : 0;
-    return sa - sb;
+    if (sa !== sb) return sa - sb;
+    const ida = rowId(a);
+    const idb = rowId(b);
+    return ida < idb ? -1 : ida > idb ? 1 : 0;
   });
 }
 

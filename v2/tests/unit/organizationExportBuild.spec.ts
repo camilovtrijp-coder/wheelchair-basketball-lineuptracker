@@ -196,6 +196,99 @@ describe('buildOrganizationExport', () => {
     ]);
   });
 
+  it('sorteert acties met een gelijke sequence canoniek op document-ID (converter/Rules staan gelijke sequences toe)', () => {
+    const input = baseInput();
+    input.teams[0]!.games = [
+      {
+        id: 'game-1',
+        phase: 'setup',
+        actions: [
+          { id: 'action-b', sequence: 5 },
+          { id: 'action-a', sequence: 5 },
+        ],
+      },
+    ];
+    const result = buildOrganizationExport(input, {
+      uid: 'uid-owner',
+      role: 'organizationOwner',
+      now: '2026-03-01T00:00:00.000Z',
+    });
+    if (!result.allowed) throw new Error('expected allowed export');
+    // 'action-a' < 'action-b' op document-ID, ongeacht de invoervolgorde.
+    expect(result.export.teams[0]!.games[0]!.actions.map((a) => a.id)).toEqual([
+      'action-a',
+      'action-b',
+    ]);
+  });
+
+  it('geeft dezelfde export/contentHash voor omgekeerde invoervolgorde van acties met gelijke sequence', () => {
+    const forward = baseInput();
+    forward.teams[0]!.games = [
+      {
+        id: 'game-1',
+        phase: 'setup',
+        actions: [
+          { id: 'action-a', sequence: 5 },
+          { id: 'action-b', sequence: 5 },
+        ],
+      },
+    ];
+    const reversed = baseInput();
+    reversed.teams[0]!.games = [
+      {
+        id: 'game-1',
+        phase: 'setup',
+        actions: [
+          { id: 'action-b', sequence: 5 },
+          { id: 'action-a', sequence: 5 },
+        ],
+      },
+    ];
+    const forwardResult = buildOrganizationExport(forward, {
+      uid: 'uid-owner',
+      role: 'organizationOwner',
+      now: '2026-03-01T00:00:00.000Z',
+    });
+    const reversedResult = buildOrganizationExport(reversed, {
+      uid: 'uid-owner',
+      role: 'organizationOwner',
+      now: '2026-03-01T00:00:00.000Z',
+    });
+    if (!forwardResult.allowed || !reversedResult.allowed) {
+      throw new Error('expected allowed exports');
+    }
+    expect(forwardResult.export.contentHash).toBe(reversedResult.export.contentHash);
+    expect(forwardResult.export.teams[0]!.games[0]!.actions.map((a) => a.id)).toEqual(
+      reversedResult.export.teams[0]!.games[0]!.actions.map((a) => a.id),
+    );
+  });
+
+  it('behoudt verschillende sequences in sequencevolgorde óók als de document-ID-sortering andersom zou uitpakken', () => {
+    const input = baseInput();
+    input.teams[0]!.games = [
+      {
+        id: 'game-1',
+        phase: 'setup',
+        actions: [
+          { id: 'action-z', sequence: 2 },
+          { id: 'action-a', sequence: 1 },
+        ],
+      },
+    ];
+    const result = buildOrganizationExport(input, {
+      uid: 'uid-owner',
+      role: 'organizationOwner',
+      now: '2026-03-01T00:00:00.000Z',
+    });
+    if (!result.allowed) throw new Error('expected allowed export');
+    // sequence blijft leidend: 'action-a' (sequence 1) vóór 'action-z' (sequence 2),
+    // ook al zou document-ID-sortering ze andersom zetten.
+    expect(result.export.teams[0]!.games[0]!.actions.map((a) => a.id)).toEqual([
+      'action-a',
+      'action-z',
+    ]);
+  });
+
   it('telt settings/roster als afwezig zonder te crashen als een team ze nog niet heeft', () => {
     const input = baseInput();
     input.teams[0]!.settings = null;

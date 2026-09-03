@@ -52,13 +52,33 @@ import type { OrganizationExportRow } from '../../domain/export/types';
  * `CompletedGameDocument.deletedAt`, `GameDocument.updatedAt`,
  * `migrationRuns`' rauwe `updatedAt`-Timestamp). Alles anders
  * (string/number/boolean/null) blijft ongewijzigd.
+ *
+ * Herreview PR #87 (vervolg op P1): meerdere BESTAANDE, geldige converters
+ * (`organizationMemberConverter.joinedAt`/`.invitationId`,
+ * `invitationConverter.claimedAt`, `teamMemberConverter.addedAt`) leveren bij
+ * een afwezig optioneel veld een object-property met de WAARDE `undefined`
+ * op (niet: de key ontbreekt). `roundtrip.ts`'s `isJsonSafe()`-controle wijst
+ * élke `undefined`-waarde af — terecht voor een écht corrupt veld, maar
+ * zonder normalisatie hier wees het ook elke doodgewone export met een
+ * afwezig optioneel veld af (reproduceerbaar: `{"converterKeys":["role",
+ * "email","uid","joinedAt","invitationId"],"roundtripAccepted":false}`).
+ * Object-properties met de waarde `undefined` worden hier daarom weggelaten
+ * — dit is de infrastructure-grens, vóór `build.ts`/`roundtrip.ts` iets ziet,
+ * dus dat blijft strikt (geen enkele `undefined` mag ooit een geldige
+ * export bereiken). Array-ELEMENTEN met de waarde `undefined` worden bewust
+ * WEL doorgegeven (`value.map(toJsonSafe)` hieronder verandert niets aan een
+ * `undefined`-element) — dat is altijd een corrupt signaal (nooit een normaal
+ * "afwezig optioneel veld"-patroon in een array) en moet dus `isJsonSafe()`
+ * blijven laten falen, niet stilzwijgend naar `null` worden omgezet zoals
+ * `JSON.stringify()` dat zou doen.
  */
-function toJsonSafe(value: unknown): unknown {
+export function toJsonSafe(value: unknown): unknown {
   if (value instanceof Timestamp) return value.toDate().toISOString();
   if (Array.isArray(value)) return value.map(toJsonSafe);
   if (value !== null && typeof value === 'object') {
     const out: Record<string, unknown> = {};
     for (const [key, v] of Object.entries(value as Record<string, unknown>)) {
+      if (v === undefined) continue;
       out[key] = toJsonSafe(v);
     }
     return out;
@@ -66,7 +86,7 @@ function toJsonSafe(value: unknown): unknown {
   return value;
 }
 
-function toExportRow(id: string, data: Record<string, unknown>): OrganizationExportRow {
+export function toExportRow(id: string, data: Record<string, unknown>): OrganizationExportRow {
   return { id, ...(toJsonSafe(data) as Record<string, unknown>) };
 }
 
