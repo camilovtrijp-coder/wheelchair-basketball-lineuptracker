@@ -61,4 +61,38 @@ describe('organizatie-export roundtrip', () => {
     );
     expect(verifyOrganizationExportRoundtrip(withRawDate)).toBe(false);
   });
+
+  it('faalt op een `undefined`-veld (herreview PR #87, P1: JSON.stringify() en payloadHash() filteren dit allebei stilzwijgend weg, dus een kale hashvergelijking kan dit nooit vangen)', () => {
+    const withUndefinedField = validExport();
+    (withUndefinedField.teams[0] as unknown as Record<string, unknown>).corruptField = undefined;
+    expect(verifyOrganizationExportRoundtrip(withUndefinedField)).toBe(false);
+  });
+
+  it('faalt op een `undefined`-element in een array (JSON.stringify() zet dit stilzwijgend om naar `null`)', () => {
+    const withUndefinedElement = validExport();
+    (withUndefinedElement.invitations as unknown[]).push(undefined);
+    expect(verifyOrganizationExportRoundtrip(withUndefinedElement)).toBe(false);
+  });
+
+  it('faalt op een functiewaarde', () => {
+    const withFunction = validExport();
+    (withFunction.teams[0] as unknown as Record<string, unknown>).corruptField = () => 'boom';
+    expect(verifyOrganizationExportRoundtrip(withFunction)).toBe(false);
+  });
+
+  it('faalt op niet-ondersteunde numerieke waarden (NaN/Infinity)', () => {
+    const withNaN = validExport();
+    (withNaN.teams[0] as unknown as Record<string, unknown>).corruptField = NaN;
+    expect(verifyOrganizationExportRoundtrip(withNaN)).toBe(false);
+
+    const withInfinity = validExport();
+    (withInfinity.teams[0] as unknown as Record<string, unknown>).corruptField = Infinity;
+    expect(verifyOrganizationExportRoundtrip(withInfinity)).toBe(false);
+  });
+
+  it('faalt op een niet-ondersteund objecttype (Map)', () => {
+    const withMap = validExport();
+    (withMap.teams[0] as unknown as Record<string, unknown>).corruptField = new Map([['a', 1]]);
+    expect(verifyOrganizationExportRoundtrip(withMap)).toBe(false);
+  });
 });

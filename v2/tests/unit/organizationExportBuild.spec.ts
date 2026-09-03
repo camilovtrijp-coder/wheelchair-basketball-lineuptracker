@@ -3,7 +3,7 @@ import {
   buildOrganizationExport,
   type RawOrganizationExportInput,
 } from '../../src/domain/export/build';
-import { canExportOrganization } from '../../src/domain/export/types';
+import { ORGANIZATION_EXPORT_TYPE, canExportOrganization } from '../../src/domain/export/types';
 
 function baseInput(): RawOrganizationExportInput {
   return {
@@ -14,10 +14,11 @@ function baseInput(): RawOrganizationExportInput {
       createdAt: '2026-01-01T00:00:00.000Z',
     },
     organizationMembers: [
-      { uid: 'uid-owner', role: 'organizationOwner', email: 'owner@example.test' },
+      { id: 'uid-owner', uid: 'uid-owner', role: 'organizationOwner', email: 'owner@example.test' },
     ],
     invitations: [
       {
+        id: 'inv-1',
         invitationId: 'inv-1',
         email: 'invited@example.test',
         role: 'coach',
@@ -31,9 +32,15 @@ function baseInput(): RawOrganizationExportInput {
         orgName: 'ROBA',
         createdBy: 'uid-owner',
         createdAt: '2026-01-01T00:00:00.000Z',
-        teamMembers: [{ uid: 'uid-coach', role: 'coach', email: 'coach@example.test' }],
-        settings: { teamName: 'Alpha' },
-        roster: [{ id: 1, nr: '4', naam: 'Speler Een' }],
+        teamMembers: [
+          { id: 'uid-coach', uid: 'uid-coach', role: 'coach', email: 'coach@example.test' },
+        ],
+        settings: { id: 'current', teamName: 'Alpha' },
+        roster: {
+          id: 'current',
+          players: [{ id: 1, nr: '4', naam: 'Speler Een' }],
+          updatedAt: '2026-01-01T00:00:00.000Z',
+        },
         games: [
           {
             id: 'game-1',
@@ -85,9 +92,15 @@ describe('buildOrganizationExport', () => {
     });
     expect(result.allowed).toBe(true);
     if (!result.allowed) throw new Error('expected allowed export');
+    expect(result.export.type).toBe(ORGANIZATION_EXPORT_TYPE);
     expect(result.export.schemaVersion).toBe(1);
     expect(result.export.exportedAt).toBe('2026-03-01T00:00:00.000Z');
     expect(result.export.exportedBy).toBe('uid-owner');
+    expect(result.export.sourceContext).toEqual({
+      organizationId: 'org-1',
+      organizationName: 'ROBA',
+    });
+    expect(result.export.completeness).toBe('complete');
     expect(result.export.counts).toEqual({
       organizationMembers: 1,
       invitations: 1,
@@ -100,6 +113,87 @@ describe('buildOrganizationExport', () => {
       completedGames: 2,
       migrationRuns: 1,
     });
+  });
+
+  it('exporteert het volledige roster-document (players + updatedAt + id), niet alleen de kale spelerslijst', () => {
+    const result = buildOrganizationExport(baseInput(), {
+      uid: 'uid-owner',
+      role: 'organizationOwner',
+      now: '2026-03-01T00:00:00.000Z',
+    });
+    if (!result.allowed) throw new Error('expected allowed export');
+    expect(result.export.teams[0]!.roster).toEqual({
+      id: 'current',
+      players: [{ id: 1, nr: '4', naam: 'Speler Een' }],
+      updatedAt: '2026-01-01T00:00:00.000Z',
+    });
+  });
+
+  it('sorteert collectieachtige rijen canoniek op document-ID, zodat leesvolgorde de contentHash niet beïnvloedt', () => {
+    const forward = baseInput();
+    forward.organizationMembers.push({
+      id: 'uid-second',
+      uid: 'uid-second',
+      role: 'organizationAdmin',
+      email: 'second@example.test',
+    });
+    const reversed = baseInput();
+    reversed.organizationMembers = [
+      {
+        id: 'uid-second',
+        uid: 'uid-second',
+        role: 'organizationAdmin',
+        email: 'second@example.test',
+      },
+      ...reversed.organizationMembers,
+    ];
+
+    const forwardResult = buildOrganizationExport(forward, {
+      uid: 'uid-owner',
+      role: 'organizationOwner',
+      now: '2026-03-01T00:00:00.000Z',
+    });
+    const reversedResult = buildOrganizationExport(reversed, {
+      uid: 'uid-owner',
+      role: 'organizationOwner',
+      now: '2026-03-01T00:00:00.000Z',
+    });
+    if (!forwardResult.allowed || !reversedResult.allowed) {
+      throw new Error('expected allowed exports');
+    }
+    expect(forwardResult.export.contentHash).toBe(reversedResult.export.contentHash);
+    expect(forwardResult.export.organizationMembers.map((m) => m.id)).toEqual([
+      'uid-owner',
+      'uid-second',
+    ]);
+    expect(reversedResult.export.organizationMembers.map((m) => m.id)).toEqual([
+      'uid-owner',
+      'uid-second',
+    ]);
+  });
+
+  it('behoudt de domeinvolgorde van wedstrijdacties (sequence) i.p.v. op document-ID te sorteren', () => {
+    const input = baseInput();
+    input.teams[0]!.games = [
+      {
+        id: 'game-1',
+        phase: 'setup',
+        actions: [
+          { id: 'action-z', sequence: 0 },
+          { id: 'action-a', sequence: 1 },
+        ],
+      },
+    ];
+    const result = buildOrganizationExport(input, {
+      uid: 'uid-owner',
+      role: 'organizationOwner',
+      now: '2026-03-01T00:00:00.000Z',
+    });
+    if (!result.allowed) throw new Error('expected allowed export');
+    expect(result.export.teams[0]!.games[0]!.actions.map((a) => a.id)).toEqual([
+      'action-z',
+      'action-a',
+    ]);
   });
 
   it('telt settings/roster als afwezig zonder te crashen als een team ze nog niet heeft', () => {

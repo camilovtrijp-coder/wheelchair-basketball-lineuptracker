@@ -143,8 +143,11 @@ export class FirestoreOrganizationExportGateway implements OrganizationExportGat
     const rosterSnap = await getDoc(
       doc(this.db, ...teamPath, 'roster', 'current').withConverter(rosterConverter),
     );
+    // Herreview PR #87 (P1): eerder werd hier alleen `.players` bewaard,
+    // waardoor `updatedAt` en de documentidentiteit zelf stil uit de export
+    // verdwenen. Volledige document, net als `settings` hierboven.
     const roster = rosterSnap.exists()
-      ? (toJsonSafe(rosterSnap.data().players) as OrganizationExportRow[])
+      ? toExportRow('current', rosterSnap.data() as unknown as Record<string, unknown>)
       : null;
 
     const gamesSnap = await getDocs(

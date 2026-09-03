@@ -41,8 +41,16 @@ export interface OrganizationExportTeamSection {
   teamMembers: OrganizationExportRow[];
   /** `null` == er is (nog) geen `settings/current`-document. */
   settings: OrganizationExportRow | null;
-  /** `null` == er is (nog) geen `roster/current`-document. */
-  roster: OrganizationExportRow[] | null;
+  /**
+   * `null` == er is (nog) geen `roster/current`-document. Het VOLLEDIGE
+   * document (`{ id: 'current', players, updatedAt }`), net als `settings`
+   * hierboven — herreview PR #87 (P1): eerder werd hier alleen de kale
+   * `players`-array bewaard, waardoor `updatedAt` en de documentidentiteit
+   * zelf stil uit de export verdwenen (geen volledige inventaris van deze
+   * gegevensfamilie, en de latere herstelproef kon zo geen gelijkwaardig
+   * roster-document reconstrueren).
+   */
+  roster: OrganizationExportRow | null;
   /** Actieve (niet-afgeronde) `games/{gameId}`-documenten, elk met zijn eigen `actions`-subcollectie ingesloten. */
   games: (OrganizationExportRow & { actions: OrganizationExportRow[] })[];
   /** Bevat ook getombstonede (`deletedAt != null`) items — zie plan §A: tombstones horen bij de exportinventaris. */
@@ -65,10 +73,43 @@ export interface OrganizationExportSectionCounts {
 
 export type OrganizationExportDenialReason = 'roleDenied';
 
+/**
+ * Discriminator voor deze envelope — plan §C 8.3b: "versieerbare envelope
+ * met `type`, `version`, `exportedAt`, broncontext, volledigheidsstatus en
+ * aantallen per gegevensfamilie" (herreview PR #87, P1: deze drie velden
+ * ontbraken, `schemaVersion` alleen was niet genoeg om een toekomstige parser
+ * te laten vaststellen dat dit specifiek een complete organisatie-export is).
+ */
+export const ORGANIZATION_EXPORT_TYPE = 'organization-export' as const;
+export type OrganizationExportType = typeof ORGANIZATION_EXPORT_TYPE;
+
+/**
+ * Bewust nu nog een unie van precies één waarde: `buildOrganizationExport()`
+ * levert altijd óf een geweigerd resultaat (`allowed: false`, geen envelope)
+ * óf een volledige export — de gateway/coordinator falen in hun geheel bij
+ * één mislukte read (plan §C 8.3b acceptatie: "corrupte of deels onleesbare
+ * clouddata kan niet als geslaagde export eindigen"). Het veld bestaat nu al
+ * zodat een toekomstige gedeeltelijke-exportvariant hier een tweede waarde
+ * kan toevoegen zonder de envelopeshape zelf te breken.
+ */
+export type OrganizationExportCompleteness = 'complete';
+
+/** Expliciete broncontext van de export, los van `organization` hieronder
+ * (dat de org-DATA beschrijft) — plan §C 8.3b: een envelope moet zelfstandig,
+ * zonder de rest van het bestand te parsen, kunnen zeggen uit welke
+ * organisatie dit kwam. */
+export interface OrganizationExportSourceContext {
+  organizationId: string;
+  organizationName: string;
+}
+
 export interface OrganizationExportV1 {
+  type: OrganizationExportType;
   schemaVersion: 1;
   exportedAt: string;
   exportedBy: string;
+  sourceContext: OrganizationExportSourceContext;
+  completeness: OrganizationExportCompleteness;
   organization: OrganizationExportOrganizationSection;
   /** Ook ingetrokken/geclaimde uitnodigingen (plan §A) — geen statusfilter. */
   invitations: OrganizationExportRow[];
