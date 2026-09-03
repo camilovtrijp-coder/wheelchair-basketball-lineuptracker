@@ -1,7 +1,7 @@
 # Voorbereidingsplan PR 8.3 — beveiliging, privacy, kosten en beheer
 
-Status: 8.3a lokaal geïmplementeerd op `codex/pr-8.3a`, nog niet als PR
-geopend; 8.3b–8.3d blijven voorbereidingsplan. PR 8.2 is volledig gemerged
+Status: 8.3a staat open als PR #85 (`codex/pr-8.3a`); 8.3b–8.3d blijven
+voorbereidingsplan. PR 8.2 is volledig gemerged
 (8.2a #81, 8.2b #83 en 8.2c #84). Dit plan splitst roadmap-PR 8.3 in vier
 afzonderlijk reviewbare sub-PR's. Geen van deze stappen geeft op
 zichzelf toestemming voor een productiecutover, betaalde Firebase-functie,
