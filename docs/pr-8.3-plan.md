@@ -315,6 +315,54 @@ Verificatie na deze opvolging: Firebase 86/86 unit-/convertertests (was
 
 ### 8.3b — volledige organisatie-export en herstelbewijs
 
+Status: deel 1/2 (werk 1-3 hieronder) geïmplementeerd op branch
+`feature/pr-8.3b-organization-export-contract`, nog niet als PR geopend.
+Deel 2 (UI-preview van werk 4, de Emulator-e2e die twee volledige
+organisaties via de UI/coordinator doorloopt van werk 5, en de herstelproef
+van werk 6) volgt als afzonderlijke, kleinere opvolg-PR — zelfde reden als
+de 7.4a/b/c- en 8.1/8.2-sub-PR-splitsing: "vermijd één grote PR" (plan §B.1).
+
+Deel 1/2, geïmplementeerd:
+
+- `v2/src/domain/export/types.ts` — het `OrganizationExportV1`-contract en
+  `canExportOrganization()` (owner-only, een eigen, bewust smallere
+  allowlist dan `domain/migration/capability.ts`'s `canBulkMigrate()`).
+- `v2/src/domain/export/build.ts` — pure `buildOrganizationExport()`:
+  rolcheck → assemblage → aantallen → `contentHash` (hergebruikt
+  `domain/migration/fingerprint.ts`'s `payloadHash()`, geen tweede
+  hashformaat).
+- `v2/src/domain/export/roundtrip.ts` — `verifyOrganizationExportRoundtrip()`
+  bewijst dat het gebouwde object volledig JSON-veilig is vóór download.
+- `v2/src/application/export/OrganizationExportGateway.ts` (poort) en
+  `OrganizationExportCoordinator.ts` — capabilitycheck vóór elke Firestore-
+  read (niet-owners veroorzaken geen enkele read), dan lezen → bouwen →
+  roundtrip-verificatie.
+- `v2/src/infrastructure/export/FirestoreOrganizationExportGateway.ts` — leest
+  alle elf gegevensfamilies uit plan §A over ALLE teams van een organisatie;
+  hergebruikt bestaande converters, zet `Timestamp`-velden generiek om naar
+  ISO-strings (`toJsonSafe()`), faalt in zijn geheel bij één mislukte
+  read/conversie (één `try`/`catch` om de volledige methode, geen
+  gedeeltelijk resultaat).
+- Nieuwe Rules-test `firebase/tests/rules/organization-export-listing.spec.ts`:
+  bewijst dat de voor deze PR NIEUWE queryvorm — een ongefilterde
+  `getDocs(collection(...))`-listing zonder `where(...)`, anders dan de
+  bestaande uid-gefilterde collectionGroup-queries — onder de bestaande
+  Rules exact hetzelfde autorisatiegedrag geeft als een losse `getDoc()`:
+  owner mag org-/teamfamilies listen, een gewoon teamlid alleen zijn eigen
+  team, een cross-org-owner en een onbekende gebruiker niets.
+- 14 nieuwe v2-unittests (`organizationExportBuild.spec.ts`,
+  `organizationExportCoordinator.spec.ts`, `organizationExportRoundtrip.spec.ts`)
+  + 5 nieuwe Firebase Rules-tests.
+- Verificatie: v2 969/969 unit-tests (was 955), lint en typecheck groen;
+  Firebase 237/237 Emulator Rules-tests (was 232), typecheck groen.
+
+Nog niet gebouwd (deel 2, zie boven): de owner-only NL/EN-preview-UI met
+downloadactie (werk 4), de Emulator-e2e die twee volledige organisaties met
+gelijknamige teams/tombstones/invitationstatussen via de coordinator
+doorloopt (werk 5), en de herstelproef in een fictieve nieuwe doelcontext
+(werk 6). Tot deel 2 landt is er geen enkele UI-ingang naar deze export —
+alleen de pure/geteste bouwstenen bestaan.
+
 Werk:
 
 1. Definieer een versieerbaar `OrganizationExportV1`-contract in de pure
