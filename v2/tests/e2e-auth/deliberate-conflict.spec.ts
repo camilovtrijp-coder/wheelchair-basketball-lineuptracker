@@ -6,14 +6,6 @@ import {
   seedPilotTeam,
   settingsDoc,
 } from './twoDeviceFixtures';
-import { SYNC_WAIT_TIMEOUT_MS } from './gameSyncFixtures';
-
-// Drie sequentiële conditionele waits (poll + twee toHaveValue), elk tot
-// SYNC_WAIT_TIMEOUT_MS — ruim boven Playwright's standaard testtimeout
-// (30s) in het theoretische worstcasepad. Zie gameSyncFixtures.ts'
-// SYNC_WAIT_TIMEOUT_MS-docstring voor de onderbouwing van die 45s-waarde;
-// dit is geen algemene suitebrede timeoutverhoging, alleen voor deze test.
-test.setTimeout(150_000);
 
 test('5.4b: hetzelfde veld volgt zichtbaar last-write-wins zonder actie-nodig', async ({
   browser,
@@ -41,15 +33,13 @@ test('5.4b: hetzelfde veld volgt zichtbaar last-write-wins zonder actie-nodig', 
           winner = String((await settingsDoc(team).get()).data()?.teamName ?? '');
           return [alpha, beta].includes(winner);
         },
-        { timeout: SYNC_WAIT_TIMEOUT_MS },
+        { timeout: 15_000 },
       )
       .toBe(true);
 
-    await expect(page.getByTestId('settings-teamName')).toHaveValue(winner, {
-      timeout: SYNC_WAIT_TIMEOUT_MS,
-    });
+    await expect(page.getByTestId('settings-teamName')).toHaveValue(winner, { timeout: 15_000 });
     await expect(second.page.getByTestId('settings-teamName')).toHaveValue(winner, {
-      timeout: SYNC_WAIT_TIMEOUT_MS,
+      timeout: 15_000,
     });
     await expect(page.getByTestId('settings-last-modified')).toBeVisible();
     await expect(second.page.getByTestId('settings-last-modified')).toBeVisible();

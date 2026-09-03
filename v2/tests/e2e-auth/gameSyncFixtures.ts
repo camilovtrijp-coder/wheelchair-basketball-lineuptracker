@@ -83,24 +83,16 @@ export async function startTrackedGame(page: Page): Promise<void> {
  * de completedGames-e2e-specs ontwijken 'm hier door dezelfde
  * wacht-tussen-acties-conventie als de rest van de suite te volgen i.p.v.
  * 'm te fixen.
- *
- * `timeoutMs` (default ongewijzigd 20s) laat individuele callers bewust een
- * ruimer budget opgeven (bijv. `SYNC_WAIT_TIMEOUT_MS`) zonder de andere vier
- * bestaande callers van deze helper te raken — zie
- * `game-sync-second-client-tombstone.spec.ts`, waar deze twee sequentiële
- * waits (score-acties + segment-afronding) tot dezelfde klasse
- * gatewaytijdgebrek bleken te horen als de drie oorspronkelijk bedoelde
- * specs (herreview PR #88, herstel na P2-fix).
  */
-export async function finishGameWithOneSegment(page: Page, timeoutMs = 20_000): Promise<void> {
+export async function finishGameWithOneSegment(page: Page): Promise<void> {
   await page.getByTestId('score-plus3-for').click();
   await page.getByTestId('score-plus1-against').click();
-  await waitForGameSyncStatus(page, 'gesynchroniseerd', timeoutMs);
+  await waitForGameSyncStatus(page, 'gesynchroniseerd');
 
   await page.getByTestId('end-min').selectOption('5');
   await page.getByTestId('save-segment-btn').click();
   await expect(page.locator('[data-testid^="segment-item-"]')).toHaveCount(1);
-  await waitForGameSyncStatus(page, 'gesynchroniseerd', timeoutMs);
+  await waitForGameSyncStatus(page, 'gesynchroniseerd');
 
   await expect(page.getByTestId('finish-game-btn')).toBeEnabled();
   page.once('dialog', (dialog) => dialog.accept());
@@ -187,39 +179,6 @@ export async function readLocalActionIds(page: Page, team: PilotTeam): Promise<s
 }
 
 /**
- * Gedeelde conditionele-waittimeout voor realtime synccyclusconvergentie —
- * uitsluitend voor aanroepen die 'm EXPLICIET doorgeven (zie de callsites in
- * `deliberate-conflict.spec.ts` en `game-sync-second-client-tombstone.spec.ts`).
- * Bewust GEEN default van `waitForGameSyncStatus()` hieronder: die helper
- * wordt zonder expliciete timeout aangeroepen door tientallen callsites in
- * negen andere specbestanden, en dit budget alleen daar verruimen zou ook
- * niet-gerichte failures in die bestanden voortaan 45s laten duren (herreview
- * PR #88, P2). Test-stabilisatie, geen wijziging aan productiegedrag:
- * `FirestoreGameCloudGateway`'s eigen `DEFAULT_TIMEOUT_MS` (8s
- * productietimeout per gatewayoperatie) blijft ongewijzigd.
- *
- * Waarom 45s en niet het vorige 20s (resp. 15s in deliberate-conflict): één
- * "gesynchroniseerd"-cyclus met minstens één onbevestigde actie doorloopt
- * `GameSyncCoordinator.sync()` sequentieel `ensureGame()` → (optioneel)
- * `claimWriter()` → `uploadActions()` → `patchSnapshot()` — tot vier aparte
- * gatewayoperaties, elk met een eigen maximale productietimeout van 8s. Bij
- * normale emulatorlatency duurt dit een fractie van een seconde per stap,
- * maar op een tragere/drukke CI-runner kan elke stap een aanzienlijk deel van
- * zijn eigen 8s-budget gebruiken zonder dat er iets kapot is. 45s is een
- * gekozen testbudget met ruime marge boven dat ~32s-pad (4 × 8s) — GEEN
- * bewezen theoretische bovengrens (`uploadActions()` kan bij meerdere
- * pending acties sequentieel meer dan één gatewayoperatie doen; herreview
- * PR #88, P2).
- *
- * Dit budget lost alleen tíjdgebrek op (te weinig marge boven een traag maar
- * wél nog voltooiend gatewaypad). Het lost NIET een terminale status op
- * waarvoor geen verdere trigger meer bestaat — zie
- * `game-sync-offline-reconnect.spec.ts`'s docstring bij de reconnect-wait
- * voor dat aparte, bewust ONgewijzigde geval.
- */
-export const SYNC_WAIT_TIMEOUT_MS = 45_000;
-
-/**
  * Puur, geen Playwright-afhankelijkheid — losstaand testbaar
  * (`v2/tests/unit/gameSyncWaitDiagnostics.spec.ts`). Bevat uitsluitend
  * technische, privacyveilige velden (verwachte/actuele statuscode,
@@ -250,15 +209,14 @@ export function formatGameSyncWaitTimeoutMessage(params: {
  * geïsoleerd). Fase 1 vangt daarom eerst (best-effort, kort) de
  * overgangstoestand 'wacht-op-synchronisatie' af — bewijst dat er
  * daadwerkelijk een NIEUWE cyclus gestart is — vóórdat op het einddoel
- * gewacht wordt. Fase 2's timeout is bewust ruimer (`SYNC_WAIT_TIMEOUT_MS`,
- * zie daar) dan fase 1's korte best-effort-venster: fase 1 mag missen, fase 2
- * is het daadwerkelijke testdoel.
+ * gewacht wordt.
  *
- * Bij een timeout op fase 2 rapporteert de foutmelding de verwachte status,
- * de daadwerkelijke `data-status` en `navigator.onLine` — genoeg om te zien
- * of de cyclus nooit begon (status ongewijzigd t.o.v. vóór de actie), bleef
- * hangen (`wacht-op-synchronisatie`), `actie-nodig` werd, of überhaupt geen
- * indicator vond — zonder ooit speler-, team- of organisatiedata te loggen.
+ * Bij een timeout op het einddoel rapporteert de foutmelding de verwachte
+ * status, de daadwerkelijke `data-status` en `navigator.onLine` — genoeg om
+ * te zien of de cyclus nooit begon, bleef hangen op
+ * `wacht-op-synchronisatie`, `actie-nodig` werd, of geen indicator vond —
+ * zonder ooit speler-, team- of organisatiedata te loggen (herreview PR #88:
+ * de kale Playwright-timeout hiervoor gaf geen van die signalen).
  */
 export async function waitForGameSyncStatus(
   page: Page,

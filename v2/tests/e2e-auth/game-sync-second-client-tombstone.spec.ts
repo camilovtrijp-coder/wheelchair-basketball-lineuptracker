@@ -16,7 +16,6 @@ import {
   seedPilotTeam,
 } from './twoDeviceFixtures';
 import {
-  SYNC_WAIT_TIMEOUT_MS,
   finishGameWithOneSegment,
   readCompletedGameId,
   readLocalCompletedGameIds,
@@ -24,13 +23,6 @@ import {
   startTrackedGame,
 } from './gameSyncFixtures';
 import { adminDb } from './adminFixtures';
-
-// Meerdere sequentiële conditionele waits (finishGameWithOneSegment() intern,
-// plus history-sync-status/-back-btn/-empty/-tombstone-notice hieronder),
-// elk tot SYNC_WAIT_TIMEOUT_MS (45s) in het worstcasepad — zie
-// gameSyncFixtures.ts voor de onderbouwing. Alleen deze twee tests krijgen de
-// ruimere testtimeout, geen suitebrede wijziging.
-test.setTimeout(300_000);
 
 test('apparaat A verwijdert (tombstone) een afgeronde wedstrijd; apparaat B ziet het item nooit, server-kant bevestigt deletedAt/deletedBy en behoudt de bevroren inhoud', async ({
   browser,
@@ -42,14 +34,14 @@ test('apparaat A verwijdert (tombstone) een afgeronde wedstrijd; apparaat B ziet
 
   await openPilotTeam(page, team);
   await startTrackedGame(page);
-  await finishGameWithOneSegment(page, SYNC_WAIT_TIMEOUT_MS);
+  await finishGameWithOneSegment(page);
 
   const completedId = await readCompletedGameId(page, team.orgId, team.teamId);
 
   await expect(page.getByTestId(`history-sync-status-${completedId}`)).toHaveAttribute(
     'data-status',
     'gesynchroniseerd',
-    { timeout: SYNC_WAIT_TIMEOUT_MS },
+    { timeout: 20_000 },
   );
 
   // 'Afronden' laat het net afgeronde item al open staan — de detailweergave
@@ -62,9 +54,7 @@ test('apparaat A verwijdert (tombstone) een afgeronde wedstrijd; apparaat B ziet
   // lijst (terug naar de lijstweergave, geen 'geen wedstrijden' nog niet
   // — de tombstone-patch zelf is de server-round-trip, geen losse readback
   // nodig, zie `CompositeCompletedGameRepository.tombstone()`).
-  await expect(page.getByTestId('history-back-btn')).toHaveCount(0, {
-    timeout: SYNC_WAIT_TIMEOUT_MS,
-  });
+  await expect(page.getByTestId('history-back-btn')).toHaveCount(0, { timeout: 20_000 });
   await expect(page.getByTestId(`history-item-${completedId}`)).toHaveCount(0);
 
   // Serverkant, rechtstreeks via Admin SDK (buiten Rules/UI om): tombstone
@@ -90,9 +80,7 @@ test('apparaat A verwijdert (tombstone) een afgeronde wedstrijd; apparaat B ziet
   const second = await openSecondDevice(browser, identity, team);
   try {
     await second.page.getByTestId('nav-history').click();
-    await expect(second.page.getByTestId('history-empty')).toBeVisible({
-      timeout: SYNC_WAIT_TIMEOUT_MS,
-    });
+    await expect(second.page.getByTestId('history-empty')).toBeVisible({ timeout: 20_000 });
     await expect(second.page.getByTestId(`history-item-${completedId}`)).toHaveCount(0);
   } finally {
     await second.context.close();
@@ -120,13 +108,13 @@ test("apparaat A (offline, had de wedstrijd al lokaal) leert bij reconnect dat a
 
   await openPilotTeam(page, team);
   await startTrackedGame(page);
-  await finishGameWithOneSegment(page, SYNC_WAIT_TIMEOUT_MS);
+  await finishGameWithOneSegment(page);
   const completedId = await readCompletedGameId(page, team.orgId, team.teamId);
 
   await expect(page.getByTestId(`history-sync-status-${completedId}`)).toHaveAttribute(
     'data-status',
     'gesynchroniseerd',
-    { timeout: SYNC_WAIT_TIMEOUT_MS },
+    { timeout: 20_000 },
   );
   await expect(await readLocalCompletedGameIds(page, team.orgId, team.teamId)).toContain(
     completedId,
@@ -145,7 +133,7 @@ test("apparaat A (offline, had de wedstrijd al lokaal) leert bij reconnect dat a
     second.page.once('dialog', (dialog) => dialog.accept());
     await second.page.getByTestId('history-delete-btn').click();
     await expect(second.page.getByTestId('history-back-btn')).toHaveCount(0, {
-      timeout: SYNC_WAIT_TIMEOUT_MS,
+      timeout: 20_000,
     });
   } finally {
     await second.context.close();
@@ -160,9 +148,7 @@ test("apparaat A (offline, had de wedstrijd al lokaal) leert bij reconnect dat a
   // (1) Niet stil: de banner verschijnt en verklaart WAAROM (taal-
   // onafhankelijk gecontroleerd — de standaard browserlocale in deze suite
   // is en-US, zie `i18n/detect.ts`, dus de gerenderde tekst is Engels).
-  await expect(page.getByTestId('history-tombstone-notice')).toBeVisible({
-    timeout: SYNC_WAIT_TIMEOUT_MS,
-  });
+  await expect(page.getByTestId('history-tombstone-notice')).toBeVisible({ timeout: 20_000 });
   await expect(page.getByTestId('history-tombstone-notice')).toContainText('deleted by a teammate');
 
   // (2) Geen resurrectie: het item verdwijnt uit de zichtbare lijst.
