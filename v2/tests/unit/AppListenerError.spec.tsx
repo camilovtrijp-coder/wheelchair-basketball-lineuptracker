@@ -7,7 +7,7 @@
 // mock-repositories in plaats van een e2e tegen de Firestore-emulator — het
 // forceren van een `onError` na de eerste emit is tegen de emulator moeilijk
 // betrouwbaar te reproduseren, terwijl de state-machine hier zuiver te testen is.
-import { describe, it, expect, vi, afterEach } from 'vitest';
+import { describe, it, expect, vi, afterEach, beforeEach } from 'vitest';
 import { render, waitFor, act, cleanup } from '@testing-library/preact';
 import { App } from '../../src/app/App';
 import type { AsyncSettingsRepository } from '../../src/application/settings/AsyncSettingsRepository';
@@ -16,12 +16,17 @@ import type { SyncStatusApi } from '../../src/application/sync/useSyncStatus';
 import { DEFAULT_SETTINGS, type Settings } from '../../src/domain/settings/types';
 import type { Roster } from '../../src/domain/roster/types';
 import type { SyncState } from '../../src/domain/syncState';
+import { diagnostics } from '../../src/infrastructure/diagnostics/diagnostics';
 
 // Zonder expliciete cleanup blijft de DOM van een eerdere test in dit bestand
 // staan (zie ActionNeededPanel/CloudImportBanner/SyncStatusIndicator-specs
 // voor hetzelfde patroon) — cruciaal hier omdat beide tests dezelfde
 // data-testid (`listener-error-indicator`) gebruiken.
-afterEach(() => cleanup());
+beforeEach(() => diagnostics.clear());
+afterEach(() => {
+  cleanup();
+  diagnostics.clear();
+});
 
 const SYNCED: SyncState = { status: 'gesynchroniseerd', fromCache: false, hasPendingWrites: false };
 
@@ -176,6 +181,10 @@ describe('app/App — listener-fout-detectie na initiële load (PR 5.4a)', () =>
     });
     expect(queryByTestId('listener-error-indicator')).toBeTruthy();
     expect(queryByTestId('listener-error-indicator')?.textContent).toMatch(/cloud/i);
+    expect(diagnostics.snapshot()).toEqual([
+      expect.objectContaining({ area: 'settings', code: 'settings-listener-failed' }),
+    ]);
+    expect(JSON.stringify(diagnostics.snapshot())).not.toContain('cloud-verbinding weg');
 
     // Listener hervat: indicator verdwijnt.
     act(() => {

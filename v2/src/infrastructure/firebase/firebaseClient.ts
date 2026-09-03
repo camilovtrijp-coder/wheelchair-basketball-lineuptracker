@@ -16,16 +16,20 @@ import {
   type FirestoreLocalCache,
 } from 'firebase/firestore';
 import { connectAuthEmulator, getAuth, type Auth } from 'firebase/auth';
+import { initializeAppCheck, ReCaptchaEnterpriseProvider, type AppCheck } from 'firebase/app-check';
 import {
+  resolveAppCheckConfig,
   resolveDeployContext,
   resolveEmulatorConfig,
   resolveWebConfig,
   type DeployContext,
 } from './webConfig';
+import { diagnostics } from '../diagnostics/diagnostics';
 
 let app: FirebaseApp | undefined;
 let db: Firestore | undefined;
 let auth: Auth | undefined;
+let appCheck: AppCheck | undefined;
 // Gezet vóór ensureApp()/createFirestore() in initFirebase(), dus altijd al
 // bekend als die later alsnog gooien (bijv. ontbrekende staging-env-var) —
 // reinitFirestoreForTrustLevel() bewaakt zich in dat geval al via `!db`.
@@ -47,6 +51,25 @@ function ensureApp(context: DeployContext): FirebaseApp {
   if (app) return app;
   app = initializeApp(resolveWebConfig(context));
   return app;
+}
+
+function ensureAppCheck(firebaseApp: FirebaseApp, context: DeployContext): void {
+  if (appCheck) return;
+  const config = resolveAppCheckConfig(context);
+  if (!config.enabled || !config.recaptchaEnterpriseSiteKey) return;
+
+  try {
+    appCheck = initializeAppCheck(firebaseApp, {
+      provider: new ReCaptchaEnterpriseProvider(config.recaptchaEnterpriseSiteKey),
+      isTokenAutoRefreshEnabled: true,
+    });
+    diagnostics.record({ area: 'firebase', code: 'app-check-monitoring-enabled' });
+  } catch {
+    // Monitor-only: een initialisatiefout mag de offline-first app nog niet
+    // blokkeren zolang enforcement bewust uitstaat. Alleen een vaste,
+    // privacyveilige code bewaren; nooit het ruwe SDK-errorobject.
+    diagnostics.record({ area: 'firebase', code: 'app-check-initialization-failed' });
+  }
 }
 
 function createFirestore(
@@ -80,6 +103,7 @@ export function initFirebase(
   activeContext = context;
 
   const firebaseApp = ensureApp(context);
+  ensureAppCheck(firebaseApp, context);
   db = createFirestore(firebaseApp, trusted, context);
 
   auth = getAuth(firebaseApp);

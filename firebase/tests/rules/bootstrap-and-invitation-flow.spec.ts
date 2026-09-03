@@ -8,7 +8,7 @@
 // - herclaim na intrekking (replay) blijft geblokkeerd.
 
 import { beforeAll, afterAll, beforeEach, describe, it } from 'vitest';
-import { doc, setDoc, updateDoc, deleteDoc, writeBatch } from 'firebase/firestore';
+import { doc, setDoc, updateDoc, deleteDoc, writeBatch, serverTimestamp } from 'firebase/firestore';
 import type { RulesTestEnvironment } from '@firebase/rules-unit-testing';
 import { createTestEnv, assertSucceeds, assertFails, authCtx, withAdmin } from './helpers/testEnv.js';
 import { ORG_A, USERS } from './helpers/fixtures.js';
@@ -64,7 +64,11 @@ describe('bootstrap: eerste organisatie/team zelf aanmaken', () => {
   it('een nieuwe gebruiker kan zelf een organisatie en eigen owner-membership aanmaken', async () => {
     const db = authCtx(env, USERS.grace.uid, { email: USERS.grace.email, email_verified: true });
     const newOrg = 'org-grace-nieuw';
-    await assertSucceeds(setDoc(doc(db, 'organizations', newOrg), { name: 'Graces Org', createdBy: USERS.grace.uid }));
+    await assertSucceeds(setDoc(doc(db, 'organizations', newOrg), {
+      name: 'Graces Org',
+      createdBy: USERS.grace.uid,
+      createdAt: serverTimestamp(),
+    }));
     await assertSucceeds(
       setDoc(doc(db, 'organizations', newOrg, 'organizationMembers', USERS.grace.uid), {
         role: 'organizationOwner',
