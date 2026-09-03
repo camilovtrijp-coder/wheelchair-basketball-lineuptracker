@@ -49,6 +49,7 @@ export const FIRESTORE_CLIENT_GATEWAY_FILES = [
   "../v2/src/infrastructure/migration/FirestoreCloudMigrationRunGateway.ts",
   "../v2/src/infrastructure/migration/FirestoreCloudMigrationInventoryGateway.ts",
   "../v2/src/infrastructure/migration/FirestoreMigrationWriteGateway.ts",
+  "../v2/src/infrastructure/export/FirestoreOrganizationExportGateway.ts",
 ] as const;
 
 const orgRoles: MatrixActor[] = [
@@ -104,7 +105,10 @@ export const FIRESTORE_ACCESS_MATRIX: readonly FirestoreAccessMatrixEntry[] = [
       "tests/rules/membership-and-roles.spec.ts",
       "tests/rules/parent-document-hardening.spec.ts",
     ],
-    clientSources: [FIRESTORE_CLIENT_GATEWAY_FILES[0]],
+    clientSources: [
+      FIRESTORE_CLIENT_GATEWAY_FILES[0],
+      FIRESTORE_CLIENT_GATEWAY_FILES[8],
+    ],
     converterSources: ["organizationConverter"],
   },
   {
@@ -129,7 +133,10 @@ export const FIRESTORE_ACCESS_MATRIX: readonly FirestoreAccessMatrixEntry[] = [
       "tests/rules/membership-and-roles.spec.ts",
       "tests/rules/self-promotion.spec.ts",
     ],
-    clientSources: [FIRESTORE_CLIENT_GATEWAY_FILES[0]],
+    clientSources: [
+      FIRESTORE_CLIENT_GATEWAY_FILES[0],
+      FIRESTORE_CLIENT_GATEWAY_FILES[8],
+    ],
     converterSources: ["organizationMemberConverter"],
   },
   {
@@ -148,7 +155,10 @@ export const FIRESTORE_ACCESS_MATRIX: readonly FirestoreAccessMatrixEntry[] = [
       "tests/rules/bootstrap-and-invitation-flow.spec.ts",
       "tests/rules/membership-and-roles.spec.ts",
     ],
-    clientSources: [FIRESTORE_CLIENT_GATEWAY_FILES[0]],
+    clientSources: [
+      FIRESTORE_CLIENT_GATEWAY_FILES[0],
+      FIRESTORE_CLIENT_GATEWAY_FILES[8],
+    ],
     converterSources: ["invitationConverter"],
   },
   {
@@ -169,7 +179,10 @@ export const FIRESTORE_ACCESS_MATRIX: readonly FirestoreAccessMatrixEntry[] = [
       "tests/rules/team-context-switcher-query.spec.ts",
       "tests/rules/parent-document-hardening.spec.ts",
     ],
-    clientSources: [FIRESTORE_CLIENT_GATEWAY_FILES[0]],
+    clientSources: [
+      FIRESTORE_CLIENT_GATEWAY_FILES[0],
+      FIRESTORE_CLIENT_GATEWAY_FILES[8],
+    ],
     converterSources: ["teamConverter"],
   },
   {
@@ -195,7 +208,10 @@ export const FIRESTORE_ACCESS_MATRIX: readonly FirestoreAccessMatrixEntry[] = [
       "tests/rules/team-context-switcher-query.spec.ts",
       "tests/rules/membership-and-roles.spec.ts",
     ],
-    clientSources: [FIRESTORE_CLIENT_GATEWAY_FILES[0]],
+    clientSources: [
+      FIRESTORE_CLIENT_GATEWAY_FILES[0],
+      FIRESTORE_CLIENT_GATEWAY_FILES[8],
+    ],
     converterSources: ["teamMemberConverter"],
   },
   {
@@ -218,6 +234,7 @@ export const FIRESTORE_ACCESS_MATRIX: readonly FirestoreAccessMatrixEntry[] = [
     clientSources: [
       FIRESTORE_CLIENT_GATEWAY_FILES[1],
       FIRESTORE_CLIENT_GATEWAY_FILES[6],
+      FIRESTORE_CLIENT_GATEWAY_FILES[8],
     ],
     converterSources: ["settingsConverter"],
   },
@@ -241,6 +258,7 @@ export const FIRESTORE_ACCESS_MATRIX: readonly FirestoreAccessMatrixEntry[] = [
     clientSources: [
       FIRESTORE_CLIENT_GATEWAY_FILES[2],
       FIRESTORE_CLIENT_GATEWAY_FILES[6],
+      FIRESTORE_CLIENT_GATEWAY_FILES[8],
     ],
     converterSources: ["rosterConverter"],
   },
@@ -264,6 +282,7 @@ export const FIRESTORE_ACCESS_MATRIX: readonly FirestoreAccessMatrixEntry[] = [
     clientSources: [
       FIRESTORE_CLIENT_GATEWAY_FILES[3],
       FIRESTORE_CLIENT_GATEWAY_FILES[6],
+      FIRESTORE_CLIENT_GATEWAY_FILES[8],
     ],
     converterSources: ["gameConverter"],
   },
@@ -283,7 +302,10 @@ export const FIRESTORE_ACCESS_MATRIX: readonly FirestoreAccessMatrixEntry[] = [
       "tests/rules/games-and-actions.spec.ts",
       "tests/rules/cross-org-isolation.spec.ts",
     ],
-    clientSources: [FIRESTORE_CLIENT_GATEWAY_FILES[3]],
+    clientSources: [
+      FIRESTORE_CLIENT_GATEWAY_FILES[3],
+      FIRESTORE_CLIENT_GATEWAY_FILES[8],
+    ],
     converterSources: ["gameActionConverter"],
   },
   {
@@ -308,6 +330,7 @@ export const FIRESTORE_ACCESS_MATRIX: readonly FirestoreAccessMatrixEntry[] = [
       FIRESTORE_CLIENT_GATEWAY_FILES[4],
       FIRESTORE_CLIENT_GATEWAY_FILES[6],
       FIRESTORE_CLIENT_GATEWAY_FILES[7],
+      FIRESTORE_CLIENT_GATEWAY_FILES[8],
     ],
     converterSources: ["completedGameConverter"],
   },
@@ -330,7 +353,10 @@ export const FIRESTORE_ACCESS_MATRIX: readonly FirestoreAccessMatrixEntry[] = [
       "tests/rules/migration-runs.spec.ts",
       "tests/rules/cross-org-isolation.spec.ts",
     ],
-    clientSources: [FIRESTORE_CLIENT_GATEWAY_FILES[5]],
+    clientSources: [
+      FIRESTORE_CLIENT_GATEWAY_FILES[5],
+      FIRESTORE_CLIENT_GATEWAY_FILES[8],
+    ],
     converterSources: [],
   },
   {
