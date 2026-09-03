@@ -42,7 +42,7 @@ test('apparaat A verwijdert (tombstone) een afgeronde wedstrijd; apparaat B ziet
 
   await openPilotTeam(page, team);
   await startTrackedGame(page);
-  await finishGameWithOneSegment(page);
+  await finishGameWithOneSegment(page, SYNC_WAIT_TIMEOUT_MS);
 
   const completedId = await readCompletedGameId(page, team.orgId, team.teamId);
 
@@ -120,7 +120,7 @@ test("apparaat A (offline, had de wedstrijd al lokaal) leert bij reconnect dat a
 
   await openPilotTeam(page, team);
   await startTrackedGame(page);
-  await finishGameWithOneSegment(page);
+  await finishGameWithOneSegment(page, SYNC_WAIT_TIMEOUT_MS);
   const completedId = await readCompletedGameId(page, team.orgId, team.teamId);
 
   await expect(page.getByTestId(`history-sync-status-${completedId}`)).toHaveAttribute(
