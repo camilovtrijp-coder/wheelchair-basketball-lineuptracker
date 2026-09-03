@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { readFileSync, existsSync, readdirSync } from "node:fs";
-import { resolve, dirname, join } from "node:path";
+import { resolve, dirname, join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
   FIRESTORE_ACCESS_MATRIX,
@@ -35,6 +35,22 @@ function discoverRuleMatches(rulesSource: string): string[] {
 }
 
 /**
+ * Zet een OS-specifiek relatief pad (`path.relative()`-uitvoer, met
+ * backslashes op Windows) om naar de platformonafhankelijke forward-slash-
+ * vorm die de matrix gebruikt. Vervangt backslashes expliciet i.p.v. te
+ * splitsen op `path.sep` — `path.sep` is op Linux/macOS zelf al `/`, dus een
+ * `sep`-gebaseerde split zou op die platforms een letterlijk Windows-pad
+ * (backslashes) ongewijzigd laten en het onderstaande regressiebewijs een
+ * no-op maken. Losse functie zodat een test op Linux-CI ook het
+ * Windows-padscenario kan bewijzen zonder een echte Windows-checkout nodig
+ * te hebben (P1-herreview op PR #85: de vaste-prefix-plus-`slice()`-aanpak
+ * liet Windows-backslashes onvertaald staan).
+ */
+export function toMatrixRelativePath(osRelativePath: string): string {
+  return osRelativePath.split("\\").join("/");
+}
+
+/**
  * Elk `.ts`-bestand onder `v2/src/infrastructure` (converterbestanden en
  * tests uitgezonderd) dat rechtstreeks een Firestore-pad opbouwt via
  * `doc(`/`collection(`/`collectionGroup(`. Dit ontdekt de daadwerkelijke
@@ -61,7 +77,7 @@ function discoverFirestorePathBuilderFiles(): string[] {
       const content = readFileSync(fullPath, "utf8");
       if (directPathBuilderPattern.test(content)) {
         found.push(
-          `../v2/src/infrastructure/${fullPath.slice(infraRoot.length + 1)}`,
+          `../v2/src/infrastructure/${toMatrixRelativePath(relative(infraRoot, fullPath))}`,
         );
       }
     }
@@ -153,6 +169,18 @@ describe("PR 8.3a Firestore access matrix", () => {
     expect([...matrixRuleMatches].sort()).toEqual(
       [...discoveredRuleMatches].sort(),
     );
+  });
+
+  it("normaliseert Windows-padscheidingstekens naar de forward-slash-vorm die de matrix gebruikt", () => {
+    // Simuleert path.relative()'s Windows-uitvoer (backslashes) op elk platform
+    // waar deze suite draait, inclusief Linux-CI — bewijst dat de discovery
+    // ook op een Windows-checkout dezelfde paden oplevert als in de matrix.
+    expect(
+      toMatrixRelativePath("game\\FirestoreCompletedGameRepository.ts"),
+    ).toBe("game/FirestoreCompletedGameRepository.ts");
+    expect(
+      toMatrixRelativePath("organizations/FirestoreOrganizationGateway.ts"),
+    ).toBe("organizations/FirestoreOrganizationGateway.ts");
   });
 
   it("houdt FIRESTORE_CLIENT_GATEWAY_FILES gelijk aan de daadwerkelijke direct-Firestore-padbouwende bronbestanden", () => {
