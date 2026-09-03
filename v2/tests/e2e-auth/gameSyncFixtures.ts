@@ -179,6 +179,47 @@ export async function readLocalActionIds(page: Page, team: PilotTeam): Promise<s
 }
 
 /**
+ * Gedeelde conditionele-waittimeout voor realtime synccyclusconvergentie
+ * (`waitForGameSyncStatus()` hieronder, en elders waar dezelfde klasse
+ * server-roundtrip wordt afgewacht — bijv. `deliberate-conflict.spec.ts`'s
+ * last-write-wins-convergentie). Test-stabilisatie, geen wijziging aan
+ * productiegedrag: `FirestoreGameCloudGateway`'s eigen `DEFAULT_TIMEOUT_MS`
+ * (8s productietimeout per gatewayoperatie) blijft ongewijzigd.
+ *
+ * Waarom 45s en niet het vorige 20s (resp. 15s in deliberate-conflict): één
+ * "gesynchroniseerd"-cyclus na reconnect met minstens één onbevestigde actie
+ * doorloopt `GameSyncCoordinator.sync()` sequentieel `ensureGame()` →
+ * (optioneel) `claimWriter()` → `uploadActions()` → `patchSnapshot()` — tot
+ * vier aparte gatewayoperaties, elk met een eigen maximale productietimeout
+ * van 8s. Bij normale emulatorlatency duurt dit een fractie van een seconde
+ * per stap, maar op een tragere/drukke CI-runner kan elke stap een aanzienlijk
+ * deel van zijn eigen 8s-budget gebruiken zonder dat er iets kapot is — vier
+ * stappen à een paar seconden extra wachttijd loopt het oude 20s-budget dan
+ * voorbij. 45s geeft ruim marge boven het theoretische ~32s-worstcase-pad
+ * (4 × 8s) zonder onbeperkt te wachten.
+ */
+export const SYNC_WAIT_TIMEOUT_MS = 45_000;
+
+/**
+ * Puur, geen Playwright-afhankelijkheid — losstaand testbaar
+ * (`v2/tests/unit/gameSyncWaitDiagnostics.spec.ts`). Bevat uitsluitend
+ * technische, privacyveilige velden (verwachte/actuele statuscode,
+ * connectiviteit, timeoutwaarde) — nooit speler-, team- of organisatiedata.
+ */
+export function formatGameSyncWaitTimeoutMessage(params: {
+  expectedStatus: string;
+  actualStatus: string | null;
+  onLine: boolean;
+  timeoutMs: number;
+}): string {
+  const { expectedStatus, actualStatus, onLine, timeoutMs } = params;
+  return (
+    `waitForGameSyncStatus: status bleef "${actualStatus ?? '(geen sync-status-indicator gevonden)'}" ` +
+    `i.p.v. de verwachte "${expectedStatus}" na ${timeoutMs}ms (navigator.onLine=${onLine}).`
+  );
+}
+
+/**
  * Wacht tot de sync-statusindicator `status` toont — maar NIET via één kale
  * gelijkheidscheck. `App.tsx`'s `runGameSync()` zet de indicator pas op
  * 'wacht-op-synchronisatie' zodra het `useEffect` ná de React-commit vuurt —
@@ -190,12 +231,20 @@ export async function readLocalActionIds(page: Page, team: PilotTeam): Promise<s
  * geïsoleerd). Fase 1 vangt daarom eerst (best-effort, kort) de
  * overgangstoestand 'wacht-op-synchronisatie' af — bewijst dat er
  * daadwerkelijk een NIEUWE cyclus gestart is — vóórdat op het einddoel
- * gewacht wordt.
+ * gewacht wordt. Fase 2's timeout is bewust ruimer (`SYNC_WAIT_TIMEOUT_MS`,
+ * zie daar) dan fase 1's korte best-effort-venster: fase 1 mag missen, fase 2
+ * is het daadwerkelijke testdoel.
+ *
+ * Bij een timeout op fase 2 rapporteert de foutmelding de verwachte status,
+ * de daadwerkelijke `data-status` en `navigator.onLine` — genoeg om te zien
+ * of de cyclus nooit begon (status ongewijzigd t.o.v. vóór de actie), bleef
+ * hangen (`wacht-op-synchronisatie`), `actie-nodig` werd, of überhaupt geen
+ * indicator vond — zonder ooit speler-, team- of organisatiedata te loggen.
  */
 export async function waitForGameSyncStatus(
   page: Page,
   status: string,
-  timeoutMs = 20_000,
+  timeoutMs = SYNC_WAIT_TIMEOUT_MS,
 ): Promise<void> {
   if (status !== 'wacht-op-synchronisatie') {
     await page
@@ -214,12 +263,31 @@ export async function waitForGameSyncStatus(
       });
   }
 
-  await page.waitForFunction(
-    ({ testId, expected }) => {
-      const el = document.querySelector(`[data-testid="${testId}"]`);
-      return el?.getAttribute('data-status') === expected;
-    },
-    { testId: 'game-sync-status-indicator', expected: status },
-    { timeout: timeoutMs },
-  );
+  try {
+    await page.waitForFunction(
+      ({ testId, expected }) => {
+        const el = document.querySelector(`[data-testid="${testId}"]`);
+        return el?.getAttribute('data-status') === expected;
+      },
+      { testId: 'game-sync-status-indicator', expected: status },
+      { timeout: timeoutMs },
+    );
+  } catch (error) {
+    const diagnostic = await page.evaluate(
+      ({ testId }) => {
+        const el = document.querySelector(`[data-testid="${testId}"]`);
+        return { actualStatus: el?.getAttribute('data-status') ?? null, onLine: navigator.onLine };
+      },
+      { testId: 'game-sync-status-indicator' },
+    );
+    throw new Error(
+      formatGameSyncWaitTimeoutMessage({
+        expectedStatus: status,
+        actualStatus: diagnostic.actualStatus,
+        onLine: diagnostic.onLine,
+        timeoutMs,
+      }),
+      { cause: error },
+    );
+  }
 }

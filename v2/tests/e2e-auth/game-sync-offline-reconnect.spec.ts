@@ -14,7 +14,10 @@ import {
   waitForGameSyncStatus,
 } from './gameSyncFixtures';
 
-test.setTimeout(90_000);
+// Vier waitForGameSyncStatus()-aanroepen, elk (nu) tot SYNC_WAIT_TIMEOUT_MS
+// (45s) in het worstcasepad — zie gameSyncFixtures.ts voor de onderbouwing.
+// Alleen deze test krijgt de ruimere testtimeout, geen suitebrede wijziging.
+test.setTimeout(240_000);
 
 test('een offline actie blijft lokaal, komt pas na reconnect door en nooit dubbel', async ({
   page,
@@ -37,7 +40,7 @@ test('een offline actie blijft lokaal, komt pas na reconnect door en nooit dubbe
   // Lokaal blijft de score meteen zichtbaar (optimistisch, ongeacht sync).
   await expect(page.getByTestId('score-select-for')).toHaveValue('3');
   // De sync-poging loopt vast (timeout op de gateway, ADR-002 "Actie nodig").
-  await waitForGameSyncStatus(page, 'actie-nodig', 20_000);
+  await waitForGameSyncStatus(page, 'actie-nodig');
 
   // De actie bestaat nog niet op de server terwijl we offline zijn.
   const whileOffline = await gameActionsCollection(team, gameId).get();
@@ -45,7 +48,7 @@ test('een offline actie blijft lokaal, komt pas na reconnect door en nooit dubbe
 
   await page.context().setOffline(false);
   // Reconnect-trigger (window 'online') moet vanzelf een nieuwe poging starten.
-  await waitForGameSyncStatus(page, 'gesynchroniseerd', 20_000);
+  await waitForGameSyncStatus(page, 'gesynchroniseerd');
 
   const afterReconnect = await gameActionsCollection(team, gameId).get();
   expect(afterReconnect.size).toBe(1);
