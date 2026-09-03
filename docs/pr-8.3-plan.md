@@ -284,6 +284,35 @@ Nog geen operationele claim: App Check is niet op een echt stagingproject
 geactiveerd of gemonitord. Sitekey/configuratie, metrics en echte-apparaatcheck
 blijven de afzonderlijke monitorpoort vóór enige enforcement.
 
+**Herreview-opvolging (P1, 3 september 2026):** de matrix-completeness-test
+vergeleek `FIRESTORE_ACCESS_MATRIX`/`FIRESTORE_CLIENT_GATEWAY_FILES` alleen
+tegen zichzelf, niet tegen de werkelijke bestandsboom of `firestore.rules`. Nu
+opgelost:
+
+1. `firestoreAccessMatrix.spec.ts` ontdekt Rules-datamatches, direct-
+   Firestore-padbouwende bronbestanden onder `v2/src/infrastructure` en
+   converter-exports uit `firebase/src/documents` automatisch vanaf de schijf
+   en vergelijkt ze in beide richtingen met de matrix — een vergeten of
+   overbodige matrixrij faalt nu de test.
+2. De twee ontbrekende migratiegateways (`FirestoreCloudMigrationInventory
+   Gateway.ts`, `FirestoreMigrationWriteGateway.ts`) zijn toegevoegd aan
+   `FIRESTORE_CLIENT_GATEWAY_FILES` en gekoppeld aan de `settings`/`roster`/
+   `games`/`completed-games`-matrixrijen die ze daadwerkelijk raken.
+3. Elke matrixrij heeft nu een `converterSources`-veld dat de daadwerkelijk
+   gebruikte `firebase/src/documents`-converter(s) benoemt (`migration-runs`
+   blijft bewust leeg — geen dedicated converter, zie die entry's
+   `conditions`); een nieuwe/vergeten converter faalt de bidirectionele test.
+4. De onjuiste `team-members`-claim ("role values are allowlisted") is
+   verwijderd; de conditie beschrijft nu eerlijk dat create/update alleen de
+   `uid`-invariant afdwingen. De ontbrekende role-/shapevalidatie op
+   `organizationMembers`/`invitations`/`teamMembers`/`settings`/`roster` is
+   toegevoegd als expliciete, niet-blokkerende restdreiging in
+   `docs/security-threat-model.md` §4/§7 (geen escalatiepad: elke
+   consumerende Rules-functie is een exact-literal allowlist).
+
+Verificatie na deze opvolging: Firebase 86/86 unit-/convertertests (was
+83/83) en 232/232 Emulator Rules-tests groen, `type-check` groen.
+
 ### 8.3b — volledige organisatie-export en herstelbewijs
 
 Werk:

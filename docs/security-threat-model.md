@@ -67,7 +67,8 @@ toestaan.
 | Te brede query                                | P1 datalek of uitval               | Alleen twee uid-gefilterde collection-groupqueries; overige queries onder expliciet org/team-pad. Querycontract + Rules-tests.                                                         |
 | Revoked lid gebruikt cache                    | P1 stale inzage/schrijfpoging      | Cache kan laatst bekende data tonen; server weigert nieuwe reads/writes. UI wordt read-only bij onzekere rol en toont actie-nodig bij reject. Gedeeld apparaat kan lokale data wissen. |
 | Stale writer/action replay                    | P1 corrupte wedstrijd              | Writer claim/epoch, monotone sequence, create-only action-ID-idempotentie, revisionchecks en takeover-/reconnecttests.                                                                 |
-| Malformed/oversized document                  | P1 kosten of converteruitval       | Rules shape-/type-/sizegrenzen, converters fail closed, importvalidatie en negatieve probes. Nieuwe families moeten matrix + tests toevoegen.                                          |
+| Malformed/oversized document                  | P1 kosten of converteruitval       | Rules shape-/type-/sizegrenzen, converters fail closed, importvalidatie en negatieve probes. Nieuwe families moeten matrix + tests toevoegen. Geldt volledig voor `organizations`/`teams`/`games`/`actions`/`completedGames`/`migrationRuns` (`hasAll`/`hasOnly` en/of `isValidXPayload()`); `organizationMembers`, `invitations`, `teamMembers`, `settings` en `roster` valideren alleen specifieke velden/de document-ID, geen volledige shape of `role`-enum — zie de restdreiging hieronder. |
+| Ontbrekende role-shapevalidatie op membership-/teamdata-writes | P2 (geen escalatie; data-integriteit) | `organizationMembers`/`invitations`/`teamMembers`.create/update valideren geen `role`-enum (geen `hasOnly`/waardenlijst) en `settings`/`roster`.write valideren geen enkele veldshape buiten de document-ID. Escaleert nooit: elke consumerende functie (`isOrgOwnerOrAdmin`, `canManageTeamData`, `orgRole`/`teamRole`-vergelijkingen) is een exact-literal allowlist die een onbekende rolwaarde standaard weigert. Alleen al bevoegde owner/admin/coach-actoren kunnen dit lokaal veroorzaken — geen aanvalspad voor een lager-bevoegde rol. Geaccepteerd als niet-blokkerende restdreiging; zie `firebase/src/security/firestoreAccessMatrix.ts`'s `team-members`-conditie. Volledige shape-/enumvalidatie (naar het niveau van `organizations`/`teams`/`games`) is toekomstig werk, niet in 8.3a-scope. |
 | Hard delete/resurrectie                       | P1 dataverlies                     | Games/actions/migrationRuns hard-delete denied; completed games tombstone-only en lokale resurrectiepreventie. Bewaar/purge is 8.3c.                                                   |
 | Quota-uitputting via echte client             | P1 beschikbaarheid/kosten          | Rules beperken bevoegdheden; App Check wordt monitor-first beoordeeld als defense-in-depth. Gebruik/alerts/back-up volgen in 8.3d. Offline wedstrijd blijft lokaal bruikbaar.          |
 | Gestolen App Check-debugtoken                 | P1 bypass attestation              | Alleen encrypted secretstore, nooit productiebuild/Git/log; direct intrekken bij lek. App Check vervangt Rules niet.                                                                   |
@@ -141,6 +142,11 @@ privacyuitleg; niets wordt automatisch verzonden.
 - Back-up/PITR, retentie, budgetalerts en actuele kosten zijn 8.3d-scope.
 - Echte iOS/iPadOS-/oud-toestel-/screenreadervalidatie blijft open; geen
   securityclaim mag die praktijkpoort als automatisch afgedekt voorstellen.
+- `organizationMembers`, `invitations`, `teamMembers`, `settings` en `roster`
+  valideren geen volledige veldshape of `role`-enum op create/update (zie §4,
+  "Ontbrekende role-shapevalidatie op membership-/teamdata-writes"). Nooit een
+  escalatiepad omdat elke consumerende Rules-functie een exact-literal
+  allowlist is; wel een open punt voor een toekomstige shapehardening-PR.
 
 Voor iedere nieuwe Firestore-familie of query zijn vóór merge verplicht:
 

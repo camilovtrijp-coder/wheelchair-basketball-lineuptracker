@@ -22,8 +22,24 @@ export interface FirestoreAccessMatrixEntry {
   conditions: string;
   evidence: readonly string[];
   clientSources: readonly string[];
+  /**
+   * Namen van de `firebase/src/documents`-converters (`export const
+   * xConverter`) die dit pad daadwerkelijk lezen/schrijven. Leeg alleen
+   * wanneer het pad bewust geen eigen converter heeft — de reden staat dan in
+   * `conditions`. `firestoreAccessMatrix.spec.ts` controleert dit in beide
+   * richtingen tegen `firebase/src/documents` en tegen `clientSources`.
+   */
+  converterSources: readonly string[];
 }
 
+/**
+ * Elk bestand onder `v2/src/infrastructure` dat rechtstreeks een Firestore-
+ * pad opbouwt (`doc(`/`collection(`/`collectionGroup(`). `firestore
+ * AccessMatrix.spec.ts` ontdekt deze lijst ook automatisch vanaf de
+ * bestandsboom en faalt als deze constante ooit afwijkt van de werkelijke
+ * bronbestanden — een vergeten nieuw gatewaybestand kan deze lijst dus niet
+ * meer stilzwijgend passeren.
+ */
 export const FIRESTORE_CLIENT_GATEWAY_FILES = [
   "../v2/src/infrastructure/organizations/FirestoreOrganizationGateway.ts",
   "../v2/src/infrastructure/settings/FirestoreSettingsRepository.ts",
@@ -31,6 +47,8 @@ export const FIRESTORE_CLIENT_GATEWAY_FILES = [
   "../v2/src/infrastructure/game/FirestoreGameCloudGateway.ts",
   "../v2/src/infrastructure/game/FirestoreCompletedGameRepository.ts",
   "../v2/src/infrastructure/migration/FirestoreCloudMigrationRunGateway.ts",
+  "../v2/src/infrastructure/migration/FirestoreCloudMigrationInventoryGateway.ts",
+  "../v2/src/infrastructure/migration/FirestoreMigrationWriteGateway.ts",
 ] as const;
 
 const orgRoles: MatrixActor[] = [
@@ -87,6 +105,7 @@ export const FIRESTORE_ACCESS_MATRIX: readonly FirestoreAccessMatrixEntry[] = [
       "tests/rules/parent-document-hardening.spec.ts",
     ],
     clientSources: [FIRESTORE_CLIENT_GATEWAY_FILES[0]],
+    converterSources: ["organizationConverter"],
   },
   {
     id: "organization-members",
@@ -111,6 +130,7 @@ export const FIRESTORE_ACCESS_MATRIX: readonly FirestoreAccessMatrixEntry[] = [
       "tests/rules/self-promotion.spec.ts",
     ],
     clientSources: [FIRESTORE_CLIENT_GATEWAY_FILES[0]],
+    converterSources: ["organizationMemberConverter"],
   },
   {
     id: "invitations",
@@ -129,6 +149,7 @@ export const FIRESTORE_ACCESS_MATRIX: readonly FirestoreAccessMatrixEntry[] = [
       "tests/rules/membership-and-roles.spec.ts",
     ],
     clientSources: [FIRESTORE_CLIENT_GATEWAY_FILES[0]],
+    converterSources: ["invitationConverter"],
   },
   {
     id: "teams",
@@ -149,6 +170,7 @@ export const FIRESTORE_ACCESS_MATRIX: readonly FirestoreAccessMatrixEntry[] = [
       "tests/rules/parent-document-hardening.spec.ts",
     ],
     clientSources: [FIRESTORE_CLIENT_GATEWAY_FILES[0]],
+    converterSources: ["teamConverter"],
   },
   {
     id: "team-members",
@@ -161,13 +183,20 @@ export const FIRESTORE_ACCESS_MATRIX: readonly FirestoreAccessMatrixEntry[] = [
       delete: ["organizationOwner", "organizationAdmin"],
     },
     conditions:
-      "Read requires canReadTeam; uid field must equal document ID; role values are allowlisted.",
+      "Read requires canReadTeam; create/update only enforce the uid == document-ID invariant. " +
+      "Rules do NOT allowlist or shape-validate the role field value on create/update (no `hasOnly`/enum check) — " +
+      "an org owner/admin can locally write an arbitrary role string. This never escalates privilege: every " +
+      "consuming Rules function (`isOrgOwnerOrAdmin`, `canManageTeamData`, `teamRole` comparisons) is an exact-" +
+      "literal allowlist that denies any unrecognized value by default. Tracked as an accepted, non-blocking " +
+      "residual threat in docs/security-threat-model.md §7 alongside the same gap on organizationMembers, " +
+      "invitations, settings and roster.",
     evidence: [
       "tests/rules/membership-and-roles.spec.ts",
       "tests/rules/team-context-switcher-query.spec.ts",
       "tests/rules/membership-and-roles.spec.ts",
     ],
     clientSources: [FIRESTORE_CLIENT_GATEWAY_FILES[0]],
+    converterSources: ["teamMemberConverter"],
   },
   {
     id: "settings",
@@ -186,7 +215,11 @@ export const FIRESTORE_ACCESS_MATRIX: readonly FirestoreAccessMatrixEntry[] = [
       "tests/rules/cross-org-isolation.spec.ts",
       "tests/rules/offline-revocation-node.spec.ts",
     ],
-    clientSources: [FIRESTORE_CLIENT_GATEWAY_FILES[1]],
+    clientSources: [
+      FIRESTORE_CLIENT_GATEWAY_FILES[1],
+      FIRESTORE_CLIENT_GATEWAY_FILES[6],
+    ],
+    converterSources: ["settingsConverter"],
   },
   {
     id: "roster",
@@ -205,7 +238,11 @@ export const FIRESTORE_ACCESS_MATRIX: readonly FirestoreAccessMatrixEntry[] = [
       "tests/rules/cross-org-isolation.spec.ts",
       "tests/rules/offline-revocation-node.spec.ts",
     ],
-    clientSources: [FIRESTORE_CLIENT_GATEWAY_FILES[2]],
+    clientSources: [
+      FIRESTORE_CLIENT_GATEWAY_FILES[2],
+      FIRESTORE_CLIENT_GATEWAY_FILES[6],
+    ],
+    converterSources: ["rosterConverter"],
   },
   {
     id: "games",
@@ -224,7 +261,11 @@ export const FIRESTORE_ACCESS_MATRIX: readonly FirestoreAccessMatrixEntry[] = [
       "tests/rules/pilot-reads-writes-takeover.spec.ts",
       "tests/rules/cross-org-isolation.spec.ts",
     ],
-    clientSources: [FIRESTORE_CLIENT_GATEWAY_FILES[3]],
+    clientSources: [
+      FIRESTORE_CLIENT_GATEWAY_FILES[3],
+      FIRESTORE_CLIENT_GATEWAY_FILES[6],
+    ],
+    converterSources: ["gameConverter"],
   },
   {
     id: "game-actions",
@@ -243,6 +284,7 @@ export const FIRESTORE_ACCESS_MATRIX: readonly FirestoreAccessMatrixEntry[] = [
       "tests/rules/cross-org-isolation.spec.ts",
     ],
     clientSources: [FIRESTORE_CLIENT_GATEWAY_FILES[3]],
+    converterSources: ["gameActionConverter"],
   },
   {
     id: "completed-games",
@@ -264,7 +306,10 @@ export const FIRESTORE_ACCESS_MATRIX: readonly FirestoreAccessMatrixEntry[] = [
     clientSources: [
       FIRESTORE_CLIENT_GATEWAY_FILES[3],
       FIRESTORE_CLIENT_GATEWAY_FILES[4],
+      FIRESTORE_CLIENT_GATEWAY_FILES[6],
+      FIRESTORE_CLIENT_GATEWAY_FILES[7],
     ],
+    converterSources: ["completedGameConverter"],
   },
   {
     id: "migration-runs",
@@ -277,12 +322,16 @@ export const FIRESTORE_ACCESS_MATRIX: readonly FirestoreAccessMatrixEntry[] = [
       delete: [],
     },
     conditions:
-      "Target context, initiator, immutable manifest identity and monotone status/update fields are validated; delete denied.",
+      "Target context, initiator, immutable manifest identity and monotone status/update fields are validated; " +
+      "delete denied. No dedicated Firestore converter exists for this path: FirestoreCloudMigrationRunGateway.ts " +
+      "reads/writes the manifest as a plain typed object without `.withConverter()`, so converterSources is " +
+      "intentionally empty.",
     evidence: [
       "tests/rules/migration-runs.spec.ts",
       "tests/rules/cross-org-isolation.spec.ts",
     ],
     clientSources: [FIRESTORE_CLIENT_GATEWAY_FILES[5]],
+    converterSources: [],
   },
   {
     id: "organization-members-collection-group",
@@ -304,6 +353,7 @@ export const FIRESTORE_ACCESS_MATRIX: readonly FirestoreAccessMatrixEntry[] = [
       "Collection-group query must filter uid == auth.uid; only the caller own membership is readable.",
     evidence: ["tests/rules/context-switcher-query.spec.ts"],
     clientSources: [FIRESTORE_CLIENT_GATEWAY_FILES[0]],
+    converterSources: ["organizationMemberConverter"],
   },
   {
     id: "team-members-collection-group",
@@ -319,5 +369,6 @@ export const FIRESTORE_ACCESS_MATRIX: readonly FirestoreAccessMatrixEntry[] = [
       "Collection-group query must filter uid == auth.uid; only the caller own team memberships are readable.",
     evidence: ["tests/rules/team-context-switcher-query.spec.ts"],
     clientSources: [FIRESTORE_CLIENT_GATEWAY_FILES[0]],
+    converterSources: ["teamMemberConverter"],
   },
 ] as const;
