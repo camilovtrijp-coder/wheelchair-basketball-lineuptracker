@@ -179,6 +179,25 @@ export async function readLocalActionIds(page: Page, team: PilotTeam): Promise<s
 }
 
 /**
+ * Puur, geen Playwright-afhankelijkheid — losstaand testbaar
+ * (`v2/tests/unit/gameSyncWaitDiagnostics.spec.ts`). Bevat uitsluitend
+ * technische, privacyveilige velden (verwachte/actuele statuscode,
+ * connectiviteit, timeoutwaarde) — nooit speler-, team- of organisatiedata.
+ */
+export function formatGameSyncWaitTimeoutMessage(params: {
+  expectedStatus: string;
+  actualStatus: string | null;
+  onLine: boolean;
+  timeoutMs: number;
+}): string {
+  const { expectedStatus, actualStatus, onLine, timeoutMs } = params;
+  return (
+    `waitForGameSyncStatus: status bleef "${actualStatus ?? '(geen sync-status-indicator gevonden)'}" ` +
+    `i.p.v. de verwachte "${expectedStatus}" na ${timeoutMs}ms (navigator.onLine=${onLine}).`
+  );
+}
+
+/**
  * Wacht tot de sync-statusindicator `status` toont — maar NIET via één kale
  * gelijkheidscheck. `App.tsx`'s `runGameSync()` zet de indicator pas op
  * 'wacht-op-synchronisatie' zodra het `useEffect` ná de React-commit vuurt —
@@ -191,6 +210,13 @@ export async function readLocalActionIds(page: Page, team: PilotTeam): Promise<s
  * overgangstoestand 'wacht-op-synchronisatie' af — bewijst dat er
  * daadwerkelijk een NIEUWE cyclus gestart is — vóórdat op het einddoel
  * gewacht wordt.
+ *
+ * Bij een timeout op het einddoel rapporteert de foutmelding de verwachte
+ * status, de daadwerkelijke `data-status` en `navigator.onLine` — genoeg om
+ * te zien of de cyclus nooit begon, bleef hangen op
+ * `wacht-op-synchronisatie`, `actie-nodig` werd, of geen indicator vond —
+ * zonder ooit speler-, team- of organisatiedata te loggen (herreview PR #88:
+ * de kale Playwright-timeout hiervoor gaf geen van die signalen).
  */
 export async function waitForGameSyncStatus(
   page: Page,
@@ -214,12 +240,31 @@ export async function waitForGameSyncStatus(
       });
   }
 
-  await page.waitForFunction(
-    ({ testId, expected }) => {
-      const el = document.querySelector(`[data-testid="${testId}"]`);
-      return el?.getAttribute('data-status') === expected;
-    },
-    { testId: 'game-sync-status-indicator', expected: status },
-    { timeout: timeoutMs },
-  );
+  try {
+    await page.waitForFunction(
+      ({ testId, expected }) => {
+        const el = document.querySelector(`[data-testid="${testId}"]`);
+        return el?.getAttribute('data-status') === expected;
+      },
+      { testId: 'game-sync-status-indicator', expected: status },
+      { timeout: timeoutMs },
+    );
+  } catch (error) {
+    const diagnostic = await page.evaluate(
+      ({ testId }) => {
+        const el = document.querySelector(`[data-testid="${testId}"]`);
+        return { actualStatus: el?.getAttribute('data-status') ?? null, onLine: navigator.onLine };
+      },
+      { testId: 'game-sync-status-indicator' },
+    );
+    throw new Error(
+      formatGameSyncWaitTimeoutMessage({
+        expectedStatus: status,
+        actualStatus: diagnostic.actualStatus,
+        onLine: diagnostic.onLine,
+        timeoutMs,
+      }),
+      { cause: error },
+    );
+  }
 }
