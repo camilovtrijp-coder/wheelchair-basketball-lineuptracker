@@ -83,9 +83,24 @@ test('PR 8.3b deel 2/2 werk 6 — export van organisatie A teruggeschreven naar 
     });
 
     await signInWithEmailAndPassword(sourceClient.auth, sourceEmail, PASSWORD);
-    const sourceCoordinator = new OrganizationExportCoordinator(
-      new FirestoreOrganizationExportGateway(sourceClient.db),
-    );
+    const sourceGateway = new FirestoreOrganizationExportGateway(sourceClient.db);
+    // Diagnostisch: roep de gateway EERST rechtstreeks aan (vóór de
+    // coordinator, die een `read-failed`-reden platslaat tot een string
+    // zonder de onderliggende fout) zodat een falende read hier een
+    // bruikbare foutmelding geeft in plaats van alleen "failed".
+    const directRead = await sourceGateway.readOrganizationExportInput(seeded.orgId);
+    if (!directRead.ok) {
+      const detail =
+        directRead.error.code === 'read-failed'
+          ? String(
+              directRead.error.detail instanceof Error
+                ? directRead.error.detail.stack
+                : directRead.error.detail,
+            )
+          : directRead.error.code;
+      throw new Error(`bronexport-gateway faalde (${directRead.error.code}): ${detail}`);
+    }
+    const sourceCoordinator = new OrganizationExportCoordinator(sourceGateway);
     const sourceOutcome = await sourceCoordinator.run({
       organizationId: seeded.orgId,
       callerUid: sourceUid,
