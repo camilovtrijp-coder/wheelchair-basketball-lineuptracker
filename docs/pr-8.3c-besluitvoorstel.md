@@ -1,19 +1,22 @@
 # Besluitvoorstel PR 8.3c — verwijdermodel, bewaartermijnen en sole-owner
 
-Status: **voorstel, nog niet bevestigd en niet geïmplementeerd.** Dit document
-beantwoordt de startblokkade van `docs/pr-8.3-plan.md` §C 8.3c ("voer deze
-sub-PR niet uit voordat de keuzes in §E.1–E.3 expliciet zijn bevestigd") met
-een concreet, op de huidige code gebaseerd voorstel. Het bevat geen code,
-geen Rules-wijziging, geen deployment, geen billingkoppeling en geen
-toestemming voor een productiecutover. Pas na een expliciete bevestiging van
-§8 hieronder kan 8.3c als implementatie-PR starten.
+Status: **bevestigd door de eigenaar op 8 september 2026** (zie §8). Dit
+document beantwoordt de startblokkade van `docs/pr-8.3-plan.md` §C 8.3c
+("voer deze sub-PR niet uit voordat de keuzes in §E.1–E.3 expliciet zijn
+bevestigd"). Het bevat zelf geen code, geen Rules-wijziging, geen deployment
+en geen billingkoppeling, en geeft geen toestemming voor een productiecutover
+— het maakt uitsluitend de weg vrij voor 8.3c-1 en 8.3c-2 als afzonderlijke
+implementatie-PR's.
+
+De bevestigingsronde heeft vier verfijningen op het oorspronkelijke voorstel
+opgeleverd; die zijn hieronder verwerkt en in §8 apart benoemd.
 
 ## 0. Samenvatting
 
 | Besluit | Voorstel in één zin |
 | --- | --- |
 | **E.1 verwijdermodel** | Eigenaar-geïnitieerd *verwijderverzoek* in de app plus een getest handmatig beheerrunbook; géén Cloud Function, géén Blaze — met vier vooraf benoemde triggers die alsnog tot de serververiant leiden. |
-| **E.2 bewaartermijnen** | Vaste termijnen per gegevensfamilie, in Rules afgedwongen als *ondergrens* (niets mag eerder weg), met een handmatig purgepad; geen automatische purge, want Spark heeft geen TTL en geen serverruntime. |
+| **E.2 bewaartermijnen** | Vaste termijnen per gegevensfamilie, in Rules afgedwongen als *ondergrens* (niets mag eerder weg), met een handmatig purgepad plus een owner-only opruimoverzicht; geen automatische purge, want Spark heeft geen TTL en geen serverruntime. |
 | **E.3 sole-owner/accountdelete** | Eigendom eerst overdragen (promoveren + laten verwijderen) óf de organisatie volledig exporteren en verwijderen; nooit automatische promotie van een admin; Auth-delete altijd als laatste, apart bevestigde stap. |
 
 De belangrijkste inhoudelijke keuze die afwijkt van een naïeve invulling:
@@ -99,7 +102,7 @@ minderjarige) spelers plus e-mailadressen van begeleiders.
 
 ## 2. E.1 — Verwijdermodel
 
-### 2.1 Voorstel
+### 2.1 Besluit
 
 **Optie A: eigenaar-geïnitieerd verwijderverzoek in de app + een getest,
 handmatig beheerrunbook.** Geen Cloud Function, geen Blaze, geen nieuwe
@@ -188,9 +191,10 @@ Invarianten die in Rules en tests hard moeten liggen:
 
 **Blokkerende voorwaarden vóór een aanvraag geldig is** (plan §C 8.3c werk 3):
 
-| Voorwaarde | Voorstel | Waarom |
+| Voorwaarde | Besluit | Waarom |
 | --- | --- | --- |
-| Actieve, niet-afgeronde `games/{gameId}` in enig team | **harde blokkade**, geen override in de UI | Een offline apparaat kan nog niet-gesynchroniseerde wedstrijddata vasthouden. Die staat per definitie ook niet in de export. Doorzetten zou stil dataverlies zijn — precies wat plan §C 8.3c acceptatie verbiedt. |
+| Niet-afgeronde `games/{gameId}` met **recente** `lastWriterActivityAt` (voorstel: binnen 24 uur) in enig team | **harde blokkade**, geen override in de UI | Een offline apparaat kan nog niet-gesynchroniseerde wedstrijddata vasthouden. Die staat per definitie ook niet in de export. Doorzetten zou stil dataverlies zijn — precies wat plan §C 8.3c acceptatie verbiedt. |
+| Niet-afgeronde `games/{gameId}` **zonder** recente activiteit | **geen blokkade**, wel een expliciet te bevestigen waarschuwing | Verfijning uit de bevestigingsronde. Een ooit opgestarte, nooit afgeronde wedstrijd zou een organisatie anders permanent onverwijderbaar maken. `GameDocument.lastWriterActivityAt` bestaat al (`string \| null`, met backward-compat-defaulting voor pre-7.3a-documenten) en maakt dit onderscheid meetbaar. |
 | `migrationRuns` in een niet-terminale status | **harde blokkade** | Een half uitgevoerde migratie verwijderen laat een onbeoordeelbare situatie achter. |
 | Geen geldig `exportProof` | **harde blokkade** | Dit is de kern van "export vóór delete is aantoonbaar compleet of de delete blijft geblokkeerd". |
 
@@ -204,16 +208,27 @@ opnieuw een volledige 8.3b-export, en vergelijkt aantallen per gegevensfamilie
 met de readback ná het wissen (alles nul). Pas dan mag de status `completed`
 worden.
 
-**Wachttijd.** Voorstel: minimaal **7 dagen** tussen `requested` en
-`executing`, waarin de eigenaar kan annuleren. Dat beschermt tegen een
-vergissing en tegen een gekaapte sessie. Er komt in die periode bewust
-*geen* functionele lockdown van de organisatie (dat zou over vrijwel elk pad
-nieuwe Rules vragen en de offline wedstrijdbediening kunnen raken) — alleen
-een permanente, voor alle organisatieleden zichtbare banner.
+**Wachttijd.** Minimaal **7 dagen** tussen `requested` en `executing`, waarin
+de eigenaar kan annuleren. Dat beschermt tegen een vergissing en tegen een
+gekaapte sessie.
+
+Verfijning uit de bevestigingsronde: die termijn is **runbookdiscipline, geen
+Rules-ondergrens.** De Rules bewaken de toestandsmachine (wie welke overgang
+mag maken, en dat kernvelden onveranderlijk blijven); de wachttijd staat in
+het runbook en in de UI-tekst. Reden: een harde 7-dagengrens in Rules maakt
+de verwijderflow onmogelijk om in één sessie tegen de emulator of op staging
+te testen — je zou een week moeten wachten op een fictieve organisatie. De
+bescherming die je werkelijk wilt (bedenktijd bij een vergissing) blijft
+overeind; alleen het afdwingpunt verschuift naar de uitvoerder.
+
+Er komt in die periode bewust *geen* functionele lockdown van de organisatie
+(dat zou over vrijwel elk pad nieuwe Rules vragen en de offline
+wedstrijdbediening kunnen raken) — alleen een permanente, voor alle
+organisatieleden zichtbare banner.
 
 **Waar het bewijs van uitvoering blijft staan.** `deletionRequests/current`
 staat ónder `organizations/{orgId}` en verdwijnt dus mee met het wissen. Het
-uitvoeringsbewijs kan daarom niet in Firestore leven. Voorstel: het runbook
+uitvoeringsbewijs kan daarom niet in Firestore leven. Besluit: het runbook
 legt buiten Firestore een minimaal record vast met **alleen**
 organisatie-ID, aanvraagtijdstip, uitvoeringstijdstip, aantallen per
 gegevensfamilie, de `contentHash` van de beheerdersexport, en de uid van de
@@ -228,7 +243,7 @@ Zonder dit erbij is elke termijn hieronder een loze belofte:
 
 - Spark heeft **geen TTL-policies** en er is **geen serverruntime**. Er kan
   dus niets automatisch verlopen.
-- Voorstel: de termijn wordt in Firestore Rules afgedwongen als **ondergrens**
+- Besluit: de termijn wordt in Firestore Rules afgedwongen als **ondergrens**
   (`resource.data.<tijdstempel> < request.time - duration.value(N, 'd')`),
   niet als automatische purge. Betekenis: *niets mag eerder verdwijnen dan de
   termijn*, en het opruimen zelf is een expliciete, handmatige actie.
@@ -236,7 +251,22 @@ Zonder dit erbij is elke termijn hieronder een loze belofte:
   is wél een echte, testbare garantie tegen te vroeg wissen, en het is de
   enige die op Spark bestaat.
 
-### 3.2 Voorgestelde termijnen
+**Verfijning uit de bevestigingsronde: een owner-only opruimoverzicht.** Een
+ondergrens zonder zichtbaarheid blijft in de praktijk een belofte — het
+opruimen hangt dan volledig af van wie eraan denkt. Daarom krijgt 8.3c-1 een
+owner-only overzicht dat toont wat er op dit moment opruimbaar is: het aantal
+tombstones ouder dan 90 dagen, het aantal terminale uitnodigingen ouder dan 30
+dagen, het aantal verlaten wedstrijden ouder dan 180 dagen, en het aantal
+afgeronde migratieruns ouder dan 90 dagen.
+
+Dat is goedkoop om te bouwen: het leest exact dezelfde paden als de bestaande
+`FirestoreOrganizationExportGateway` uit 8.3b, met dezelfde owner-only
+autorisatie via `readAuthoritativeCaller()`. Het toont uitsluitend
+**aantallen**, geen inhoud — geen spelersnamen, geen e-mailadressen — zodat
+het overzicht zelf geen nieuwe blootstelling van persoonsgegevens in de DOM
+oplevert.
+
+### 3.2 De termijnen
 
 | Gegevensfamilie | Voorstel | Reden | Purgepad |
 | --- | --- | --- | --- |
@@ -272,13 +302,19 @@ nog een lokale kopie draagt — of een bulkmigratie van lokale historie naar de
 cloud — kan die wedstrijd dan opnieuw introduceren. De verwijdering zou stil
 ongedaan gemaakt worden: precies het scenario dat 7.2c heeft dichtgezet.
 
-Voorstel: na 90 dagen wordt de **inhoud leeggemaakt** in plaats van het
+Besluit: na 90 dagen wordt de **inhoud leeggemaakt** in plaats van het
 document verwijderd.
 
 - Blijft staan: `organizationId`, `teamId`, `sourceGameId`, `date`,
-  `deletedAt`, `deletedBy`, `revision`, plus een nieuw `redactedAt`.
+  `deletedAt`, `revision`, plus een nieuw `redactedAt`.
 - Wordt leeggemaakt: `opponent: ''`, `competition: ''`, `players: []`,
-  `segments: []`, `scoreFor: 0`, `scoreAgainst: 0`.
+  `segments: []`, `scoreFor: 0`, `scoreAgainst: 0`, **`deletedBy: null`**.
+
+`deletedBy` wordt dus óók gewist — verfijning uit de bevestigingsronde. Het is
+de uid van degene die de wedstrijd verwijderde, dus zelf een persoonsgegeven,
+en na 90 dagen is de auditwaarde ervan net zo verlopen als die van de rest van
+het document. Het veldtype is al `string | null`
+(`assertNullableString`), dus dit kost geen schema- of converterwijziging.
 
 Twee gecontroleerde eigenschappen maken dit goedkoop:
 
@@ -306,12 +342,12 @@ Twee losse problemen, allebei vandaag reëel:
 1. **Een `pending` uitnodiging veroudert niet.** De Rules staan accepteren toe
    zolang `status == 'pending'`, ongeacht ouderdom. Een uitnodiging uit 2026
    is in 2028 nog steeds inwisselbaar door wie dat e-mailadres dan beheert.
-   Voorstel: `request.time < resource.data.invitedAt + duration.value(30, 'd')`
+   Besluit: `request.time < resource.data.invitedAt + duration.value(30, 'd')`
    toevoegen aan de accepteertak (`invitedAt` is het bestaande aanmaakveld op
    `InvitationDocument`, er is geen `createdAt`). Dat is een pure
    aanscherping, geen nieuw pad, en negatief testbaar in de Emulator.
 2. **Een terminale uitnodiging is onverwijderbaar en houdt een e-mailadres
-   vast.** Voorstel: één nieuwe, enge `allow delete` — alleen
+   vast.** Besluit: één nieuwe, enge `allow delete` — alleen
    `organizationOwner`/`organizationAdmin`, alleen bij `status in ['claimed',
    'revoked']`, en alleen als de bijbehorende eindtijdstempel ouder is dan 30
    dagen. Dat is een bewuste uitzondering op de "geen hard delete"-lijn van
@@ -324,7 +360,7 @@ Twee losse problemen, allebei vandaag reëel:
 
    - **Er bestaat geen `revokedAt`.** De intrekpatch staat vandaag alleen
      `affectedKeys().hasOnly(['status'])` toe, dus een ingetrokken uitnodiging
-     draagt geen eigen eindtijdstempel. Voorstel: de intrekpatch uitbreiden
+     draagt geen eigen eindtijdstempel. Besluit: de intrekpatch uitbreiden
      naar `hasOnly(['status', 'revokedAt'])` met `revokedAt is timestamp`, en
      de nieuwe deleteregel op dat veld laten steunen. Bestaande, vóór 8.3c
      ingetrokken uitnodigingen missen het veld; die vallen dan terug op
@@ -373,19 +409,28 @@ daadwerkelijk heeft overgenomen. De UI moet dit als expliciete tweestapsflow
 tonen ("wacht op bevestiging door de nieuwe eigenaar"), niet als iets dat A
 alleen kan afronden.
 
-### 4.3 Eén voorgestelde Rules-toevoeging: organisatie verlaten
+### 4.3 Eén Rules-toevoeging: organisatie verlaten
 
 Vandaag kan **niemand** zichzelf uit een organisatie verwijderen (§1.2, punt
 2). Voor een coach, scorer of viewer die van club wisselt betekent dat: je
 e-mailadres blijft in `organizationMembers` staan tot iemand anders je
 eruit haalt.
 
-Voorstel: één nieuwe, enge `allow delete` op
-`organizationMembers/{uid}` — `request.auth.uid == uid` **en**
-`resource.data.role != 'organizationOwner'`. Een owner kan zichzelf dus
-nog steeds niet verwijderen, waardoor de invariant "een organisatie raakt
-nooit ongemerkt zonder owner" gewoon blijft staan; die weg loopt via §4.2 of
-§2.
+Besluit: een nieuwe, enge `allow delete` op `organizationMembers/{uid}` —
+`request.auth.uid == uid` **en** `resource.data.role != 'organizationOwner'`.
+Een owner kan zichzelf dus nog steeds niet verwijderen, waardoor de invariant
+"een organisatie raakt nooit ongemerkt zonder owner" gewoon blijft staan; die
+weg loopt via §4.2 of §2.
+
+Verfijning uit de bevestigingsronde: **dezelfde regel is ook nodig op
+`teamMembers/{uid}`.** Een coach of scorer heeft naast zijn
+`organizationMembers`-rij ook één of meer `teamMembers`-documenten met
+dezelfde uid. Dekt de self-delete alleen de eerste, dan blijven er na het
+"verlaten" weesdocumenten met die uid achter — precies wat plan §C 8.3c
+acceptatie verbiedt ("geen orphan-subcollecties"). De volgorde is daarbij
+dwingend: eerst de `teamMembers`-documenten, dan als laatste de
+`organizationMembers`-rij, want met het verdwijnen van die laatste vervalt de
+toegang tot de rest van de organisatie.
 
 Let op de volgorde-consequentie: zodra iemand zijn membership verwijdert,
 verliest hij ook de leestoegang tot die organisatie. De readback "er staat
@@ -418,40 +463,63 @@ Auth-account nog aanwezig — hervatbaar", niet "gelukt".
 
 ## 5. Wat dit betekent voor de omvang van 8.3c
 
-Als §8 zo bevestigd wordt, bouwt 8.3c:
+Bevestigd in dezelfde ronde: **8.3c wordt in twee PR's geknipt**, zelfde reden
+en zelfde patroon als de 8.3b-splitsing (plan §B.1, "vermijd één grote PR").
+De knip is ook inhoudelijk schoon — 8.3c-1 gaat over data, 8.3c-2 over
+personen:
 
-**Rules (vier gerichte wijzigingen, elk positief én negatief te testen):**
+### 8.3c-1 — bewaarbeleid en organisatieverwijdering
+
+**Rules (drie gerichte wijzigingen, elk positief én negatief te testen):**
 
 1. nieuw pad `deletionRequests/current` met create-only kernvelden en
-   revisie-bewaakte statuspatches;
+   revisie-bewaakte statuspatches (géén 7-dagengrens in Rules — zie §2.5);
 2. tweede update-tak op `completedGames` voor de redactiepatch, met de
-   90-dagen-ondergrens;
+   90-dagen-ondergrens, inclusief het wissen van `deletedBy`;
 3. `allow delete` op terminale `invitations` ouder dan 30 dagen, een
    30-dagen-vervaltermijn op de accepteertak, en `revokedAt` toevoegen aan de
-   allowlist van de intrekpatch;
-4. self-delete op `organizationMembers/{uid}` voor niet-owners.
+   allowlist van de intrekpatch.
 
 **Domein/applicatie:** puur verwijderverzoekmodel (toestandsmachine,
-blokkerende voorwaarden, `exportProof`-koppeling aan de 8.3b-hash), en een
-accountverwijdercoördinator met per-organisatiestatus en hervatbaarheid.
+blokkerende voorwaarden inclusief de `lastWriterActivityAt`-verfijning,
+`exportProof`-koppeling aan de 8.3b-hash).
 
 **UI:** owner-only "organisatie verwijderen"-flow met sterke bevestiging en
-zichtbare blokkades; "organisatie verlaten" voor niet-owners; "account
-verwijderen" met de stappenstatus uit §4.4; alles NL/EN, met axe-, focus-,
-Escape- en focusrestoredekking op elke nieuwe dialoog (plan §D).
+zichtbare blokkades, plus het owner-only **opruimoverzicht** uit §3.1: hoeveel
+tombstones over de 90 dagen zijn, hoeveel terminale uitnodigingen over de 30
+dagen, hoeveel verlaten wedstrijden. Dat overzicht is wat een bewaartermijn
+van een belofte in een werkend beleid verandert, en het leest exact dezelfde
+paden als de bestaande 8.3b-exportgateway.
 
-**Documentatie:** `docs/pr-8.3c-runbook.md` met de handmatige uitvoering,
-inclusief de expliciete eis dat er geen service-accountkey in Git, browser of
-logs komt (het runbook gebruikt de ingelogde Firebase CLI-sessie van de
-beheerder, geen sleutelbestand), plus een gemeten testuitvoering op een
-fictieve organisatie in de emulator/staging.
+**Documentatie:** `docs/pr-8.3c-runbook.md` met de handmatige uitvoering en de
+7-dagendiscipline, inclusief de expliciete eis dat er geen service-accountkey
+in Git, browser of logs komt (het runbook gebruikt de ingelogde Firebase
+CLI-sessie van de beheerder, geen sleutelbestand), plus een gemeten
+testuitvoering op een fictieve organisatie in de emulator/staging.
 
-**Tests:** de volledige negatieve matrix uit plan §C 8.3c werk 6 — crash/retry,
-dubbele aanvraag, ingetrokken ownerrol tijdens uitvoering, cross-org-ID,
-onverwachte subcollectie, meer dan één batch, serverreject, en een mislukte
-Auth-delete na geslaagde Firestore-opruiming.
+### 8.3c-2 — accountverwijdering en organisatie verlaten
 
-## 6. Wat dit voorstel bewust niet doet
+**Rules (één wijziging, twee paden):** self-delete op
+`organizationMembers/{uid}` **en** `teamMembers/{uid}` voor de eigen uid,
+behalve voor `organizationOwner` (§4.3).
+
+**Domein/applicatie:** accountverwijdercoördinator met per-organisatiestatus,
+hervatbaarheid en de readbackvolgorde uit §4.3/§4.4.
+
+**UI:** "organisatie verlaten" voor niet-owners; "account verwijderen" met de
+stappenstatus uit §4.4; de tweestapsoverdracht uit §4.2 met een expliciete
+"wacht op bevestiging door de nieuwe eigenaar"-status. Alles NL/EN, met axe-,
+focus-, Escape- en focusrestoredekking op elke nieuwe dialoog (plan §D).
+
+### Tests, over beide PR's verdeeld
+
+De volledige negatieve matrix uit plan §C 8.3c werk 6 — crash/retry, dubbele
+aanvraag, ingetrokken ownerrol tijdens uitvoering, cross-org-ID, onverwachte
+subcollectie, meer dan één batch, serverreject, en een mislukte Auth-delete na
+geslaagde Firestore-opruiming. Elke PR draagt de tests van zijn eigen scope;
+8.3c-2 hergebruikt de emulatorharnas uit 8.3c-1.
+
+## 6. Wat 8.3c bewust niet doet
 
 - Geen Cloud Function, geen `functions/`-workspace, geen Blaze, geen
   billingkoppeling, geen deployment.
@@ -481,32 +549,54 @@ Auth-delete na geslaagde Firestore-opruiming.
    beoordeeld worden vóórdat 8.3c gemerged is — dan is optie B mogelijk
    goedkoper dan het runbook.
 
-## 8. Bevestigingsformulier
+## 8. Bevestiging
 
-Te bevestigen door de eigenaar, per punt, vóór 8.3c als implementatie-PR
-start:
+**Bevestigd door de eigenaar op 8 september 2026.** Alle zeven punten zijn
+aangenomen zoals voorgesteld, met vier verfijningen die uit de
+bevestigingsronde zelf voortkwamen en hierboven al verwerkt zijn.
 
-- [ ] **E.1** — Verwijdermodel: eigenaar-geïnitieerd verwijderverzoek in de
+- [x] **E.1** — Verwijdermodel: eigenaar-geïnitieerd verwijderverzoek in de
       app plus een getest handmatig beheerrunbook. Geen Cloud Function en geen
-      Blaze in 8.3c. De vier triggers uit §2.4 worden vastgelegd als moment om
+      Blaze in 8.3c. De vier triggers uit §2.4 zijn vastgelegd als moment om
       dit te herzien.
-- [ ] **E.1a** — Akkoord met de harde blokkades (actieve wedstrijd,
-      niet-terminale migratierun, ontbrekend `exportProof`) zonder
-      UI-override, en met de wachttijd van 7 dagen.
-- [ ] **E.2** — Bewaartermijnen zoals in de tabel van §3.2, met de expliciete
-      erkenning dat dit *ondergrenzen* zijn met een handmatig purgepad, geen
-      automatische verlopen.
-- [ ] **E.2a** — Akkoord dat een verlopen tombstone wordt **geredigeerd** en
-      niet hard verwijderd (§3.3).
-- [ ] **E.2b** — Akkoord met de twee uitnodigingswijzigingen uit §3.4: een
-      vervaltermijn van 30 dagen op accepteren, en een enge deleteregel voor
-      terminale uitnodigingen ouder dan 30 dagen.
-- [ ] **E.3** — Sole-owner/accountdelete zoals §4: eerst overdragen of
+- [x] **E.1a** — Blokkades en wachttijd, met verfijning: de blokkade op
+      niet-afgeronde wedstrijden hangt aan `lastWriterActivityAt` in plaats van
+      aan louter bestaan, en de 7 dagen bedenktijd is runbookdiscipline in
+      plaats van een Rules-ondergrens (§2.5).
+- [x] **E.2** — Bewaartermijnen zoals in de tabel van §3.2, als *ondergrenzen*
+      met een handmatig purgepad, aangevuld met het owner-only opruimoverzicht
+      uit §3.1.
+- [x] **E.2a** — Een verlopen tombstone wordt geredigeerd, niet hard
+      verwijderd, en bij die redactie wordt ook `deletedBy` op `null` gezet
+      (§3.3).
+- [x] **E.2b** — De twee uitnodigingswijzigingen uit §3.4: een vervaltermijn
+      van 30 dagen op accepteren, en een enge deleteregel voor terminale
+      uitnodigingen ouder dan 30 dagen, inclusief het nieuwe `revokedAt`-veld.
+- [x] **E.3** — Sole-owner/accountdelete zoals §4: eerst overdragen of
       exporteren-en-verwijderen, nooit automatische promotie, Auth-delete als
       laatste aparte stap, en nooit een vals "account verwijderd".
-- [ ] **E.3a** — Akkoord met de nieuwe self-delete-Rules-regel voor
-      niet-owners ("organisatie verlaten", §4.3).
+- [x] **E.3a** — Self-delete voor niet-owners ("organisatie verlaten"), op
+      `organizationMembers` **en** `teamMembers`, in die volgorde (§4.3).
 
-Bij afwijzing van een punt: benoem welk alternatief geldt, dan wordt dit
-document aangepast vóór de implementatie start. Zolang §8 niet bevestigd is,
-blijft de startblokkade uit plan §C 8.3c staan.
+Aanvullend bevestigd: **8.3c wordt gesplitst in 8.3c-1 (data) en 8.3c-2
+(personen)**, zie §5.
+
+### De vier verfijningen, op één rij
+
+1. De wachttijd van 7 dagen staat in het runbook, niet in de Rules — anders is
+   de verwijderflow niet in één sessie testbaar.
+2. De wedstrijdblokkade hangt aan recente `lastWriterActivityAt`, zodat één
+   vergeten wedstrijd een organisatie niet permanent onverwijderbaar maakt.
+3. Bij redactie van een tombstone wordt ook `deletedBy` gewist.
+4. De self-delete dekt ook `teamMembers`, anders blijven er weesdocumenten met
+   de eigen uid achter.
+
+### Wat hiermee vervalt en wat blijft staan
+
+De startblokkade uit plan §C 8.3c is hiermee **opgeheven**: 8.3c-1 kan als
+implementatie-PR starten. Onveranderd blijven de stopregels uit plan §F en
+§6 hierboven — geen Cloud Function, geen Blaze, geen billingkoppeling, geen
+deployment, geen productiecutover. De openstaande punten uit §7 blijven
+openstaan; met name punt 1 (een juridische toets op de termijnen vóór er
+echte spelersdata in productie staat) is een harde voorwaarde voor de
+PR 8.5-cutover, niet voor 8.3c.

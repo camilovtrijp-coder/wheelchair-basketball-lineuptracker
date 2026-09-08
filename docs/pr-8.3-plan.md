@@ -496,12 +496,25 @@ Acceptatie:
 
 ### 8.3c — bewaarbeleid en veilige account-/organisatieverwijdering
 
-**Startblokkade:** voer deze sub-PR niet uit voordat de keuzes in §E.1–E.3
-expliciet zijn bevestigd. Er ligt sinds 8 september 2026 een uitgewerkt,
-op de huidige code gebaseerd voorstel klaar in
-`docs/pr-8.3c-besluitvoorstel.md`; dat document is nadrukkelijk nog een
-voorstel — de blokkade vervalt pas met een expliciete bevestiging van het
-formulier in §8 daarvan.
+**Startblokkade opgeheven op 8 september 2026.** De keuzes §E.1–E.3 zijn
+expliciet bevestigd; de onderbouwing, de gekozen opties en vier verfijningen
+uit de bevestigingsronde staan in `docs/pr-8.3c-besluitvoorstel.md` §8.
+
+Bevestigd is ook dat deze sub-PR **in twee delen** wordt geknipt, zelfde reden
+als de 8.3b-splitsing (§B.1) en met een schone inhoudelijke grens:
+
+- **8.3c-1 — data**: bewaartermijnen als in Rules afgedwongen ondergrenzen,
+  het owner-only opruimoverzicht, het organisatieverwijderverzoek
+  (`deletionRequests/current`), de tombstoneredactie, de
+  uitnodigingswijzigingen, en het handmatige runbook.
+- **8.3c-2 — personen**: accountverwijdercoördinator, "organisatie verlaten"
+  (self-delete op `organizationMembers` én `teamMembers`) en de
+  tweestapsoverdracht van eigendom.
+
+De werkitems hieronder blijven onveranderd gelden; ze verdelen zich over die
+twee PR's zoals beschreven in `docs/pr-8.3c-besluitvoorstel.md` §5. De
+stopregels uit §F blijven volledig van kracht: geen Cloud Function, geen
+Blaze, geen billingkoppeling, geen deployment.
 
 Werk:
 
@@ -603,15 +616,20 @@ Voor security-, export- en delete-e2e geldt:
 
 ## E. Eigenaarsbesluiten vóór implementatie
 
-Voor de punten 1 tot en met 3 (de startblokkade van 8.3c) is een uitgewerkt
-voorstel geschreven: `docs/pr-8.3c-besluitvoorstel.md`. Dat voorstel toetst de
-aanbevelingen hieronder aan de werkelijke Rules-, converter- en
-platformsituatie en benoemt drie punten die bij het schrijven van dit plan nog
-niet zichtbaar waren: een verlopen tombstone hard verwijderen zou de
-resurrectiepreventie uit 7.2c ondermijnen, terminale uitnodigingen zijn
-vandaag onverwijderbaar terwijl ze e-mailadressen dragen, en niemand kan
-zichzelf uit een organisatie verwijderen. Bevestiging loopt via §8 van dat
-document; tot die tijd blijven de aanbevelingen hieronder onbevestigd.
+**Punten 1 tot en met 3 zijn bevestigd op 8 september 2026.** De uitwerking,
+de afwegingen en de definitieve formulering staan in
+`docs/pr-8.3c-besluitvoorstel.md`; §8 daarvan is het besluitrecord. Dat
+document toetste de aanbevelingen hieronder aan de werkelijke Rules-,
+converter- en platformsituatie en bracht drie punten aan het licht die bij het
+schrijven van dit plan nog niet zichtbaar waren: een verlopen tombstone hard
+verwijderen zou de resurrectiepreventie uit 7.2c ondermijnen, terminale
+uitnodigingen zijn vandaag onverwijderbaar terwijl ze e-mailadressen dragen,
+en niemand kan zichzelf uit een organisatie verwijderen. De aanbevelingen
+hieronder blijven staan als het oorspronkelijke voorstel; waar het
+besluitrecord ervan afwijkt of het verfijnt, geldt dat record.
+
+Punten 4 tot en met 6 blijven onbevestigd en horen bij 8.3a (App Check-
+enforcement) respectievelijk 8.3d (back-up/billing).
 
 1. **Verwijdermodel** — aanbevolen voor de eerste release: een getest,
    eigenaar-geïnitieerd verwijderverzoek plus handmatig beheer-/CLI-runbook.
@@ -636,7 +654,8 @@ document; tot die tijd blijven de aanbevelingen hieronder onbevestigd.
 
 ## F. Stopregels en faseoverdracht
 
-- Geen implementatie van 8.3c zolang §E.1–E.3 niet bevestigd zijn.
+- Geen implementatie van 8.3c zolang §E.1–E.3 niet bevestigd zijn — voldaan
+  op 8 september 2026, zie `docs/pr-8.3c-besluitvoorstel.md` §8.
 - Geen App Check-enforcement op staging/productie vanuit een code-PR alleen;
   monitorbewijs, rollbackpad en expliciete toestemming zijn vereist.
 - Geen debugtoken, service-accountkey, Admin SDK-credential, back-uppayload,
