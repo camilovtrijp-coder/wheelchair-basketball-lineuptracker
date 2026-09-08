@@ -497,7 +497,11 @@ Acceptatie:
 ### 8.3c — bewaarbeleid en veilige account-/organisatieverwijdering
 
 **Startblokkade:** voer deze sub-PR niet uit voordat de keuzes in §E.1–E.3
-expliciet zijn bevestigd.
+expliciet zijn bevestigd. Er ligt sinds 8 september 2026 een uitgewerkt,
+op de huidige code gebaseerd voorstel klaar in
+`docs/pr-8.3c-besluitvoorstel.md`; dat document is nadrukkelijk nog een
+voorstel — de blokkade vervalt pas met een expliciete bevestiging van het
+formulier in §8 daarvan.
 
 Werk:
 
@@ -598,6 +602,16 @@ Voor security-, export- en delete-e2e geldt:
   Tab/Shift+Tab- en focusrestoredekking.
 
 ## E. Eigenaarsbesluiten vóór implementatie
+
+Voor de punten 1 tot en met 3 (de startblokkade van 8.3c) is een uitgewerkt
+voorstel geschreven: `docs/pr-8.3c-besluitvoorstel.md`. Dat voorstel toetst de
+aanbevelingen hieronder aan de werkelijke Rules-, converter- en
+platformsituatie en benoemt drie punten die bij het schrijven van dit plan nog
+niet zichtbaar waren: een verlopen tombstone hard verwijderen zou de
+resurrectiepreventie uit 7.2c ondermijnen, terminale uitnodigingen zijn
+vandaag onverwijderbaar terwijl ze e-mailadressen dragen, en niemand kan
+zichzelf uit een organisatie verwijderen. Bevestiging loopt via §8 van dat
+document; tot die tijd blijven de aanbevelingen hieronder onbevestigd.
 
 1. **Verwijdermodel** — aanbevolen voor de eerste release: een getest,
    eigenaar-geïnitieerd verwijderverzoek plus handmatig beheer-/CLI-runbook.
