@@ -154,22 +154,26 @@ export async function seedFullOrganization(
     completedGameId: null,
     updatedAt: now,
   });
-  await gameRef
-    .collection('actions')
-    .doc()
-    .set({
-      organizationId: orgId,
-      teamId,
-      gameId,
-      actionId: 'action-1',
-      authorUid: params.ownerUid,
-      deviceId: 'device-seed',
-      writerEpoch: 0,
-      sequence: 0,
-      occurredAt: nowIso,
-      schemaVersion: 1,
-      action: { type: 'score-delta', team: 'for', delta: 2 },
-    });
+  // `gameActionConverter.fromFirestore()` eist dat het `actionId`-VELD exact
+  // gelijk is aan de echte documentnaam (`assertPathContextField`) — een
+  // losse `.doc()` met een hardcoded `actionId`-veld faalt die check zodra
+  // de export dit document via de ECHTE converter/Rules terugleest (in
+  // tegenstelling tot een kale Admin-`set()`, die niets valideert). Maak
+  // daarom eerst de doc-ref aan en gebruik zijn eigen gegenereerde ID.
+  const actionRef = gameRef.collection('actions').doc();
+  await actionRef.set({
+    organizationId: orgId,
+    teamId,
+    gameId,
+    actionId: actionRef.id,
+    authorUid: params.ownerUid,
+    deviceId: 'device-seed',
+    writerEpoch: 0,
+    sequence: 0,
+    occurredAt: nowIso,
+    schemaVersion: 1,
+    action: { type: 'score-delta', team: 'for', delta: 2 },
+  });
 
   const activeCompletedGameRef = teamRef.collection('completedGames').doc();
   const activeCompletedGameId = activeCompletedGameRef.id;
@@ -335,16 +339,30 @@ export async function restoreOrganizationExportIntoNewOrg(
         .set({ ...rest, updatedAt: Timestamp.fromDate(new Date(updatedAt as string)) });
     }
 
+    // `gameConverter`/`gameActionConverter`/`completedGameConverter` eisen dat
+    // het `organizationId`-VELD exact gelijk is aan het echte pad-segment
+    // (`assertPathContextField`) — bij restore is dat de NIEUWE `orgId`, niet
+    // de gekopieerde brondata-waarde. `teamId`/`gameId`/`actionId` blijven wel
+    // 1:1 de brondata-waarde: hun documenten worden bewust onder DEZELFDE
+    // ID's teruggeschreven, dus die velden matchen het pad ook zonder
+    // substitutie.
     for (const game of team.games) {
       const { id, actions, updatedAt, ...rest } = game as Record<string, unknown> & {
         id: string;
         actions: Record<string, unknown>[];
       };
       const gameRef = teamRef.collection('games').doc(id);
-      await gameRef.set({ ...rest, updatedAt: Timestamp.fromDate(new Date(updatedAt as string)) });
+      await gameRef.set({
+        ...rest,
+        organizationId: orgId,
+        updatedAt: Timestamp.fromDate(new Date(updatedAt as string)),
+      });
       for (const action of actions) {
         const { id: actionId, ...actionRest } = action as Record<string, unknown> & { id: string };
-        await gameRef.collection('actions').doc(actionId).set(actionRest);
+        await gameRef
+          .collection('actions')
+          .doc(actionId)
+          .set({ ...actionRest, organizationId: orgId });
       }
     }
 
@@ -357,6 +375,7 @@ export async function restoreOrganizationExportIntoNewOrg(
         .doc(id)
         .set({
           ...rest,
+          organizationId: orgId,
           syncedAt: Timestamp.fromDate(new Date(syncedAt as string)),
           deletedAt: deletedAt ? Timestamp.fromDate(new Date(deletedAt as string)) : null,
         });
@@ -430,5 +449,30 @@ export function normalizeExportForComparison(data: OrganizationExportV1): Omit<
       return memberRest;
     })
     .sort((a, b) => String(a.email).localeCompare(String(b.email)));
-  return { ...rest, organization: organizationRest, organizationMembers: normalizedMembers };
+  return {
+    ...(stripOrganizationIdDeep(rest) as typeof rest),
+    organization: organizationRest,
+    organizationMembers: normalizedMembers,
+  };
+}
+
+/**
+ * `games`/`actions`/`completedGames`-rijen dragen elk hun eigen
+ * `organizationId`-veld (nodig voor `assertPathContextField()` op de
+ * ECHTE doelorganisatie na restore, zie `restoreOrganizationExportIntoNewOrg()`
+ * hierboven) — dat veld draagt bewust de NIEUWE org-ID en verschilt dus
+ * altijd van de bron. Recursief verwijderen zodat de rest van elke rij
+ * (scores, spelers, segmenten, tijden, …) wél letterlijk vergeleken wordt.
+ */
+function stripOrganizationIdDeep(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(stripOrganizationIdDeep);
+  if (value !== null && typeof value === 'object') {
+    const out: Record<string, unknown> = {};
+    for (const [key, v] of Object.entries(value as Record<string, unknown>)) {
+      if (key === 'organizationId') continue;
+      out[key] = stripOrganizationIdDeep(v);
+    }
+    return out;
+  }
+  return value;
 }
