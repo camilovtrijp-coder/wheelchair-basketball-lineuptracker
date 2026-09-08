@@ -25,6 +25,7 @@ import type { GameCloudWriterContext } from '../../application/game/projectGameF
 import type { CloudMigrationInventoryGateway } from '../../application/migration/CloudMigrationInventoryGateway';
 import { GameSyncCoordinator } from '../../application/game/GameSyncCoordinator';
 import { MigrationCoordinator } from '../../application/migration/MigrationCoordinator';
+import { OrganizationExportCoordinator } from '../../application/export/OrganizationExportCoordinator';
 import { FirestoreRosterRepository } from '../roster/FirestoreRosterRepository';
 import { FirestoreSettingsRepository } from '../settings/FirestoreSettingsRepository';
 import { FirestoreGameCloudGateway } from '../game/FirestoreGameCloudGateway';
@@ -36,6 +37,7 @@ import { FirestoreCloudMigrationInventoryGateway } from '../migration/FirestoreC
 import { FirestoreCloudMigrationRunGateway } from '../migration/FirestoreCloudMigrationRunGateway';
 import { FirestoreMigrationWriteGateway } from '../migration/FirestoreMigrationWriteGateway';
 import { LocalStorageMigrationRunRepository } from '../migration/LocalStorageMigrationRunRepository';
+import { FirestoreOrganizationExportGateway } from '../export/FirestoreOrganizationExportGateway';
 import { readOrCreateDeviceId } from '../device/deviceId';
 import { strictReadBrowserStorage } from '../../i18n/browserStorage';
 import type { KeyValueStorage } from '../../i18n/persistence';
@@ -75,6 +77,14 @@ export interface CloudRepositorySelection {
    */
   migrationInventoryGateway: CloudMigrationInventoryGateway;
   migrationCoordinator: MigrationCoordinator;
+  /**
+   * PR 8.3b deel 2/2 (docs/pr-8.3-plan.md §C 8.3b werk 4): de owner-only
+   * organisatie-exportpaneel-poort — `null` in lokale modus (er is geen
+   * cloudorganisatie om te exporteren, dus `app/App.tsx` rendert
+   * `ExportPanel` daar sowieso niet), exact hetzelfde patroon als
+   * `migrationInventoryGateway`/`migrationCoordinator` hierboven.
+   */
+  exportCoordinator: OrganizationExportCoordinator;
 }
 
 export type RepositorySelection = CloudRepositorySelection | { kind: 'local' };
@@ -121,5 +131,8 @@ export function selectRepositories(input: {
     },
     migrationInventoryGateway,
     migrationCoordinator,
+    exportCoordinator: new OrganizationExportCoordinator(
+      new FirestoreOrganizationExportGateway(input.firestoreDb),
+    ),
   };
 }

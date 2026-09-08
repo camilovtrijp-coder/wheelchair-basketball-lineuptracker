@@ -356,12 +356,49 @@ Deel 1/2, geïmplementeerd:
 - Verificatie: v2 969/969 unit-tests (was 955), lint en typecheck groen;
   Firebase 237/237 Emulator Rules-tests (was 232), typecheck groen.
 
-Nog niet gebouwd (deel 2, zie boven): de owner-only NL/EN-preview-UI met
-downloadactie (werk 4), de Emulator-e2e die twee volledige organisaties met
-gelijknamige teams/tombstones/invitationstatussen via de coordinator
-doorloopt (werk 5), en de herstelproef in een fictieve nieuwe doelcontext
-(werk 6). Tot deel 2 landt is er geen enkele UI-ingang naar deze export —
-alleen de pure/geteste bouwstenen bestaan.
+Deel 2/2, geïmplementeerd:
+
+- `v2/src/ui/export/ExportPanel.tsx` — de owner-only NL/EN-preview-UI (werk 4):
+  inlezen → preview (doelorganisatie, teams, aantallen per gegevensfamilie,
+  gevoelige-inhoudwaarschuwing) → expliciete downloadactie. Roept uitsluitend
+  `OrganizationExportCoordinator.run()` aan; voor elke andere rol dan
+  `organizationOwner` wordt de actie niet gerenderd (defensief herhaald in het
+  paneel zelf, net als `MigrationPanel`).
+- `v2/src/domain/export/filename.ts` +
+  `v2/src/infrastructure/export/downloadOrganizationExportFile.ts` — bestandsnaam
+  en downloadadapter, gespiegeld van `domain/backup/export.ts`/
+  `infrastructure/backup/downloadBackupFile.ts`.
+- Wiring: `selectRepositories.ts`/`resolveAppRepositories.ts` leveren nu ook
+  `exportCoordinator` (`null` in lokale modus); `app/App.tsx` rendert
+  `ExportPanel` in het tabblad Instellingen, alleen in cloudmodus en alleen voor
+  `canExportOrganization()`.
+- 5 nieuwe UI-wiringtests (`ExportPanel.spec.tsx`).
+- `v2/tests/e2e-auth/organization-export-flow.spec.ts` (werk 4/5): rolgating
+  (owner ziet het paneel; admin/coach/scorer/viewer nooit — strenger dan
+  bulkmigratie), lokale-modus-afwezigheid, en een volledige stroom met TWEE
+  organisaties (gelijknamig team in organisatie B) die bewijst dat de preview
+  en de daadwerkelijk gedownloade JSON van organisatie A alle §A-families
+  bevatten (inclusief tombstone, actieve game+actie, migrationRun, claimed/
+  revoked-uitnodigingen) zonder ook maar één gegeven van organisatie B.
+- `v2/tests/e2e-auth/organization-export-restore-proof.spec.ts` +
+  `organizationExportFixtures.ts` (werk 6): test-only Admin-/Emulatorharness
+  die een gebouwde export terugschrijft naar een GEHEEL NIEUWE, geïsoleerde
+  organisatie en vervolgens — ingelogd als een tweede, eigen eigenaarsaccount,
+  via de ECHTE Rules/gateway — een inhoudelijk gelijke inventaris (aantallen +
+  genormaliseerde inhoud) teruglevert; de bron wordt nooit aangeraakt
+  (herhaalde bronexport levert dezelfde `contentHash` op).
+- Verificatie: v2 994/994 unit-tests (was 969), `tsc -b`/lint/prettier over de
+  volledige `src`+`tests`-boom, en de productie-/classic-SW-build groen.
+  Firebase-kant ongewijzigd (86/86 unit-/convertertests, `type-check` groen).
+
+Kon niet lokaal worden uitgevoerd: de twee nieuwe Playwright-e2e-auth-bestanden
+(rolgating/volledige-stroom en de herstelproef) vereisen de Firestore-/
+Auth-emulator; deze sandbox blokkeert uitgaand verkeer naar
+`firebase-public.firebaseio.com` (nodig om de emulator-jars te downloaden) —
+zelfde bekende beperking als elke eerdere PR in deze reeks (zie
+`migration-flow.spec.ts`). Beide bestanden zijn wel `tsc -b`/eslint/prettier-
+schoon en zorgvuldig tegen de daadwerkelijke component-/documentcode
+nagelopen.
 
 Werk:
 

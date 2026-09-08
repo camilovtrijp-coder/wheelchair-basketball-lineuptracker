@@ -53,6 +53,8 @@ import { SyncStatusIndicator } from '../ui/sync/SyncStatusIndicator';
 import type { SyncState, SyncStatus } from '../domain/syncState';
 import { MigrationPanel } from '../ui/migration/MigrationPanel';
 import { canBulkMigrate } from '../domain/migration/capability';
+import { ExportPanel } from '../ui/export/ExportPanel';
+import { canExportOrganization } from '../domain/export/types';
 import type { OrganizationRole } from '../domain/organizations/types';
 import { usePwaUpdate } from '../application/pwa/usePwaUpdate';
 import { usePwaReadiness } from '../application/pwa/usePwaReadiness';
@@ -1492,6 +1494,24 @@ export function App({
                 inventoryGateway={repositories.migrationInventoryGateway}
                 coordinator={repositories.migrationCoordinator}
                 writer={repositories.gameWriterContext ?? { authorUid: '', deviceId: '' }}
+              />
+            ) : null}
+            {/* PR 8.3b deel 2/2 (docs/pr-8.3-plan.md §C 8.3b werk 4): alleen in
+             * cloudmodus EN alleen voor `organizationOwner` (§B "alleen
+             * organizationOwner; geen admin/coach/scorer/viewer") — een
+             * andere rol krijgt dit blok NOOIT gerenderd, niet eens een
+             * alleen-lezen variant. */}
+            {repositories.mode === 'cloud' &&
+            repositories.exportCoordinator &&
+            organizationRole &&
+            canExportOrganization(organizationRole) ? (
+              <ExportPanel
+                lang={lang}
+                organizationId={organizationId}
+                organizationName={organizationName || organizationId}
+                callerRole={organizationRole}
+                callerUid={repositories.gameWriterContext?.authorUid ?? ''}
+                coordinator={repositories.exportCoordinator}
               />
             ) : null}
           </>

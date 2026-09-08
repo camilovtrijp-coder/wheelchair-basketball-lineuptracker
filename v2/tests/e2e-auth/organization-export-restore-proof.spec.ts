@@ -1,0 +1,151 @@
+// PR 8.3b deel 2/2 (docs/pr-8.3-plan.md §C 8.3b werk 6): de herstelproef
+// ("portabiliteitsherstel") voor de organisatie-export. Bewijst dat een
+// export die uit organisatie A wordt gebouwd, in een GEHEEL NIEUWE,
+// geïsoleerde Emulator-doelorganisatie kan worden teruggeschreven en van
+// daaruit — via de ECHTE `FirestoreOrganizationExportGateway`/
+// `OrganizationExportCoordinator` en de ECHTE Firestore Security Rules,
+// ingelogd als een TWEEDE, eigen eigenaarsaccount — als inhoudelijk
+// gelijkwaardige inventaris wordt teruggelezen. De brondata zelf wordt nooit
+// aangeraakt (plan werk 6: "bron blijft byte-voor-byte intact").
+//
+// Bewust GEEN Playwright-`page`/browser-UI nodig: dit bestand roept de
+// productiecode rechtstreeks vanuit Node aan (client Firebase SDK, verbonden
+// met de Auth-/Firestore-emulator) — precies het "test-only Admin-/
+// Emulatorharness die nooit in de productiebuild komt" uit plan werk 6.
+// `organizationExportFixtures.ts` (dit PR-deel) levert de seed-/restore-
+// hulpfuncties; die zijn zelf ook uitsluitend testcode.
+//
+// Kon dit NIET lokaal draaien — zelfde sandboxbeperking als
+// `organization-export-flow.spec.ts`/`migration-flow.spec.ts`: uitgaand
+// verkeer naar `firebase-public.firebaseio.com` (nodig voor de
+// Firestore-/Auth-emulator-jars) is in deze sandbox geblokkeerd. Wél
+// `tsc -b`/`eslint`/`prettier`-schoon geverifieerd.
+
+import { test, expect } from '@playwright/test';
+import { initializeApp, deleteApp, type FirebaseApp } from 'firebase/app';
+import {
+  getAuth,
+  connectAuthEmulator,
+  createUserWithEmailAndPassword,
+  signInWithEmailAndPassword,
+  type Auth,
+} from 'firebase/auth';
+import { getFirestore, connectFirestoreEmulator, type Firestore } from 'firebase/firestore';
+import { adminDb } from './adminFixtures';
+import {
+  seedFullOrganization,
+  restoreOrganizationExportIntoNewOrg,
+  normalizeExportForComparison,
+} from './organizationExportFixtures';
+import { OrganizationExportCoordinator } from '../../src/application/export/OrganizationExportCoordinator';
+import { FirestoreOrganizationExportGateway } from '../../src/infrastructure/export/FirestoreOrganizationExportGateway';
+
+process.env.FIRESTORE_EMULATOR_HOST ??= '127.0.0.1:8080';
+process.env.FIREBASE_AUTH_EMULATOR_HOST ??= '127.0.0.1:9099';
+
+const PROJECT_ID = 'demo-lineup-tracker-dev';
+const PASSWORD = 'RestoreProof123!';
+
+function makeClientApp(name: string): { app: FirebaseApp; auth: Auth; db: Firestore } {
+  const app = initializeApp({ projectId: PROJECT_ID, apiKey: 'demo-key' }, name);
+  const auth = getAuth(app);
+  connectAuthEmulator(auth, `http://${process.env.FIREBASE_AUTH_EMULATOR_HOST}`, {
+    disableWarnings: true,
+  });
+  const db = getFirestore(app);
+  const [host, portStr] = (process.env.FIRESTORE_EMULATOR_HOST as string).split(':');
+  connectFirestoreEmulator(db, host as string, Number(portStr));
+  return { app, auth, db };
+}
+
+test('PR 8.3b deel 2/2 werk 6 — export van organisatie A teruggeschreven naar een nieuwe organisatie B levert een inhoudelijk gelijke inventaris op; bron blijft ongewijzigd', async () => {
+  const suffix = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+  const sourceClient = makeClientApp(`export-restore-source-${suffix}`);
+  const targetClient = makeClientApp(`export-restore-target-${suffix}`);
+
+  try {
+    const sourceEmail = `restore-source-${suffix}@example.test`;
+    const sourceCred = await createUserWithEmailAndPassword(
+      sourceClient.auth,
+      sourceEmail,
+      PASSWORD,
+    );
+    const sourceUid = sourceCred.user.uid;
+
+    const admin = adminDb();
+    const seeded = await seedFullOrganization(admin, {
+      orgName: 'Restore-Proof-Bron-Org',
+      teamName: 'Restore-Proof-Team',
+      ownerUid: sourceUid,
+      ownerEmail: sourceEmail,
+      coachUid: `coach-${suffix}`,
+      coachEmail: 'coach-restore@example.test',
+    });
+
+    await signInWithEmailAndPassword(sourceClient.auth, sourceEmail, PASSWORD);
+    const sourceCoordinator = new OrganizationExportCoordinator(
+      new FirestoreOrganizationExportGateway(sourceClient.db),
+    );
+    const sourceOutcome = await sourceCoordinator.run({
+      organizationId: seeded.orgId,
+      callerUid: sourceUid,
+      callerRole: 'organizationOwner',
+    });
+    if (sourceOutcome.status !== 'ok') {
+      throw new Error(`bronexport onverwacht niet ok: ${sourceOutcome.status}`);
+    }
+    const sourceExport = sourceOutcome.export;
+    expect(sourceExport.teams).toHaveLength(1);
+    expect(sourceExport.counts.completedGames).toBe(2);
+
+    // Restore: test-only Admin-harness schrijft de export terug naar een
+    // GEHEEL NIEUWE organisatie — nooit over de bron heen.
+    const targetEmail = `restore-target-${suffix}@example.test`;
+    const targetCred = await createUserWithEmailAndPassword(
+      targetClient.auth,
+      targetEmail,
+      PASSWORD,
+    );
+    const targetUid = targetCred.user.uid;
+    const restoredOrgId = await restoreOrganizationExportIntoNewOrg(admin, sourceExport, targetUid);
+    expect(restoredOrgId).not.toBe(seeded.orgId);
+
+    await signInWithEmailAndPassword(targetClient.auth, targetEmail, PASSWORD);
+    const targetCoordinator = new OrganizationExportCoordinator(
+      new FirestoreOrganizationExportGateway(targetClient.db),
+    );
+    const restoredOutcome = await targetCoordinator.run({
+      organizationId: restoredOrgId,
+      callerUid: targetUid,
+      callerRole: 'organizationOwner',
+    });
+    if (restoredOutcome.status !== 'ok') {
+      throw new Error(`herstelde export onverwacht niet ok: ${restoredOutcome.status}`);
+    }
+    const restoredExport = restoredOutcome.export;
+
+    // Canonieke inventaris (aantallen) moet exact gelijk zijn.
+    expect(restoredExport.counts).toEqual(sourceExport.counts);
+
+    // Inhoudelijke gelijkheid, onafhankelijk van de (bewust verschillende)
+    // doelorganisatie-identiteit — zie `normalizeExportForComparison()`.
+    expect(normalizeExportForComparison(restoredExport)).toEqual(
+      normalizeExportForComparison(sourceExport),
+    );
+
+    // Bron blijft byte-voor-byte intact: een herhaalde bronexport levert nog
+    // steeds exact dezelfde contentHash op als de eerste keer.
+    const sourceRereadOutcome = await sourceCoordinator.run({
+      organizationId: seeded.orgId,
+      callerUid: sourceUid,
+      callerRole: 'organizationOwner',
+    });
+    if (sourceRereadOutcome.status !== 'ok') {
+      throw new Error('herlezen van de bron onverwacht niet ok');
+    }
+    expect(sourceRereadOutcome.export.contentHash).toBe(sourceExport.contentHash);
+  } finally {
+    await deleteApp(sourceClient.app);
+    await deleteApp(targetClient.app);
+  }
+});

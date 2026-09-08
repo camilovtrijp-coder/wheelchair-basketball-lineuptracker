@@ -102,6 +102,7 @@ const repositories = {
   completedGames: null,
   migrationInventoryGateway: null,
   migrationCoordinator: null,
+  exportCoordinator: null,
 };
 
 describe('app/App — statsGameIds reset bij organisatie/teamwissel (externe PR-6.5-review)', () => {
