@@ -428,7 +428,24 @@ Firestore-emulator/Rules).
 
 Verificatie na deze opvolging: v2 995/995 unit-tests (was 994), `tsc -b`/
 eslint/prettier over de volledige `src`+`tests`-boom en de productie-/
-classic-SW-build groen.
+classic-SW-build groen. Finale herreview (8 september 2026) op exact deze
+commit (`485c39e`) bevestigt: alle drie bevindingen opgelost, CI 4/4 groen op
+dezelfde SHA, geen nieuwe blokkerende codebevindingen.
+
+**Niet-blokkerend architectuurrestpunt (uit dezelfde finale herreview):**
+`readAuthoritativeCaller()` maakt de export-UI/-coordinator owner-only, maar
+is geen server-side vertrouwelijkheidsgrens tegenover `organizationAdmin`:
+die rol heeft volgens de bestaande, ongewijzigde Firestore Rules nog steeds
+legitieme leestoegang tot dezelfde onderliggende organisatie-/teampaden
+(`isOrgMember()`) en zou buiten deze coordinator om, met eigen client-code,
+een vergelijkbare dataset kunnen samenstellen. Dit is dus expliciet **owner-
+only als productcapability** (welke UI-actie/coordinator-aanroep een gebruiker
+kan doen), niet **server-side confidentialiteit tegenover admins** (welke
+Firestore-data een admin ooit zelf zou kunnen uitlezen) — die twee mogen niet
+door elkaar gebruikt worden in latere acceptatieclaims. Zou het laatste ooit
+een harde eis worden, dan vraagt dat een apart Rules-/architectuurbesluit
+(bijv. een aparte, engere Rules-scope voor exportgevoelige velden of een
+server-side exportfunctie), niet een clientpatch als deze.
 - Eerdere verificatie: v2 994/994 unit-tests (was 969), `tsc -b`/lint/prettier over de
   volledige `src`+`tests`-boom, en de productie-/classic-SW-build groen.
   Firebase-kant ongewijzigd (86/86 unit-/convertertests, `type-check` groen).
