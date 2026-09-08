@@ -386,8 +386,36 @@ Deel 2/2, geïmplementeerd:
   organisatie en vervolgens — ingelogd als een tweede, eigen eigenaarsaccount,
   via de ECHTE Rules/gateway — een inhoudelijk gelijke inventaris (aantallen +
   genormaliseerde inhoud) teruglevert; de bron wordt nooit aangeraakt
-  (herhaalde bronexport levert dezelfde `contentHash` op).
-- Verificatie: v2 994/994 unit-tests (was 969), `tsc -b`/lint/prettier over de
+  (herhaalde bronexport levert dezelfde `contentHash` op). Bevat ook een
+  eigendomsoverdracht-scenario (oprichter is geen lid meer, een ander account
+  exporteert als owner).
+
+**Herreview-opvolging (P1/P2, 8 september 2026):**
+
+1. `callerRole` was een door de aanroeper meegegeven waarde (React-state) —
+   geen betrouwbare autorisatiegrens, want Firestore Rules geven een
+   `organizationAdmin` dezelfde leestoegang tot de onderliggende paden als een
+   owner. `OrganizationExportGateway` kreeg een nieuwe `readCallerRole()`-
+   methode die het ECHTE `organizationMembers/{callerUid}`-document leest;
+   `OrganizationExportCoordinator.run()` accepteert `callerRole` niet meer als
+   invoer en gebruikt uitsluitend dit autoritatieve resultaat voor de
+   `canExportOrganization()`-beslissing. `ExportPanel`'s `callerRole`-prop
+   blijft uitsluitend de defensieve render-poort.
+2. De restoreproef verwarde de oprichter (`organization.createdBy`) met de
+   actueel exporterende eigenaar (`exportedBy`) bij het bepalen welke
+   `organizationMembers`-rij door de nieuwe doelaccount wordt vervangen — bij
+   een overgedragen eigendom (oprichter niet meer lid) kreeg de doelaccount
+   daardoor geen membership. Gefixt naar `exportedBy`; een nieuwe
+   e2e-testcase bewijst het overdrachtsscenario expliciet, met een assertie
+   op `organizationMembers/{targetUid}.role === 'organizationOwner'` vóór de
+   coordinator-readback.
+3. `organization-export-flow.spec.ts` testte owner/admin/coach/viewer maar
+   niet scorer; scorer-e2e-pad toegevoegd.
+
+Verificatie na deze opvolging: v2 995/995 unit-tests (was 994), `tsc -b`/
+eslint/prettier over de volledige `src`+`tests`-boom en de productie-/
+classic-SW-build groen.
+- Eerdere verificatie: v2 994/994 unit-tests (was 969), `tsc -b`/lint/prettier over de
   volledige `src`+`tests`-boom, en de productie-/classic-SW-build groen.
   Firebase-kant ongewijzigd (86/86 unit-/convertertests, `type-check` groen).
 

@@ -259,26 +259,33 @@ export async function restoreOrganizationExportIntoNewOrg(
     createdAt: Timestamp.fromDate(new Date(data.organization.createdAt)),
   });
 
-  // De export-eigenaar (`data.organization.createdBy`) wordt bij restore
-  // vervangen door de NIEUWE, echte inlogbare `ownerUid` — dat is de enige
-  // identiteitssubstitutie die deze restore doet (plan werk 6 vereist een
-  // tweede, eigen eigenaarsaccount om de doelcontext via de Rules te kunnen
-  // teruglezen). Alle ANDERE `organizationMembers`-rijen worden 1:1
-  // teruggeschreven, zodat het AANTAL leden — en dus de canonieke
-  // inventaris — ongewijzigd blijft t.o.v. de bron (geen extra rij).
+  // Herreview PR #89 (P1): de ACTUEEL EXPORTERENDE eigenaar
+  // (`data.exportedBy`) wordt bij restore vervangen door de NIEUWE, echte
+  // inlogbare `ownerUid` — dat is de enige identiteitssubstitutie die deze
+  // restore doet (plan werk 6 vereist een tweede, eigen eigenaarsaccount om
+  // de doelcontext via de Rules te kunnen teruglezen). Eerder gebruikte dit
+  // `data.organization.createdBy` (de OPRICHTER) — die twee kunnen
+  // uiteenlopen zodra de organisatie van eigenaar is gewisseld (de oprichter
+  // is dan gedegradeerd/verwijderd, een ANDER lid exporteert nu als owner);
+  // `canExportOrganization()` garandeert dat `exportedBy` altijd de
+  // daadwerkelijke `organizationOwner`-aanroeper is (zie `domain/export/
+  // build.ts`), dus dat is de juiste rij om te vervangen. Alle ANDERE
+  // `organizationMembers`-rijen worden 1:1 teruggeschreven, zodat het AANTAL
+  // leden — en dus de canonieke inventaris — ongewijzigd blijft t.o.v. de
+  // bron (geen extra rij).
   for (const member of data.organizationMembers) {
     const { id, uid, joinedAt, ...rest } = member as Record<string, unknown> & {
       id: string;
       uid: string;
     };
-    const isOriginalOwner = id === data.organization.createdBy;
-    const docId = isOriginalOwner ? ownerUid : id;
+    const isExportingOwner = id === data.exportedBy;
+    const docId = isExportingOwner ? ownerUid : id;
     await orgRef
       .collection('organizationMembers')
       .doc(docId)
       .set({
         ...rest,
-        uid: isOriginalOwner ? ownerUid : uid,
+        uid: isExportingOwner ? ownerUid : uid,
         ...(joinedAt ? { joinedAt: Timestamp.fromDate(new Date(joinedAt as string)) } : {}),
       });
   }

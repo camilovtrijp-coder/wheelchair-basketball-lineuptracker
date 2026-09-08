@@ -43,6 +43,7 @@ import type {
 } from '../../application/export/OrganizationExportGateway';
 import type { RawOrganizationExportTeam } from '../../domain/export/build';
 import type { OrganizationExportRow } from '../../domain/export/types';
+import type { OrganizationRole } from '../../domain/organizations/types';
 
 /**
  * Zet een converter-uitvoerobject (mag `Timestamp`-velden bevatten) om naar
@@ -92,6 +93,37 @@ export function toExportRow(id: string, data: Record<string, unknown>): Organiza
 
 export class FirestoreOrganizationExportGateway implements OrganizationExportGateway {
   constructor(private readonly db: Firestore) {}
+
+  /**
+   * Herreview PR #89 (P1): leest het ECHTE `organizationMembers/{callerUid}`-
+   * document — hetzelfde document waarop `firestore.rules`' `isOrgMember()`/
+   * `orgRole()` vertrouwen — in plaats van een door de aanroeper meegegeven
+   * rolwaarde te accepteren. `getDoc()` op je EIGEN membershipdocument is
+   * voor elk ingelogd account met een geldig lidmaatschap toegestaan (zelfde
+   * Rules als de rest van deze gateway), dus dit voegt geen nieuwe leestoegang
+   * toe — het maakt alleen de rolbeslissing zelf onvervalsbaar. `null` bij
+   * afwezig document (geen lidmaatschap) of een corrupte/onleesbare read —
+   * fail-closed, nooit een gok naar een toegestane rol.
+   */
+  async readCallerRole(
+    organizationId: string,
+    callerUid: string,
+  ): Promise<OrganizationRole | null> {
+    try {
+      const memberRef = doc(
+        this.db,
+        'organizations',
+        organizationId,
+        'organizationMembers',
+        callerUid,
+      ).withConverter(organizationMemberConverter);
+      const snap = await getDoc(memberRef);
+      if (!snap.exists()) return null;
+      return snap.data().role;
+    } catch {
+      return null;
+    }
+  }
 
   async readOrganizationExportInput(organizationId: string): Promise<OrganizationExportReadResult> {
     try {

@@ -1,13 +1,11 @@
 import { buildOrganizationExport } from '../../domain/export/build';
 import { canExportOrganization, type OrganizationExportV1 } from '../../domain/export/types';
 import { verifyOrganizationExportRoundtrip } from '../../domain/export/roundtrip';
-import type { OrganizationRole } from '../../domain/organizations/types';
 import type { OrganizationExportGateway } from './OrganizationExportGateway';
 
 export interface OrganizationExportRequest {
   organizationId: string;
   callerUid: string;
-  callerRole: OrganizationRole;
 }
 
 export type OrganizationExportOutcome =
@@ -22,14 +20,22 @@ export type OrganizationExportOutcome =
  * dit blijft, net als `GameSyncCoordinator`/`MigrationCoordinator`, een
  * application-poort-orkestrator zonder rechtstreeks Firebase-import.
  *
- * De capabilitycheck gebeurt HIER al, vóór `gateway.readOrganizationExportInput()`
- * wordt aangeroepen — plan §C 8.3b acceptatie: "admin/coach/scorer/viewer en
- * cross-org-aanvallers krijgen geen exportactie EN GEEN LEESRESULTAAT". Een
- * niet-owner mag dus nooit één Firestore-read veroorzaken via deze
- * coordinator, laat staan een resultaat terugkrijgen.
- * `buildOrganizationExport()` herhaalt exact dezelfde check als
- * defense-in-depth (nooit één enkel controlepunt vertrouwen), niet als
- * vervanging van de check hier.
+ * Herreview PR #89 (P1): `OrganizationExportRequest` draagt bewust GEEN
+ * `callerRole` meer. Een door de aanroeper meegegeven rol (bijv.
+ * React-component-state) is geen betrouwbare autorisatiegrens — Firestore
+ * Rules geven een `organizationAdmin` dezelfde leestoegang tot
+ * `organizationMembers`/`invitations`/teamfamilies als een owner
+ * (`isOrgMember()`), dus een admin kon deze coordinator eerder met een
+ * vervalste `'organizationOwner'`-waarde aanroepen. De capabilitycheck
+ * gebeurt daarom HIER, vóór `gateway.readOrganizationExportInput()`, op de
+ * rol die `gateway.readCallerRole()` ZELF uit het echte
+ * `organizationMembers/{callerUid}`-document leest — plan §C 8.3b acceptatie:
+ * "admin/coach/scorer/viewer en cross-org-aanvallers krijgen geen
+ * exportactie EN GEEN LEESRESULTAAT". Een niet-owner mag dus nooit één
+ * inventarisatie-Firestore-read veroorzaken via deze coordinator, laat staan
+ * een resultaat terugkrijgen. `buildOrganizationExport()` herhaalt exact
+ * dezelfde check als defense-in-depth (nooit één enkel controlepunt
+ * vertrouwen), niet als vervanging van de check hier.
  */
 export class OrganizationExportCoordinator {
   constructor(
@@ -38,7 +44,8 @@ export class OrganizationExportCoordinator {
   ) {}
 
   async run(request: OrganizationExportRequest): Promise<OrganizationExportOutcome> {
-    if (!canExportOrganization(request.callerRole)) {
+    const callerRole = await this.gateway.readCallerRole(request.organizationId, request.callerUid);
+    if (callerRole === null || !canExportOrganization(callerRole)) {
       return { status: 'denied' };
     }
 
@@ -53,7 +60,7 @@ export class OrganizationExportCoordinator {
 
     const built = buildOrganizationExport(read.data, {
       uid: request.callerUid,
-      role: request.callerRole,
+      role: callerRole,
       now: this.now(),
     });
     if (!built.allowed) {

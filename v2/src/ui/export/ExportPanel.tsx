@@ -59,7 +59,12 @@ export function ExportPanel({
   async function handleStart() {
     setState({ step: 'loading' });
     try {
-      const outcome = await coordinator.run({ organizationId, callerUid, callerRole });
+      // Herreview PR #89 (P1): `callerRole` gaat NIET mee — de coordinator
+      // bepaalt de rol nu zelf, autoritatief, via `gateway.readCallerRole()`
+      // (zie `OrganizationExportCoordinator.run()`'s docstring). `callerRole`
+      // hierboven blijft uitsluitend de defensieve render-poort van dit
+      // paneel.
+      const outcome = await coordinator.run({ organizationId, callerUid });
       if (outcome.status === 'denied') {
         setState({ step: 'error', messageKey: 'exportErrorGeneric' });
         return;

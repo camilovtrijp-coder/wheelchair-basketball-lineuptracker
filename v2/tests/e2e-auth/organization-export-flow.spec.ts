@@ -122,6 +122,29 @@ test.describe('PR 8.3b deel 2/2 — rolgating (§B "alleen organizationOwner")',
     await expect(page.getByTestId('export-panel')).toHaveCount(0);
   });
 
+  test('scorer krijgt het exportpaneel NOOIT te zien', async ({ page }) => {
+    const email = uniqueTestEmail('export-scorer');
+    await signUp(page, email, PASSWORD);
+    await answerTrustedDevice(page, true);
+    const uid = await lookupUidByEmail(email, PASSWORD);
+    const { orgId, teamId } = await seedBareTeam(
+      'Export-Rolgating-Org-Scorer',
+      'Export-Team-Scorer',
+    );
+    await adminDb()
+      .collection('organizations')
+      .doc(orgId)
+      .collection('teams')
+      .doc(teamId)
+      .collection('teamMembers')
+      .doc(uid)
+      .set({ role: 'scorer', email, uid, addedAt: new Date() });
+    await page.reload();
+    await selectContext(page, orgId, teamId);
+
+    await expect(page.getByTestId('export-panel')).toHaveCount(0);
+  });
+
   test('viewer krijgt het exportpaneel NOOIT te zien', async ({ page }) => {
     const email = uniqueTestEmail('export-viewer');
     await signUp(page, email, PASSWORD);

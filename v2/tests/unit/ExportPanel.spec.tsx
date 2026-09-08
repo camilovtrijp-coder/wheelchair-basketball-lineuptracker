@@ -14,6 +14,7 @@ import type {
   OrganizationExportReadResult,
 } from '../../src/application/export/OrganizationExportGateway';
 import type { RawOrganizationExportInput } from '../../src/domain/export/build';
+import type { OrganizationRole } from '../../src/domain/organizations/types';
 
 const ORG_ID = 'org-1';
 
@@ -49,9 +50,15 @@ function rawInput(overrides: Partial<RawOrganizationExportInput> = {}): RawOrgan
 }
 
 class FakeGateway implements OrganizationExportGateway {
-  constructor(private result: OrganizationExportReadResult) {}
+  constructor(
+    private result: OrganizationExportReadResult,
+    private callerRole: OrganizationRole | null = 'organizationOwner',
+  ) {}
   async readOrganizationExportInput(): Promise<OrganizationExportReadResult> {
     return this.result;
+  }
+  async readCallerRole(): Promise<OrganizationRole | null> {
+    return this.callerRole;
   }
 }
 

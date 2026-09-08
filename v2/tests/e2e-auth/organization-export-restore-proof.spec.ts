@@ -104,7 +104,6 @@ test('PR 8.3b deel 2/2 werk 6 — export van organisatie A teruggeschreven naar 
     const sourceOutcome = await sourceCoordinator.run({
       organizationId: seeded.orgId,
       callerUid: sourceUid,
-      callerRole: 'organizationOwner',
     });
     if (sourceOutcome.status !== 'ok') {
       throw new Error(`bronexport onverwacht niet ok: ${sourceOutcome.status}`);
@@ -125,6 +124,19 @@ test('PR 8.3b deel 2/2 werk 6 — export van organisatie A teruggeschreven naar 
     const restoredOrgId = await restoreOrganizationExportIntoNewOrg(admin, sourceExport, targetUid);
     expect(restoredOrgId).not.toBe(seeded.orgId);
 
+    // Herreview PR #89 (P1/P2): bewijs de eigenaarssubstitutie zelf, vóór de
+    // readback via de coordinator — een falende substitutie zou anders alleen
+    // zichtbaar zijn als een generieke 'denied', niet als een duidelijke
+    // assertiefout op de daadwerkelijke oorzaak.
+    const restoredOwnerMember = await admin
+      .collection('organizations')
+      .doc(restoredOrgId)
+      .collection('organizationMembers')
+      .doc(targetUid)
+      .get();
+    expect(restoredOwnerMember.exists).toBe(true);
+    expect(restoredOwnerMember.data()?.role).toBe('organizationOwner');
+
     await signInWithEmailAndPassword(targetClient.auth, targetEmail, PASSWORD);
     const targetCoordinator = new OrganizationExportCoordinator(
       new FirestoreOrganizationExportGateway(targetClient.db),
@@ -132,7 +144,6 @@ test('PR 8.3b deel 2/2 werk 6 — export van organisatie A teruggeschreven naar 
     const restoredOutcome = await targetCoordinator.run({
       organizationId: restoredOrgId,
       callerUid: targetUid,
-      callerRole: 'organizationOwner',
     });
     if (restoredOutcome.status !== 'ok') {
       throw new Error(`herstelde export onverwacht niet ok: ${restoredOutcome.status}`);
@@ -153,12 +164,97 @@ test('PR 8.3b deel 2/2 werk 6 — export van organisatie A teruggeschreven naar 
     const sourceRereadOutcome = await sourceCoordinator.run({
       organizationId: seeded.orgId,
       callerUid: sourceUid,
-      callerRole: 'organizationOwner',
     });
     if (sourceRereadOutcome.status !== 'ok') {
       throw new Error('herlezen van de bron onverwacht niet ok');
     }
     expect(sourceRereadOutcome.export.contentHash).toBe(sourceExport.contentHash);
+  } finally {
+    await deleteApp(sourceClient.app);
+    await deleteApp(targetClient.app);
+  }
+});
+
+test('PR 8.3b deel 2/2 werk 6, herreview P1/P2 — eigendomsoverdracht: oprichter is geen lid meer, restore herkent de ACTUELE exporterende eigenaar', async () => {
+  // Reproduceert het scenario uit de review: `organization.createdBy` (de
+  // OPRICHTER) verschilt van `exportedBy` (de ACTUELE, daadwerkelijk
+  // exporterende owner) — bijv. omdat de oprichter is vertrokken en
+  // eigendom is overgedragen. Vóór de fix koppelde de restore de
+  // eigenaarssubstitutie aan `organization.createdBy`; met een oprichter die
+  // geen lid meer is, kreeg de nieuwe doelaccount dan HELEMAAL geen
+  // membership.
+  const suffix = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+  const sourceClient = makeClientApp(`export-restore-transfer-source-${suffix}`);
+  const targetClient = makeClientApp(`export-restore-transfer-target-${suffix}`);
+
+  try {
+    const ownerEmail = `restore-transfer-owner-${suffix}@example.test`;
+    const ownerCred = await createUserWithEmailAndPassword(sourceClient.auth, ownerEmail, PASSWORD);
+    const ownerUid = ownerCred.user.uid;
+
+    const admin = adminDb();
+    const seeded = await seedFullOrganization(admin, {
+      orgName: 'Restore-Proof-Overdracht-Org',
+      teamName: 'Restore-Proof-Overdracht-Team',
+      ownerUid,
+      ownerEmail,
+      coachUid: `coach-${suffix}`,
+      coachEmail: 'coach-transfer@example.test',
+    });
+
+    // De oprichter is een ANDER, inmiddels vertrokken account — `createdBy`
+    // wijst niet meer naar een bestaand `organizationMembers`-document.
+    const departedFounderUid = `departed-founder-${suffix}`;
+    await admin
+      .collection('organizations')
+      .doc(seeded.orgId)
+      .update({ createdBy: departedFounderUid });
+
+    await signInWithEmailAndPassword(sourceClient.auth, ownerEmail, PASSWORD);
+    const sourceGateway = new FirestoreOrganizationExportGateway(sourceClient.db);
+    const sourceCoordinator = new OrganizationExportCoordinator(sourceGateway);
+    const sourceOutcome = await sourceCoordinator.run({
+      organizationId: seeded.orgId,
+      callerUid: ownerUid,
+    });
+    if (sourceOutcome.status !== 'ok') {
+      throw new Error(`bronexport onverwacht niet ok: ${sourceOutcome.status}`);
+    }
+    const sourceExport = sourceOutcome.export;
+    expect(sourceExport.organization.createdBy).toBe(departedFounderUid);
+    expect(sourceExport.exportedBy).toBe(ownerUid);
+    expect(sourceExport.organizationMembers.map((m) => m.id)).toEqual([ownerUid]);
+
+    const targetEmail = `restore-transfer-target-${suffix}@example.test`;
+    const targetCred = await createUserWithEmailAndPassword(
+      targetClient.auth,
+      targetEmail,
+      PASSWORD,
+    );
+    const targetUid = targetCred.user.uid;
+    const restoredOrgId = await restoreOrganizationExportIntoNewOrg(admin, sourceExport, targetUid);
+
+    const restoredOwnerMember = await admin
+      .collection('organizations')
+      .doc(restoredOrgId)
+      .collection('organizationMembers')
+      .doc(targetUid)
+      .get();
+    expect(restoredOwnerMember.exists).toBe(true);
+    expect(restoredOwnerMember.data()?.role).toBe('organizationOwner');
+
+    await signInWithEmailAndPassword(targetClient.auth, targetEmail, PASSWORD);
+    const targetCoordinator = new OrganizationExportCoordinator(
+      new FirestoreOrganizationExportGateway(targetClient.db),
+    );
+    const restoredOutcome = await targetCoordinator.run({
+      organizationId: restoredOrgId,
+      callerUid: targetUid,
+    });
+    if (restoredOutcome.status !== 'ok') {
+      throw new Error(`herstelde export onverwacht niet ok: ${restoredOutcome.status}`);
+    }
+    expect(restoredOutcome.export.counts).toEqual(sourceExport.counts);
   } finally {
     await deleteApp(sourceClient.app);
     await deleteApp(targetClient.app);
