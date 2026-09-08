@@ -103,7 +103,6 @@ test('PR 8.3b deel 2/2 werk 6 — export van organisatie A teruggeschreven naar 
     const sourceCoordinator = new OrganizationExportCoordinator(sourceGateway);
     const sourceOutcome = await sourceCoordinator.run({
       organizationId: seeded.orgId,
-      callerUid: sourceUid,
     });
     if (sourceOutcome.status !== 'ok') {
       throw new Error(`bronexport onverwacht niet ok: ${sourceOutcome.status}`);
@@ -143,7 +142,6 @@ test('PR 8.3b deel 2/2 werk 6 — export van organisatie A teruggeschreven naar 
     );
     const restoredOutcome = await targetCoordinator.run({
       organizationId: restoredOrgId,
-      callerUid: targetUid,
     });
     if (restoredOutcome.status !== 'ok') {
       throw new Error(`herstelde export onverwacht niet ok: ${restoredOutcome.status}`);
@@ -163,7 +161,6 @@ test('PR 8.3b deel 2/2 werk 6 — export van organisatie A teruggeschreven naar 
     // steeds exact dezelfde contentHash op als de eerste keer.
     const sourceRereadOutcome = await sourceCoordinator.run({
       organizationId: seeded.orgId,
-      callerUid: sourceUid,
     });
     if (sourceRereadOutcome.status !== 'ok') {
       throw new Error('herlezen van de bron onverwacht niet ok');
@@ -215,7 +212,6 @@ test('PR 8.3b deel 2/2 werk 6, herreview P1/P2 — eigendomsoverdracht: oprichte
     const sourceCoordinator = new OrganizationExportCoordinator(sourceGateway);
     const sourceOutcome = await sourceCoordinator.run({
       organizationId: seeded.orgId,
-      callerUid: ownerUid,
     });
     if (sourceOutcome.status !== 'ok') {
       throw new Error(`bronexport onverwacht niet ok: ${sourceOutcome.status}`);
@@ -249,7 +245,6 @@ test('PR 8.3b deel 2/2 werk 6, herreview P1/P2 — eigendomsoverdracht: oprichte
     );
     const restoredOutcome = await targetCoordinator.run({
       organizationId: restoredOrgId,
-      callerUid: targetUid,
     });
     if (restoredOutcome.status !== 'ok') {
       throw new Error(`herstelde export onverwacht niet ok: ${restoredOutcome.status}`);
@@ -258,5 +253,63 @@ test('PR 8.3b deel 2/2 werk 6, herreview P1/P2 — eigendomsoverdracht: oprichte
   } finally {
     await deleteApp(sourceClient.app);
     await deleteApp(targetClient.app);
+  }
+});
+
+test('PR 8.3b deel 2/2, herreview P1 tweede ronde — een ingelogde admin kan de coordinator niet met de uid van de echte owner laten exporteren', async () => {
+  // Reproduceert exact het lek uit de review: vóór deze fix nam de gateway
+  // een `callerUid`-PARAMETER aan, dus een admin kon simpelweg de owner's
+  // uid meegeven (`readCallerRole(orgId, ownerUid)`) — Rules staan toe dat
+  // elk orglid ELK `organizationMembers/{uid}`-document leest, dus die read
+  // slaagde en leverde `'organizationOwner'` op. Nu neemt
+  // `readAuthoritativeCaller()` GEEN identiteitsparameter meer aan: de uid
+  // komt uitsluitend uit `getAuth(db.app).currentUser`, de daadwerkelijk
+  // ingelogde sessie van DIT Firestore-client-object. Dit bewijst het tegen
+  // een echte, apart ingelogde admin-sessie — geen mock.
+  const suffix = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+  const ownerClient = makeClientApp(`export-spoof-owner-${suffix}`);
+  const adminClient = makeClientApp(`export-spoof-admin-${suffix}`);
+
+  try {
+    const ownerEmail = `export-spoof-owner-${suffix}@example.test`;
+    const ownerCred = await createUserWithEmailAndPassword(ownerClient.auth, ownerEmail, PASSWORD);
+    const ownerUid = ownerCred.user.uid;
+
+    const adminEmail = `export-spoof-admin-${suffix}@example.test`;
+    const adminCred = await createUserWithEmailAndPassword(adminClient.auth, adminEmail, PASSWORD);
+    const adminUid = adminCred.user.uid;
+
+    const admin = adminDb();
+    const seeded = await seedFullOrganization(admin, {
+      orgName: 'Export-Spoof-Org',
+      teamName: 'Export-Spoof-Team',
+      ownerUid,
+      ownerEmail,
+      coachUid: `coach-${suffix}`,
+      coachEmail: 'coach-spoof@example.test',
+    });
+    // De tweede account is een ECHTE organizationAdmin — geen team-only rol
+    // — zodat Rules 'm dezelfde leestoegang geven als de owner tot
+    // `organizationMembers`/`invitations`/teamfamilies (isOrgMember()), exact
+    // de situatie die het lek mogelijk maakte.
+    await admin
+      .collection('organizations')
+      .doc(seeded.orgId)
+      .collection('organizationMembers')
+      .doc(adminUid)
+      .set({ role: 'organizationAdmin', email: adminEmail, uid: adminUid, joinedAt: new Date() });
+
+    await signInWithEmailAndPassword(adminClient.auth, adminEmail, PASSWORD);
+    const adminCoordinator = new OrganizationExportCoordinator(
+      new FirestoreOrganizationExportGateway(adminClient.db),
+    );
+    // Geen enkel veld op `OrganizationExportRequest` kan de owner's uid
+    // meegeven — dit is dus geen "geef de verkeerde parameter niet mee"-
+    // discipline, maar een structurele onmogelijkheid.
+    const outcome = await adminCoordinator.run({ organizationId: seeded.orgId });
+    expect(outcome).toEqual({ status: 'denied' });
+  } finally {
+    await deleteApp(ownerClient.app);
+    await deleteApp(adminClient.app);
   }
 });

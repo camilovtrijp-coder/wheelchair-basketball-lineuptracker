@@ -31,18 +31,22 @@ export interface OrganizationExportGateway {
   readOrganizationExportInput(organizationId: string): Promise<OrganizationExportReadResult>;
 
   /**
-   * Herreview PR #89 (P1): een `callerRole` die de AANROEPER zelf meegeeft
-   * (bijv. React-component-state) is geen betrouwbare autorisatiegrens — een
-   * `organizationAdmin` (die dezelfde Firestore Rules-toegang heeft tot
-   * `organizationMembers`/`invitations`/teamfamilies als een owner, zie
-   * `firestore.rules`' `isOrgMember()`) zou de coordinator anders met een
-   * vervalste `'organizationOwner'`-waarde kunnen aanroepen. Deze methode
-   * leest in plaats daarvan het ECHTE `organizationMembers/{callerUid}`-
-   * document van de aanroeper — hetzelfde document waarop de Rules zelf
-   * vertrouwen — en levert `null` als er geen membership bestaat. De
-   * coordinator gebruikt UITSLUITEND dit resultaat voor de
-   * `canExportOrganization()`-beslissing, nooit een door de aanroeper
-   * meegegeven rol.
+   * Herreview PR #89 (P1, tweede ronde): noch een door de aanroeper
+   * meegegeven `callerRole`, NOCH een door de aanroeper meegegeven
+   * `callerUid` is een betrouwbare autorisatiegrens. Rules staan elk orglid
+   * toe om ELK `organizationMembers/{uid}`-document binnen die organisatie
+   * te lezen (`isOrgMember()`) — een `organizationAdmin` kon dus eerder
+   * gewoon de OWNER's uid als `callerUid` meegeven en zo alsnog
+   * `'organizationOwner'` terugkrijgen. Deze methode neemt daarom GEEN
+   * identiteitsparameter aan: de implementatie bepaalt zelf, uit de
+   * daadwerkelijk ingelogde Firebase Auth-sessie, wie de aanroeper is (zie
+   * `FirestoreOrganizationExportGateway.readAuthoritativeCaller()`) en leest
+   * DIENS eigen `organizationMembers/{uid}`-document. `null` bij
+   * niet-ingelogd, geen lidmaatschap, of een corrupte/onleesbare read — de
+   * coordinator gebruikt UITSLUITEND dit resultaat, nooit een door de
+   * aanroeper meegegeven rol of uid.
    */
-  readCallerRole(organizationId: string, callerUid: string): Promise<OrganizationRole | null>;
+  readAuthoritativeCaller(
+    organizationId: string,
+  ): Promise<{ uid: string; role: OrganizationRole } | null>;
 }

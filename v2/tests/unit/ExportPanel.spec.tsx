@@ -52,13 +52,16 @@ function rawInput(overrides: Partial<RawOrganizationExportInput> = {}): RawOrgan
 class FakeGateway implements OrganizationExportGateway {
   constructor(
     private result: OrganizationExportReadResult,
-    private callerRole: OrganizationRole | null = 'organizationOwner',
+    private caller: { uid: string; role: OrganizationRole } | null = {
+      uid: 'uid-owner',
+      role: 'organizationOwner',
+    },
   ) {}
   async readOrganizationExportInput(): Promise<OrganizationExportReadResult> {
     return this.result;
   }
-  async readCallerRole(): Promise<OrganizationRole | null> {
-    return this.callerRole;
+  async readAuthoritativeCaller(): Promise<{ uid: string; role: OrganizationRole } | null> {
+    return this.caller;
   }
 }
 
@@ -80,7 +83,6 @@ describe('ui/export/ExportPanel — rolgrens (§B "alleen organizationOwner")', 
         organizationId={ORG_ID}
         organizationName="De Adelaars Org"
         callerRole="coach"
-        callerUid="uid-owner"
         coordinator={coordinator}
       />,
     );
@@ -95,7 +97,6 @@ describe('ui/export/ExportPanel — rolgrens (§B "alleen organizationOwner")', 
         organizationId={ORG_ID}
         organizationName="De Adelaars Org"
         callerRole="viewer"
-        callerUid="uid-x"
         coordinator={coordinator}
       />,
     );
@@ -118,7 +119,6 @@ describe('ui/export/ExportPanel — happy path (werk 4: preview → download)', 
         organizationId={ORG_ID}
         organizationName="De Adelaars Org"
         callerRole="organizationOwner"
-        callerUid="uid-owner"
         coordinator={coordinator}
       />,
     );
@@ -146,7 +146,6 @@ describe('ui/export/ExportPanel — foutafhandeling (werk 4)', () => {
         organizationId={ORG_ID}
         organizationName="De Adelaars Org"
         callerRole="organizationOwner"
-        callerUid="uid-owner"
         coordinator={coordinator}
       />,
     );
@@ -167,7 +166,6 @@ describe('ui/export/ExportPanel — foutafhandeling (werk 4)', () => {
         organizationId={ORG_ID}
         organizationName="De Adelaars Org"
         callerRole="organizationOwner"
-        callerUid="uid-owner"
         coordinator={coordinator}
       />,
     );

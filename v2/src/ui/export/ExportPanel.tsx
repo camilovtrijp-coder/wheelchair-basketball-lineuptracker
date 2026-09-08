@@ -27,7 +27,6 @@ export interface ExportPanelProps {
   organizationId: string;
   organizationName: string;
   callerRole: OrganizationRole;
-  callerUid: string;
   coordinator: OrganizationExportCoordinator;
 }
 
@@ -43,7 +42,6 @@ export function ExportPanel({
   organizationId,
   organizationName,
   callerRole,
-  callerUid,
   coordinator,
 }: ExportPanelProps) {
   const t = (key: StringKey): string => translate(lang, key);
@@ -59,12 +57,13 @@ export function ExportPanel({
   async function handleStart() {
     setState({ step: 'loading' });
     try {
-      // Herreview PR #89 (P1): `callerRole` gaat NIET mee — de coordinator
-      // bepaalt de rol nu zelf, autoritatief, via `gateway.readCallerRole()`
+      // Herreview PR #89 (P1, tweede ronde): noch `callerRole` noch
+      // `callerUid` gaat mee — de coordinator bepaalt beide nu zelf,
+      // autoritatief, uit de daadwerkelijk ingelogde Firebase Auth-sessie
       // (zie `OrganizationExportCoordinator.run()`'s docstring). `callerRole`
       // hierboven blijft uitsluitend de defensieve render-poort van dit
       // paneel.
-      const outcome = await coordinator.run({ organizationId, callerUid });
+      const outcome = await coordinator.run({ organizationId });
       if (outcome.status === 'denied') {
         setState({ step: 'error', messageKey: 'exportErrorGeneric' });
         return;

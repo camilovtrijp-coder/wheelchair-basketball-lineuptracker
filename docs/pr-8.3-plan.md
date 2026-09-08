@@ -395,12 +395,10 @@ Deel 2/2, geïmplementeerd:
 1. `callerRole` was een door de aanroeper meegegeven waarde (React-state) —
    geen betrouwbare autorisatiegrens, want Firestore Rules geven een
    `organizationAdmin` dezelfde leestoegang tot de onderliggende paden als een
-   owner. `OrganizationExportGateway` kreeg een nieuwe `readCallerRole()`-
-   methode die het ECHTE `organizationMembers/{callerUid}`-document leest;
-   `OrganizationExportCoordinator.run()` accepteert `callerRole` niet meer als
-   invoer en gebruikt uitsluitend dit autoritatieve resultaat voor de
-   `canExportOrganization()`-beslissing. `ExportPanel`'s `callerRole`-prop
-   blijft uitsluitend de defensieve render-poort.
+   owner. `OrganizationExportGateway` kreeg een `readCallerRole()`-methode die
+   het ECHTE `organizationMembers/{callerUid}`-document leest;
+   `OrganizationExportCoordinator.run()` accepteerde `callerRole` niet meer
+   als invoer.
 2. De restoreproef verwarde de oprichter (`organization.createdBy`) met de
    actueel exporterende eigenaar (`exportedBy`) bij het bepalen welke
    `organizationMembers`-rij door de nieuwe doelaccount wordt vervangen — bij
@@ -411,6 +409,22 @@ Deel 2/2, geïmplementeerd:
    coordinator-readback.
 3. `organization-export-flow.spec.ts` testte owner/admin/coach/viewer maar
    niet scorer; scorer-e2e-pad toegevoegd.
+
+**Herreview-opvolging, tweede ronde (P1, 8 september 2026):** punt 1 hierboven
+loste het `callerRole`-lek op, maar liet `callerUid` staan als parameter — een
+`organizationAdmin` kon nog steeds gewoon de OWNER's uid meegeven
+(`readCallerRole(orgId, ownerUid)`), want Rules staan elk orglid toe om ELK
+`organizationMembers/{uid}`-document binnen die organisatie te lezen
+(`isOrgMember()`); die read slaagde dus alsnog. Opgelost door de
+identiteitsparameter volledig te verwijderen: `readCallerRole()` is vervangen
+door `readAuthoritativeCaller(organizationId)`, die de uid uitsluitend uit
+`getAuth(db.app).currentUser` haalt (de daadwerkelijk ingelogde Firebase
+Auth-sessie van die specifieke Firestore-clientinstantie) — geen enkel veld op
+`OrganizationExportRequest`/`ExportPanelProps` draagt nog een identiteit die
+een aanroeper zelf kan invullen. Nieuwe e2e-testcase logt een echte,
+apart aangemaakte `organizationAdmin` in en bewijst dat die de coordinator
+niet met de owner's uid kan laten exporteren (geen mock — echte Auth-/
+Firestore-emulator/Rules).
 
 Verificatie na deze opvolging: v2 995/995 unit-tests (was 994), `tsc -b`/
 eslint/prettier over de volledige `src`+`tests`-boom en de productie-/

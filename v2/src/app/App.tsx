@@ -1510,7 +1510,6 @@ export function App({
                 organizationId={organizationId}
                 organizationName={organizationName || organizationId}
                 callerRole={organizationRole}
-                callerUid={repositories.gameWriterContext?.authorUid ?? ''}
                 coordinator={repositories.exportCoordinator}
               />
             ) : null}

@@ -25,6 +25,7 @@ import {
   type Firestore,
   type FirestoreDataConverter,
 } from 'firebase/firestore';
+import { getAuth } from 'firebase/auth';
 import {
   completedGameConverter,
   gameActionConverter,
@@ -95,31 +96,35 @@ export class FirestoreOrganizationExportGateway implements OrganizationExportGat
   constructor(private readonly db: Firestore) {}
 
   /**
-   * Herreview PR #89 (P1): leest het ECHTE `organizationMembers/{callerUid}`-
-   * document — hetzelfde document waarop `firestore.rules`' `isOrgMember()`/
-   * `orgRole()` vertrouwen — in plaats van een door de aanroeper meegegeven
-   * rolwaarde te accepteren. `getDoc()` op je EIGEN membershipdocument is
-   * voor elk ingelogd account met een geldig lidmaatschap toegestaan (zelfde
-   * Rules als de rest van deze gateway), dus dit voegt geen nieuwe leestoegang
-   * toe — het maakt alleen de rolbeslissing zelf onvervalsbaar. `null` bij
-   * afwezig document (geen lidmaatschap) of een corrupte/onleesbare read —
-   * fail-closed, nooit een gok naar een toegestane rol.
+   * Herreview PR #89 (P1, tweede ronde): de eerste versie nam `callerUid` nog
+   * als PARAMETER aan — een `organizationAdmin` kon daarmee gewoon de
+   * OWNER's uid meegeven (`readCallerRole(orgId, ownerUid)`); Rules staan elk
+   * orglid toe om ELK `organizationMembers/{uid}`-document binnen die
+   * organisatie te lezen (`isOrgMember()`), dus die read slaagde alsnog en
+   * leverde `'organizationOwner'` op zonder dat de admin ooit zelf owner was.
+   * Deze methode neemt daarom GEEN uid-parameter meer aan: de uid komt
+   * uitsluitend uit `getAuth(this.db.app).currentUser`, de daadwerkelijk
+   * ingelogde identiteit voor DEZE Firestore-instantie — die kan een
+   * aanroeper niet vervalsen zonder een ander account te zijn. `null` bij
+   * niet-ingelogd, geen lidmaatschap, of een corrupte/onleesbare read —
+   * fail-closed, nooit een gok naar een toegestane rol/identiteit.
    */
-  async readCallerRole(
+  async readAuthoritativeCaller(
     organizationId: string,
-    callerUid: string,
-  ): Promise<OrganizationRole | null> {
+  ): Promise<{ uid: string; role: OrganizationRole } | null> {
+    const uid = getAuth(this.db.app).currentUser?.uid;
+    if (!uid) return null;
     try {
       const memberRef = doc(
         this.db,
         'organizations',
         organizationId,
         'organizationMembers',
-        callerUid,
+        uid,
       ).withConverter(organizationMemberConverter);
       const snap = await getDoc(memberRef);
       if (!snap.exists()) return null;
-      return snap.data().role;
+      return { uid, role: snap.data().role };
     } catch {
       return null;
     }
