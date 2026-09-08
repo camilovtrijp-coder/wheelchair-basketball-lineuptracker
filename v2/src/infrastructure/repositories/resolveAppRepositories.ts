@@ -16,6 +16,7 @@ import type { GameSyncCoordinator } from '../../application/game/GameSyncCoordin
 import type { GameCloudWriterContext } from '../../application/game/projectGameForCloud';
 import type { CloudMigrationInventoryGateway } from '../../application/migration/CloudMigrationInventoryGateway';
 import type { MigrationCoordinator } from '../../application/migration/MigrationCoordinator';
+import type { OrganizationExportCoordinator } from '../../application/export/OrganizationExportCoordinator';
 import type { KeyValueStorage } from '../../i18n/persistence';
 import type { RepositorySelection } from './selectRepositories';
 import { LocalAsyncRosterRepository } from '../roster/LocalAsyncRosterRepository';
@@ -41,6 +42,9 @@ export interface ResolvedAppRepositories {
    * migreren, `app/App.tsx` rendert `MigrationPanel` dan sowieso niet. */
   migrationInventoryGateway: CloudMigrationInventoryGateway | null;
   migrationCoordinator: MigrationCoordinator | null;
+  /** PR 8.3b deel 2/2: `null` in lokale modus — er is geen cloudorganisatie
+   * om te exporteren, `app/App.tsx` rendert `ExportPanel` dan sowieso niet. */
+  exportCoordinator: OrganizationExportCoordinator | null;
 }
 
 export function resolveAppRepositories(
@@ -57,6 +61,7 @@ export function resolveAppRepositories(
       completedGames: selection.completedGames,
       migrationInventoryGateway: selection.migrationInventoryGateway,
       migrationCoordinator: selection.migrationCoordinator,
+      exportCoordinator: selection.exportCoordinator,
     };
   }
   return {
@@ -68,5 +73,6 @@ export function resolveAppRepositories(
     completedGames: null,
     migrationInventoryGateway: null,
     migrationCoordinator: null,
+    exportCoordinator: null,
   };
 }

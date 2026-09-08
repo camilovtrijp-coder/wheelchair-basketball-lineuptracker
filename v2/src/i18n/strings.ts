@@ -363,6 +363,42 @@ const nl = {
   migrationExportBtn: '⬇ Exporteer vastzittende onderdelen',
   migrationCloseBtn: 'Sluiten',
 
+  // PR 8.3b deel 2/2 (docs/pr-8.3-plan.md §C 8.3b werk 4): owner-only
+  // organisatie-exportpaneel. Bouwt zelf GEEN nieuwe domeinlogica — roept
+  // uitsluitend `OrganizationExportCoordinator.run()` aan en toont de
+  // resulterende `OrganizationExportV1`. Alleen zichtbaar voor
+  // `canExportOrganization()` (organizationOwner); admin/coach/scorer/viewer
+  // krijgen dit blok nooit gerenderd, geen alleen-lezen variant.
+  exportTitle: 'Volledige organisatie-export',
+  exportDesc:
+    'Download een volledige, versieerbare kopie van deze organisatie: alle teams, instellingen, rosters, wedstrijden en ledenlijsten. Dit is een momentopname voor eigen beheer/dataportabiliteit, geen automatische back-up.',
+  exportStartBtn: 'Export voorbereiden',
+  exportBuilding: 'Organisatiegegevens worden ingelezen…',
+  exportErrorGeneric: 'Inlezen is mislukt. Probeer het opnieuw.',
+  exportErrorNotFound: 'Deze organisatie is niet gevonden.',
+  exportErrorRoundtrip:
+    'De export kon niet worden geverifieerd en is daarom niet aangeboden als bestand. Probeer het opnieuw.',
+  exportPreviewTitle: 'Export controleren',
+  exportPreviewTarget: 'Organisatie: {org} ({id})',
+  exportPreviewTeamsTitle: 'Teams in deze export',
+  exportPreviewCountsTitle: 'Aantallen',
+  exportCountOrganizationMembers: 'Organisatieleden',
+  exportCountInvitations: 'Uitnodigingen',
+  exportCountTeams: 'Teams',
+  exportCountTeamMembers: 'Teamleden',
+  exportCountSettingsDocuments: 'Instellingendocumenten',
+  exportCountRosterPlayers: 'Spelers',
+  exportCountGames: 'Actieve wedstrijden',
+  exportCountGameActions: 'Wedstrijdacties',
+  exportCountCompletedGames: 'Afgeronde wedstrijden',
+  exportCountMigrationRuns: 'Migratieruns',
+  exportSensitiveWarningTitle: 'Let op: gevoelige inhoud',
+  exportSensitiveWarningDesc:
+    'Dit bestand bevat e-mailadressen en overige persoonsgegevens van organisatie- en teamleden. Bewaar en deel het bestand alleen zoals je met andere persoonsgegevens zou omgaan.',
+  exportDownloadBtn: '⬇ Download organisatie-export',
+  exportDownloadedLabel: 'Export gedownload.',
+  exportCloseBtn: 'Sluiten',
+
   cloudImportPrompt:
     'Kopieer je lokale gegevens eenmalig naar de cloud. De cloud-versie wordt dan leidend; je lokale kopie blijft bewaard.',
   cloudImportButton: 'Eenmalig naar cloud kopiëren',
@@ -812,6 +848,38 @@ const en = {
   migrationRetryBtn: 'Retry',
   migrationExportBtn: '⬇ Export stuck items',
   migrationCloseBtn: 'Close',
+
+  // PR 8.3b part 2/2: owner-only organization export panel — mirrors the NL
+  // block above key-for-key.
+  exportTitle: 'Full organization export',
+  exportDesc:
+    'Download a complete, versioned copy of this organization: all teams, settings, rosters, matches and member lists. This is a point-in-time snapshot for your own portability/control, not an automatic backup.',
+  exportStartBtn: 'Prepare export',
+  exportBuilding: 'Reading organization data…',
+  exportErrorGeneric: 'Reading failed. Please try again.',
+  exportErrorNotFound: 'This organization was not found.',
+  exportErrorRoundtrip:
+    'The export could not be verified, so no file was offered. Please try again.',
+  exportPreviewTitle: 'Review export',
+  exportPreviewTarget: 'Organization: {org} ({id})',
+  exportPreviewTeamsTitle: 'Teams in this export',
+  exportPreviewCountsTitle: 'Counts',
+  exportCountOrganizationMembers: 'Organization members',
+  exportCountInvitations: 'Invitations',
+  exportCountTeams: 'Teams',
+  exportCountTeamMembers: 'Team members',
+  exportCountSettingsDocuments: 'Settings documents',
+  exportCountRosterPlayers: 'Players',
+  exportCountGames: 'Active matches',
+  exportCountGameActions: 'Match actions',
+  exportCountCompletedGames: 'Completed matches',
+  exportCountMigrationRuns: 'Migration runs',
+  exportSensitiveWarningTitle: 'Note: sensitive content',
+  exportSensitiveWarningDesc:
+    'This file contains email addresses and other personal data of organization and team members. Store and share it only as you would other personal data.',
+  exportDownloadBtn: '⬇ Download organization export',
+  exportDownloadedLabel: 'Export downloaded.',
+  exportCloseBtn: 'Close',
 
   cloudImportPrompt:
     'Copy your local data to the cloud once. The cloud version becomes the source of truth; your local copy is kept as a fallback.',

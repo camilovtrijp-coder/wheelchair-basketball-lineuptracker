@@ -25,6 +25,7 @@ import {
   type Firestore,
   type FirestoreDataConverter,
 } from 'firebase/firestore';
+import { getAuth } from 'firebase/auth';
 import {
   completedGameConverter,
   gameActionConverter,
@@ -43,6 +44,7 @@ import type {
 } from '../../application/export/OrganizationExportGateway';
 import type { RawOrganizationExportTeam } from '../../domain/export/build';
 import type { OrganizationExportRow } from '../../domain/export/types';
+import type { OrganizationRole } from '../../domain/organizations/types';
 
 /**
  * Zet een converter-uitvoerobject (mag `Timestamp`-velden bevatten) om naar
@@ -92,6 +94,41 @@ export function toExportRow(id: string, data: Record<string, unknown>): Organiza
 
 export class FirestoreOrganizationExportGateway implements OrganizationExportGateway {
   constructor(private readonly db: Firestore) {}
+
+  /**
+   * Herreview PR #89 (P1, tweede ronde): de eerste versie nam `callerUid` nog
+   * als PARAMETER aan — een `organizationAdmin` kon daarmee gewoon de
+   * OWNER's uid meegeven (`readCallerRole(orgId, ownerUid)`); Rules staan elk
+   * orglid toe om ELK `organizationMembers/{uid}`-document binnen die
+   * organisatie te lezen (`isOrgMember()`), dus die read slaagde alsnog en
+   * leverde `'organizationOwner'` op zonder dat de admin ooit zelf owner was.
+   * Deze methode neemt daarom GEEN uid-parameter meer aan: de uid komt
+   * uitsluitend uit `getAuth(this.db.app).currentUser`, de daadwerkelijk
+   * ingelogde identiteit voor DEZE Firestore-instantie — die kan een
+   * aanroeper niet vervalsen zonder een ander account te zijn. `null` bij
+   * niet-ingelogd, geen lidmaatschap, of een corrupte/onleesbare read —
+   * fail-closed, nooit een gok naar een toegestane rol/identiteit.
+   */
+  async readAuthoritativeCaller(
+    organizationId: string,
+  ): Promise<{ uid: string; role: OrganizationRole } | null> {
+    const uid = getAuth(this.db.app).currentUser?.uid;
+    if (!uid) return null;
+    try {
+      const memberRef = doc(
+        this.db,
+        'organizations',
+        organizationId,
+        'organizationMembers',
+        uid,
+      ).withConverter(organizationMemberConverter);
+      const snap = await getDoc(memberRef);
+      if (!snap.exists()) return null;
+      return { uid, role: snap.data().role };
+    } catch {
+      return null;
+    }
+  }
 
   async readOrganizationExportInput(organizationId: string): Promise<OrganizationExportReadResult> {
     try {

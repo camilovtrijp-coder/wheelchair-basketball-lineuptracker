@@ -356,12 +356,108 @@ Deel 1/2, geïmplementeerd:
 - Verificatie: v2 969/969 unit-tests (was 955), lint en typecheck groen;
   Firebase 237/237 Emulator Rules-tests (was 232), typecheck groen.
 
-Nog niet gebouwd (deel 2, zie boven): de owner-only NL/EN-preview-UI met
-downloadactie (werk 4), de Emulator-e2e die twee volledige organisaties met
-gelijknamige teams/tombstones/invitationstatussen via de coordinator
-doorloopt (werk 5), en de herstelproef in een fictieve nieuwe doelcontext
-(werk 6). Tot deel 2 landt is er geen enkele UI-ingang naar deze export —
-alleen de pure/geteste bouwstenen bestaan.
+Deel 2/2, geïmplementeerd:
+
+- `v2/src/ui/export/ExportPanel.tsx` — de owner-only NL/EN-preview-UI (werk 4):
+  inlezen → preview (doelorganisatie, teams, aantallen per gegevensfamilie,
+  gevoelige-inhoudwaarschuwing) → expliciete downloadactie. Roept uitsluitend
+  `OrganizationExportCoordinator.run()` aan; voor elke andere rol dan
+  `organizationOwner` wordt de actie niet gerenderd (defensief herhaald in het
+  paneel zelf, net als `MigrationPanel`).
+- `v2/src/domain/export/filename.ts` +
+  `v2/src/infrastructure/export/downloadOrganizationExportFile.ts` — bestandsnaam
+  en downloadadapter, gespiegeld van `domain/backup/export.ts`/
+  `infrastructure/backup/downloadBackupFile.ts`.
+- Wiring: `selectRepositories.ts`/`resolveAppRepositories.ts` leveren nu ook
+  `exportCoordinator` (`null` in lokale modus); `app/App.tsx` rendert
+  `ExportPanel` in het tabblad Instellingen, alleen in cloudmodus en alleen voor
+  `canExportOrganization()`.
+- 5 nieuwe UI-wiringtests (`ExportPanel.spec.tsx`).
+- `v2/tests/e2e-auth/organization-export-flow.spec.ts` (werk 4/5): rolgating
+  (owner ziet het paneel; admin/coach/scorer/viewer nooit — strenger dan
+  bulkmigratie), lokale-modus-afwezigheid, en een volledige stroom met TWEE
+  organisaties (gelijknamig team in organisatie B) die bewijst dat de preview
+  en de daadwerkelijk gedownloade JSON van organisatie A alle §A-families
+  bevatten (inclusief tombstone, actieve game+actie, migrationRun, claimed/
+  revoked-uitnodigingen) zonder ook maar één gegeven van organisatie B.
+- `v2/tests/e2e-auth/organization-export-restore-proof.spec.ts` +
+  `organizationExportFixtures.ts` (werk 6): test-only Admin-/Emulatorharness
+  die een gebouwde export terugschrijft naar een GEHEEL NIEUWE, geïsoleerde
+  organisatie en vervolgens — ingelogd als een tweede, eigen eigenaarsaccount,
+  via de ECHTE Rules/gateway — een inhoudelijk gelijke inventaris (aantallen +
+  genormaliseerde inhoud) teruglevert; de bron wordt nooit aangeraakt
+  (herhaalde bronexport levert dezelfde `contentHash` op). Bevat ook een
+  eigendomsoverdracht-scenario (oprichter is geen lid meer, een ander account
+  exporteert als owner).
+
+**Herreview-opvolging (P1/P2, 8 september 2026):**
+
+1. `callerRole` was een door de aanroeper meegegeven waarde (React-state) —
+   geen betrouwbare autorisatiegrens, want Firestore Rules geven een
+   `organizationAdmin` dezelfde leestoegang tot de onderliggende paden als een
+   owner. `OrganizationExportGateway` kreeg een `readCallerRole()`-methode die
+   het ECHTE `organizationMembers/{callerUid}`-document leest;
+   `OrganizationExportCoordinator.run()` accepteerde `callerRole` niet meer
+   als invoer.
+2. De restoreproef verwarde de oprichter (`organization.createdBy`) met de
+   actueel exporterende eigenaar (`exportedBy`) bij het bepalen welke
+   `organizationMembers`-rij door de nieuwe doelaccount wordt vervangen — bij
+   een overgedragen eigendom (oprichter niet meer lid) kreeg de doelaccount
+   daardoor geen membership. Gefixt naar `exportedBy`; een nieuwe
+   e2e-testcase bewijst het overdrachtsscenario expliciet, met een assertie
+   op `organizationMembers/{targetUid}.role === 'organizationOwner'` vóór de
+   coordinator-readback.
+3. `organization-export-flow.spec.ts` testte owner/admin/coach/viewer maar
+   niet scorer; scorer-e2e-pad toegevoegd.
+
+**Herreview-opvolging, tweede ronde (P1, 8 september 2026):** punt 1 hierboven
+loste het `callerRole`-lek op, maar liet `callerUid` staan als parameter — een
+`organizationAdmin` kon nog steeds gewoon de OWNER's uid meegeven
+(`readCallerRole(orgId, ownerUid)`), want Rules staan elk orglid toe om ELK
+`organizationMembers/{uid}`-document binnen die organisatie te lezen
+(`isOrgMember()`); die read slaagde dus alsnog. Opgelost door de
+identiteitsparameter volledig te verwijderen: `readCallerRole()` is vervangen
+door `readAuthoritativeCaller(organizationId)`, die de uid uitsluitend uit
+`getAuth(db.app).currentUser` haalt (de daadwerkelijk ingelogde Firebase
+Auth-sessie van die specifieke Firestore-clientinstantie) — geen enkel veld op
+`OrganizationExportRequest`/`ExportPanelProps` draagt nog een identiteit die
+een aanroeper zelf kan invullen. Nieuwe e2e-testcase logt een echte,
+apart aangemaakte `organizationAdmin` in en bewijst dat die de coordinator
+niet met de owner's uid kan laten exporteren (geen mock — echte Auth-/
+Firestore-emulator/Rules).
+
+Verificatie na deze opvolging: v2 995/995 unit-tests (was 994), `tsc -b`/
+eslint/prettier over de volledige `src`+`tests`-boom en de productie-/
+classic-SW-build groen. Finale herreview (8 september 2026) op exact deze
+commit (`485c39e`) bevestigt: alle drie bevindingen opgelost, CI 4/4 groen op
+dezelfde SHA, geen nieuwe blokkerende codebevindingen.
+
+**Niet-blokkerend architectuurrestpunt (uit dezelfde finale herreview):**
+`readAuthoritativeCaller()` maakt de export-UI/-coordinator owner-only, maar
+is geen server-side vertrouwelijkheidsgrens tegenover `organizationAdmin`:
+die rol heeft volgens de bestaande, ongewijzigde Firestore Rules nog steeds
+legitieme leestoegang tot dezelfde onderliggende organisatie-/teampaden
+(`isOrgMember()`) en zou buiten deze coordinator om, met eigen client-code,
+een vergelijkbare dataset kunnen samenstellen. Dit is dus expliciet **owner-
+only als productcapability** (welke UI-actie/coordinator-aanroep een gebruiker
+kan doen), niet **server-side confidentialiteit tegenover admins** (welke
+Firestore-data een admin ooit zelf zou kunnen uitlezen) — die twee mogen niet
+door elkaar gebruikt worden in latere acceptatieclaims. Zou het laatste ooit
+een harde eis worden, dan vraagt dat een apart Rules-/architectuurbesluit
+(bijv. een aparte, engere Rules-scope voor exportgevoelige velden of een
+server-side exportfunctie), niet een clientpatch als deze.
+- Eerdere verificatie: v2 994/994 unit-tests (was 969), `tsc -b`/lint/prettier over de
+  volledige `src`+`tests`-boom, en de productie-/classic-SW-build groen.
+  Firebase-kant ongewijzigd (86/86 unit-/convertertests, `type-check` groen).
+
+Kon niet lokaal worden uitgevoerd: de twee nieuwe Playwright-e2e-auth-bestanden
+(rolgating/volledige-stroom en de herstelproef) vereisen de Firestore-/
+Auth-emulator; deze sandbox blokkeert uitgaand verkeer naar
+`firebase-public.firebaseio.com` (nodig om de emulator-jars te downloaden) —
+zelfde bekende beperking als elke eerdere PR in deze reeks (zie
+`migration-flow.spec.ts`). Beide bestanden zijn wel `tsc -b`/eslint/prettier-
+schoon en zorgvuldig tegen de daadwerkelijke component-/documentcode
+nagelopen.
 
 Werk:
 

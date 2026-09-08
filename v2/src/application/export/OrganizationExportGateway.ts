@@ -1,4 +1,5 @@
 import type { RawOrganizationExportInput } from '../../domain/export/build';
+import type { OrganizationRole } from '../../domain/organizations/types';
 
 /**
  * PR 8.3b (docs/pr-8.3-plan.md §C 8.3b werk 2): application-poort voor de
@@ -28,4 +29,24 @@ export interface OrganizationExportGateway {
    * clouddata kan niet als geslaagde export eindigen".
    */
   readOrganizationExportInput(organizationId: string): Promise<OrganizationExportReadResult>;
+
+  /**
+   * Herreview PR #89 (P1, tweede ronde): noch een door de aanroeper
+   * meegegeven `callerRole`, NOCH een door de aanroeper meegegeven
+   * `callerUid` is een betrouwbare autorisatiegrens. Rules staan elk orglid
+   * toe om ELK `organizationMembers/{uid}`-document binnen die organisatie
+   * te lezen (`isOrgMember()`) — een `organizationAdmin` kon dus eerder
+   * gewoon de OWNER's uid als `callerUid` meegeven en zo alsnog
+   * `'organizationOwner'` terugkrijgen. Deze methode neemt daarom GEEN
+   * identiteitsparameter aan: de implementatie bepaalt zelf, uit de
+   * daadwerkelijk ingelogde Firebase Auth-sessie, wie de aanroeper is (zie
+   * `FirestoreOrganizationExportGateway.readAuthoritativeCaller()`) en leest
+   * DIENS eigen `organizationMembers/{uid}`-document. `null` bij
+   * niet-ingelogd, geen lidmaatschap, of een corrupte/onleesbare read — de
+   * coordinator gebruikt UITSLUITEND dit resultaat, nooit een door de
+   * aanroeper meegegeven rol of uid.
+   */
+  readAuthoritativeCaller(
+    organizationId: string,
+  ): Promise<{ uid: string; role: OrganizationRole } | null>;
 }
