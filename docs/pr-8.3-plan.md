@@ -522,9 +522,10 @@ Bevestigd is ook dat deze sub-PR wordt geknipt, zelfde reden als de
   `teamMembers`) en de tweestapsoverdracht van eigendom.
 
 De werkitems hieronder blijven onveranderd gelden; ze verdelen zich over die
-twee PR's zoals beschreven in `docs/pr-8.3c-besluitvoorstel.md` §5. De
-stopregels uit §F blijven volledig van kracht: geen Cloud Function, geen
-Blaze, geen billingkoppeling, geen deployment.
+drie PR's zoals beschreven in `docs/pr-8.3c-besluitvoorstel.md` §5, in de
+uitvoeringsvolgorde 8.3c-0 → 8.3c-1 → 8.3c-2. De stopregels uit §F blijven
+volledig van kracht: geen Cloud Function, geen Blaze, geen billingkoppeling,
+geen deployment.
 
 Werk:
 

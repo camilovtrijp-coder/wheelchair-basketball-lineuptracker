@@ -5,8 +5,8 @@ document beantwoordt de startblokkade van `docs/pr-8.3-plan.md` §C 8.3c
 ("voer deze sub-PR niet uit voordat de keuzes in §E.1–E.3 expliciet zijn
 bevestigd"). Het bevat zelf geen code, geen Rules-wijziging, geen deployment
 en geen billingkoppeling, en geeft geen toestemming voor een productiecutover
-— het maakt uitsluitend de weg vrij voor 8.3c-1 en 8.3c-2 als afzonderlijke
-implementatie-PR's.
+— het maakt uitsluitend de weg vrij voor 8.3c-0, 8.3c-1 en 8.3c-2 als
+afzonderlijke implementatie-PR's, in die volgorde.
 
 De bevestigingsronde heeft vier verfijningen op het oorspronkelijke voorstel
 opgeleverd; die zijn hieronder verwerkt en in §8 apart benoemd. Een
@@ -324,13 +324,14 @@ Een client die `serverTimestamp()` schrijft voldoet hieraan; een client die
 een eigen waarde verzint niet. In een batched write deelt elke write dezelfde
 `request.time`, dus de claim-in-één-batch-constructie blijft werken.
 
-**Wat dit betekent voor bestaande documenten.** Documenten die vóór 8.3c-1
+**Wat dit betekent voor bestaande documenten.** Documenten die vóór 8.3c-0
 zijn aangemaakt dragen een ongebonden tijdstempel; voor hen is de ondergrens
 een bewering, geen bewijs. Dat is hier acceptabel omdat de enige bestaande
 data fictieve preproductiedata is, maar het moet expliciet staan: de
-Rules-afgedwongen ondergrens geldt **vanaf** 8.3c-1, en het runbook behandelt
-oudere documenten als handmatig te verifiëren. Vóór de PR 8.5-cutover met
-echte data bestaat er geen legacy-populatie meer om over te twijfelen.
+Rules-afgedwongen ondergrens geldt **vanaf 8.3c-0**, de PR die de binding
+levert, en het runbook behandelt oudere documenten als handmatig te
+verifiëren. Vóór de PR 8.5-cutover met echte data bestaat er geen
+legacy-populatie meer om over te twijfelen.
 
 **Verfijning uit de bevestigingsronde: een owner-only opruimoverzicht.** Een
 ondergrens zonder zichtbaarheid blijft in de praktijk een belofte — het
@@ -792,7 +793,7 @@ stappenstatus uit §4.4; de tweestapsoverdracht uit §4.2 met een expliciete
 "wacht op bevestiging door de nieuwe eigenaar"-status. Alles NL/EN, met axe-,
 focus-, Escape- en focusrestoredekking op elke nieuwe dialoog (plan §D).
 
-### Tests, over beide PR's verdeeld
+### Tests, over de drie PR's verdeeld
 
 De volledige negatieve matrix uit plan §C 8.3c werk 6 — crash/retry, dubbele
 aanvraag, ingetrokken ownerrol tijdens uitvoering, cross-org-ID, onverwachte
@@ -896,8 +897,11 @@ bevestigingsronde zelf voortkwamen en hierboven al verwerkt zijn.
 - [x] **E.3a** — Self-delete voor niet-owners ("organisatie verlaten"), op
       `organizationMembers` **en** `teamMembers`, in die volgorde (§4.3).
 
-Aanvullend bevestigd: **8.3c wordt gesplitst in 8.3c-1 (data) en 8.3c-2
-(personen)**, zie §5.
+Aanvullend bevestigd: **8.3c wordt gesplitst in 8.3c-0 (servergebonden
+tijdstempels), 8.3c-1 (data) en 8.3c-2 (personen)**, in die
+uitvoeringsvolgorde — zie §5. De afsplitsing van 8.3c-0 kwam uit de tweede
+herreviewronde (§8.2); de bevestigingsronde zelf besloot alleen tot de knip
+tussen data en personen.
 
 ### 8.1 Herreview-opvolging (11 september 2026)
 
@@ -1009,8 +1013,8 @@ PR verdient.
 
 ### Wat hiermee vervalt en wat blijft staan
 
-De startblokkade uit plan §C 8.3c is hiermee **opgeheven**: 8.3c-1 kan als
-implementatie-PR starten. Onveranderd blijven de stopregels uit plan §F en
+De startblokkade uit plan §C 8.3c is hiermee **opgeheven**: **8.3c-0** kan
+als eerste implementatie-PR starten, gevolgd door 8.3c-1 en daarna 8.3c-2. Onveranderd blijven de stopregels uit plan §F en
 §6 hierboven — geen Cloud Function, geen Blaze, geen billingkoppeling, geen
 deployment, geen productiecutover. De openstaande punten uit §7 blijven
 openstaan; met name punt 1 (een juridische toets op de termijnen vóór er
