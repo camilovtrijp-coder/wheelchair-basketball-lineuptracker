@@ -505,8 +505,14 @@ als de 8.3b-splitsing (§B.1) en met een schone inhoudelijke grens:
 
 - **8.3c-1 — data**: bewaartermijnen als in Rules afgedwongen ondergrenzen,
   het owner-only opruimoverzicht, het organisatieverwijderverzoek
-  (`deletionRequests/current`), de tombstoneredactie, de
-  uitnodigingswijzigingen, en het handmatige runbook.
+  (`deletionRequests/current`, met herstartbare `cancelled → requested`-
+  overgang), de tombstoneredactie, de uitnodigingswijzigingen, en het
+  handmatige runbook. Een herreview op 11 september 2026 breidde deze scope
+  uit met servergebonden tijdstempels (`== request.time`) op elk veld waar een
+  bewaartermijn op steunt — inclusief een aanscherping van de bestaande
+  7.2c-tombstonepatch — en met een collectionGroup-querycontract plus index
+  voor `invitations.email`, zodat iemand zijn eigen uitnodigingen kan vinden
+  en verwijderen.
 - **8.3c-2 — personen**: accountverwijdercoördinator, "organisatie verlaten"
   (self-delete op `organizationMembers` én `teamMembers`) en de
   tweestapsoverdracht van eigendom.
