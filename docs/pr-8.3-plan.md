@@ -500,22 +500,26 @@ Acceptatie:
 expliciet bevestigd; de onderbouwing, de gekozen opties en vier verfijningen
 uit de bevestigingsronde staan in `docs/pr-8.3c-besluitvoorstel.md` §8.
 
-Bevestigd is ook dat deze sub-PR **in twee delen** wordt geknipt, zelfde reden
-als de 8.3b-splitsing (§B.1) en met een schone inhoudelijke grens:
+Bevestigd is ook dat deze sub-PR wordt geknipt, zelfde reden als de
+8.3b-splitsing (§B.1). Na twee herreviewrondes op 11 september 2026 zijn dat
+**drie delen**:
 
+- **8.3c-0 — servergebonden bewaartijdstempels**: `invitedAt`, `acceptedAt`,
+  `claimedAt` en `deletedAt` binden aan `== request.time`, plus negatieve
+  tests voor een ontbrekend, verkeerd getypeerd, toekomstig en teruggedateerd
+  tijdstempel. Afgesplitst omdat dit als enige onderdeel bestaande, werkende
+  schrijfpaden en hun testfixtures raakt. Geen nieuwe functionaliteit.
 - **8.3c-1 — data**: bewaartermijnen als in Rules afgedwongen ondergrenzen,
   het owner-only opruimoverzicht, het organisatieverwijderverzoek
   (`deletionRequests/current`, met herstartbare `cancelled → requested`-
-  overgang), de tombstoneredactie, de uitnodigingswijzigingen, en het
-  handmatige runbook. Een herreview op 11 september 2026 breidde deze scope
-  uit met servergebonden tijdstempels (`== request.time`) op elk veld waar een
-  bewaartermijn op steunt — inclusief een aanscherping van de bestaande
-  7.2c-tombstonepatch — en met een collectionGroup-querycontract plus index
-  voor `invitations.email`, zodat iemand zijn eigen uitnodigingen kan vinden
-  en verwijderen.
-- **8.3c-2 — personen**: accountverwijdercoördinator, "organisatie verlaten"
-  (self-delete op `organizationMembers` én `teamMembers`) en de
-  tweestapsoverdracht van eigendom.
+  overgang), de tombstoneredactie, de uitnodigingswijzigingen inclusief een
+  collectionGroup-querycontract plus index voor `invitations.email`, en het
+  handmatige runbook.
+- **8.3c-2 — personen**: accountverwijdercoördinator met de vaste volgorde
+  (`teamMembers` → per-organisatie-controle → `organizationMembers` als
+  laatste write, daarna een eindcontrole via de bestaande collectionGroup-
+  queries), "organisatie verlaten" (self-delete op `organizationMembers` én
+  `teamMembers`) en de tweestapsoverdracht van eigendom.
 
 De werkitems hieronder blijven onveranderd gelden; ze verdelen zich over die
 twee PR's zoals beschreven in `docs/pr-8.3c-besluitvoorstel.md` §5. De

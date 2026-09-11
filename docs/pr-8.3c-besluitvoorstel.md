@@ -13,9 +13,12 @@ opgeleverd; die zijn hieronder verwerkt en in §8 apart benoemd. Een
 onafhankelijke herreview op 11 september 2026 vond daarnaast vier blokkerende
 uitvoeringsgaten — vervalsbare tijdstempels, onvindbare en onverwijderbare
 eigen uitnodigingen, een verwijderverzoek dat na annuleren niet te herstarten
-was, en een "bewaartermijn" op pending-uitnodigingen die er geen was. Alle
-vier zijn geverifieerd, terecht bevonden en verwerkt; zie §8.1. De besluiten
-§E.1–E.3 zelf zijn er niet door veranderd.
+was, en een "bewaartermijn" op pending-uitnodigingen die er geen was. Een
+tweede ronde op dezelfde dag vond nog twee volgordefouten in de
+accountverwijderflow. Alle zes zijn geverifieerd, terecht bevonden en
+verwerkt; zie §8.1 en §8.2. De besluiten §E.1–E.3 zelf zijn er niet door
+veranderd — wel is de implementatie inmiddels in **drie** PR's geknipt
+(§5).
 
 ## 0. Samenvatting
 
@@ -85,6 +88,12 @@ Drie consequenties die het voorstel sturen:
    `claimed`/`revoked` uitnodiging houdt het e-mailadres van de uitgenodigde
    permanent vast, ook nadat die persoon zijn account laat verwijderen. Dit
    is vandaag het meest concrete openstaande privacypunt in het datamodel.
+4. **Er bestaat geen aanmaakpad voor uitnodigingen in de app.**
+   `FirestoreOrganizationGateway` kent alleen `getInvitationByLink()`,
+   `acceptInvitation()` en `claimInvitation()`; nergens in `v2/src` wordt een
+   uitnodigingsdocument geschreven. Uitnodigingen ontstaan dus buiten de app
+   om. Dat is relevant voor §5: een eis op `invitedAt` raakt vandaag geen
+   enkele productieschrijver, alleen testfixtures.
 
 ### 1.3 Welke persoonsgegevens er werkelijk staan
 
@@ -344,8 +353,8 @@ oplevert.
 | --- | --- | --- | --- |
 | `organizations` + alle subcollecties | zolang de organisatie bestaat | dit is het product | verwijderverzoek (§2) |
 | `organizationMembers` | direct bij einde lidmaatschap | bevat e-mailadres; dataminimalisatie | bestaat al (owner/admin delete) |
-| `invitations` — `pending` | **30 dagen**, daarna als verlopen behandeld en niet meer accepteerbaar | een blijvend openstaande uitnodiging is een permanente claim op een e-mailadres | zie §3.4 — dit is vandaag een echt gat |
-| `invitations` — `claimed`/`revoked` | **30 dagen** na de eindstatus (`claimedAt`/nieuw `revokedAt`, met terugval op `invitedAt`), dan verwijderbaar | de auditwaarde is kort, het e-mailadres blijft anders eeuwig staan | nieuwe, enge Rules-delete (§3.4) |
+| `invitations` — alle vier de statussen | **30 dagen**, gemeten aan de tijdstempel van díé status (`invitedAt`/`acceptedAt`/`claimedAt`/nieuw `revokedAt`, met terugval op `invitedAt`), dan verwijderbaar door owner/admin. Voor `pending` geldt daarnaast dat accepteren na 30 dagen niet meer kan | de auditwaarde is kort, het e-mailadres blijft anders eeuwig staan | nieuwe, enge Rules-delete (§3.4) |
+| `invitations` — door de uitgenodigde zelf | **geen ondergrens**: elke status, elke ouderdom | een termijn die de organisatie beschermt mag geen slot worden op iemands eigen persoonsgegeven; zonder dit loopt accountverwijdering vast (§4.4) | self-deletetak (§3.4, punt 3) |
 | `teams`, `teamMembers`, `settings`, `roster` | zolang het team bestaat | operationele data | teamverwijdering valt onder §2 |
 | actieve `games` + `actions` | tot afronding; een niet-afgeronde game ouder dan **180 dagen** wordt als verlaten gemarkeerd en gerapporteerd | voorkomt dat een vergeten game de verwijderpoort eeuwig blokkeert | rapportage in 8.3c, opruiming via runbook |
 | `completedGames` zonder tombstone | **geen purge** | dit is precies de waarde van het product: historie en statistiek over seizoenen heen | n.v.t. |
@@ -477,14 +486,31 @@ Twee schemadetails die hierbij horen:
 Alleen owner/admin laten verwijderen is niet genoeg: een coach, scorer of
 viewer die zijn account opzegt, kan zijn eigen e-mailadres dan niet
 weghalen zonder iemand anders om toestemming te vragen. Er komen dus twee
-deletetakken:
+deletetakken — **met bewust verschillende ondergrenzen**:
 
-- **owner/admin**, binnen hun eigen organisatie — beheeropruiming;
-- **de uitgenodigde zelf**: `request.auth.token.email == resource.data.email`
-  én `request.auth.token.email_verified == true`. Dat is strikter dan de
-  bestaande leesregel op ditzelfde document, die geen `email_verified` eist.
+| Tak | Voorwaarde | Ondergrens |
+| --- | --- | --- |
+| **owner/admin** | binnen de eigen organisatie, beheeropruiming | **30 dagen**, per status gemeten (punt 2) |
+| **de uitgenodigde zelf** | `request.auth.token.email == resource.data.email` én `email_verified == true` | **geen** — elke status, elke ouderdom |
 
-Beide takken vallen onder dezelfde 30-dagenondergrens uit punt 2.
+Dat verschil is de correctie uit de tweede herreviewronde (§8.2, bevinding 1).
+De 30-dagengrens bestaat om te voorkomen dat een beheerder auditwaarde van de
+organisatie te vroeg vernietigt. Diezelfde grens toepassen op de betrokkene
+zelf zou hem tot een slot maken op het verwijderen van iemands **eigen**
+persoonsgegeven — en zou de accountverwijdering uit §4.4 in een impasse
+brengen: wachten tot een uitnodiging 30 dagen oud is, terwijl `deleteUser()`
+het token wegneemt waarmee die uitnodiging later nog gevonden kan worden.
+
+Voor de betrokkene is dit bovendien gewoon een zinnige actie op zichzelf: een
+uitnodiging die je niet wilt, permanent weigeren. De `email_verified`-eis is
+strikter dan de bestaande leesregel op ditzelfde document, die die eis niet
+stelt.
+
+**Geaccepteerd restrisico, expliciet:** iemand kan zo het uitnodigingsdocument
+weghalen dat naar hem verwees. Het autorisatiespoor gaat daarmee niet
+verloren — het `organizationMembers`-document blijft bestaan met `role`,
+`email` en `invitationId`, en dát is de vastlegging van wie toegang kreeg. De
+uitnodiging is de aanbieding, niet het bewijs van toegang.
 
 **Vindbaarheid is een apart probleem.** Een direct `getDoc()` op je eigen
 uitnodiging is toegestaan, maar er bestaat geen toegestane
@@ -586,61 +612,133 @@ dwingend: eerst de `teamMembers`-documenten, dan als laatste de
 `organizationMembers`-rij, want met het verdwijnen van die laatste vervalt de
 toegang tot de rest van de organisatie.
 
-Let op de volgorde-consequentie: zodra iemand zijn membership verwijdert,
-verliest hij ook de leestoegang tot die organisatie. De readback "er staat
-geen document meer met mijn uid of e-mailadres" moet dus **per organisatie
-plaatsvinden vóór** het eigen membership wordt verwijderd, niet erna. Dat
-hoort expliciet in het coordinatorontwerp en in de tests.
+Let op de volgorde-consequentie: `isOrgMember()` gebruikt `exists()` op het
+eigen membershipdocument, dus zodra dat weg is vervalt de leestoegang tot de
+geneste paden van die organisatie. De vaste volgorde is daarom:
+
+1. **de `teamMembers`-documenten eerst**, zolang de organisatietoegang er nog
+   is;
+2. **de per-organisatie-controle daarna, maar nog steeds vóór stap 3**: er
+   staat binnen deze organisatie geen document meer dat de eigen uid draagt,
+   op het eigen `organizationMembers`-document na;
+3. **het eigen `organizationMembers`-document als laatste write** voor die
+   organisatie.
+
+Die volgorde gaat over **bewijs, niet over bevoegdheid**: de self-deleteregels
+hangen aan `request.auth.uid == uid` en niet aan lidmaatschap, dus technisch
+zou het ook andersom kunnen. Maar dan kun je stap 2 niet meer uitvoeren, en
+een verwijdering zonder controle is precies wat plan §C 8.3c verbiedt.
+
+**De eindcontrole kán wél ná de laatste delete** — dat is de correctie uit de
+tweede herreviewronde (§8.2, bevinding 2). Een eerdere lezing was dat je na het
+verwijderen van je eigen membership niets meer kunt verifiëren en dus een nieuw
+leespad of het runbook nodig hebt. Dat klopt niet: de twee recursieve-
+wildcardmatches onderaan `firestore.rules` (`:1002` voor
+`organizationMembers`, `:1014` voor `teamMembers`) luiden allebei
+`signedIn() && resource.data.uid == request.auth.uid` — **zonder**
+`exists()`-check op lidmaatschap. De collectionGroup-queries uit issue #28 en
+#31 blijven dus werken nadat alle lidmaatschappen weg zijn, en leveren precies
+de post-delete-readback die nodig is: beide moeten nul rijen teruggeven. Er is
+geen nieuw leespad nodig; het bestaande querycontract dekt dit al.
 
 ### 4.4 Auth-verwijdering als aparte, laatste stap
 
 Firebase vereist recente authenticatie voor `deleteUser()`. Voorgestelde
 volgorde, met een hervatbare status per stap:
 
-1. Inventariseer alle organisaties waarin de gebruiker lid is, via de
-   bestaande `collectionGroup('organizationMembers').where('uid','==',eigenUid)`.
+1. Inventariseer alle organisaties en teams waarin de gebruiker voorkomt, via
+   de bestaande `collectionGroup('organizationMembers').where('uid','==',eigenUid)`
+   en `collectionGroup('teamMembers').where('uid','==',eigenUid)`.
 2. Inventariseer **apart** alle uitnodigingen op het eigen e-mailadres, via de
    nieuwe `collectionGroup('invitations').where('email','==',eigenEmail)`
-   (§3.4, punt 3). Dit is bewust een tweede, onafhankelijke inventarisatie:
-   een uitnodiging kan bestaan in een organisatie waar de gebruiker géén
-   lidmaatschap (meer) heeft, en zou anders buiten beeld blijven —
-   herreviewbevinding 2 (§8.1).
+   (§3.4, punt 3). Bewust een derde, onafhankelijke inventarisatie: een
+   uitnodiging kan bestaan in een organisatie waar de gebruiker géén
+   lidmaatschap (meer) heeft, en zou anders buiten beeld blijven
+   (§8.1, bevinding 2).
 3. Handel elke organisatie af: verlaten (§4.3), overdragen (§4.2) of een
-   verwijderverzoek indienen (§2). Zolang één organisatie een lopend
-   verwijderverzoek heeft, blijft de accountverwijdering in de status
-   "wacht op uitvoering".
-4. Verwijder de gevonden uitnodigingen zelf, via de self-deletetak uit §3.4 —
-   dus zonder afhankelijk te zijn van een owner of admin. Uitnodigingen die
-   de 30-dagenondergrens nog niet hebben gehaald, blijven staan en worden als
-   expliciete restpost getoond ("wordt op <datum> verwijderbaar"), nooit
-   stilzwijgend genegeerd.
-5. Doe de readback per organisatie, vóór het eigen membership verdwijnt. Doe
-   de readback op de uitnodigingen ná stap 4, via dezelfde collectionGroup-
-   query: die blijft werken ook nadat alle lidmaatschappen weg zijn, want hij
-   hangt aan het token en niet aan een membership.
+   verwijderverzoek indienen (§2), telkens in de volgorde uit §4.3 —
+   `teamMembers`, dan de per-organisatie-controle, dan het eigen
+   `organizationMembers`-document als laatste write. Zolang één organisatie
+   een lopend verwijderverzoek heeft, blijft de accountverwijdering in de
+   status "wacht op uitvoering".
+4. Verwijder **alle** gevonden uitnodigingen zelf, via de self-deletetak uit
+   §3.4 — ongeacht ouderdom en zonder afhankelijk te zijn van een owner of
+   admin.
+5. Doe de eindcontrole: draai de drie collectionGroup-queries uit stap 1 en 2
+   opnieuw. Alle drie moeten nul rijen teruggeven. Deze controle werkt ook
+   nadat elk lidmaatschap weg is, omdat de recursieve matches aan het token
+   hangen en niet aan lidmaatschap (§4.3).
 6. Vraag om reauthenticatie.
-7. Roep `deleteUser()` aan.
+7. Roep `deleteUser()` aan — **alleen** als stap 5 daadwerkelijk drie lege
+   resultaten gaf.
 
 Harde eis, uit plan §C 8.3c werk 5: **nooit "account verwijderd" tonen zolang
 één kant nog persoonsgegevens bevat.** Faalt stap 7 na een geslaagde
 Firestore-opruiming, dan is de status "Firestore-data verwijderd,
-Auth-account nog aanwezig — hervatbaar", niet "gelukt". Datzelfde geldt voor
-een nog niet verwijderbare uitnodiging uit stap 4: zolang die er staat, is de
-uitkomst "grotendeels opgeruimd, één restpost met datum", niet "voltooid".
+Auth-account nog aanwezig — hervatbaar", niet "gelukt".
 
-Er is één volgordeval die in de tests hoort: na `deleteUser()` is er geen
-token meer, dus geen e-mailclaim, dus geen collectionGroup-query op
-uitnodigingen. Alles wat op het e-mailadres staat moet dáárvoor zijn
-afgehandeld — daarna kan alleen het runbook er nog bij.
+**Stap 5 is een harde poort, geen rapportage.** Dit was in de vorige versie
+fout: stap 4 liet uitnodigingen jonger dan 30 dagen als "restpost" staan en de
+flow liep daarna gewoon door naar `deleteUser()`. Dat is een eenrichtingsval —
+na `deleteUser()` is er geen token meer, dus geen e-mailclaim, dus geen
+collectionGroup-query, dus geen enkele manier waarop de betrokkene die
+uitnodigingen nog zelf kan vinden of verwijderen. Ze zouden permanent
+vaststaan tot iemand het runbook draait. Opgelost langs twee kanten: de
+self-deletetak kent geen ouderdomsgrens meer (§3.4), en stap 7 mag alleen
+draaien op drie bewezen lege resultaten.
+
+Blijft er tóch iets staan — bijvoorbeeld een organisatie met een lopend
+verwijderverzoek — dan stopt de flow vóór stap 6 met een expliciete,
+hervatbare status. Niet doorlopen, niet "grotendeels klaar" melden.
 
 ## 5. Wat dit betekent voor de omvang van 8.3c
 
-Bevestigd in dezelfde ronde: **8.3c wordt in twee PR's geknipt**, zelfde reden
-en zelfde patroon als de 8.3b-splitsing (plan §B.1, "vermijd één grote PR").
-De knip is ook inhoudelijk schoon — 8.3c-1 gaat over data, 8.3c-2 over
-personen:
+**8.3c wordt in drie PR's geknipt**, zelfde reden en zelfde patroon als de
+8.3b-splitsing (plan §B.1, "vermijd één grote PR"). De eerste knip
+(8.3c-1/8.3c-2, data versus personen) kwam uit de bevestigingsronde; de
+afsplitsing van 8.3c-0 kwam uit de tweede herreviewronde (§8.2) omdat de
+tijdstempelbinding als enige onderdeel bestaande, werkende schrijfpaden raakt
+en dus een eigen regressierisico draagt.
+
+### 8.3c-0 — servergebonden bewaartijdstempels
+
+Een op zichzelf staande security-hardening, zonder nieuwe functionaliteit:
+
+1. `invitedAt`, `acceptedAt`, `claimedAt` en `deletedAt` binden aan
+   `== request.time` (§3.1);
+2. de bestaande uitnodigings- en tombstoneflows opnieuw bewijzen met hun
+   huidige gateways;
+3. negatieve tests voor een ontbrekend, verkeerd getypeerd, toekomstig en
+   teruggedateerd tijdstempel;
+4. de atomaire `accepted → claimed`-batch en de legacy-tombstoneflow
+   (documenten zonder `revision`/`deletedAt`) expliciet groen houden.
+
+Nadrukkelijk **niet** in 8.3c-0: de nieuwe velden `revokedAt` en `redactedAt`,
+het querycontract en de index voor `invitations.email`, en elke vorm van
+verwijderfunctionaliteit. Die blijven in 8.3c-1.
+
+**Het werkelijke risicoprofiel, nagelopen in de code** — dit is gunstiger dan
+het klinkt, en het hoort erbij omdat het bepaalt waar de review op moet letten:
+
+- `acceptInvitation()` en `claimInvitation()` schrijven `acceptedAt`/
+  `claimedAt` vandaag al met `serverTimestamp()`
+  (`FirestoreOrganizationGateway.ts:340`/`:360`);
+- `tombstoneCompletedGame()` schrijft `deletedAt` al met `serverTimestamp()`
+  (`FirestoreGameCloudGateway.ts:589`);
+- `invitedAt` heeft **geen enkele productieschrijver** — er bestaat geen
+  aanmaakpad voor uitnodigingen in `v2/src` (§1.3, punt 4).
+
+Voor de app is 8.3c-0 dus vrijwel een no-op: alle drie de bestaande schrijvers
+voldoen al aan de nieuwe eis. Het werk zit in de **testfixtures**: de
+Rules-tests schrijven `invitedAt`/`acceptedAt` als kale `new Date()`-waarden
+(ruim vijftien plaatsen in `bootstrap-and-invitation-flow.spec.ts` alleen al),
+en die zullen na deze wijziging terecht falen. Dat is geen bijkomstigheid maar
+precies de kern van deze PR: de fixtures moeten gaan schrijven zoals de app
+schrijft, anders bewijzen ze de verkeerde werkelijkheid.
 
 ### 8.3c-1 — bewaarbeleid en organisatieverwijdering
+
+Bouwt voort op 8.3c-0; de tijdstempelbinding wordt hier als gegeven beschouwd.
 
 **Rules — te testen, positief én negatief:**
 
@@ -657,14 +755,9 @@ personen:
 4. nieuwe recursieve-wildcardmatch `{path=**}/invitations/{id}` voor de
    eigen-e-mail-collectionGroup-query, plus een `fieldOverride` voor
    `invitations.email` in `firestore.indexes.json`;
-5. **servergebonden tijdstempels** (§3.1) op `invitations` create,
-   accepteer-, claim- en intrekpatch, én — als aanscherping van een bestaande,
-   in 7.2c geteste regel — op de tombstonepatch van `completedGames`.
-
-Punt 5 is de enige wijziging in dit voorstel aan bestaande, werkende
-schrijfregels. De 7.2c-tombstonetests en de 5.1-uitnodigingstests moeten daar
-expliciet opnieuw langs; groen blijven is daar geen aanname maar iets om te
-controleren.
+5. `revokedAt == request.time` op de intrekpatch en
+   `redactedAt == request.time` op de redactiepatch — de twee **nieuwe**
+   velden; de binding van de bestaande velden is in 8.3c-0 gedaan.
 
 **Domein/applicatie:** puur verwijderverzoekmodel (toestandsmachine,
 blokkerende voorwaarden inclusief de `lastWriterActivityAt`-verfijning,
@@ -707,7 +800,8 @@ subcollectie, meer dan één batch, serverreject, en een mislukte Auth-delete na
 geslaagde Firestore-opruiming. Elke PR draagt de tests van zijn eigen scope;
 8.3c-2 hergebruikt de emulatorharnas uit 8.3c-1.
 
-Uit de herreview komen vier tests er expliciet bij, elk als negatief geval:
+Uit de eerste herreviewronde komen vier tests er expliciet bij, elk als
+negatief geval:
 
 1. een terugdatering — een write die `invitedAt`/`acceptedAt`/`claimedAt`/
    `revokedAt`/`deletedAt` op een zelfgekozen waarde zet — moet worden
@@ -720,9 +814,25 @@ Uit de herreview komen vier tests er expliciet bij, elk als negatief geval:
 4. een verlopen `pending` en een vastgelopen `accepted` uitnodiging die
    verwijderbaar zijn en in het opruimoverzicht meetellen (§3.4).
 
+Die tests horen bij 8.3c-1; de terugdateringstests uit punt 1 verhuizen naar
+8.3c-0, dat de binding zelf levert.
+
+Uit de tweede herreviewronde komen er nog twee bij, allebei op de
+accountverwijderflow uit §4.4:
+
+5. een account met een **jonge** uitnodiging op het eigen e-mailadres moet
+   volledig kunnen worden verwijderd — de uitnodiging verdwijnt via de
+   self-deletetak zonder ouderdomsgrens, en `deleteUser()` volgt pas op drie
+   lege collectionGroup-resultaten;
+6. de eindcontrole ná de laatste membership-delete: beide bestaande
+   collectionGroup-queries (`organizationMembers`, `teamMembers`) moeten nul
+   rijen geven terwijl de gebruiker nergens meer lid is — dit bewijst dat de
+   recursieve matches membership-onafhankelijk zijn en dat er geen nieuw
+   leespad nodig is.
+
 Daarnaast draaien de bestaande 7.2c-tombstonetests en 5.1-uitnodigingstests
-opnieuw: de servergebonden-tijdstempeleis raakt hun schrijfpaden, dus hun
-groen blijven is iets om te controleren, geen aanname.
+opnieuw in **8.3c-0**: de tijdstempeleis raakt hun schrijfpaden en hun
+fixtures, dus hun groen blijven is iets om te bewijzen, geen aanname.
 
 ## 6. Wat 8.3c bewust niet doet
 
@@ -837,6 +947,55 @@ eigen tijdstempel, en het opruimoverzicht telt die statussen nu apart.
 
 Deze ronde voegt geen nieuwe eigenaarsbesluiten toe; de bevestiging hieronder
 blijft staan zoals hij was.
+
+### 8.2 Tweede herreviewronde (11 september 2026, head `be15f58`)
+
+De vier bevindingen uit §8.1 werden akkoord bevonden. Twee nieuwe bevindingen
+bleven over, allebei volgordefouten in de accountverwijderflow van §4.4, en
+allebei terecht.
+
+**1. `deleteUser()` liep door terwijl jonge uitnodigingen bleven staan.** Stap
+4 bewaarde uitnodigingen jonger dan 30 dagen als "restpost" en de flow ging
+daarna gewoon verder naar `deleteUser()`. Dat is een eenrichtingsval: zonder
+token is er geen e-mailclaim, dus geen collectionGroup-query, dus geen manier
+waarop de betrokkene die uitnodigingen ooit nog zelf kan opruimen. Het
+document sprak zichzelf hier bovendien tegen — elders stond al dat alles op
+het e-mailadres vóór `deleteUser()` afgehandeld moet zijn.
+
+Opgelost langs de twee kanten die de bevinding zelf als alternatieven noemde,
+allebei: de self-deletetak kent **geen ouderdomsgrens** meer (§3.4, punt 3 —
+de 30-dagengrens blijft alleen gelden voor owner/admin-opruiming), en stap 7
+mag alleen draaien op drie bewezen lege queryresultaten (§4.4). De grens
+beschermt de auditwaarde van de organisatie; hem ook op de betrokkene zelf
+leggen zou hem tot een slot maken op diens eigen persoonsgegeven.
+
+**2. De membership-readback was in de beschreven volgorde onmogelijk.** Het
+document wilde vóór verwijdering bewijzen dat er geen document met de eigen
+uid resteert — maar dan bestaat het eigen `organizationMembers`-document per
+definitie nog. Tegelijk voerde stap 3 het verlaten al uit vóór de readback in
+stap 5. §4.3 legt nu de vaste volgorde vast (`teamMembers` → per-organisatie-
+controle → `organizationMembers` als laatste write) en zegt erbij dat die
+volgorde over bewijs gaat, niet over bevoegdheid: de self-deleteregels hangen
+aan `request.auth.uid`, niet aan lidmaatschap.
+
+Op één punt wijkt de uitwerking af van wat de bevinding voorstelde. Die stelde
+dat een echte post-delete-readback "een beperkt nieuw leespad of controle via
+het runbook" vereist. Dat is niet nodig: de twee recursieve-wildcardmatches
+onderaan `firestore.rules` (`:1002`, `:1014`) luiden allebei `signedIn() &&
+resource.data.uid == request.auth.uid`, **zonder** `exists()`-check op
+lidmaatschap — anders dan `isOrgMember()`, dat die check wél doet. De
+collectionGroup-queries uit issue #28 en #31 blijven dus werken nadat elk
+lidmaatschap weg is en leveren precies de eindcontrole die nodig is. Het
+bestaande querycontract dekt dit al; er komt geen leespad bij.
+
+**Aanvullend besluit uit deze ronde: 8.3c-0 als aparte voorloper-PR.** De
+tijdstempelbinding wordt afgesplitst als eigen security-hardeningeenheid, met
+de scope in §5. Bij het uitwerken daarvan bleek het risicoprofiel gunstiger
+dan gedacht: alle drie de bestaande productieschrijvers gebruiken al
+`serverTimestamp()`, en `invitedAt` heeft helemaal geen productieschrijver
+(§1.3, punt 4). Het werk zit in de testfixtures, die vandaag kale
+`new Date()`-waarden schrijven — precies de reden dat deze wijziging een eigen
+PR verdient.
 
 ### De vier verfijningen, op één rij
 
