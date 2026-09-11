@@ -150,6 +150,59 @@ describe('invitations create: invitedAt == request.time', () => {
   });
 });
 
+// De create-regel bindt niet alleen `invitedAt`, maar eist ook dat een
+// NIEUWE uitnodiging nog niet geaccepteerd is. Zonder die eis kon een
+// owner/admin een uitnodiging aanmaken die al een clientbepaalde `acceptedAt`
+// droeg: `status` moest wél 'pending' zijn, maar `acceptedAt` werd nergens
+// gecontroleerd. Dat is exact hetzelfde lek als bij de andere drie velden —
+// een tijdstempel waar 8.3c-1's bewaartermijn op gaat rekenen, ingevuld door
+// de aanroeper — en het maakt bovendien een document mogelijk dat zichzelf
+// tegenspreekt (pending mét acceptatietijd).
+describe('invitations create: acceptedAt == null', () => {
+  it('slaagt met acceptedAt: null', async () => {
+    await assertSucceeds(
+      setDoc(
+        doc(aliceDb(), 'organizations', ORG_A, 'invitations', INV),
+        invitationPayload({ acceptedAt: null }),
+      ),
+    );
+  });
+
+  it('weigert een ONTBREKENDE acceptedAt', async () => {
+    const { acceptedAt: _weg, ...zonder } = invitationPayload();
+    await assertFails(setDoc(doc(aliceDb(), 'organizations', ORG_A, 'invitations', INV), zonder));
+  });
+
+  it('weigert een NIET-NULL acceptedAt (serverTimestamp)', async () => {
+    await assertFails(
+      setDoc(
+        doc(aliceDb(), 'organizations', ORG_A, 'invitations', INV),
+        invitationPayload({ acceptedAt: serverTimestamp() }),
+      ),
+    );
+  });
+
+  it('weigert een NIET-NULL acceptedAt (teruggedateerde timestamp)', async () => {
+    await assertFails(
+      setDoc(
+        doc(aliceDb(), 'organizations', ORG_A, 'invitations', INV),
+        invitationPayload({ acceptedAt: VERLEDEN() }),
+      ),
+    );
+  });
+
+  it('weigert een VERKEERD GETYPEERDE acceptedAt (string)', async () => {
+    // De letterlijke probe uit de herreview: een pending uitnodiging met een
+    // door de client ingevulde acceptedAt werd vóór deze fix toegestaan.
+    await assertFails(
+      setDoc(
+        doc(aliceDb(), 'organizations', ORG_A, 'invitations', INV),
+        invitationPayload({ acceptedAt: 'door-client-ingevuld' }),
+      ),
+    );
+  });
+});
+
 describe('invitations accepteren: acceptedAt == request.time', () => {
   beforeEach(async () => {
     await seedInvitation('pending');

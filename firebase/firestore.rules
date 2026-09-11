@@ -578,10 +578,18 @@ service cloud.firestore {
         // dit veld gaat rekenen (8.3c-1) zou dan een bewering zijn in plaats van
         // een grens. Zie docs/pr-8.3c-besluitvoorstel.md §3.1; zelfde patroon als
         // `organizations`/`teams` hierboven, die `createdAt` al zo binden.
+        // `acceptedAt == null` hoort bij dezelfde eis: `status == 'pending'`
+        // alleen dwong niet af dat het acceptatietijdstempel nog leeg was, dus
+        // een aanroeper kon een NIEUWE uitnodiging aanmaken die al een
+        // zelfbepaalde `acceptedAt` droeg — hetzelfde lek als bij de drie
+        // velden hierboven, plus een document dat zichzelf tegenspreekt
+        // (pending mét acceptatietijd). De accepteertak hieronder is de enige
+        // plek waar dit veld een waarde krijgt, en daar is die servergebonden.
         allow create: if isOrgOwnerOrAdmin(orgId) &&
           request.resource.data.status == 'pending' &&
           request.resource.data.invitedBy == request.auth.uid &&
           request.resource.data.invitedAt == request.time &&
+          request.resource.data.acceptedAt == null &&
           (orgRole(orgId) == 'organizationOwner' || request.resource.data.role != 'organizationOwner');
 
         // Intrekken (owner/admin): alleen statusveld naar 'revoked'.
