@@ -6,6 +6,16 @@
 // - het `uid`-veld (issue #28) moet bij claim overeenkomen met de eigen uid;
 // - ingetrokken-vóór-acceptatie blokkeert claim;
 // - herclaim na intrekking (replay) blijft geblokkeerd.
+//
+// PR 8.3c-0: `invitedAt`/`acceptedAt`/`claimedAt` zijn servergebonden
+// (`== request.time`). Elke CLIENT-write in dit bestand schrijft daarom
+// `serverTimestamp()` — ook de writes die moeten FALEN, zodat die blijven
+// falen om hun eigen reden (verkeerde e-mail, niet-geverifieerd, replay, ...)
+// en niet stilzwijgend om een afgekeurde tijdstempel. De `withAdmin()`-seeds
+// houden bewust kale `new Date()`-waarden: die omzeilen Rules en stellen
+// bestaande, eerder aangemaakte documenten voor.
+// Negatieve tests die juist WEL een afwijkende tijdstempel bewijzen staan in
+// server-bound-timestamps.spec.ts.
 
 import { beforeAll, afterAll, beforeEach, describe, it } from 'vitest';
 import { doc, setDoc, updateDoc, deleteDoc, writeBatch, serverTimestamp } from 'firebase/firestore';
@@ -103,7 +113,7 @@ describe('uitnodiging aanmaken', () => {
         role: 'viewer',
         status: 'pending',
         invitedBy: USERS.alice.uid,
-        invitedAt: new Date(),
+        invitedAt: serverTimestamp(),
         acceptedAt: null,
       }),
     );
@@ -117,7 +127,7 @@ describe('uitnodiging aanmaken', () => {
         role: 'viewer',
         status: 'pending',
         invitedBy: USERS.bob.uid,
-        invitedAt: new Date(),
+        invitedAt: serverTimestamp(),
         acceptedAt: null,
       }),
     );
@@ -131,7 +141,7 @@ describe('uitnodiging aanmaken', () => {
         role: 'viewer',
         status: 'pending',
         invitedBy: USERS.carol.uid,
-        invitedAt: new Date(),
+        invitedAt: serverTimestamp(),
         acceptedAt: null,
       }),
     );
@@ -145,7 +155,7 @@ describe('uitnodiging aanmaken', () => {
         role: 'organizationOwner',
         status: 'pending',
         invitedBy: USERS.bob.uid,
-        invitedAt: new Date(),
+        invitedAt: serverTimestamp(),
         acceptedAt: null,
       }),
     );
@@ -159,7 +169,7 @@ describe('uitnodiging aanmaken', () => {
         role: 'organizationOwner',
         status: 'pending',
         invitedBy: USERS.alice.uid,
-        invitedAt: new Date(),
+        invitedAt: serverTimestamp(),
         acceptedAt: null,
       }),
     );
@@ -173,7 +183,7 @@ describe('uitnodiging aanmaken', () => {
         role: 'viewer',
         status: 'accepted', // moet pending zijn bij aanmaak
         invitedBy: USERS.alice.uid,
-        invitedAt: new Date(),
+        invitedAt: serverTimestamp(),
         acceptedAt: null,
       }),
     );
@@ -203,7 +213,7 @@ describe('uitnodiging accepteren', () => {
     await assertSucceeds(
       updateDoc(doc(db, 'organizations', ORG_A, 'invitations', INV_ID), {
         status: 'accepted',
-        acceptedAt: new Date(),
+        acceptedAt: serverTimestamp(),
       }),
     );
   });
@@ -228,7 +238,7 @@ describe('uitnodiging accepteren', () => {
     await assertFails(
       updateDoc(doc(db, 'organizations', ORG_A, 'invitations', jackInvId), {
         status: 'accepted',
-        acceptedAt: new Date(),
+        acceptedAt: serverTimestamp(),
       }),
     );
   });
@@ -241,7 +251,7 @@ describe('uitnodiging accepteren', () => {
     await assertFails(
       updateDoc(doc(db, 'organizations', ORG_A, 'invitations', INV_ID), {
         status: 'accepted',
-        acceptedAt: new Date(),
+        acceptedAt: serverTimestamp(),
       }),
     );
   });
@@ -254,7 +264,7 @@ describe('uitnodiging accepteren', () => {
     await assertFails(
       updateDoc(doc(db, 'organizations', ORG_A, 'invitations', INV_ID), {
         status: 'accepted',
-        acceptedAt: new Date(),
+        acceptedAt: serverTimestamp(),
         role: 'organizationOwner', // poging tot rol-upgrade
       }),
     );
@@ -291,7 +301,7 @@ describe('membership claimen na acceptatie', () => {
     });
     batch.update(doc(db, 'organizations', ORG_A, 'invitations', INV_ID), {
       status: 'claimed',
-      claimedAt: new Date(),
+      claimedAt: serverTimestamp(),
     });
     await assertSucceeds(batch.commit());
   });
@@ -318,7 +328,7 @@ describe('membership claimen na acceptatie', () => {
       email_verified: true,
     });
     await assertFails(
-      updateDoc(doc(db, 'organizations', ORG_A, 'invitations', INV_ID), { status: 'claimed', claimedAt: new Date() }),
+      updateDoc(doc(db, 'organizations', ORG_A, 'invitations', INV_ID), { status: 'claimed', claimedAt: serverTimestamp() }),
     );
   });
 
@@ -337,7 +347,7 @@ describe('membership claimen na acceptatie', () => {
     });
     batch.update(doc(db, 'organizations', ORG_A, 'invitations', INV_ID), {
       status: 'claimed',
-      claimedAt: new Date(),
+      claimedAt: serverTimestamp(),
     });
     await assertFails(batch.commit());
   });
@@ -358,7 +368,7 @@ describe('membership claimen na acceptatie', () => {
     });
     batch.update(doc(db, 'organizations', ORG_A, 'invitations', INV_ID), {
       status: 'claimed',
-      claimedAt: new Date(),
+      claimedAt: serverTimestamp(),
     });
     await assertFails(batch.commit());
   });
@@ -378,7 +388,7 @@ describe('membership claimen na acceptatie', () => {
     });
     batch.update(doc(db, 'organizations', ORG_A, 'invitations', INV_ID), {
       status: 'claimed',
-      claimedAt: new Date(),
+      claimedAt: serverTimestamp(),
     });
     await assertFails(batch.commit());
   });
@@ -410,7 +420,7 @@ describe('ingetrokken uitnodiging blokkeert claim', () => {
     });
     batch.update(doc(db, 'organizations', ORG_A, 'invitations', 'inv-henry'), {
       status: 'claimed',
-      claimedAt: new Date(),
+      claimedAt: serverTimestamp(),
     });
     await assertFails(batch.commit());
   });
@@ -442,7 +452,7 @@ describe('uitgebruikte uitnodiging blokkeert herinstroom (replay-blokkade)', () 
     });
     claimBatch.update(doc(graceDb, 'organizations', ORG_A, 'invitations', INV_ID), {
       status: 'claimed',
-      claimedAt: new Date(),
+      claimedAt: serverTimestamp(),
     });
     await assertSucceeds(claimBatch.commit());
 
@@ -461,7 +471,7 @@ describe('uitgebruikte uitnodiging blokkeert herinstroom (replay-blokkade)', () 
     });
     replayBatch.update(doc(graceDb, 'organizations', ORG_A, 'invitations', INV_ID), {
       status: 'claimed',
-      claimedAt: new Date(),
+      claimedAt: serverTimestamp(),
     });
     await assertFails(replayBatch.commit());
   });

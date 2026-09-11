@@ -11,7 +11,16 @@
 // op staging met de 5.5c-baseline (`docs/pr-5.5-onderzoeksrapport.md`).
 
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
-import { doc, getDocs, collection, query, orderBy, updateDoc, writeBatch, Timestamp } from 'firebase/firestore';
+import {
+  doc,
+  getDocs,
+  collection,
+  query,
+  orderBy,
+  updateDoc,
+  writeBatch,
+  serverTimestamp,
+} from 'firebase/firestore';
 import type { RulesTestEnvironment } from '@firebase/rules-unit-testing';
 import { authCtx, createTestEnv, withAdmin } from './helpers/testEnv.js';
 import { ORG_A, TEAM_A1, USERS, sampleGame, sampleCompletedGame } from './helpers/fixtures.js';
@@ -146,7 +155,7 @@ describe('PR 7.2c pilot client-call-telling (completedGames)', () => {
     });
     const deviceA = authCtx(env, USERS.alice.uid, { email: USERS.alice.email });
     await updateDoc(completedGameRef(deviceA, 'completed-1'), {
-      deletedAt: Timestamp.now(),
+      deletedAt: serverTimestamp(), // PR 8.3c-0: servergebonden
       deletedBy: USERS.alice.uid,
       revision: 1,
     });
