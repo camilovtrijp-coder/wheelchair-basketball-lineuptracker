@@ -1,10 +1,18 @@
 # Voorbereidingsplan PR 8.3 — beveiliging, privacy, kosten en beheer
 
-Status: 8.3a is gemerged via PR #85; 8.3b–8.3d blijven
-voorbereidingsplan. PR 8.2 is volledig gemerged
-(8.2a #81, 8.2b #83 en 8.2c #84). Dit plan splitst roadmap-PR 8.3 in vier
-afzonderlijk reviewbare sub-PR's. Geen van deze stappen geeft op
-zichzelf toestemming voor een productiecutover, betaalde Firebase-functie,
+Status (12 september 2026): 8.3a is gemerged via PR #85 en 8.3b in twee delen
+via #87 en #89. Het 8.3c-besluitrecord is gemerged via #90 — dat hief de
+§E.1–E.3-startblokkade op en knipte 8.3c in drie PR's — en 8.3c-0
+(servergebonden bewaartijdstempels) is gemerged via #91. Nog niet gestart:
+8.3c-1, 8.3c-2 en 8.3d. PR 8.2 is volledig gemerged (8.2a #81, 8.2b #83 en
+8.2c #84).
+
+Dit plan splitste roadmap-PR 8.3 oorspronkelijk in vier afzonderlijk
+reviewbare sub-PR's; door de 8.3c-splitsing zijn dat er in de uitvoering zes
+geworden. De werkitems per sub-PR hieronder zijn daarbij ongewijzigd gebleven
+— alleen hun verdeling over PR's is veranderd, zoals beschreven in
+`docs/pr-8.3c-besluitvoorstel.md` §5. Geen van deze stappen geeft op zichzelf
+toestemming voor een productiecutover, betaalde Firebase-functie,
 billingkoppeling, deployment of verwerking van echte spelersdata.
 
 ## A. Doel en actuele basis
@@ -315,12 +323,29 @@ Verificatie na deze opvolging: Firebase 86/86 unit-/convertertests (was
 
 ### 8.3b — volledige organisatie-export en herstelbewijs
 
-Status: deel 1/2 (werk 1-3 hieronder) geïmplementeerd op branch
-`feature/pr-8.3b-organization-export-contract`, nog niet als PR geopend.
-Deel 2 (UI-preview van werk 4, de Emulator-e2e die twee volledige
-organisaties via de UI/coordinator doorloopt van werk 5, en de herstelproef
-van werk 6) volgt als afzonderlijke, kleinere opvolg-PR — zelfde reden als
-de 7.4a/b/c- en 8.1/8.2-sub-PR-splitsing: "vermijd één grote PR" (plan §B.1).
+Status: **volledig gemerged in twee delen.** Deel 1/2 (werk 1-3 hieronder) via
+PR #87 (squashcommit `808ed24`); deel 2/2 (de UI-preview van werk 4, de
+Emulator-e2e over twee volledige organisaties van werk 5 en de herstelproef
+van werk 6) via PR #89, samen met de herreviewfixes. De splitsing had dezelfde
+reden als die van 7.4a/b/c en 8.1/8.2: "vermijd één grote PR" (plan §B.1).
+
+Twee heads waar het bewijs aan hangt, bewust onderscheiden omdat ze niet
+hetzelfde aantonen:
+
+- **`485c39e`** — de laatste head waarop de **code** is gereviewd; dat is de
+  commit die `callerUid` als vervalsbare identiteitsparameter verwijderde.
+  CI-run [34265843465](https://github.com/camilovtrijp-coder/wheelchair-basketball-lineuptracker/actions/runs/34265843465)
+  is daarop 4/4 groen. Alle code-bevindingen uit de drie herreviewrondes waren
+  op deze commit opgelost.
+- **`14b6f58`** — de uiteindelijk gemergede head, en uitsluitend een
+  **documentatiecommit**: het vastleggen van het architectuuronderscheid
+  owner-only-als-productcapability versus server-side vertrouwelijkheid
+  (zie het restpunt onderaan deze sectie). CI-run
+  [34268193184](https://github.com/camilovtrijp-coder/wheelchair-basketball-lineuptracker/actions/runs/34268193184)
+  is daarop eveneens 4/4 groen, op run-attempt 2.
+
+Een acceptatieclaim over de 8.3b-*code* hoort dus naar `485c39e` te verwijzen,
+niet naar `14b6f58`; die laatste voegde geen regel code toe.
 
 Deel 1/2, geïmplementeerd:
 
