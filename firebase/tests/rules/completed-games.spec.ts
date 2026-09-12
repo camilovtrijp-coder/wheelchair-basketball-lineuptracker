@@ -15,7 +15,16 @@
 //   ÉÉN Firestore-`WriteBatch` verstuurt.
 
 import { beforeAll, afterAll, beforeEach, describe, it, expect } from 'vitest';
-import { doc, setDoc, updateDoc, deleteDoc, getDoc, writeBatch, Timestamp } from 'firebase/firestore';
+import {
+  doc,
+  setDoc,
+  updateDoc,
+  deleteDoc,
+  getDoc,
+  writeBatch,
+  Timestamp,
+  serverTimestamp,
+} from 'firebase/firestore';
 import type { RulesTestEnvironment } from '@firebase/rules-unit-testing';
 import { createTestEnv, assertSucceeds, assertFails, authCtx, withAdmin } from './helpers/testEnv.js';
 import {
@@ -386,9 +395,13 @@ describe('completedGames/{completedGameId}: tombstone-fieldpatch (PR 7.2c)', () 
     });
   });
 
+  // PR 8.3c-0: `deletedAt` moet `== request.time` zijn, dus een clientwrite die
+  // moet SLAGEN schrijft `serverTimestamp()` — precies wat
+  // `FirestoreGameCloudGateway.tombstoneCompletedGame()` in productie al doet.
+  // Een test die een afwijkende waarde wil bewijzen geeft die via `overrides`.
   function tombstonePatch(uid: string, overrides: Record<string, unknown> = {}) {
     return {
-      deletedAt: Timestamp.now(),
+      deletedAt: serverTimestamp(),
       deletedBy: uid,
       revision: 1,
       ...overrides,
@@ -544,7 +557,7 @@ describe('completedGames/{completedGameId}: backward-compat met een legacy (PR 7
     const db = authCtx(env, USERS.alice.uid, { email: USERS.alice.email, email_verified: true });
     await assertSucceeds(
       updateDoc(completedGameRef(db, ORG_A, TEAM_A1, 'legacy-1'), {
-        deletedAt: Timestamp.now(),
+        deletedAt: serverTimestamp(),
         deletedBy: USERS.alice.uid,
         revision: 1,
       }),
@@ -566,7 +579,7 @@ describe('completedGames/{completedGameId}: backward-compat met een legacy (PR 7
     const db = authCtx(env, USERS.alice.uid, { email: USERS.alice.email, email_verified: true });
     await assertFails(
       updateDoc(completedGameRef(db, ORG_A, TEAM_A1, 'legacy-1'), {
-        deletedAt: Timestamp.now(),
+        deletedAt: serverTimestamp(),
         deletedBy: USERS.alice.uid,
         revision: 2,
       }),
@@ -577,7 +590,7 @@ describe('completedGames/{completedGameId}: backward-compat met een legacy (PR 7
     const db = authCtx(env, USERS.dave.uid, { email: USERS.dave.email, email_verified: true });
     await assertFails(
       updateDoc(completedGameRef(db, ORG_A, TEAM_A1, 'legacy-1'), {
-        deletedAt: Timestamp.now(),
+        deletedAt: serverTimestamp(),
         deletedBy: USERS.dave.uid,
         revision: 1,
       }),

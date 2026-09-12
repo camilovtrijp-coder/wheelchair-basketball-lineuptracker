@@ -148,6 +148,32 @@ privacyuitleg; niets wordt automatisch verzonden.
   escalatiepad omdat elke consumerende Rules-functie een exact-literal
   allowlist is; wel een open punt voor een toekomstige shapehardening-PR.
 
+### Pre-8.5-poort: er bestaat geen uitnodigingsaanmaakpad in `v2/src`
+
+PR 8.3c-0 bindt `invitedAt` aan `request.time`, zodat een uitnodiging niet
+meer teruggedateerd kan worden. Die garantie geldt **uitsluitend voor writes
+die door Security Rules gaan** — en dat is precies waar hier een gat zit dat
+vóór de PR 8.5-cutover gesloten moet worden:
+
+- `FirestoreOrganizationGateway` kent alleen `getInvitationByLink()`,
+  `acceptInvitation()` en `claimInvitation()`. Nergens in `v2/src` wordt een
+  uitnodigingsdocument aangemaakt; de app heeft geen uitnodig-UI.
+- Uitnodigingen ontstaan vandaag dus buiten de app om. De handmatige
+  Firebase Console-write uit het stagingprotocol loopt via Admin-privileges en
+  **omzeilt Rules volledig** — inclusief de nieuwe `invitedAt`-eis.
+- Gevolg: `invitedAt == request.time` bewijst alleen iets over
+  Rules-gecontroleerde writes. Zolang de enige werkelijke aanmaakroute een
+  Console-write is, is elke bewaartermijn die op `invitedAt` rekent (8.3c-1)
+  in de praktijk ongefundeerd.
+
+**Vóór echte spelersdata moet het gezaghebbende productie-aanmaakpad worden
+vastgesteld.** Dat is een productbesluit, geen codefix: ofwel een uitnodig-UI
+in de app (die dan automatisch onder Rules valt), ofwel een expliciet
+vastgelegde, gecontroleerde beheerroute met een eigen afspraak over hoe
+`invitedAt` daar gezet wordt. Tot dat besluit er is, blijft dit een open
+poort en mag geen enkele acceptatieclaim de uitnodigingsbewaartermijn als
+afgedwongen presenteren.
+
 Voor iedere nieuwe Firestore-familie of query zijn vóór merge verplicht:
 
 1. matrixrij en querycontract;

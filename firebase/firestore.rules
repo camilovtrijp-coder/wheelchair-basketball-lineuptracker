@@ -570,9 +570,26 @@ service cloud.firestore {
       // ---- invitations/{invitationId} ----
       match /invitations/{invitationId} {
         // Owner mag uitnodigingen aanmaken met elke rol; admin mag NIET de owner-rol uitnodigen.
+        //
+        // PR 8.3c-0: `invitedAt` is servergebonden (`== request.time`, dus in de
+        // praktijk `serverTimestamp()`). Zonder die eis was dit veld volledig
+        // clientbepaald — er stond niet eens dat het moest bestaan — en kon een
+        // aanroeper een uitnodiging terugdateren. Elke bewaartermijn die later op
+        // dit veld gaat rekenen (8.3c-1) zou dan een bewering zijn in plaats van
+        // een grens. Zie docs/pr-8.3c-besluitvoorstel.md §3.1; zelfde patroon als
+        // `organizations`/`teams` hierboven, die `createdAt` al zo binden.
+        // `acceptedAt == null` hoort bij dezelfde eis: `status == 'pending'`
+        // alleen dwong niet af dat het acceptatietijdstempel nog leeg was, dus
+        // een aanroeper kon een NIEUWE uitnodiging aanmaken die al een
+        // zelfbepaalde `acceptedAt` droeg — hetzelfde lek als bij de drie
+        // velden hierboven, plus een document dat zichzelf tegenspreekt
+        // (pending mét acceptatietijd). De accepteertak hieronder is de enige
+        // plek waar dit veld een waarde krijgt, en daar is die servergebonden.
         allow create: if isOrgOwnerOrAdmin(orgId) &&
           request.resource.data.status == 'pending' &&
           request.resource.data.invitedBy == request.auth.uid &&
+          request.resource.data.invitedAt == request.time &&
+          request.resource.data.acceptedAt == null &&
           (orgRole(orgId) == 'organizationOwner' || request.resource.data.role != 'organizationOwner');
 
         // Intrekken (owner/admin): alleen statusveld naar 'revoked'.
@@ -581,11 +598,14 @@ service cloud.firestore {
           request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status']);
 
         // Accepteren: geverifieerde e-mail van de uitgenodigde; raakt alleen status + acceptedAt.
+        // PR 8.3c-0: `acceptedAt` servergebonden — de `hasOnly()`-allowlist liet de
+        // WAARDE van dit veld eerder volledig vrij (zie de create-regel hierboven).
         allow update: if signedIn() &&
           request.auth.token.email == resource.data.email &&
           request.auth.token.email_verified == true &&
           resource.data.status == 'pending' &&
           request.resource.data.status == 'accepted' &&
+          request.resource.data.acceptedAt == request.time &&
           request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'acceptedAt']);
 
         // Claimen: de uitgenodigde markeert de uitnodiging als 'claimed' in dezelfde batch waarin
@@ -595,6 +615,10 @@ service cloud.firestore {
           request.auth.token.email_verified == true &&
           resource.data.status == 'accepted' &&
           request.resource.data.status == 'claimed' &&
+          // PR 8.3c-0: servergebonden, net als acceptedAt hierboven. Binnen een
+          // WriteBatch deelt elke write dezelfde `request.time`, dus de atomaire
+          // claim+membership-constructie hieronder blijft ongewijzigd werken.
+          request.resource.data.claimedAt == request.time &&
           request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'claimedAt']) &&
           !exists(orgMemberRef(orgId, request.auth.uid)) &&
           existsAfter(orgMemberRef(orgId, request.auth.uid)) &&
@@ -926,7 +950,13 @@ service cloud.firestore {
             (!('deletedAt' in resource.data) || resource.data.deletedAt == null) &&
             request.resource.data.diff(resource.data).affectedKeys()
               .hasOnly(['deletedAt', 'deletedBy', 'revision']) &&
-            request.resource.data.deletedAt is timestamp &&
+            // PR 8.3c-0: aangescherpt van `is timestamp` naar `== request.time`.
+            // `is timestamp` liet een teruggedateerde waarde toe, waardoor een
+            // toekomstige bewaartermijn op `deletedAt` (8.3c-1's redactie na 90
+            // dagen) in dezelfde handeling al overschreden kon worden. De client
+            // schreef hier al `serverTimestamp()` (FirestoreGameCloudGateway
+            // .tombstoneCompletedGame()), dus dit legt bestaand gedrag vast.
+            request.resource.data.deletedAt == request.time &&
             request.resource.data.deletedBy == request.auth.uid &&
             request.resource.data.revision ==
               (('revision' in resource.data) ? resource.data.revision : 0) + 1;
