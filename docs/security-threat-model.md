@@ -148,6 +148,18 @@ privacyuitleg; niets wordt automatisch verzonden.
   wedstrijd, niet-terminale migratierun) niet afdwingen — die vragen een query
   — en `exportProof` is een vaste vorm, geen narekenbare hash. Beide zijn
   applicatielogica (8.3c-1 deel 2) en worden door het runbook opnieuw gecontroleerd.
+- Team-only leden (alleen een `teamMembers`-rij, geen `organizationMembers`-rij)
+  kunnen `deletionRequests/current` niet lezen en zien dus geen banner terwijl
+  een organisatie wordt verwijderd. **Bewust geaccepteerd restrisico** (eigenaar,
+  29 september 2026): Rules kunnen "lid van enig team" niet uitdrukken zonder een
+  `teamId` in het pad, en een melding per team is een gewijzigd datacontract
+  (nieuw teamveld, niet-atomaire batch). Mitigatie in 8.3c-1 deel 2 en het
+  runbook: de owner-bevestiging toont het aantal team-only leden met de melding
+  dat zij geen banner zien en handmatig geïnformeerd moeten worden, het runbook
+  eist die controle vóór uitvoering, en de blokkade op recente niet-afgeronde
+  wedstrijden blijft gelden. Herzien zodra er meer dan één organisatie met een
+  eigenaar buiten de eigen kring is (besluitrecord §2.4, trigger 2); dan hoort een
+  melding per team samen met de servervariant opnieuw op de agenda.
 - Back-up/PITR, retentie, budgetalerts en actuele kosten zijn 8.3d-scope.
 - Echte iOS/iPadOS-/oud-toestel-/screenreadervalidatie blijft open; geen
   securityclaim mag die praktijkpoort als automatisch afgedekt voorstellen.
