@@ -490,7 +490,12 @@ describe('uitnodiging intrekken', () => {
       });
     });
     const db = authCtx(env, USERS.alice.uid, { email: USERS.alice.email, email_verified: true });
-    await assertSucceeds(updateDoc(doc(db, 'organizations', ORG_A, 'invitations', INV_ID), { status: 'revoked' }));
+    await assertSucceeds(
+      updateDoc(doc(db, 'organizations', ORG_A, 'invitations', INV_ID), {
+        status: 'revoked',
+        revokedAt: serverTimestamp(),
+      }),
+    );
   });
 
   it('intrekken mag GEEN andere velden wijzigen', async () => {
@@ -508,6 +513,7 @@ describe('uitnodiging intrekken', () => {
     await assertFails(
       updateDoc(doc(db, 'organizations', ORG_A, 'invitations', INV_ID), {
         status: 'revoked',
+        revokedAt: serverTimestamp(),
         role: 'organizationOwner', // extra veld — mag niet
       }),
     );

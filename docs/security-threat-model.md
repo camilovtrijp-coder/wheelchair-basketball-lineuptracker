@@ -139,6 +139,15 @@ privacyuitleg; niets wordt automatisch verzonden.
   account-/organisatieverwijdering blijft daarom 8.3c-scope.
 - Firestore parent-delete verwijdert subcollecties niet; geen organisatie-hard-
   delete tot het gekozen 8.3c-model getest is.
+- Bewaartermijnen zijn Rules-**ondergrenzen**, geen automatische purge: Spark
+  kent geen TTL en er is geen serverruntime. PR 8.3c-1 (deel 1) legt de
+  30-dagengrens op uitnodigingen, de 90-dagengrens op tombstoneredactie en het
+  `deletionRequests/current`-pad vast in Rules; het daadwerkelijke opruimen is
+  een handmatige, nog te documenteren runbookactie. Rules kunnen de
+  blokkerende voorwaarden van een verwijderverzoek (recente niet-afgeronde
+  wedstrijd, niet-terminale migratierun) niet afdwingen — die vragen een query
+  — en `exportProof` is een vaste vorm, geen narekenbare hash. Beide zijn
+  applicatielogica (8.3c-1 deel 2) en worden door het runbook opnieuw gecontroleerd.
 - Back-up/PITR, retentie, budgetalerts en actuele kosten zijn 8.3d-scope.
 - Echte iOS/iPadOS-/oud-toestel-/screenreadervalidatie blijft open; geen
   securityclaim mag die praktijkpoort als automatisch afgedekt voorstellen.

@@ -30,6 +30,15 @@ export interface FirestoreAccessMatrixEntry {
    * richtingen tegen `firebase/src/documents` en tegen `clientSources`.
    */
   converterSources: readonly string[];
+  /**
+   * Alleen gezet wanneer de Rules-scope al bestaat maar de bijbehorende
+   * clientgateway nog niet (Rules lopen bewust vóór op de client, zodat ze
+   * eerst onafhankelijk bewezen worden). De waarde is de reden en de PR die de
+   * client oplevert. `clientSources` mag dan leeg zijn; `firestoreAccessMatrix
+   * .spec.ts` vergrendelt de EXACTE lijst van zulke rijen, zodat een vergeten
+   * client niet stilzwijgend kan blijven ontbreken.
+   */
+  clientPending?: string;
 }
 
 /**
@@ -147,13 +156,18 @@ export const FIRESTORE_ACCESS_MATRIX: readonly FirestoreAccessMatrixEntry[] = [
       read: ["organizationOwner", "organizationAdmin", "invitedVerifiedUser"],
       create: ["organizationOwner", "organizationAdmin"],
       update: ["organizationOwner", "organizationAdmin", "invitedVerifiedUser"],
-      delete: [],
+      delete: ["organizationOwner", "organizationAdmin", "invitedVerifiedUser"],
     },
     conditions:
-      "Invitee email must match a verified auth token; status transitions and affected fields are allowlisted; claim is atomic.",
+      "Invitee email must match a verified auth token; status transitions and affected fields are allowlisted; claim is atomic. " +
+      "invitedAt/acceptedAt/claimedAt/revokedAt are server-bound (== request.time). Accepting is only possible within 30 days of invitedAt. " +
+      "Delete has two branches: owner/admin only after a 30-day floor measured at the timestamp of the CURRENT status (with an invitedAt fallback), " +
+      "and the invitee themselves with a verified email and NO floor (own personal data). There is no automatic purge.",
     evidence: [
       "tests/rules/bootstrap-and-invitation-flow.spec.ts",
       "tests/rules/membership-and-roles.spec.ts",
+      "tests/rules/server-bound-timestamps.spec.ts",
+      "tests/rules/invitation-retention.spec.ts",
     ],
     clientSources: [
       FIRESTORE_CLIENT_GATEWAY_FILES[0],
@@ -319,9 +333,11 @@ export const FIRESTORE_ACCESS_MATRIX: readonly FirestoreAccessMatrixEntry[] = [
       delete: [],
     },
     conditions:
-      "Create-only immutable game payload; update is tombstone-only with revision/deletedBy checks; hard delete denied.",
+      "Create-only immutable game payload; update is either the tombstone patch (owner/admin/coach, revision/deletedBy checks, deletedAt == request.time) " +
+      "or, owner-only, the redaction of a tombstone older than 90 days (personal data cleared, deletedAt kept, redactedAt == request.time, once); hard delete denied.",
     evidence: [
       "tests/rules/completed-games.spec.ts",
+      "tests/rules/completed-games-redaction.spec.ts",
       "tests/rules/pilot-reads-writes-completed-games.spec.ts",
       "tests/rules/cross-org-isolation.spec.ts",
     ],
@@ -360,6 +376,28 @@ export const FIRESTORE_ACCESS_MATRIX: readonly FirestoreAccessMatrixEntry[] = [
     converterSources: [],
   },
   {
+    id: "deletion-requests",
+    path: "organizations/{orgId}/deletionRequests/current",
+    ruleMatch: "match /deletionRequests/current",
+    permissions: {
+      read: orgRoles,
+      create: ["organizationOwner"],
+      update: ["organizationOwner"],
+      delete: [],
+    },
+    conditions:
+      "Singleton per organization. A client may only create `requested` (attempt 1), cancel from `requested`, and restart from `cancelled` with attempt + 1; " +
+      "executing/completed/failed are runbook-only (Admin rights) and never client-writable. Exact key set, server-bound requestedAt/cancelledAt, " +
+      "revision +1 per patch, a fixed-shape exportProof, no hard delete. Rules cannot enforce the blocking preconditions (they need queries) nor " +
+      "verify the exportProof hash; those are application-level gates re-checked by the runbook. No converter exists yet: the document contract " +
+      "and its gateway arrive with the domain/application part of PR 8.3c-1.",
+    evidence: ["tests/rules/deletion-requests.spec.ts"],
+    clientSources: [],
+    converterSources: [],
+    clientPending:
+      "8.3c-1 part 2: deletion-request domain model, gateway and owner-only UI",
+  },
+  {
     id: "organization-members-collection-group",
     path: "{path=**}/organizationMembers/{uid}",
     ruleMatch: "match /{path=**}/organizationMembers/{uid}",
@@ -396,5 +434,24 @@ export const FIRESTORE_ACCESS_MATRIX: readonly FirestoreAccessMatrixEntry[] = [
     evidence: ["tests/rules/team-context-switcher-query.spec.ts"],
     clientSources: [FIRESTORE_CLIENT_GATEWAY_FILES[0]],
     converterSources: ["teamMemberConverter"],
+  },
+  {
+    id: "invitations-collection-group",
+    path: "{path=**}/invitations/{invitationId}",
+    ruleMatch: "match /{path=**}/invitations/{invitationId}",
+    permissions: {
+      read: ["invitedVerifiedUser"],
+      create: [],
+      update: [],
+      delete: [],
+    },
+    conditions:
+      "Collection-group query must filter email == the caller own verified token email; only the caller own invitations are readable, " +
+      "in any organization and without membership. Deleting what the query finds runs through the nested invitations match, not this one.",
+    evidence: ["tests/rules/invitation-retention.spec.ts"],
+    clientSources: [],
+    converterSources: ["invitationConverter"],
+    clientPending:
+      "8.3c-2: account deletion and leave-organization coordinator (the query contract and index ship earlier, with the retention rules)",
   },
 ] as const;

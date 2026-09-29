@@ -4,7 +4,10 @@ Status (12 september 2026): 8.3a is gemerged via PR #85 en 8.3b in twee delen
 via #87 en #89. Het 8.3c-besluitrecord is gemerged via #90 — dat hief de
 §E.1–E.3-startblokkade op en knipte 8.3c in drie PR's — en 8.3c-0
 (servergebonden bewaartijdstempels) is gemerged via #91. Nog niet gestart:
-8.3c-1, 8.3c-2 en 8.3d. PR 8.2 is volledig gemerged (8.2a #81, 8.2b #83 en
+8.3c-1, 8.3c-2 en 8.3d. Daarna is 8.3c-1 zelf in twee delen geknipt: deel 1
+(Rules, index, accessmatrix en Rules-tests) is geïmplementeerd; deel 2
+(domein, gateway, UI, opruimoverzicht, runbook) is nog niet gestart. PR 8.2 is
+volledig gemerged (8.2a #81, 8.2b #83 en
 8.2c #84).
 
 Dit plan splitste roadmap-PR 8.3 oorspronkelijk in vier afzonderlijk

@@ -252,6 +252,12 @@ service cloud.firestore {
       return isOrgMember(orgId) && orgRole(orgId) in ['organizationOwner', 'organizationAdmin'];
     }
 
+    // PR 8.3c-1: bewust smaller dan isOrgOwnerOrAdmin — verwijderverzoeken en
+    // tombstoneredactie zijn owner-only (docs/pr-8.3c-besluitvoorstel.md §2.5/§3.3).
+    function isOrgOwner(orgId) {
+      return isOrgMember(orgId) && orgRole(orgId) == 'organizationOwner';
+    }
+
     function teamMemberPath(orgId, teamId) {
       return /databases/$(database)/documents/organizations/$(orgId)/teams/$(teamId)/teamMembers/$(request.auth.uid);
     }
@@ -494,6 +500,45 @@ service cloud.firestore {
       return /databases/$(database)/documents/organizations/$(orgId)/organizationMembers/$(uid);
     }
 
+    // PR 8.3c-1 — bewaartermijn van een uitnodiging (docs/pr-8.3c-besluitvoorstel.md
+    // §3.4, punt 2): 30 dagen, gemeten aan de tijdstempel die bij de HUIDIGE status
+    // hoort. Elke tak valt terug op `invitedAt` wanneer zijn eigen tijdstempel
+    // ontbreekt (`claimedAt` is optioneel; documenten van vóór 8.3c-1 hebben geen
+    // `revokedAt`) — een rechtstreekse toegang zou een evaluatiefout geven en dat
+    // document onverwijderbaar maken. Alle vier de tijdstempels zijn sinds 8.3c-0/
+    // 8.3c-1 servergebonden (`== request.time`), dus deze ondergrens is niet
+    // terug te dateren. Dit is een ONDERGRENS: er verloopt niets vanzelf.
+    function invitationRetentionAnchor(inv) {
+      return (inv.status == 'claimed' && ('claimedAt' in inv) && inv.claimedAt != null) ? inv.claimedAt :
+        (inv.status == 'accepted' && ('acceptedAt' in inv) && inv.acceptedAt != null) ? inv.acceptedAt :
+        (inv.status == 'revoked' && ('revokedAt' in inv) && inv.revokedAt != null) ? inv.revokedAt :
+        inv.invitedAt;
+    }
+
+    function invitationRetentionElapsed(inv) {
+      return request.time > invitationRetentionAnchor(inv) + duration.value(30, 'd');
+    }
+
+    // PR 8.3c-1 — exportProof van een verwijderverzoek: de uitkomst van een
+    // geslaagde 8.3b-organisatie-export. Rules kunnen niet narekenen of de hash
+    // klopt; dit is een UX-poort met vaste vorm, geen bewijs (§2.5 — de export
+    // die telt is die van de beheerder, vlak vóór het wissen).
+    function isValidExportProof(proof) {
+      return proof is map &&
+        proof.keys().hasAll(['contentHash', 'exportedAt', 'counts']) &&
+        proof.keys().hasOnly(['contentHash', 'exportedAt', 'counts']) &&
+        proof.contentHash is string && proof.contentHash.size() > 0 &&
+        proof.exportedAt is string && isIsoTimestampShape(proof.exportedAt) &&
+        proof.counts is map;
+    }
+
+    function deletionRequestKeys() {
+      return [
+        'organizationId', 'status', 'attempt', 'requestedBy', 'requestedAt',
+        'exportProof', 'cancelledAt', 'revision'
+      ];
+    }
+
     // ---- organizations/{orgId} ----
     match /organizations/{orgId} {
       allow create: if signedIn() &&
@@ -592,10 +637,13 @@ service cloud.firestore {
           request.resource.data.acceptedAt == null &&
           (orgRole(orgId) == 'organizationOwner' || request.resource.data.role != 'organizationOwner');
 
-        // Intrekken (owner/admin): alleen statusveld naar 'revoked'.
+        // Intrekken (owner/admin): status naar 'revoked' plus het nieuwe, servergebonden
+        // `revokedAt` (PR 8.3c-1). Zonder eigen eindtijdstempel had een ingetrokken
+        // uitnodiging geen bewaartermijn om aan te meten (§3.4, punt 2).
         allow update: if isOrgOwnerOrAdmin(orgId) &&
           request.resource.data.status == 'revoked' &&
-          request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status']);
+          request.resource.data.revokedAt == request.time &&
+          request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'revokedAt']);
 
         // Accepteren: geverifieerde e-mail van de uitgenodigde; raakt alleen status + acceptedAt.
         // PR 8.3c-0: `acceptedAt` servergebonden — de `hasOnly()`-allowlist liet de
@@ -606,6 +654,9 @@ service cloud.firestore {
           resource.data.status == 'pending' &&
           request.resource.data.status == 'accepted' &&
           request.resource.data.acceptedAt == request.time &&
+          // PR 8.3c-1: acceptatietermijn van 30 dagen (§3.4, punt 1). ALLEEN een
+          // acceptatietermijn — de bewaartermijn is de deleteregel hieronder.
+          request.time < resource.data.invitedAt + duration.value(30, 'd') &&
           request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'acceptedAt']);
 
         // Claimen: de uitgenodigde markeert de uitnodiging als 'claimed' in dezelfde batch waarin
@@ -628,6 +679,95 @@ service cloud.firestore {
 
         allow read: if isOrgOwnerOrAdmin(orgId) ||
           (signedIn() && request.auth.token.email == resource.data.email);
+
+        // PR 8.3c-1, §3.4 punt 3 — twee deletetakken met BEWUST verschillende
+        // ondergrenzen. Een uitnodiging is vrijwel volledig een persoonsgegeven
+        // (het e-mailadres van de uitgenodigde) en was tot nu toe onverwijderbaar.
+        //
+        // (a) Beheeropruiming: owner/admin, pas na 30 dagen gemeten aan de
+        //     tijdstempel van de huidige status, voor ALLE vier de statussen —
+        //     ook een verlopen `pending` en een vastgelopen `accepted`, want juist
+        //     die houden het adres anders onbeperkt vast. De grens beschermt de
+        //     auditwaarde voor de organisatie.
+        allow delete: if isOrgOwnerOrAdmin(orgId) &&
+          invitationRetentionElapsed(resource.data);
+
+        // (b) De uitgenodigde zelf: GEEN ondergrens, elke status, elke ouderdom.
+        //     Dezelfde grens op de betrokkene zou een slot zijn op diens eigen
+        //     persoonsgegeven en accountverwijdering (8.3c-2) laten vastlopen:
+        //     `deleteUser()` neemt het token weg waarmee de uitnodiging later nog
+        //     gevonden kan worden. `email_verified` is bewust strenger dan de
+        //     bestaande leesregel hierboven.
+        allow delete: if signedIn() &&
+          request.auth.token.email_verified == true &&
+          request.auth.token.email == resource.data.email;
+      }
+
+      // ---- deletionRequests/current: PR 8.3c-1 — organisatieverwijderverzoek ----
+      // (docs/pr-8.3c-besluitvoorstel.md §2.5). Singleton per organisatie, dus
+      // inherent idempotent; hetzelfde schrijfpatroon als migrationRuns: create-only
+      // kernvelden plus revisie-bewaakte statuspatches.
+      //
+      // Een CLIENT mag uitsluitend drie dingen — alles daarbuiten is default-deny:
+      //   1. de owner maakt `requested` aan (attempt 1);
+      //   2. de owner annuleert vanuit `requested`;
+      //   3. de owner start opnieuw vanuit `cancelled` met `attempt + 1`.
+      // `executing`/`completed`/`failed` worden door het handmatige runbook gezet
+      // met beheerdersrechten (die Rules omzeilen), nooit door de app: een half
+      // uitgevoerde wissing is geen nieuwe eigenaarsaanvraag, en `completed` is
+      // terminaal. Er is bewust geen `allow delete` en geen 7-dagengrens in Rules —
+      // de bedenktijd is runbookdiscipline, anders is de flow niet in één sessie te
+      // testen (§2.5, verfijning 1).
+      //
+      // Wat Rules NIET kunnen afdwingen: de blokkerende voorwaarden (recente
+      // niet-afgeronde wedstrijd, niet-terminale migratierun) vragen een query, en
+      // `exportProof` is een vaste vorm, geen narekenbare hash. Die poorten zijn
+      // applicatielogica (8.3c-1 deel 2) en worden door het runbook opnieuw
+      // gecontroleerd; een client die ze omzeilt krijgt alleen een `requested`-
+      // aanvraag, die niets wist zolang de beheerder haar niet uitvoert.
+      match /deletionRequests/current {
+        allow read: if isOrgMember(orgId);
+
+        allow create: if isOrgOwner(orgId) &&
+          request.resource.data.keys().hasAll(deletionRequestKeys()) &&
+          request.resource.data.keys().hasOnly(deletionRequestKeys()) &&
+          request.resource.data.organizationId == orgId &&
+          request.resource.data.status == 'requested' &&
+          request.resource.data.attempt == 1 &&
+          request.resource.data.requestedBy == request.auth.uid &&
+          request.resource.data.requestedAt == request.time &&
+          isValidExportProof(request.resource.data.exportProof) &&
+          request.resource.data.cancelledAt == null &&
+          request.resource.data.revision == 0;
+
+        // Annuleren: alleen vanuit `requested`.
+        allow update: if isOrgOwner(orgId) &&
+          resource.data.status == 'requested' &&
+          request.resource.data.status == 'cancelled' &&
+          request.resource.data.cancelledAt == request.time &&
+          request.resource.data.revision == resource.data.revision + 1 &&
+          request.resource.data.diff(resource.data).affectedKeys()
+            .hasOnly(['status', 'cancelledAt', 'revision']);
+
+        // Herstart: alleen vanuit `cancelled`, alleen naar `requested`, een nieuwe
+        // poging (`attempt + 1`) met verse aanvrager/tijd/exportProof. Zonder deze
+        // overgang maakte één annulering de organisatie permanent onverwijderbaar
+        // (herreviewbevinding 3, §8.1). `organizationId` staat niet in de allowlist
+        // en blijft dus onveranderlijk; "kernvelden onveranderlijk" geldt binnen
+        // één poging, niet over pogingen heen.
+        allow update: if isOrgOwner(orgId) &&
+          resource.data.status == 'cancelled' &&
+          request.resource.data.status == 'requested' &&
+          request.resource.data.attempt == resource.data.attempt + 1 &&
+          request.resource.data.requestedBy == request.auth.uid &&
+          request.resource.data.requestedAt == request.time &&
+          isValidExportProof(request.resource.data.exportProof) &&
+          request.resource.data.cancelledAt == null &&
+          request.resource.data.revision == resource.data.revision + 1 &&
+          request.resource.data.diff(resource.data).affectedKeys()
+            .hasOnly(['status', 'attempt', 'requestedBy', 'requestedAt', 'exportProof', 'cancelledAt', 'revision']);
+
+        allow delete: if false;
       }
 
       // ---- teams/{teamId} ----
@@ -961,6 +1101,48 @@ service cloud.firestore {
             request.resource.data.revision ==
               (('revision' in resource.data) ? resource.data.revision : 0) + 1;
 
+          // PR 8.3c-1, §3.3 — REDACTIE van een verlopen tombstone. Bewust geen hard
+          // delete: de tombstone is ook het signaal waarop de resurrectiepreventie uit
+          // 7.2c steunt (`CompositeCompletedGameRepository.mergeGames()` filtert elk
+          // cloud-item met `deletedAt != null`). Zou het document verdwijnen, dan kon
+          // een lang offline apparaat of een bulkmigratie de wedstrijd stil
+          // terugbrengen. Na 90 dagen is de auditwaarde van de verwijdering weg, de
+          // persoonsgegevens (namen, tegenstander, `deletedBy`) niet: die worden
+          // leeggemaakt, `deletedAt` en de documentidentiteit blijven staan.
+          //
+          // Voorwaarden, allemaal tegelijk:
+          // - alleen `organizationOwner` (bewust enger dan `canManageTeamData`, die
+          //   de tombstone zelf mag zetten);
+          // - al getombstoned (`deletedAt != null`) en die `deletedAt` is meer dan 90
+          //   dagen oud — een ONDERGRENS, servergebonden sinds 8.3c-0;
+          // - nog niet eerder geredigeerd, zodat `redactedAt` niet opnieuw gestempeld
+          //   kan worden;
+          // - `redactedAt == request.time` (servergebonden, net als `deletedAt`);
+          // - precies de leeg te maken velden plus `redactedAt`/`revision` mogen
+          //   wijzigen (`affectedKeys().hasOnly()`), en elk krijgt zijn lege waarde;
+          //   `deletedAt`, `sourceGameId`, `date` en de context blijven byte-identiek;
+          // - `revision` exact +1 (zelfde optimistische concurrency als de tombstone).
+          //
+          // De converter accepteert deze vorm ongewijzigd (lege string/array, 0,
+          // `deletedBy: null`); `redactedAt` is een onbekend veld dat hij negeert.
+          allow update: if isOrgOwner(orgId) &&
+            ('deletedAt' in resource.data) && resource.data.deletedAt != null &&
+            request.time > resource.data.deletedAt + duration.value(90, 'd') &&
+            !('redactedAt' in resource.data) &&
+            request.resource.data.redactedAt == request.time &&
+            request.resource.data.diff(resource.data).affectedKeys()
+              .hasOnly(['opponent', 'competition', 'players', 'segments', 'scoreFor', 'scoreAgainst',
+                        'deletedBy', 'redactedAt', 'revision']) &&
+            request.resource.data.opponent == '' &&
+            request.resource.data.competition == '' &&
+            request.resource.data.players == [] &&
+            request.resource.data.segments == [] &&
+            request.resource.data.scoreFor == 0 &&
+            request.resource.data.scoreAgainst == 0 &&
+            request.resource.data.deletedBy == null &&
+            request.resource.data.revision ==
+              (('revision' in resource.data) ? resource.data.revision : 0) + 1;
+
           allow delete: if false;
         }
 
@@ -1043,6 +1225,23 @@ service cloud.firestore {
     // toegang loopt via de geneste match hierboven en is hier niet herhaald.
     match /{path=**}/teamMembers/{uid} {
       allow read: if signedIn() && resource.data.uid == request.auth.uid;
+    }
+
+    // ---- PR 8.3c-1: querycontract "mijn uitnodigingen" ----
+    // Derde en laatste toegestane collectionGroup-query:
+    //   collectionGroup('invitations').where('email','==', eigenEmail)
+    // Nodig zodat iemand zijn eigen uitnodigingen kan VINDEN — ook in organisaties
+    // waar hij geen lidmaatschap (meer) heeft — en dus zelf kan opruimen via de
+    // self-deletetak (docs/pr-8.3c-besluitvoorstel.md §3.4 punt 3). De bestaande
+    // geneste match governeert alleen directe gets, dezelfde beperking als bij
+    // issue #28. Zelfde smalst mogelijke vorm: puur `resource.data` tegen het token,
+    // geen get()/exists(). Verbreedt het leesoppervlak niet — wie deze query mag
+    // doen, mocht die documenten al per stuk lezen — en is door `email_verified`
+    // strikter dan de per-documentregel.
+    match /{path=**}/invitations/{invitationId} {
+      allow read: if signedIn() &&
+        request.auth.token.email_verified == true &&
+        resource.data.email == request.auth.token.email;
     }
   }
 }
