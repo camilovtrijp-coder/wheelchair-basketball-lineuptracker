@@ -16,6 +16,8 @@ import {
   gameConverter,
   gameActionConverter,
   completedGameConverter,
+  deletionRequestConverter,
+  DELETION_REQUEST_COUNT_KEYS,
   DocumentValidationError,
   type OrganizationDocument,
   type OrganizationMemberDocument,
@@ -27,6 +29,7 @@ import {
   type GameDocument,
   type GameActionEnvelopeDocument,
   type CompletedGameDocument,
+  type DeletionRequestDocument,
 } from '../../src/documents/index.js';
 
 // `path` is alleen relevant voor converters die contextvelden tegen het
@@ -47,6 +50,34 @@ const GAME_PATH = 'organizations/org-1/teams/team-1/games/game-1';
 const COMPLETED_GAME_PATH = 'organizations/org-1/teams/team-1/completedGames/completed-1';
 function gameActionPath(actionId: string): string {
   return `organizations/org-1/teams/team-1/games/game-1/actions/${actionId}`;
+}
+
+function validDeletionRequest(): DeletionRequestDocument {
+  return {
+    organizationId: 'org-1',
+    status: 'requested',
+    attempt: 1,
+    requestedBy: 'uid-alice',
+    requestedAt: Timestamp.now(),
+    exportProof: {
+      contentHash: 'sha256-fictief-0001',
+      exportedAt: '2026-09-29T10:00:00.000Z',
+      counts: {
+        organizationMembers: 5,
+        invitations: 2,
+        teams: 1,
+        teamMembers: 1,
+        settingsDocuments: 1,
+        rosterPlayers: 8,
+        games: 0,
+        gameActions: 0,
+        completedGames: 3,
+        migrationRuns: 0,
+      },
+    },
+    cancelledAt: null,
+    revision: 0,
+  };
 }
 
 describe('documentcontracten: round-trip via toFirestore/fromFirestore', () => {
@@ -90,6 +121,77 @@ describe('documentcontracten: round-trip via toFirestore/fromFirestore', () => {
     const stored = invitationConverter.toFirestore(doc);
     expect(
       invitationConverter.fromFirestore!(mockSnapshot(stored as Record<string, unknown>), {}),
+    ).toEqual(doc);
+  });
+
+  it('invitation: ingetrokken uitnodiging behoudt revokedAt (PR 8.3c-1)', () => {
+    const revokedAt = Timestamp.now();
+    const doc: InvitationDocument = {
+      email: 'grace@example.test',
+      role: 'viewer',
+      status: 'revoked',
+      invitedBy: 'uid-bob',
+      invitedAt: Timestamp.now(),
+      acceptedAt: null,
+      revokedAt,
+    };
+    const stored = invitationConverter.toFirestore(doc);
+    const read = invitationConverter.fromFirestore!(mockSnapshot(stored as Record<string, unknown>), {});
+    expect(read.revokedAt?.toMillis()).toBe(revokedAt.toMillis());
+    expect(read).toEqual(doc);
+  });
+
+  it('invitation: legacy document zonder revokedAt blijft leesbaar (revokedAt undefined)', () => {
+    const read = invitationConverter.fromFirestore!(
+      mockSnapshot({
+        email: 'grace@example.test',
+        role: 'viewer',
+        status: 'revoked',
+        invitedBy: 'uid-bob',
+        invitedAt: Timestamp.now(),
+        acceptedAt: null,
+      }),
+      {},
+    );
+    expect(read.revokedAt).toBeUndefined();
+  });
+
+  it('invitation: string in plaats van Timestamp voor revokedAt wordt geweigerd', () => {
+    expect(() =>
+      invitationConverter.fromFirestore!(
+        mockSnapshot({
+          email: 'grace@example.test',
+          role: 'viewer',
+          status: 'revoked',
+          invitedBy: 'uid-bob',
+          invitedAt: Timestamp.now(),
+          acceptedAt: null,
+          revokedAt: '2026-01-01',
+        }),
+        {},
+      ),
+    ).toThrow(DocumentValidationError);
+  });
+
+  it('deletionRequest (PR 8.3c-1)', () => {
+    const doc: DeletionRequestDocument = validDeletionRequest();
+    const stored = deletionRequestConverter.toFirestore(doc);
+    expect(
+      deletionRequestConverter.fromFirestore!(mockSnapshot(stored as Record<string, unknown>), {}),
+    ).toEqual(doc);
+  });
+
+  it('deletionRequest: geannuleerd verzoek met cancelledAt en attempt 2', () => {
+    const doc: DeletionRequestDocument = {
+      ...validDeletionRequest(),
+      status: 'cancelled',
+      attempt: 2,
+      cancelledAt: Timestamp.now(),
+      revision: 3,
+    };
+    const stored = deletionRequestConverter.toFirestore(doc);
+    expect(
+      deletionRequestConverter.fromFirestore!(mockSnapshot(stored as Record<string, unknown>), {}),
     ).toEqual(doc);
   });
 
@@ -1247,6 +1349,69 @@ describe('documentcontracten: weigeren malformed serverdata', () => {
         mockSnapshot(withoutSyncedAt, COMPLETED_GAME_PATH),
         {},
       ),
+    ).toThrow(DocumentValidationError);
+  });
+});
+
+describe('documentcontracten: deletionRequest weigert malformed serverdata (PR 8.3c-1)', () => {
+  const read = (data: Record<string, unknown>) =>
+    deletionRequestConverter.fromFirestore!(mockSnapshot(data), {});
+
+  it('kent precies de tien tellingen die Rules eisen', () => {
+    expect([...DELETION_REQUEST_COUNT_KEYS].sort()).toEqual(
+      [
+        'completedGames',
+        'gameActions',
+        'games',
+        'invitations',
+        'migrationRuns',
+        'organizationMembers',
+        'rosterPlayers',
+        'settingsDocuments',
+        'teamMembers',
+        'teams',
+      ].sort(),
+    );
+  });
+
+  it.each([
+    ['onbekende status', { status: 'verwijderd' }],
+    ['attempt 0', { attempt: 0 }],
+    ['fractionele attempt', { attempt: 1.5 }],
+    ['negatieve revision', { revision: -1 }],
+    ['requestedAt als string', { requestedAt: '2026-01-01T00:00:00.000Z' }],
+    ['cancelledAt als string', { cancelledAt: '2026-01-01T00:00:00.000Z' }],
+    ['lege organizationId', { organizationId: '' }],
+    ['lege requestedBy', { requestedBy: ' ' }],
+    ['ontbrekend exportProof', { exportProof: undefined }],
+    ['exportProof als string', { exportProof: 'bewijs' }],
+    ['lege contentHash', { exportProof: { ...validDeletionRequest().exportProof, contentHash: '' } }],
+    [
+      'niet-ISO exportedAt',
+      { exportProof: { ...validDeletionRequest().exportProof, exportedAt: 'gisteren' } },
+    ],
+    [
+      'niet-canonieke ISO exportedAt (zonder milliseconden)',
+      { exportProof: { ...validDeletionRequest().exportProof, exportedAt: '2026-09-29T10:00:00Z' } },
+    ],
+    ['counts ontbreekt', { exportProof: { ...validDeletionRequest().exportProof, counts: undefined } }],
+  ])('weigert %s', (_naam, overrides) => {
+    expect(() => read({ ...validDeletionRequest(), ...overrides })).toThrow(DocumentValidationError);
+  });
+
+  it.each([
+    ['negatieve telling', { teams: -1 }],
+    ['fractionele telling', { teams: 0.5 }],
+    ['telling als string', { games: '3' }],
+    ['ontbrekende telling', { migrationRuns: undefined }],
+    ['onbekende extra telling', { onbekend: 1 }],
+  ])('weigert counts met %s', (_naam, overrides) => {
+    const base = validDeletionRequest();
+    expect(() =>
+      read({
+        ...base,
+        exportProof: { ...base.exportProof, counts: { ...base.exportProof.counts, ...overrides } },
+      }),
     ).toThrow(DocumentValidationError);
   });
 });

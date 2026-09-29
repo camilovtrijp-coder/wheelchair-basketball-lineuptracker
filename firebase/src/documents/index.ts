@@ -8,4 +8,5 @@ export * from './roster.js';
 export * from './game.js';
 export * from './gameAction.js';
 export * from './completedGame.js';
+export * from './deletionRequest.js';
 export * from './validation.js';

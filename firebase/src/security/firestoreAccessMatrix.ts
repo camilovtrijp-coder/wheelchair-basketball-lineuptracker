@@ -59,6 +59,7 @@ export const FIRESTORE_CLIENT_GATEWAY_FILES = [
   "../v2/src/infrastructure/migration/FirestoreCloudMigrationInventoryGateway.ts",
   "../v2/src/infrastructure/migration/FirestoreMigrationWriteGateway.ts",
   "../v2/src/infrastructure/export/FirestoreOrganizationExportGateway.ts",
+  "../v2/src/infrastructure/deletion/FirestoreDeletionRequestGateway.ts",
 ] as const;
 
 const orgRoles: MatrixActor[] = [
@@ -389,14 +390,16 @@ export const FIRESTORE_ACCESS_MATRIX: readonly FirestoreAccessMatrixEntry[] = [
     conditions:
       "Singleton per organization. A client may only create `requested` (attempt 1), cancel from `requested`, and restart from `cancelled` with attempt + 1; " +
       "executing/completed/failed are runbook-only (Admin rights) and never client-writable. Exact key set, server-bound requestedAt/cancelledAt, " +
-      "revision +1 per patch, a fixed-shape exportProof (a restart must carry a strictly later exportedAt), no hard delete. Rules cannot enforce the blocking preconditions (they need queries) nor " +
-      "verify the exportProof hash; those are application-level gates re-checked by the runbook. No converter exists yet: the document contract " +
-      "and its gateway arrive with the domain/application part of PR 8.3c-1.",
-    evidence: ["tests/rules/deletion-requests.spec.ts"],
-    clientSources: [],
-    converterSources: [],
-    clientPending:
-      "8.3c-1 part 2: deletion-request domain model, gateway and owner-only UI",
+      "revision +1 per patch, a fixed-shape exportProof (exactly the ten OrganizationExportSectionCounts keys as non-negative integers; a restart must carry a strictly later exportedAt), no hard delete. " +
+      "Read is isOrgMember: team-only members do not see it (accepted residual risk, docs/pr-8.3c-besluitvoorstel.md §8.3). " +
+      "Rules cannot enforce the blocking preconditions (they need queries) nor verify the exportProof hash; those are application-level gates in " +
+      "DeletionRequestCoordinator, re-checked by the runbook. The gateway writes only the three allowed transitions and reads back after every write.",
+    evidence: [
+      "tests/rules/deletion-requests.spec.ts",
+      "tests/rules/deletion-request-gateway-payloads.spec.ts",
+    ],
+    clientSources: [FIRESTORE_CLIENT_GATEWAY_FILES[9]],
+    converterSources: ["deletionRequestConverter"],
   },
   {
     id: "organization-members-collection-group",

@@ -231,8 +231,7 @@ describe("PR 8.3a Firestore access matrix", () => {
       }
     }
 
-    // migration-runs en deletion-requests hebben bewust (nog) geen converter (zie
-    // de `conditions` van die rijen);
+    // migration-runs heeft bewust geen converter (zie de `conditions` van die rij);
     // elke andere converter die op schijf bestaat moet aan minimaal een
     // matrixrij gekoppeld zijn.
     expect([...usedConverters].sort()).toEqual(
@@ -242,20 +241,17 @@ describe("PR 8.3a Firestore access matrix", () => {
     const entriesWithoutConverter = FIRESTORE_ACCESS_MATRIX.filter(
       (entry) => entry.converterSources.length === 0,
     ).map((entry) => entry.id);
-    expect(entriesWithoutConverter.sort()).toEqual([
-      "deletion-requests",
-      "migration-runs",
-    ]);
+    expect(entriesWithoutConverter).toEqual(["migration-runs"]);
   });
 
   it("vergrendelt de exacte lijst van Rules-scopes die vooruitlopen op hun clientgateway, en houdt ze consistent", () => {
     const pending = FIRESTORE_ACCESS_MATRIX.filter(
       (entry) => entry.clientPending !== undefined,
     );
-    // Deze lijst moet KRIMPEN, niet groeien: 8.3c-1 deel 2 haalt
-    // deletion-requests eruit, 8.3c-2 invitations-collection-group.
+    // Deze lijst moet KRIMPEN, niet groeien: 8.3c-2 haalt
+    // invitations-collection-group eruit (deletion-requests is sinds 8.3c-1
+    // deel 2 aan zijn gateway gekoppeld).
     expect(pending.map((entry) => entry.id).sort()).toEqual([
-      "deletion-requests",
       "invitations-collection-group",
     ]);
     for (const entry of pending) {

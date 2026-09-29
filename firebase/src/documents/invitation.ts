@@ -23,6 +23,14 @@ export interface InvitationDocument {
   invitedAt: Timestamp;
   acceptedAt: Timestamp | null;
   claimedAt?: Timestamp;
+  /**
+   * PR 8.3c-1: servergebonden eindtijdstempel van een intrekking
+   * (`firestore.rules`: `revokedAt == request.time`). Optioneel omdat
+   * documenten van vóór 8.3c-1 het niet dragen; de bewaartermijn valt dan terug
+   * op `invitedAt`. Zonder dit veld in de converter zou de organisatie-export
+   * (8.3b) het stil weglaten.
+   */
+  revokedAt?: Timestamp;
 }
 
 export const invitationConverter: FirestoreDataConverter<InvitationDocument> = {
@@ -39,6 +47,7 @@ export const invitationConverter: FirestoreDataConverter<InvitationDocument> = {
       invitedAt: assertTimestamp(TYPE, 'invitedAt', data.invitedAt),
       acceptedAt: assertNullableTimestamp(TYPE, 'acceptedAt', data.acceptedAt),
       claimedAt: assertOptionalTimestamp(TYPE, 'claimedAt', data.claimedAt),
+      revokedAt: assertOptionalTimestamp(TYPE, 'revokedAt', data.revokedAt),
     };
   },
 };
