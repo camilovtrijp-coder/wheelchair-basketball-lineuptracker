@@ -55,6 +55,10 @@ import { MigrationPanel } from '../ui/migration/MigrationPanel';
 import { canBulkMigrate } from '../domain/migration/capability';
 import { ExportPanel } from '../ui/export/ExportPanel';
 import { canExportOrganization } from '../domain/export/types';
+import { canRequestOrganizationDeletion } from '../domain/deletion/capability';
+import type { DeletionRequest } from '../domain/deletion/types';
+import { DeletionPanel } from '../ui/deletion/DeletionPanel';
+import { DeletionRequestBanner } from '../ui/deletion/DeletionRequestBanner';
 import type { OrganizationRole } from '../domain/organizations/types';
 import { usePwaUpdate } from '../application/pwa/usePwaUpdate';
 import { usePwaReadiness } from '../application/pwa/usePwaReadiness';
@@ -657,6 +661,34 @@ export function App({
    * `application/pwa/usePwaUpdate.ts` voor de volledige flow.
    */
   const pwaUpdate = usePwaUpdate(locked);
+
+  // PR 8.3c-1c: één-keer-lezing (geen listener) van `deletionRequests/current` per
+  // organisatie, voor de melding aan alle leden. Bewust stil bij een fout: de melding
+  // is informatief en mag de app nooit hinderen — team-only leden krijgen hier
+  // permission-denied (Rules: `isOrgMember`), een geaccepteerd restrisico (besluitrecord
+  // §8.3). Het owner-paneel houdt deze staat bij via `onRequestChange`.
+  const [deletionRequest, setDeletionRequest] = useState<DeletionRequest | null>(null);
+  const deletionRequestGateway = repositories.deletionRequestGateway;
+  useEffect(() => {
+    if (repositories.mode !== 'cloud' || !deletionRequestGateway || !organizationId) {
+      setDeletionRequest(null);
+      return undefined;
+    }
+    let cancelled = false;
+    deletionRequestGateway
+      .read(organizationId)
+      .then((result) => {
+        if (!cancelled) setDeletionRequest(result.ok ? result.request : null);
+      })
+      // De gateway meldt fouten als resultaat, maar een gooiende implementatie mag
+      // deze informatieve melding nooit tot een onbehandelde rejection maken.
+      .catch(() => {
+        if (!cancelled) setDeletionRequest(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [repositories.mode, deletionRequestGateway, organizationId]);
 
   // PR 8.3a: uitsluitend vaste allowlistcodes naar een begrensde in-memory
   // buffer. Geen raw errors, IDs of payloads; de sanitizer in de diagnosepoort
@@ -1336,6 +1368,10 @@ export function App({
         onDismiss={pwaUpdate.dismissError}
       />
 
+      {repositories.mode === 'cloud' ? (
+        <DeletionRequestBanner lang={lang} request={deletionRequest} />
+      ) : null}
+
       <nav className="app-nav" aria-label={t('settingsTitle')}>
         <button
           type="button"
@@ -1511,6 +1547,22 @@ export function App({
                 organizationName={organizationName || organizationId}
                 callerRole={organizationRole}
                 coordinator={repositories.exportCoordinator}
+              />
+            ) : null}
+            {/* PR 8.3c-1c (besluitrecord §2.5): het verwijderverzoek — alleen in
+             * cloudmodus EN alleen voor `organizationOwner`; een andere rol krijgt dit
+             * blok nooit gerenderd. Het paneel verwijdert niets, het dient een verzoek in. */}
+            {repositories.mode === 'cloud' &&
+            repositories.deletionCoordinator &&
+            organizationRole &&
+            canRequestOrganizationDeletion(organizationRole) ? (
+              <DeletionPanel
+                lang={lang}
+                organizationId={organizationId}
+                organizationName={organizationName || organizationId}
+                callerRole={organizationRole}
+                coordinator={repositories.deletionCoordinator}
+                onRequestChange={setDeletionRequest}
               />
             ) : null}
           </>

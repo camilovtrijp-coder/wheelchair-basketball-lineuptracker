@@ -155,6 +155,8 @@ const repositories = {
   migrationInventoryGateway: null,
   migrationCoordinator: null,
   exportCoordinator: null,
+  deletionCoordinator: null,
+  deletionRequestGateway: null,
 };
 
 describe('app/App — listener-fout-detectie na initiële load (PR 5.4a)', () => {
@@ -207,6 +209,8 @@ describe('app/App — listener-fout-detectie na initiële load (PR 5.4a)', () =>
       migrationInventoryGateway: null,
       migrationCoordinator: null,
       exportCoordinator: null,
+      deletionCoordinator: null,
+      deletionRequestGateway: null,
     };
     const { queryByTestId } = render(
       <App

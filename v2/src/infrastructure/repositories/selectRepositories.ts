@@ -26,6 +26,9 @@ import type { CloudMigrationInventoryGateway } from '../../application/migration
 import { GameSyncCoordinator } from '../../application/game/GameSyncCoordinator';
 import { MigrationCoordinator } from '../../application/migration/MigrationCoordinator';
 import { OrganizationExportCoordinator } from '../../application/export/OrganizationExportCoordinator';
+import { DeletionRequestCoordinator } from '../../application/deletion/DeletionRequestCoordinator';
+import type { DeletionRequestGateway } from '../../application/deletion/DeletionRequestGateway';
+import { FirestoreDeletionRequestGateway } from '../deletion/FirestoreDeletionRequestGateway';
 import { FirestoreRosterRepository } from '../roster/FirestoreRosterRepository';
 import { FirestoreSettingsRepository } from '../settings/FirestoreSettingsRepository';
 import { FirestoreGameCloudGateway } from '../game/FirestoreGameCloudGateway';
@@ -85,6 +88,13 @@ export interface CloudRepositorySelection {
    * `migrationInventoryGateway`/`migrationCoordinator` hierboven.
    */
   exportCoordinator: OrganizationExportCoordinator;
+  /**
+   * PR 8.3c-1c: het owner-only verwijderverzoek (`DeletionPanel`) en de één-keer-
+   * lezing voor de melding aan alle leden (`DeletionRequestBanner`). Beide zijn
+   * `null` in lokale modus, zoals elk poortpaar hierboven.
+   */
+  deletionCoordinator: DeletionRequestCoordinator;
+  deletionRequestGateway: DeletionRequestGateway;
 }
 
 export type RepositorySelection = CloudRepositorySelection | { kind: 'local' };
@@ -109,6 +119,8 @@ export function selectRepositories(input: {
     runRepo: new LocalStorageMigrationRunRepository(input.storage),
     cloudRunGateway: new FirestoreCloudMigrationRunGateway(input.firestoreDb),
   });
+  const exportGateway = new FirestoreOrganizationExportGateway(input.firestoreDb);
+  const deletionRequestGateway = new FirestoreDeletionRequestGateway(input.firestoreDb);
   return {
     kind: 'cloud',
     settings: new FirestoreSettingsRepository(input.firestoreDb, orgId, teamId),
@@ -131,8 +143,8 @@ export function selectRepositories(input: {
     },
     migrationInventoryGateway,
     migrationCoordinator,
-    exportCoordinator: new OrganizationExportCoordinator(
-      new FirestoreOrganizationExportGateway(input.firestoreDb),
-    ),
+    exportCoordinator: new OrganizationExportCoordinator(exportGateway),
+    deletionCoordinator: new DeletionRequestCoordinator(exportGateway, deletionRequestGateway),
+    deletionRequestGateway,
   };
 }

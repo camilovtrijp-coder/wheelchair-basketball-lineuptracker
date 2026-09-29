@@ -48,8 +48,41 @@ function isPermissionDenied(error: unknown): boolean {
   );
 }
 
+export const DELETION_REQUEST_TIMEOUT_MS = 8000;
+
+class DeletionRequestTimeoutError extends Error {
+  constructor(ms: number) {
+    super(`geen serverantwoord binnen ${ms}ms`);
+    this.name = 'DeletionRequestTimeoutError';
+  }
+}
+
+/**
+ * Bindt een Firestore-aanroep aan een timeout. Let op: dit annuleert de
+ * onderliggende write NIET — een offline write blijft in de wachtrij staan en kan
+ * later alsnog slagen; de aanroeper krijgt alleen een antwoord.
+ */
+function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const timer = setTimeout(() => reject(new DeletionRequestTimeoutError(ms)), ms);
+    promise.then(
+      (value) => {
+        clearTimeout(timer);
+        resolve(value);
+      },
+      (error: unknown) => {
+        clearTimeout(timer);
+        reject(error);
+      },
+    );
+  });
+}
+
 export class FirestoreDeletionRequestGateway implements DeletionRequestGateway {
-  constructor(private readonly db: Firestore) {}
+  constructor(
+    private readonly db: Firestore,
+    private readonly timeoutMs: number = DELETION_REQUEST_TIMEOUT_MS,
+  ) {}
 
   private ref(organizationId: string): DocumentReference {
     return doc(this.db, 'organizations', organizationId, 'deletionRequests', 'current');
@@ -57,7 +90,10 @@ export class FirestoreDeletionRequestGateway implements DeletionRequestGateway {
 
   async read(organizationId: string): Promise<DeletionRequestReadResult> {
     try {
-      const snap = await getDoc(this.ref(organizationId).withConverter(deletionRequestConverter));
+      const snap = await withTimeout(
+        getDoc(this.ref(organizationId).withConverter(deletionRequestConverter)),
+        this.timeoutMs,
+      );
       return { ok: true, request: snap.exists() ? toDomain(snap.data()) : null };
     } catch (detail) {
       return { ok: false, error: { code: 'read-failed', detail } };
@@ -79,6 +115,9 @@ export class FirestoreDeletionRequestGateway implements DeletionRequestGateway {
     organizationId: string,
     expected: DeletionRequest,
   ): Promise<DeletionRequestWriteResult> {
+    if (!getAuth(this.db.app).currentUser?.uid) {
+      return { ok: false, error: { code: 'not-signed-in' } };
+    }
     return this.write(organizationId, () =>
       updateDoc(this.ref(organizationId), buildCancelPatch(expected)),
     );
@@ -102,8 +141,11 @@ export class FirestoreDeletionRequestGateway implements DeletionRequestGateway {
     perform: () => Promise<void>,
   ): Promise<DeletionRequestWriteResult> {
     try {
-      await perform();
+      await withTimeout(perform(), this.timeoutMs);
     } catch (detail) {
+      if (detail instanceof DeletionRequestTimeoutError) {
+        return { ok: false, error: { code: 'timeout' } };
+      }
       return isPermissionDenied(detail)
         ? { ok: false, error: { code: 'rejected' } }
         : { ok: false, error: { code: 'failed', detail } };

@@ -103,6 +103,8 @@ const repositories = {
   migrationInventoryGateway: null,
   migrationCoordinator: null,
   exportCoordinator: null,
+  deletionCoordinator: null,
+  deletionRequestGateway: null,
 };
 
 describe('app/App — statsGameIds reset bij organisatie/teamwissel (externe PR-6.5-review)', () => {

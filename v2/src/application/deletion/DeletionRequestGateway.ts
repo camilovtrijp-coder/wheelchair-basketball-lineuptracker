@@ -25,6 +25,13 @@ export type DeletionRequestWriteError =
   | { code: 'readback-failed'; detail: unknown }
   /** Niet ingelogd — nooit een gok naar een identiteit. */
   | { code: 'not-signed-in' }
+  /**
+   * Geen serverantwoord binnen de timeout. Firestore zet een offline write in de
+   * wachtrij; die kan LATER alsnog slagen. Rules bewaken dat met de revisie- en
+   * toestandscontrole (een verouderde write faalt), maar de UI moet de status
+   * daarom opnieuw lezen in plaats van "mislukt" te melden.
+   */
+  | { code: 'timeout' }
   | { code: 'failed'; detail: unknown };
 
 export type DeletionRequestWriteResult =

@@ -25,7 +25,7 @@ function game(overrides: Record<string, unknown> = {}): Game {
     id: 'game-1',
     completedGameId: null,
     lastWriterActivityAt: null,
-    createdAt: ago(1 * DAY),
+    createdAt: ago(10 * DAY),
     actions: [],
     ...overrides,
   };
@@ -112,13 +112,90 @@ describe('assessOrganizationForDeletion: blokkades', () => {
       input({
         games: [
           game({ id: 'g-oud', lastWriterActivityAt: ago(30 * DAY) }),
-          game({ id: 'g-nooit', lastWriterActivityAt: null }),
+          game({ id: 'g-nooit', lastWriterActivityAt: null, createdAt: ago(30 * DAY) }),
         ],
       }),
       NOW,
     );
     expect(result.blockers).toEqual([]);
     expect(result.staleUnfinishedGames.map((g) => g.gameId).sort()).toEqual(['g-nooit', 'g-oud']);
+  });
+
+  describe('lastWriterActivityAt: null (nog geen writer geclaimd)', () => {
+    it('een verse wedstrijd (createdAt enkele minuten geleden) blokkeert — het apparaat kan tussen aanmaken en claimen offline zijn gevallen', () => {
+      const result = assessOrganizationForDeletion(
+        input({
+          games: [
+            game({
+              id: 'g-net-aangemaakt',
+              lastWriterActivityAt: null,
+              createdAt: ago(5 * 60 * 1000),
+            }),
+          ],
+        }),
+        NOW,
+      );
+      expect(result.blockers).toEqual([
+        { code: 'recent-active-game', teamId: 'team-1', gameId: 'g-net-aangemaakt' },
+      ]);
+      expect(result.staleUnfinishedGames).toEqual([]);
+    });
+
+    it('updatedAt gaat voor createdAt: een oude wedstrijd met een recente updatedAt blokkeert', () => {
+      const result = assessOrganizationForDeletion(
+        input({
+          games: [
+            game({
+              id: 'g-recent-bijgewerkt',
+              lastWriterActivityAt: null,
+              createdAt: ago(60 * DAY),
+              updatedAt: ago(2 * HOUR),
+            }),
+          ],
+        }),
+        NOW,
+      );
+      expect(result.blockers).toHaveLength(1);
+    });
+
+    it('een wedstrijd waarvan ALLE tijdstempels oud zijn is een waarschuwing, geen blokkade', () => {
+      const result = assessOrganizationForDeletion(
+        input({
+          games: [
+            game({
+              id: 'g-oud',
+              lastWriterActivityAt: null,
+              createdAt: ago(60 * DAY),
+              updatedAt: ago(50 * DAY),
+            }),
+          ],
+        }),
+        NOW,
+      );
+      expect(result.blockers).toEqual([]);
+      expect(result.staleUnfinishedGames).toHaveLength(1);
+    });
+
+    it('een wedstrijd zonder enig tijdstempelveld is een waarschuwing (er is niets om aan te meten)', () => {
+      const result = assessOrganizationForDeletion(
+        input({
+          games: [game({ id: 'g-kaal', lastWriterActivityAt: null, createdAt: undefined })],
+        }),
+        NOW,
+      );
+      expect(result.blockers).toEqual([]);
+      expect(result.staleUnfinishedGames).toHaveLength(1);
+    });
+
+    it('lastWriterActivityAt zelf gaat voor updatedAt: een oude activiteit bij een recente updatedAt telt niet als recent', () => {
+      const result = assessOrganizationForDeletion(
+        input({
+          games: [game({ id: 'g-x', lastWriterActivityAt: ago(30 * DAY), updatedAt: ago(HOUR) })],
+        }),
+        NOW,
+      );
+      expect(result.blockers).toEqual([]);
+    });
   });
 
   it('een afgeronde wedstrijd (completedGameId gezet) blokkeert nooit, ook niet bij recente activiteit', () => {
@@ -334,6 +411,12 @@ describe('buildCleanupOverview', () => {
           game({ id: 'g-nooit-181', lastWriterActivityAt: null, createdAt: ago(181 * DAY) }),
           game({ id: 'g-nooit-10', lastWriterActivityAt: null, createdAt: ago(10 * DAY) }),
           game({ id: 'g-af', completedGameId: 'c-1', lastWriterActivityAt: ago(400 * DAY) }),
+          game({
+            id: 'g-updated',
+            lastWriterActivityAt: null,
+            createdAt: ago(400 * DAY),
+            updatedAt: ago(5 * DAY),
+          }),
         ],
       }),
       NOW,

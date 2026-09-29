@@ -1016,6 +1016,26 @@ staat in 8.3c-1 deel 2. Vastgelegd als geaccepteerd restrisico in
 `docs/security-threat-model.md` §7, met trigger 2 uit §2.4 als moment om dit te
 herzien.
 
+### 8.4 Besluit bij review van 8.3c-1b (29 september 2026)
+
+De onafhankelijke review van PR #94 wees erop dat alleen `completed` als
+terminale migratierun telt. Een run met uitsluitend conflict-items (die nooit
+opnieuw worden geprobeerd) of een volledig teruggedraaide run kan dus niet meer
+veranderen, maar blijft een harde blokkade.
+
+**Besluit (eigenaar): zo laten (optie A).** De eigenaar is de enige die
+migreert, dus een dode run blijft een blokkade die het runbook met een
+schriftelijke vastlegging kan overrulen. Een verfijning (blokkeren wat nog kan
+veranderen, bevestigen wat definitief is) is overwogen en bewust niet gebouwd;
+herzien zodra er meer dan één persoon migreert (trigger 2 uit §2.4).
+
+Uit dezelfde review zijn twee punten gebouwd zonder besluit nodig te hebben: een
+wedstrijd met `lastWriterActivityAt: null` valt terug op `updatedAt` en dan
+`createdAt` voor de blokkade (het besluitrecord noemde alleen
+`lastWriterActivityAt`, maar een kale `null` liet een net aangemaakte,
+nog niet geclaimde wedstrijd als "verlaten" doorgaan), en de gateway-writes
+hebben een timeout.
+
 ### De vier verfijningen, op één rij
 
 1. De wachttijd van 7 dagen staat in het runbook, niet in de Rules — anders is

@@ -131,6 +131,8 @@ describe('app/App: pre-game-gate roept ensureWriterClaim() aan en meldt de conte
       migrationInventoryGateway: null,
       migrationCoordinator: null,
       exportCoordinator: null,
+      deletionCoordinator: null,
+      deletionRequestGateway: null,
     };
 
     const { getByTestId } = render(
@@ -190,6 +192,8 @@ describe('app/App: pre-game-gate roept ensureWriterClaim() aan en meldt de conte
       migrationInventoryGateway: null,
       migrationCoordinator: null,
       exportCoordinator: null,
+      deletionCoordinator: null,
+      deletionRequestGateway: null,
     };
 
     const { getByTestId } = render(
@@ -226,6 +230,8 @@ describe('app/App: pre-game-gate roept ensureWriterClaim() aan en meldt de conte
       migrationInventoryGateway: null,
       migrationCoordinator: null,
       exportCoordinator: null,
+      deletionCoordinator: null,
+      deletionRequestGateway: null,
     };
     const onGameLockChange = vi.fn();
 
@@ -279,6 +285,8 @@ describe('app/App: pre-game-gate roept ensureWriterClaim() aan en meldt de conte
       migrationInventoryGateway: null,
       migrationCoordinator: null,
       exportCoordinator: null,
+      deletionCoordinator: null,
+      deletionRequestGateway: null,
     };
 
     const { getByTestId } = render(
@@ -330,6 +338,8 @@ describe('app/App: pre-game-gate roept ensureWriterClaim() aan en meldt de conte
       migrationInventoryGateway: null,
       migrationCoordinator: null,
       exportCoordinator: null,
+      deletionCoordinator: null,
+      deletionRequestGateway: null,
     };
 
     const { getByTestId } = render(

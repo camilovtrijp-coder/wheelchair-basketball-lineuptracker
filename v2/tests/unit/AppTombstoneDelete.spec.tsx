@@ -190,6 +190,8 @@ function renderHistoryWith(repo: FakeCompletedGameRepo) {
     migrationInventoryGateway: null,
     migrationCoordinator: null,
     exportCoordinator: null,
+    deletionCoordinator: null,
+    deletionRequestGateway: null,
   };
   return render(
     <App
