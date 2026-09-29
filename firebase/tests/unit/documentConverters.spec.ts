@@ -373,6 +373,47 @@ describe('documentcontracten: round-trip via toFirestore/fromFirestore', () => {
     ).toEqual(doc);
   });
 
+  it('completedGame: geredigeerde tombstone met onbekend `redactedAt` blijft leesbaar (PR 8.3c-1, besluitrecord §3.3)', () => {
+    // Exact de vorm die de redactiepatch in firestore.rules achterlaat: lege
+    // persoonsgegevens, `deletedBy: null`, `deletedAt` behouden en een extra
+    // `redactedAt` dat de converter niet kent en moet negeren.
+    const deletedAt = Timestamp.fromMillis(Date.now() - 120 * 24 * 60 * 60 * 1000);
+    const redacted = {
+      organizationId: 'org-1',
+      teamId: 'team-1',
+      sourceGameId: 'game-1',
+      opponent: '',
+      competition: '',
+      date: '2026-01-01T01:30:00.000Z',
+      players: [],
+      segments: [],
+      scoreFor: 0,
+      scoreAgainst: 0,
+      quarterCount: 4,
+      periodLabel: 'kwart',
+      useClassLimit: true,
+      syncedAt: Timestamp.now(),
+      revision: 2,
+      deletedAt,
+      deletedBy: null,
+      redactedAt: Timestamp.now(),
+    };
+    const read = completedGameConverter.fromFirestore!(mockSnapshot(redacted, COMPLETED_GAME_PATH), {});
+    expect(read.opponent).toBe('');
+    expect(read.competition).toBe('');
+    expect(read.players).toEqual([]);
+    expect(read.segments).toEqual([]);
+    expect(read.scoreFor).toBe(0);
+    expect(read.scoreAgainst).toBe(0);
+    expect(read.deletedBy).toBeNull();
+    // resurrectiepreventie: deletedAt blijft een niet-null tijdstempel
+    expect(read.deletedAt).not.toBeNull();
+    expect(read.deletedAt!.toMillis()).toBe(deletedAt.toMillis());
+    expect(read.revision).toBe(2);
+    expect(read.sourceGameId).toBe('game-1');
+    expect(read).not.toHaveProperty('redactedAt');
+  });
+
   it('completedGame: legacy document zonder revision/deletedAt/deletedBy (PR 7.2a/7.2b-schema, externe review PR #65) defaultet naar 0/null/null', () => {
     const legacy: Omit<CompletedGameDocument, 'revision' | 'deletedAt' | 'deletedBy'> = {
       organizationId: 'org-1',

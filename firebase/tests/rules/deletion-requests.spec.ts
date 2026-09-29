@@ -43,7 +43,24 @@ function exportProof(overrides: Record<string, unknown> = {}) {
   return {
     contentHash: 'sha256-fictief-0001',
     exportedAt: '2026-09-29T10:00:00.000Z',
-    counts: { teams: 1, completedGames: 3, invitations: 0 },
+    counts: exportCounts(),
+    ...overrides,
+  };
+}
+
+/** Exact de tien sleutels van `OrganizationExportSectionCounts` (v2 8.3b). */
+function exportCounts(overrides: Record<string, unknown> = {}): Record<string, unknown> {
+  return {
+    organizationMembers: 5,
+    invitations: 2,
+    teams: 1,
+    teamMembers: 1,
+    settingsDocuments: 1,
+    rosterPlayers: 8,
+    games: 0,
+    gameActions: 0,
+    completedGames: 3,
+    migrationRuns: 0,
     ...overrides,
   };
 }
@@ -166,10 +183,59 @@ describe('deletionRequests/current: create', () => {
     ['een exportedAt in een verkeerde vorm', { exportedAt: 'gisteren' }],
     ['een exportedAt die geen string is', { exportedAt: Timestamp.now() }],
     ['counts die geen map is', { counts: [1, 2, 3] }],
+    ['counts als lege map', { counts: {} }],
     ['een extra veld in het exportProof', { extra: 'nee' }],
   ])('weigert %s in het exportProof', async (_naam, overrides) => {
     await assertFails(
       setDoc(requestRef(ownerDb()), createPayload({ exportProof: exportProof(overrides) })),
+    );
+  });
+
+  it('weigert counts met een ONTBREKENDE telling (alle tien zijn verplicht)', async () => {
+    for (const sleutel of Object.keys(exportCounts())) {
+      const { [sleutel]: _weg, ...zonder } = exportCounts();
+      await assertFails(
+        setDoc(requestRef(ownerDb()), createPayload({ exportProof: exportProof({ counts: zonder }) })),
+      );
+    }
+  });
+
+  it.each([
+    ['een negatieve telling', { teams: -1 }],
+    ['een fractionele telling', { teams: 1.5 }],
+    ['een telling als string', { teams: '1' }],
+    ['een telling als null', { completedGames: null }],
+    ['een telling als boolean', { games: true }],
+    ['een telling als map', { invitations: { aantal: 1 } }],
+    ['een extra, onbekende telling', { onbekend: 1 }],
+  ])('weigert counts met %s', async (_naam, overrides) => {
+    await assertFails(
+      setDoc(
+        requestRef(ownerDb()),
+        createPayload({ exportProof: exportProof({ counts: exportCounts(overrides) }) }),
+      ),
+    );
+  });
+
+  it('accepteert counts met nullen overal (een lege organisatie is een geldige export)', async () => {
+    const nullen = Object.fromEntries(Object.keys(exportCounts()).map((k) => [k, 0]));
+    await assertSucceeds(
+      setDoc(requestRef(ownerDb()), createPayload({ exportProof: exportProof({ counts: nullen }) })),
+    );
+  });
+
+  it('weigert een herstart met vervormde counts', async () => {
+    await seedRequest({ status: 'cancelled', cancelledAt: new Date(), revision: 1 });
+    await assertFails(
+      updateDoc(requestRef(ownerDb()), {
+        status: 'requested',
+        attempt: 2,
+        requestedBy: USERS.alice.uid,
+        requestedAt: serverTimestamp(),
+        exportProof: exportProof({ counts: exportCounts({ teams: -1 }) }),
+        cancelledAt: null,
+        revision: 2,
+      }),
     );
   });
 

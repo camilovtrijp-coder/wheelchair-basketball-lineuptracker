@@ -521,15 +521,42 @@ service cloud.firestore {
 
     // PR 8.3c-1 — exportProof van een verwijderverzoek: de uitkomst van een
     // geslaagde 8.3b-organisatie-export. Rules kunnen niet narekenen of de hash
-    // klopt; dit is een UX-poort met vaste vorm, geen bewijs (§2.5 — de export
-    // die telt is die van de beheerder, vlak vóór het wissen).
+    // of de tellingen kloppen; dit is een UX-poort met vaste vorm, geen bewijs
+    // (§2.5 — de export die telt is die van de beheerder, vlak vóór het wissen).
+    // De vorm is wél exact: `counts` draagt precies de tien sleutels van
+    // `OrganizationExportSectionCounts` (v2/src/domain/export/types.ts), elk een
+    // niet-negatief geheel getal. Het verwijderverzoek is een niet-verwijderbare
+    // singleton, dus een document met een half of vervormd bewijs zou de latere
+    // gateway/runbookflow blijven hinderen.
+    function exportCountKeys() {
+      return [
+        'organizationMembers', 'invitations', 'teams', 'teamMembers', 'settingsDocuments',
+        'rosterPlayers', 'games', 'gameActions', 'completedGames', 'migrationRuns'
+      ];
+    }
+
+    function isValidExportCounts(counts) {
+      return counts is map &&
+        counts.keys().hasAll(exportCountKeys()) && counts.keys().hasOnly(exportCountKeys()) &&
+        counts.organizationMembers is int && counts.organizationMembers >= 0 &&
+        counts.invitations is int && counts.invitations >= 0 &&
+        counts.teams is int && counts.teams >= 0 &&
+        counts.teamMembers is int && counts.teamMembers >= 0 &&
+        counts.settingsDocuments is int && counts.settingsDocuments >= 0 &&
+        counts.rosterPlayers is int && counts.rosterPlayers >= 0 &&
+        counts.games is int && counts.games >= 0 &&
+        counts.gameActions is int && counts.gameActions >= 0 &&
+        counts.completedGames is int && counts.completedGames >= 0 &&
+        counts.migrationRuns is int && counts.migrationRuns >= 0;
+    }
+
     function isValidExportProof(proof) {
       return proof is map &&
         proof.keys().hasAll(['contentHash', 'exportedAt', 'counts']) &&
         proof.keys().hasOnly(['contentHash', 'exportedAt', 'counts']) &&
         proof.contentHash is string && proof.contentHash.size() > 0 &&
         proof.exportedAt is string && isIsoTimestampShape(proof.exportedAt) &&
-        proof.counts is map;
+        isValidExportCounts(proof.counts);
     }
 
     function deletionRequestKeys() {
