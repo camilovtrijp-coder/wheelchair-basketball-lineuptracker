@@ -232,7 +232,7 @@ describe('deletionRequests/current: create', () => {
         attempt: 2,
         requestedBy: USERS.alice.uid,
         requestedAt: serverTimestamp(),
-        exportProof: exportProof({ counts: exportCounts({ teams: -1 }) }),
+        exportProof: exportProof({ counts: exportCounts({ teams: -1 }), exportedAt: '2026-09-30T10:00:00.000Z' }),
         cancelledAt: null,
         revision: 2,
       }),
@@ -366,7 +366,11 @@ describe('deletionRequests/current: herstart (cancelled → requested, attempt +
       attempt: 2,
       requestedBy: USERS.alice.uid,
       requestedAt: serverTimestamp(),
-      exportProof: exportProof({ contentHash: 'sha256-fictief-0002' }),
+      // Vers bewijs: nieuwe hash EN een strikt latere exportedAt dan de seed.
+      exportProof: exportProof({
+        contentHash: 'sha256-fictief-0002',
+        exportedAt: '2026-09-30T10:00:00.000Z',
+      }),
       cancelledAt: null,
       revision: 2,
       ...overrides,
@@ -388,7 +392,16 @@ describe('deletionRequests/current: herstart (cancelled → requested, attempt +
     await assertSucceeds(
       updateDoc(requestRef(db), { status: 'cancelled', cancelledAt: serverTimestamp(), revision: 3 }),
     );
-    await assertSucceeds(updateDoc(requestRef(db), restartPatch({ attempt: 3, revision: 4 })));
+    await assertSucceeds(
+      updateDoc(
+        requestRef(db),
+        restartPatch({
+          attempt: 3,
+          revision: 4,
+          exportProof: exportProof({ contentHash: 'sha256-fictief-0003', exportedAt: '2026-10-01T10:00:00.000Z' }),
+        }),
+      ),
+    );
   });
 
   it.each([
@@ -421,6 +434,36 @@ describe('deletionRequests/current: herstart (cancelled → requested, attempt +
   ])('weigert een herstart met requestedAt als %s', async (_naam, waarde) => {
     await seedCancelled();
     await assertFails(updateDoc(requestRef(ownerDb()), restartPatch({ requestedAt: waarde })));
+  });
+
+  it('weigert een herstart met EXACT hetzelfde exportProof als de geannuleerde poging', async () => {
+    await seedCancelled();
+    await assertFails(updateDoc(requestRef(ownerDb()), restartPatch({ exportProof: exportProof() })));
+  });
+
+  it('weigert een herstart met dezelfde exportedAt maar een andere hash (niet vers)', async () => {
+    await seedCancelled();
+    await assertFails(
+      updateDoc(
+        requestRef(ownerDb()),
+        restartPatch({ exportProof: exportProof({ contentHash: 'sha256-fictief-0002' }) }),
+      ),
+    );
+  });
+
+  it('weigert een herstart met een OUDER exportProof dan de geannuleerde poging', async () => {
+    await seedCancelled();
+    await assertFails(
+      updateDoc(
+        requestRef(ownerDb()),
+        restartPatch({
+          exportProof: exportProof({
+            contentHash: 'sha256-fictief-0002',
+            exportedAt: '2026-09-01T10:00:00.000Z',
+          }),
+        }),
+      ),
+    );
   });
 
   it('weigert een herstart zonder geldig vers exportProof', async () => {

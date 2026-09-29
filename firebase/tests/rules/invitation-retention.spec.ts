@@ -131,6 +131,25 @@ describe('intrekken schrijft een servergebonden revokedAt', () => {
     await assertFails(updateDoc(invRef(aliceDb()), { status: 'revoked', revokedAt: waarde }));
   });
 
+  it('owner mag ook een geaccepteerde (nog niet geclaimde) uitnodiging intrekken', async () => {
+    await seed({ status: 'accepted', acceptedDagen: 1 });
+    await assertSucceeds(updateDoc(invRef(aliceDb()), { status: 'revoked', revokedAt: serverTimestamp() }));
+  });
+
+  it.each(['revoked', 'claimed'] as const)(
+    'weigert (her)intrekken vanuit %s — revokedAt kan niet opnieuw gestempeld worden',
+    async (status) => {
+      await seed({
+        status,
+        invitedDagen: 50,
+        acceptedDagen: status === 'claimed' ? 45 : null,
+        claimedDagen: status === 'claimed' ? 40 : null,
+        revokedDagen: status === 'revoked' ? 40 : null,
+      });
+      await assertFails(updateDoc(invRef(aliceDb()), { status: 'revoked', revokedAt: serverTimestamp() }));
+    },
+  );
+
   it('weigert intrekken dat een ander veld meestuurt', async () => {
     await seed({ status: 'pending' });
     await assertFails(

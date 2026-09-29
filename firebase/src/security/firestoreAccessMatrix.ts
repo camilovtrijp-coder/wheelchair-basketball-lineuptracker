@@ -161,6 +161,7 @@ export const FIRESTORE_ACCESS_MATRIX: readonly FirestoreAccessMatrixEntry[] = [
     conditions:
       "Invitee email must match a verified auth token; status transitions and affected fields are allowlisted; claim is atomic. " +
       "invitedAt/acceptedAt/claimedAt/revokedAt are server-bound (== request.time). Accepting is only possible within 30 days of invitedAt. " +
+      "Revoking is only possible from pending/accepted. " +
       "Delete has two branches: owner/admin only after a 30-day floor measured at the timestamp of the CURRENT status (with an invitedAt fallback), " +
       "and the invitee themselves with a verified email and NO floor (own personal data). There is no automatic purge.",
     evidence: [
@@ -388,7 +389,7 @@ export const FIRESTORE_ACCESS_MATRIX: readonly FirestoreAccessMatrixEntry[] = [
     conditions:
       "Singleton per organization. A client may only create `requested` (attempt 1), cancel from `requested`, and restart from `cancelled` with attempt + 1; " +
       "executing/completed/failed are runbook-only (Admin rights) and never client-writable. Exact key set, server-bound requestedAt/cancelledAt, " +
-      "revision +1 per patch, a fixed-shape exportProof, no hard delete. Rules cannot enforce the blocking preconditions (they need queries) nor " +
+      "revision +1 per patch, a fixed-shape exportProof (a restart must carry a strictly later exportedAt), no hard delete. Rules cannot enforce the blocking preconditions (they need queries) nor " +
       "verify the exportProof hash; those are application-level gates re-checked by the runbook. No converter exists yet: the document contract " +
       "and its gateway arrive with the domain/application part of PR 8.3c-1.",
     evidence: ["tests/rules/deletion-requests.spec.ts"],

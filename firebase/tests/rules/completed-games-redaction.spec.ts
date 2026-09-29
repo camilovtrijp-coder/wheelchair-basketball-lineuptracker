@@ -155,10 +155,10 @@ describe('completedGames: redactie na 90 dagen', () => {
 
   it.each([
     ['bob (admin)', USERS.bob.uid, CLAIMS.bob],
-    ['carol (coach — mag tombstonen maar niet redigeren)', USERS.carol.uid, CLAIMS.carol],
+    ['carol (org-coach zonder teamrij)', USERS.carol.uid, CLAIMS.carol],
     ['dave (scorer)', USERS.dave.uid, CLAIMS.dave],
     ['erin (viewer)', USERS.erin.uid, CLAIMS.erin],
-    ['henry (team-only coach)', USERS.henry.uid, CLAIMS.henry],
+    ['henry (team-only coach — mag wél tombstonen, dus dit is de echte coachcheck)', USERS.henry.uid, CLAIMS.henry],
     ['frank (owner van een ANDERE organisatie)', USERS.frank.uid, CLAIMS.frank],
   ])('%s mag NIET redigeren', async (_naam, uid, claims) => {
     await seedTombstoned(120);

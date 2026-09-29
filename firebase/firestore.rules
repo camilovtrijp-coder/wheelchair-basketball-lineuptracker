@@ -667,7 +667,13 @@ service cloud.firestore {
         // Intrekken (owner/admin): status naar 'revoked' plus het nieuwe, servergebonden
         // `revokedAt` (PR 8.3c-1). Zonder eigen eindtijdstempel had een ingetrokken
         // uitnodiging geen bewaartermijn om aan te meten (§3.4, punt 2).
+        // Alleen vanuit `pending`/`accepted`: een ingetrokken of al geclaimde
+        // uitnodiging opnieuw "intrekken" zou `revokedAt` naar nu schuiven en zo de
+        // bewaartermijn opnieuw laten beginnen (of het anker van een geclaimde
+        // uitnodiging verleggen). Bij een geclaimde uitnodiging bestaat het
+        // lidmaatschap al; intrekken van toegang loopt via organizationMembers.
         allow update: if isOrgOwnerOrAdmin(orgId) &&
+          resource.data.status in ['pending', 'accepted'] &&
           request.resource.data.status == 'revoked' &&
           request.resource.data.revokedAt == request.time &&
           request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'revokedAt']);
@@ -789,6 +795,13 @@ service cloud.firestore {
           request.resource.data.requestedBy == request.auth.uid &&
           request.resource.data.requestedAt == request.time &&
           isValidExportProof(request.resource.data.exportProof) &&
+          // VERS bewijs: een herstart moet een nieuwe export dragen, dus een
+          // `exportedAt` die strikt later is dan die van de geannuleerde poging
+          // (ISO-8601 in UTC vergelijkt lexicografisch = chronologisch, en de vorm
+          // is hierboven al afgedwongen). Rules kunnen niet bewijzen dat het echt
+          // een nieuwe export is; dit weigert wel het hergebruiken van hetzelfde
+          // of een ouder bewijs (besluitrecord §2.5: "een vers exportProof").
+          request.resource.data.exportProof.exportedAt > resource.data.exportProof.exportedAt &&
           request.resource.data.cancelledAt == null &&
           request.resource.data.revision == resource.data.revision + 1 &&
           request.resource.data.diff(resource.data).affectedKeys()
@@ -1263,8 +1276,9 @@ service cloud.firestore {
     // geneste match governeert alleen directe gets, dezelfde beperking als bij
     // issue #28. Zelfde smalst mogelijke vorm: puur `resource.data` tegen het token,
     // geen get()/exists(). Verbreedt het leesoppervlak niet — wie deze query mag
-    // doen, mocht die documenten al per stuk lezen — en is door `email_verified`
-    // strikter dan de per-documentregel.
+    // doen, mocht die documenten al per stuk lezen. Voor de QUERY is de
+    // `email_verified`-eis strikter dan de per-documentregel; een directe get
+    // blijft via die oudere, ruimere regel gelden (Rules-matches werken als OR).
     match /{path=**}/invitations/{invitationId} {
       allow read: if signedIn() &&
         request.auth.token.email_verified == true &&
