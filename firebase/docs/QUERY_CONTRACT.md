@@ -21,18 +21,22 @@ contract hieronder, exact hetzelfde patroon toegepast op `teamMembers`.
 
 ## Het contract
 
-**De enige twee toegestane niet-directe queries in de hele applicatie zijn:**
+**De enige drie toegestane niet-directe queries in de hele applicatie zijn:**
 
 ```ts
 collectionGroup(db, 'organizationMembers').where('uid', '==', eigenUid)
 collectionGroup(db, 'teamMembers').where('uid', '==', eigenUid)
+collectionGroup(db, 'invitations').where('email', '==', eigenGeverifieerdEmail)
 ```
 
+De derde is nieuw in PR 8.3c-1 (zie §"Uitnodigingen" hieronder).
+
 Elke andere vorm — zonder `where`-filter, met een `where`-waarde die niet
-gelijk is aan de eigen `request.auth.uid`, `orderBy` zonder gelijkheidsfilter
-op `uid`, of een `collectionGroup`-query op een andere collectienaam dan
-`organizationMembers`/`teamMembers` — blijft **verboden** totdat er een even
-expliciet contract + Rules-tests voor bestaat.
+gelijk is aan de eigen `request.auth.uid` (respectievelijk het eigen
+geverifieerde e-mailadres), `orderBy` zonder gelijkheidsfilter op `uid`, of
+een `collectionGroup`-query op een andere collectienaam dan
+`organizationMembers`/`teamMembers`/`invitations` — blijft **verboden**
+totdat er een even expliciet contract + Rules-tests voor bestaat.
 
 ## Waarom dit veilig is (en wat empirisch anders bleek dan aanvankelijk gedacht)
 
@@ -98,12 +102,44 @@ isTeamMember(orgId, teamId)`) al directe leestoegang tot zijn/haar eigen
 teamdocument, en dus tot deze kopie van de naam — zonder dat de organisatie
 zelf ooit breder leesbaar wordt.
 
+## Uitnodigingen (PR 8.3c-1)
+
+Een uitnodiging is vrijwel volledig een persoonsgegeven (het e-mailadres van
+de uitgenodigde). Om die te kunnen opruimen moet de uitgenodigde zijn eigen
+uitnodigingen kunnen **vinden**, ook in organisaties waar hij geen
+lidmaatschap (meer) heeft. Een direct `getDoc()` volstaat daarvoor niet: de
+geneste `invitations`-match governeert alleen directe paden, exact de
+beperking uit issue #28. Daarom een derde recursieve-wildcard match, zelfde
+smalst mogelijke vorm:
+
+```
+match /{path=**}/invitations/{invitationId} {
+  allow read: if signedIn() &&
+    request.auth.token.email_verified == true &&
+    resource.data.email == request.auth.token.email;
+}
+```
+
+Geen `get()`/`exists()`, dus ook bruikbaar zonder membership. Dit verbreedt
+het leesoppervlak niet — wie de query mag doen, mocht die documenten al per
+stuk lezen — en is door de `email_verified`-eis strikter dan de bestaande
+per-documentregel. Het bijbehorende opruimen loopt via de geneste
+`allow delete`-tak voor de uitgenodigde zelf (geen ondergrens, `email_verified`
+vereist) en is bewezen in `tests/rules/invitation-retention.spec.ts`,
+inclusief de weigering voor andermans e-mailadres, een ongeverifieerd token,
+een ongefilterde query en een niet-ingelogde aanroeper.
+
+Er is op het moment van schrijven **nog geen clientcode** die deze query
+uitvoert; die komt met de accountverwijdercoördinator in PR 8.3c-2. De Rules
+en de index lopen bewust vooruit zodat het contract eerst zelfstandig
+bewezen is (de matrix markeert dit met `clientPending`).
+
 ## Index
 
 `firestore.indexes.json` bevat expliciete `fieldOverride`s die
-`organizationMembers.uid` én `teamMembers.uid` op `COLLECTION_GROUP`-scope
-indexeren — zonder deze overrides kan Firestore de toegestane queries niet
-uitvoeren.
+`organizationMembers.uid`, `teamMembers.uid` én `invitations.email` op
+`COLLECTION_GROUP`-scope indexeren — zonder deze overrides kan Firestore de
+toegestane queries niet uitvoeren.
 
 ## Empirisch bewijs
 
@@ -173,4 +209,5 @@ outsider-contextquery die aantoont dat er niets lekt).
   directe document-ID.
 - Elke andere toekomstige nieuwe query (bijv. voor statistieken) vereist een
   eigen, even expliciet vastgelegd en beproefd contract — dit document dekt
-  uitsluitend de twee contextwisselaar-queries hierboven.
+  uitsluitend de twee contextwisselaar-queries en de uitnodigingenquery
+  hierboven.

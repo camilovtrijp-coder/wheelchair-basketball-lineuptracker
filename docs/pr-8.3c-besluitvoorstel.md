@@ -1001,6 +1001,21 @@ dan gedacht: alle drie de bestaande productieschrijvers gebruiken al
 `new Date()`-waarden schrijven — precies de reden dat deze wijziging een eigen
 PR verdient.
 
+### 8.3 Besluit bij review van 8.3c-1 deel 1 (29 september 2026)
+
+Een onafhankelijke review van PR #93 vond dat §2.5 "een voor alle
+organisatieleden zichtbare banner" noemt, terwijl `deletionRequests/current`
+alleen leesbaar is voor `isOrgMember`. Team-only leden zien de banner dus niet.
+
+**Besluit (eigenaar): zo laten, en opvangen in app en runbook.** Geen Rules-
+wijziging. "Lid van enig team" is in Rules niet uit te drukken zonder een
+`teamId`, en een melding per team is een gewijzigd datacontract dat buiten deze
+fase valt. De mitigatie (aantal team-only leden tonen in de owner-bevestiging,
+handmatige informatieplicht in het runbook, blokkade op recente wedstrijden)
+staat in 8.3c-1 deel 2. Vastgelegd als geaccepteerd restrisico in
+`docs/security-threat-model.md` §7, met trigger 2 uit §2.4 als moment om dit te
+herzien.
+
 ### De vier verfijningen, op één rij
 
 1. De wachttijd van 7 dagen staat in het runbook, niet in de Rules — anders is

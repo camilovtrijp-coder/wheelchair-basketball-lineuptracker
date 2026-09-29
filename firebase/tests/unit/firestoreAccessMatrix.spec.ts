@@ -123,8 +123,10 @@ describe("PR 8.3a Firestore access matrix", () => {
       "game-actions",
       "completed-games",
       "migration-runs",
+      "deletion-requests",
       "organization-members-collection-group",
       "team-members-collection-group",
+      "invitations-collection-group",
     ];
     expect(FIRESTORE_ACCESS_MATRIX.map((entry) => entry.id).sort()).toEqual(
       expectedIds.sort(),
@@ -144,10 +146,12 @@ describe("PR 8.3a Firestore access matrix", () => {
           `${entry.id}: ${evidence}`,
         ).toBe(true);
       }
-      expect(
-        entry.clientSources.length,
-        `${entry.id}: clientSources`,
-      ).toBeGreaterThan(0);
+      if (entry.clientPending === undefined) {
+        expect(
+          entry.clientSources.length,
+          `${entry.id}: clientSources`,
+        ).toBeGreaterThan(0);
+      }
       for (const source of entry.clientSources) {
         expect(
           existsSync(resolve(firebaseRoot, source)),
@@ -211,19 +215,24 @@ describe("PR 8.3a Firestore access matrix", () => {
         ).toContain(converterName);
         usedConverters.add(converterName);
 
-        const referencedInClientSource = entry.clientSources.some((source) =>
-          readFileSync(resolve(firebaseRoot, source), "utf8").includes(
-            converterName,
-          ),
-        );
-        expect(
-          referencedInClientSource,
-          `${entry.id}: ${converterName} niet aangetroffen in eigen clientSources`,
-        ).toBe(true);
+        // Een rij met `clientPending` heeft (nog) geen eigen clientbron om in
+        // te zoeken; de converter zelf moet wél bestaan (hierboven).
+        if (entry.clientPending === undefined) {
+          const referencedInClientSource = entry.clientSources.some((source) =>
+            readFileSync(resolve(firebaseRoot, source), "utf8").includes(
+              converterName,
+            ),
+          );
+          expect(
+            referencedInClientSource,
+            `${entry.id}: ${converterName} niet aangetroffen in eigen clientSources`,
+          ).toBe(true);
+        }
       }
     }
 
-    // migration-runs heeft bewust geen converter (zie de entry's `conditions`);
+    // migration-runs en deletion-requests hebben bewust (nog) geen converter (zie
+    // de `conditions` van die rijen);
     // elke andere converter die op schijf bestaat moet aan minimaal een
     // matrixrij gekoppeld zijn.
     expect([...usedConverters].sort()).toEqual(
@@ -233,7 +242,34 @@ describe("PR 8.3a Firestore access matrix", () => {
     const entriesWithoutConverter = FIRESTORE_ACCESS_MATRIX.filter(
       (entry) => entry.converterSources.length === 0,
     ).map((entry) => entry.id);
-    expect(entriesWithoutConverter).toEqual(["migration-runs"]);
+    expect(entriesWithoutConverter.sort()).toEqual([
+      "deletion-requests",
+      "migration-runs",
+    ]);
+  });
+
+  it("vergrendelt de exacte lijst van Rules-scopes die vooruitlopen op hun clientgateway, en houdt ze consistent", () => {
+    const pending = FIRESTORE_ACCESS_MATRIX.filter(
+      (entry) => entry.clientPending !== undefined,
+    );
+    // Deze lijst moet KRIMPEN, niet groeien: 8.3c-1 deel 2 haalt
+    // deletion-requests eruit, 8.3c-2 invitations-collection-group.
+    expect(pending.map((entry) => entry.id).sort()).toEqual([
+      "deletion-requests",
+      "invitations-collection-group",
+    ]);
+    for (const entry of pending) {
+      expect(entry.clientSources, `${entry.id}: clientSources`).toEqual([]);
+      expect(entry.clientPending?.length, `${entry.id}: reden`).toBeGreaterThan(
+        0,
+      );
+    }
+    // Omgekeerd: een rij zonder clientSources MOET als pending gemarkeerd zijn.
+    for (const entry of FIRESTORE_ACCESS_MATRIX) {
+      if (entry.clientSources.length === 0) {
+        expect(entry.clientPending, `${entry.id}: lege clientSources`).toBeDefined();
+      }
+    }
   });
 
   it("bevat voor elke operatie uitsluitend bekende actoren, zonder duplicaten", () => {
@@ -268,6 +304,7 @@ describe("PR 8.3a Firestore access matrix", () => {
       "game-actions",
       "completed-games",
       "migration-runs",
+      "deletion-requests",
     ]) {
       expect(
         FIRESTORE_ACCESS_MATRIX.find((entry) => entry.id === id)?.permissions
