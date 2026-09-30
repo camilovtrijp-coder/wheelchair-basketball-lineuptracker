@@ -540,7 +540,7 @@ const nl = {
     'Team {team}: migratierun {run} is niet afgerond. Rond de migratie af, of vraag de beheerder om hulp.',
   deletionStaleTitle: 'Onafgeronde wedstrijden',
   deletionStaleDesc:
-    'Er zijn {count} onafgeronde wedstrijden zonder recente activiteit. Ze worden met de organisatie verwijderd (ze staan wel in de export).',
+    'Onafgeronde wedstrijden zonder recente activiteit: {count}. Ze worden met de organisatie verwijderd (ze staan wel in de export).',
   deletionStaleAck: 'Ik weet dat deze onafgeronde wedstrijden mee verwijderd worden.',
   deletionNeedsAck: 'Bevestig eerst dat de onafgeronde wedstrijden mee verwijderd mogen worden.',
   deletionTeamOnlyNote:
@@ -580,16 +580,18 @@ const nl = {
   deletionSubmittedTitle: 'Verzoek ingediend',
   deletionExportDownloadBtn: 'Export downloaden',
   deletionExportDownloadedLabel: 'Export gedownload.',
+  deletionExportOnlyNow:
+    'Download het bestand nu: het is alleen op dit scherm beschikbaar. Je kunt later altijd een nieuwe export maken met Volledige organisatie-export.',
   deletionExportSensitive:
     'De export bevat e-mailadressen van leden en spelersgegevens. Bewaar het bestand veilig.',
   deletionErrorClockBehind:
     'De klok van dit apparaat loopt achter op het vorige verzoek. Controleer de tijd van je apparaat en probeer het opnieuw.',
   deletionErrorRejected:
-    'Het verzoek is geweigerd. Mogelijk is je rol gewijzigd of is het verzoek al bijgewerkt. Vernieuw de status en probeer het opnieuw.',
+    'Het verzoek is geweigerd. Mogelijk is je rol gewijzigd of is het verzoek al bijgewerkt. De status is opnieuw opgehaald; probeer het zo nodig nogmaals.',
   deletionErrorTimeout:
     'Geen antwoord van de server. Het verzoek kan alsnog worden verwerkt; controleer de status hieronder.',
   deletionErrorReadback:
-    'Het verzoek is verstuurd maar kon niet worden teruggelezen. Vernieuw de status.',
+    'Het verzoek is verstuurd maar kon niet worden teruggelezen. De status is opnieuw opgehaald; controleer hem hieronder.',
   deletionErrorNotSignedIn: 'Je bent niet ingelogd. Log opnieuw in.',
   deletionAlreadyOpen: 'Er is al een verwijderverzoek. De status is bijgewerkt.',
   deletionBannerRequested:
@@ -1084,7 +1086,7 @@ const en = {
     'Team {team}: migration run {run} is not finished. Finish the migration, or ask the administrator for help.',
   deletionStaleTitle: 'Unfinished matches',
   deletionStaleDesc:
-    'There are {count} unfinished matches without recent activity. They are deleted together with the organization (they are included in the export).',
+    'Unfinished matches without recent activity: {count}. They are deleted together with the organization (they are included in the export).',
   deletionStaleAck: 'I understand these unfinished matches will be deleted too.',
   deletionNeedsAck: 'First confirm that the unfinished matches may be deleted too.',
   deletionTeamOnlyNote:
@@ -1122,15 +1124,18 @@ const en = {
   deletionSubmittedTitle: 'Request submitted',
   deletionExportDownloadBtn: 'Download export',
   deletionExportDownloadedLabel: 'Export downloaded.',
+  deletionExportOnlyNow:
+    'Download the file now: it is only available on this screen. You can always make a new export later with Full organization export.',
   deletionExportSensitive:
     'The export contains member email addresses and player data. Store the file securely.',
   deletionErrorClockBehind:
     'This device clock is behind the previous request. Check your device time and try again.',
   deletionErrorRejected:
-    'The request was rejected. Your role may have changed or the request was already updated. Refresh the status and try again.',
+    'The request was rejected. Your role may have changed or the request was already updated. The status was fetched again; try again if needed.',
   deletionErrorTimeout:
     'No response from the server. The request may still be processed; check the status below.',
-  deletionErrorReadback: 'The request was sent but could not be read back. Refresh the status.',
+  deletionErrorReadback:
+    'The request was sent but could not be read back. The status was fetched again; check it below.',
   deletionErrorNotSignedIn: 'You are not signed in. Sign in again.',
   deletionAlreadyOpen: 'A deletion request already exists. The status has been updated.',
   deletionBannerRequested:

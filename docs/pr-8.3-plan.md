@@ -7,8 +7,9 @@ via #87 en #89. Het 8.3c-besluitrecord is gemerged via #90 — dat hief de
 in twee delen geknipt: deel 1 (Rules, index, accessmatrix en Rules-tests) is
 gemerged via PR #93. Deel 2 is in stukken geknipt: 1b (domein, coordinator,
 gateway en documentcontract) is gemerged via #94; 1c-i (owner-only paneel,
-banner, wiring, NL/EN en DOM-tests) is geïmplementeerd; nog niet gestart: 1c-ii
-(e2e-auth met echte Auth en axe), 1d (runbook en gemeten testuitvoering),
+banner, wiring, NL/EN en DOM-tests) is gemerged via #95; 1c-ii (e2e-auth met
+echte Auth/Rules, axe en toetsenbord, plus reviewfixes) is geïmplementeerd; nog
+niet gestart: 1d (runbook en gemeten testuitvoering),
 8.3c-2 en 8.3d. PR 8.2 is volledig gemerged (8.2a #81, 8.2b #83 en
 8.2c #84).
 

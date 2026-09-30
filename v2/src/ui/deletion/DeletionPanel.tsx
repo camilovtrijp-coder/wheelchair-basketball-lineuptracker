@@ -1,4 +1,4 @@
-import { useState } from 'preact/hooks';
+import { useEffect, useRef, useState } from 'preact/hooks';
 import { translate, type Lang, type StringKey } from '../../i18n/strings';
 import type { OrganizationRole } from '../../domain/organizations/types';
 import { canRequestOrganizationDeletion } from '../../domain/deletion/capability';
@@ -86,6 +86,22 @@ export function DeletionPanel({
   const [acknowledged, setAcknowledged] = useState(false);
   const displayName = organizationName || organizationId;
 
+  // Focusherstel na een dialoog dat de pagina verandert. `useFocusTrap` geeft de focus
+  // terug aan het element dat het dialoog opende, maar na een geslaagde aanvraag, een
+  // her-inlezing of een geannuleerd verzoek bestaat die knop niet meer — de focus zou op
+  // `body` belanden en een toetsenbord-/schermlezergebruiker verliest zijn plek. Dan gaat
+  // de focus naar het paneel zelf (een `fieldset` met `tabIndex={-1}`, dat de `legend`
+  // als naam draagt). Sluit een dialoog zonder dat de pagina verandert (Escape, Terug),
+  // dan blijft het gewone herstel naar de openende knop gelden.
+  const panelRef = useRef<HTMLFieldSetElement | null>(null);
+  const focusPanelAfterRender = useRef(false);
+  useEffect(() => {
+    if (focusPanelAfterRender.current && dialog === null) {
+      focusPanelAfterRender.current = false;
+      panelRef.current?.focus();
+    }
+  });
+
   if (!canRequestOrganizationDeletion(callerRole)) {
     // Defensieve tweede poort — App.tsx rendert dit paneel al niet voor andere
     // rollen, maar een prop-doorgeeffout mag nooit alsnog een knop tonen.
@@ -136,6 +152,7 @@ export function DeletionPanel({
     }
     switch (outcome.status) {
       case 'ok':
+        focusPanelAfterRender.current = true;
         setDialog(null);
         onRequestChange?.(outcome.request);
         setState({
@@ -147,16 +164,20 @@ export function DeletionPanel({
         return;
       case 'blocked':
         // De situatie is sinds de beoordeling veranderd: opnieuw inlezen toont de blokkades.
+        focusPanelAfterRender.current = true;
         setDialog(null);
         await load();
         return;
       case 'needs-acknowledgement':
+        // De verse beoordeling van de coordinator vond verlaten wedstrijden die de UI nog
+        // niet kende (of andersom): opnieuw inlezen toont het vinkje, anders blijft de
+        // knop aan en geeft elke klik dezelfde uitkomst.
+        focusPanelAfterRender.current = true;
         setDialog(null);
-        setState((prev) =>
-          prev.step === 'assessed' ? { ...prev, notice: 'deletionNeedsAck' } : prev,
-        );
+        await load('deletionNeedsAck');
         return;
       case 'already-open':
+        focusPanelAfterRender.current = true;
         setDialog(null);
         await load('deletionAlreadyOpen');
         return;
@@ -165,10 +186,12 @@ export function DeletionPanel({
         return;
       case 'write-failed':
         // Een timeout/weigering zegt niets over wat de server heeft: status opnieuw lezen.
+        focusPanelAfterRender.current = true;
         setDialog(null);
         await load(writeErrorKey(outcome.error));
         return;
       case 'denied':
+        focusPanelAfterRender.current = true;
         setDialog(null);
         setState({ step: 'error', messageKey: 'deletionErrorDenied' });
         return;
@@ -191,6 +214,7 @@ export function DeletionPanel({
     setDialog({ kind: 'cancel', inProgress: true, errorKey: null });
     try {
       const outcome = await coordinator.cancel(organizationId);
+      focusPanelAfterRender.current = true;
       setDialog(null);
       if (outcome.status === 'ok') {
         onRequestChange?.(outcome.request);
@@ -223,7 +247,12 @@ export function DeletionPanel({
   }
 
   return (
-    <fieldset className="settings-section deletion-panel" data-testid="deletion-panel">
+    <fieldset
+      className="settings-section deletion-panel"
+      data-testid="deletion-panel"
+      ref={panelRef}
+      tabIndex={-1}
+    >
       <legend>{t('deletionTitle')}</legend>
       <p className="settings-explainer">{t('deletionDesc')}</p>
 
@@ -281,6 +310,11 @@ export function DeletionPanel({
           <div className="settings-error" role="alert" data-testid="deletion-sensitive-warning">
             <p>{t('deletionExportSensitive')}</p>
           </div>
+          {!state.downloaded ? (
+            <p className="settings-explainer" data-testid="deletion-export-only-now">
+              {t('deletionExportOnlyNow')}
+            </p>
+          ) : null}
           <div className="settings-actions">
             <button
               type="button"
