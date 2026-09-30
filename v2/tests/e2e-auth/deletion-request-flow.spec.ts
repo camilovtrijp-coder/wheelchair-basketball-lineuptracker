@@ -391,6 +391,10 @@ test.describe('8.3c-1c-ii — melding aan andere leden en cross-org', () => {
 
 test.describe('8.3c-1c-ii — toegankelijkheid (axe, toetsenbord, taal)', () => {
   async function expectNoPanelViolations(page: Page): Promise<void> {
+    // De modal heeft een intrede-animatie (opacity 0.85 → 1): axe die midden daarin meet
+    // ziet een gemengde kleur (#717785 i.p.v. de token #6b7280) en meldt vals contrast.
+    // De app respecteert prefers-reduced-motion, dus meet de eindtoestand.
+    await page.emulateMedia({ reducedMotion: 'reduce' });
     const results = await new AxeBuilder({ page })
       .include('[data-testid="deletion-panel"]')
       .withTags(WCAG_TAGS)
