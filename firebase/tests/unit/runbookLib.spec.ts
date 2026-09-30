@@ -1,10 +1,13 @@
 import { describe, it, expect } from 'vitest';
+import { mkdirSync, mkdtempSync, rmSync, symlinkSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { DELETION_REQUEST_COUNT_KEYS } from '../../src/documents/deletionRequest.js';
 import { buildExecutionRecord } from '../../scripts/lib/executionRecord.js';
 import { canonicalDump, hashDump } from '../../scripts/lib/orgInventory.js';
 import {
   REPO_ROOT,
+  assertEmulatorMatchesProject,
   assertNoKeyFile,
   assertOutsideRepo,
   parseInventoryArgs,
@@ -21,7 +24,7 @@ const validRecord = {
 };
 
 describe('executionRecord (PR 8.3c-1d)', () => {
-  it('accepteert een record met precies de zeven toegestane velden', () => {
+  it('accepteert een record met precies de zes toegestane velden', () => {
     expect(buildExecutionRecord(validRecord)).toEqual(validRecord);
   });
 
@@ -97,6 +100,37 @@ describe('runbookGuards (PR 8.3c-1d)', () => {
     ).toThrow(/binnen de repository/);
     expect(() => assertOutsideRepo(REPO_ROOT)).toThrow(/binnen de repository/);
     expect(() => assertOutsideRepo('/tmp/runbook/dump.json')).not.toThrow();
+  });
+
+  it('weigert een uitvoerpad via een symlink naar de repo, en een `..`-mapnaam binnen de repo', () => {
+    const scratch = mkdtempSync(path.join(tmpdir(), 'guard-'));
+    try {
+      const fakeRepo = path.join(scratch, 'repo');
+      mkdirSync(path.join(fakeRepo, '..dump'), { recursive: true });
+      symlinkSync(fakeRepo, path.join(scratch, 'link'));
+      expect(() => assertOutsideRepo(path.join(scratch, 'link', 'dump.json'), fakeRepo)).toThrow(
+        /binnen de repository/,
+      );
+      // Een map die met twee punten begint is geen `..`-segment en ligt dus binnen de repo.
+      expect(() => assertOutsideRepo(path.join(fakeRepo, '..dump', 'x.json'), fakeRepo)).toThrow(
+        /binnen de repository/,
+      );
+      // Een niet-bestaand pad onder een bestaande map buiten de repo blijft toegestaan.
+      expect(() =>
+        assertOutsideRepo(path.join(scratch, 'elders', 'nieuw', 'x.json'), fakeRepo),
+      ).not.toThrow();
+    } finally {
+      rmSync(scratch, { recursive: true, force: true });
+    }
+  });
+
+  it('weigert een emulator-host bij een niet-demo-project (valse "afgerond"-readback)', () => {
+    const env = { FIRESTORE_EMULATOR_HOST: '127.0.0.1:8080' };
+    expect(() => assertEmulatorMatchesProject('lineup-tracker-prod', env)).toThrow(
+      /geen demo-project/,
+    );
+    expect(() => assertEmulatorMatchesProject('demo-lineup-tracker-dev', env)).not.toThrow();
+    expect(() => assertEmulatorMatchesProject('lineup-tracker-prod', {})).not.toThrow();
   });
 
   it('eist --project en --org expliciet en weigert onbekende opties', () => {

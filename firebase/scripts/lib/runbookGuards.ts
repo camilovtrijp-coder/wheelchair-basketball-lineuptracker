@@ -1,5 +1,6 @@
 // PR 8.3c-1d: bewaking voor het alleen-lezen inventarisscript. Puur en unit-testbaar; het
 // CLI-bestand (`orgInventory.ts`) roept deze aan vóór het iets initialiseert.
+import { existsSync, realpathSync } from 'node:fs';
 import path from 'node:path';
 
 /** Repositoryroot (`firebase/scripts/lib` → drie niveaus omhoog). */
@@ -16,13 +17,51 @@ export function assertNoKeyFile(env: NodeJS.ProcessEnv = process.env): void {
   }
 }
 
-/** De dump bevat persoonsgegevens (e-mail, namen) en mag nooit in de werkboom terechtkomen. */
+/** Volgt symlinks van het dichtstbijzijnde bestaande pad en plakt de rest erachter. */
+function resolveThroughSymlinks(target: string): string {
+  let existing = path.resolve(target);
+  const rest: string[] = [];
+  while (!existsSync(existing)) {
+    const parent = path.dirname(existing);
+    if (parent === existing) break;
+    rest.unshift(path.basename(existing));
+    existing = parent;
+  }
+  return path.join(realpathSync(existing), ...rest);
+}
+
+/**
+ * De dump bevat persoonsgegevens (e-mail, namen) en mag nooit in de werkboom terechtkomen.
+ * Vergelijkt echte paden (symlinks opgelost) en behandelt alleen `..` als segment als
+ * "naar buiten": een map die `..dump` heet ligt gewoon binnen de repo.
+ */
 export function assertOutsideRepo(outFile: string, repoRoot: string = REPO_ROOT): void {
-  const relative = path.relative(repoRoot, path.resolve(outFile));
-  if (relative === '' || (!relative.startsWith('..') && !path.isAbsolute(relative))) {
+  const relative = path.relative(resolveThroughSymlinks(repoRoot), resolveThroughSymlinks(outFile));
+  const outside =
+    relative === '..' || relative.startsWith(`..${path.sep}`) || path.isAbsolute(relative);
+  if (!outside) {
     throw new Error(
       `--out (${outFile}) ligt binnen de repository. De dump bevat persoonsgegevens: kies een ` +
         'map buiten de werkboom.',
+    );
+  }
+}
+
+/**
+ * Een gezette FIRESTORE_EMULATOR_HOST stuurt zowel dit script als `firestore:delete` stil naar
+ * de emulator: dan geeft de readback nul terwijl de echte data blijft staan. Alleen een
+ * `demo-`-project mag met een emulator-host draaien.
+ */
+export function assertEmulatorMatchesProject(
+  project: string,
+  env: NodeJS.ProcessEnv = process.env,
+): void {
+  if (env.FIRESTORE_EMULATOR_HOST && !project.startsWith('demo-')) {
+    throw new Error(
+      `FIRESTORE_EMULATOR_HOST is gezet maar --project (${project}) is geen demo-project. ` +
+        'Het script zou de emulator lezen in plaats van het echte project en een lege ' +
+        'readback als "afgerond" laten doorgaan. Zet de variabele weg (`unset ' +
+        'FIRESTORE_EMULATOR_HOST`) en probeer opnieuw.',
     );
   }
 }

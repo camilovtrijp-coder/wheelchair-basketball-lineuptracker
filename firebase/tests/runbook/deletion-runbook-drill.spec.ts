@@ -4,9 +4,11 @@
 // vooraf-inventaris → dump met stabiele hash → status `executing` → wissen → readback nul
 // → uitvoeringsrecord zonder persoonsgegevens, met een tweede organisatie die onaangeroerd
 // blijft. Stap 4 (wissen) gebruikt hier `recursiveDelete` van firebase-admin als
-// emulator-vervanger: `firebase firestore:delete -r` kan niet naar de emulator wijzen (het
-// vraagt om een echte login; vastgesteld tijdens 1d), dus dat commando zelf wordt op de
-// uitvoeringsdatum tegen een fictieve staging-organisatie geverifieerd (runbook §6).
+// emulator-vervanger: `firebase firestore:delete -r` vereist ook tegen de emulator een
+// ingelogde CLI-sessie (zonder login faalt het in `requireAuth`; vastgesteld tijdens 1d) en
+// is dus niet in CI uitvoerbaar. Dat commando zelf wordt op de uitvoeringsdatum na
+// `firebase login` tegen de emulator en daarna tegen een fictieve staging-organisatie
+// geverifieerd (runbook §6).
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
@@ -207,7 +209,7 @@ describe('deletion runbook drill (PR 8.3c-1d)', () => {
     expect(other.counts).toEqual(EXPECTED_COUNTS);
     expect(other.totalDocuments).toBe(23);
 
-    // 6. Uitvoeringsrecord buiten Firestore: alleen de zeven velden, geen PII.
+    // 6. Uitvoeringsrecord buiten Firestore: alleen de zes velden, geen PII.
     const record = buildExecutionRecord({
       organizationId: ORG,
       requestedAt: requested.requestedAt.toDate().toISOString(),

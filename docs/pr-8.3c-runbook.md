@@ -12,7 +12,7 @@ Blaze.
 | --- | --- |
 | Toestandsmachine, blokkades, exportpoort, banner, rolgating | Getest in de emulator met echte Rules en in de browser (PR 8.3c-1a t/m 1c-ii) |
 | Alleen-lezen inventaris (`npm run runbook:inventory`), dump, hash, uitvoeringsrecord, readback | Getest in de emulator (`firebase/tests/runbook/`, `firebase/tests/unit/runbookLib.spec.ts`), inclusief mutatiecontroles |
-| Wissen met `firebase firestore:delete -r` | **Niet in de emulator uitvoerbaar** (het commando vraagt om een echte login en kan niet naar de emulator wijzen; vastgesteld in 1d). In de proefuitvoering staat `recursiveDelete` van firebase-admin als vervanger. Het echte commando moet op de uitvoeringsdatum tegen een fictieve staging-organisatie worden geverifieerd (§6) |
+| Wissen met `firebase firestore:delete -r` | **Niet uitgevoerd in CI of deze sandbox.** Het commando richt zich op de emulator als `FIRESTORE_EMULATOR_HOST` gezet is, maar vereist ook dan een ingelogde CLI-sessie (vastgesteld in 1d: zonder login faalt het in `requireAuth`). In de proefuitvoering staat `recursiveDelete` van firebase-admin als vervanger. Het echte commando moet op de uitvoeringsdatum eerst na `firebase login` tegen de emulator en daarna tegen een fictieve staging-organisatie worden geverifieerd (§6) |
 | Statuswijziging via de Firebase Console | Niet geautomatiseerd; handmatige stap |
 | Commando's tegen een echt project | Nog niet uitgevoerd. De Firebase CLI-opties moeten op de uitvoeringsdatum met `--help` worden gecontroleerd (besluitrecord §7 punt 2) |
 
@@ -33,9 +33,18 @@ spelersdata hoort hier een expliciete toets tegen de dan geldende verplichtingen
 - **Geen sleutelbestand.** Er komt nergens een service-accountsleutel, Admin SDK-credential
   of databasebeheersleutel in Git, browser, build-output, logs of dit document. Het runbook
   gebruikt de ingelogde sessie van de beheerder. Het script weigert te starten als
-  `GOOGLE_APPLICATION_CREDENTIALS` is gezet.
+  `GOOGLE_APPLICATION_CREDENTIALS` is gezet. Let op: het script ziet niet of een
+  Application Default Credentials-bestand zelf een service-accountsleutel is. Gebruik
+  uitsluitend `gcloud auth application-default login` met je eigen account.
 - Gebruik voor het uitvoeringsrecord en de dump een map **buiten** de repository. Het script
-  weigert een `--out` binnen de werkboom.
+  weigert een `--out` binnen de werkboom (symlinks en `..` worden meegenomen); controleer dat
+  toch zelf, want de dump bevat persoonsgegevens en `.gitignore` vangt hem niet af.
+- **Twee afwijkingen van het besluitrecord, nog te bevestigen door de eigenaar** (zie ook
+  §3 stap 2 en besluitrecord §8.5): (1) de verse "export vlak vóór het wissen" is een
+  beheerdersdump van de hele organisatie, niet de 8.3b-exportenvelop; (2) het script
+  gebruikt Application Default Credentials via `gcloud` naast de Firebase CLI-sessie.
+- Het script vereist Node ≥ 20.11 (`import.meta.dirname`); op een oudere Node faalt het bij
+  het laden, dus gesloten.
 
 ## 2. Voorwaarden vóór stap 3
 
@@ -67,8 +76,13 @@ Werkmap: een map buiten de repo, bijvoorbeeld `~/lineup-runbook/<orgId>/`. Varia
 
 1. **Inloggen zonder sleutel.**
    `firebase login` en `gcloud auth application-default login`. Controleer dat
-   `echo "$GOOGLE_APPLICATION_CREDENTIALS"` leeg is. Bevestig het project met
-   `firebase projects:list` en gebruik in elk commando expliciet `--project "$PROJECT_ID"`.
+   `echo "$GOOGLE_APPLICATION_CREDENTIALS"` **en** `echo "$FIRESTORE_EMULATOR_HOST"` leeg
+   zijn: een gezette emulator-variabele laat zowel het script als `firestore:delete` stil de
+   emulator raken, met een readback van nul terwijl de echte data blijft staan. Het script
+   weigert een emulator-host samen met een `--project` dat niet met `demo-` begint, maar
+   controleer in elke uitvoer dat `"target": "project <PROJECT_ID>"` staat (en niet
+   `"emulator"`). Bevestig het project met `firebase projects:list` en gebruik in elk
+   commando expliciet `--project "$PROJECT_ID"`.
 2. **Vooraf-inventaris en dump (alleen lezen).**
    `npm --workspace firebase run runbook:inventory -- --project "$PROJECT_ID" --org "$ORG_ID" --out ~/lineup-runbook/$ORG_ID/dump.json`
    - De uitvoer toont `counts` per gegevensfamilie (dezelfde tien sleutels als
@@ -76,7 +90,12 @@ Werkmap: een map buiten de repo, bijvoorbeeld `~/lineup-runbook/<orgId>/`. Varia
      het script of de datavorm is gewijzigd: **stop en onderzoek**), de `contentHash` en de
      duur.
    - De dump bevat persoonsgegevens (e-mail, namen), is alleen voor de beheerder leesbaar
-     (modus 0600) en mag nooit in Git, tickets of chat.
+     (modus 0600, alleen bij een nieuw bestand: bestaat het pad al, controleer de rechten)
+     en mag nooit in Git, tickets of chat. `sha256sum dump.json` geeft dezelfde hex als de
+     `contentHash` (zonder het voorvoegsel `sha256:`) wanneer het bestand onaangetast is.
+   - De dump is een eigen, canonieke JSON (Firestore-tijdstempels als `{"__timestamp": ISO}`)
+     en **geen** 8.3b-export en niet importcompatibel. Hij is dus een controlemiddel en een
+     noodkopie, geen garantie op herstel.
    - Dit is de export die telt. De `exportProof` van de eigenaar is een UX-poort, geen
      bewijs: er kan tussen aanvraag en uitvoering data bijgekomen zijn. De `contentHash`
      hier is de hash van deze beheerdersdump (canonieke JSON van alle documenten, gesorteerd
@@ -84,6 +103,9 @@ Werkmap: een map buiten de repo, bijvoorbeeld `~/lineup-runbook/<orgId>/`. Varia
 3. **Vergelijk met het bewijs van de eigenaar (informatief).** Vergelijk `counts` met
    `exportProof.counts` uit de Console. Meer documenten is normaal als er data is
    bijgekomen; **minder** wijst op tussentijds verwijderen: uitzoeken vóór je doorgaat.
+   Let op: de inventaris telt elk document in `settings` en `roster` (de 8.3b-export alleen
+   `current`), dus een klein verschil daar is te verwachten en het script rapporteert het
+   niet als `unmapped`.
 4. **Logboek openen.** Noteer in het logboek (§4): `organizationId`, `requestedAt`,
    `requestedBy`, de inventaris-`counts`, de `contentHash`, de huidige tijd en dat je
    begint. Doe dit vóór stap 5: zodra het wissen begint verdwijnt
@@ -91,7 +113,15 @@ Werkmap: een map buiten de repo, bijvoorbeeld `~/lineup-runbook/<orgId>/`. Varia
 5. **Status `executing` zetten.** Lees eerst `status` opnieuw (§2 punt 3). Wijzig in de
    Console uitsluitend `status` naar `executing` en `revision` naar de vorige waarde + 1.
    Raak geen ander veld aan. Vanaf nu ziet elk lid de banner "wordt uitgevoerd".
-6. **Wissen.**
+6. **Laatste controle en wissen.** Tussen de dump (stap 2) en het wissen is er bewust geen
+   lockdown: een lid kan in dat venster nog schrijven. Draai daarom vlak vóór het wissen de
+   inventaris nog een keer (zonder `--out`) en vergelijk `contentHash` met stap 2. Wijkt hij
+   af, maak dan de dump opnieuw (terug naar stap 2) en leg dat vast. Let op de leeskosten:
+   de inventaris leest elk document (een `get()` plus `listCollections()` per document) en je
+   draait hem minstens drie keer, plus `firestore:delete`. Spark heeft een dagelijks
+   leesquotum (actuele waarde op de uitvoeringsdatum controleren, besluitrecord §7 punt 3);
+   bij een grote organisatie kan dit het quotum voor alle gebruikers opmaken. Plan daarom
+   buiten piekuren en meet eerst op staging.
    `firebase firestore:delete "organizations/$ORG_ID" --recursive --project "$PROJECT_ID"`
    - Bevestig de prompt alleen na controle van het pad. Gebruik nooit `--all-collections`
      en nooit `--force` zonder het pad nog een keer te hebben gelezen.
@@ -105,7 +135,10 @@ Werkmap: een map buiten de repo, bijvoorbeeld `~/lineup-runbook/<orgId>/`. Varia
    Verwacht: `organizationExists: false`, `totalDocuments: 0`, alle `counts` nul,
    `unmapped: {}`. Alles anders is **niet afgerond**: herhaal stap 6 en 7. Lukt dat niet,
    ga naar §8 (mislukt).
-8. **Uitvoeringsrecord schrijven** (§4) en het logboek sluiten.
+8. **Uitvoeringsrecord schrijven** (§4) en het logboek sluiten. De status `completed` uit
+   §2.5 is in Firestore onbereikbaar: `deletionRequests/current` verdwijnt mee met het
+   wissen. Logboek plus uitvoeringsrecord vervangen die status; zet nooit eerst `completed`
+   en wis daarna.
 9. **Dump opruimen.** Verwijder `dump.json` direct na stap 8 en overschrijf niets in een
    gedeelde map. De dump is na het wissen de enige kopie van de organisatiedata; de eigenaar
    heeft zijn eigen export (een download die de app alleen op het moment van aanvragen
@@ -119,7 +152,7 @@ Werkmap: een map buiten de repo, bijvoorbeeld `~/lineup-runbook/<orgId>/`. Varia
 
 `deletionRequests/current` staat onder `organizations/{orgId}` en verdwijnt dus mee met het
 wissen. Het bewijs van uitvoering staat daarom in een bestand buiten Firestore en buiten Git.
-**Uitsluitend deze zeven velden:**
+**Uitsluitend deze zes velden:**
 
 ```json
 {
@@ -186,18 +219,19 @@ Wat de proefuitvoering aantoont (en dus wat het runbook veilig mag aannemen):
 - Na het wissen is de readback nul, ook voor het organisatiedocument; een resterende wees
   maakt de uitkomst "niet leeg".
 - De andere organisatie behoudt al haar documenten.
-- Het uitvoeringsrecord bevat alleen de zeven velden en geen `@` of spelersnaam.
+- Het uitvoeringsrecord bevat alleen de zes velden en geen `@` of spelersnaam.
 
 **Wat niet is gemeten.**
 
 - De wall-clock van een echte uitvoering is **minimaal 7 dagen bedenktijd plus de handmatige
   stappen**; emulatorseconden zeggen niets over een echt project. De inventaris doet per
   document twee aanroepen en is dus het langzaamste onderdeel bij grote organisaties.
-- `firebase firestore:delete -r`, de Console-edit voor `executing` en de login via
-  `firebase login` en `gcloud auth application-default login` zijn niet in de emulator
-  uitvoerbaar. **Voer op de uitvoeringsdatum eerst stap 1 t/m 9 uit op een fictieve
-  staging-organisatie**, meet de duur en noteer die hier. De 12 maanden en 7 dagen staan ook
-  pas dan vast.
+- `firebase firestore:delete -r`, de Console-edit voor `executing` en de logins via
+  `firebase login` en `gcloud auth application-default login` zijn niet uitgevoerd (CI en
+  sandbox hebben geen login). **Voer op de uitvoeringsdatum eerst stap 1 t/m 9 uit tegen de
+  emulator na `firebase login`** (met `FIRESTORE_EMULATOR_HOST` gezet en een
+  `demo-`-project), en daarna op een fictieve staging-organisatie; meet de duur en noteer die
+  hier. De 12 maanden en 7 dagen staan ook pas dan vast.
 - Trigger 4 uit besluitrecord §2.4: duurt een gemeten uitvoering langer dan één werkdag of
   ontstaat er een fout die niet uit dit runbook te herstellen is, dan is de servervariant
   weer een verplicht agendapunt.
@@ -228,16 +262,33 @@ account remains."
   Blaze); het enige herstelmiddel is de dump van stap 2 voor de betreffende organisatie plus
   de eigen exports van de eigenaren. Daarom controleer je het pad in stap 6 voor je bevestigt.
 - **Dump kwijt of onleesbaar vóór het wissen.** Niet wissen. Maak stap 2 opnieuw.
+- **Een geannuleerd verzoek waar de eigenaar niet meer mee kan herstarten.** Als de eigenaar
+  na annuleren "klok loopt achter" ziet (de app eist een strikt latere `exportProof.exportedAt`
+  en de klok van zijn apparaat, of die van de eerste aanvraag, wijkt af), is het
+  `cancelled`-document vastgelopen. Controleer dat `status` echt `cancelled` is, noteer het
+  document in het logboek en verwijder `organizations/{orgId}/deletionRequests/current` in de
+  Console. Er gaat geen organisatiedata verloren (een geannuleerd verzoek bevat alleen het
+  exportbewijs); de eigenaar kan daarna een nieuw verzoek indienen (`attempt` begint weer op
+  1). Doe dit nooit bij `requested`, `executing` of `failed`.
+
+## 10. Niet in dit stuk
+
+- Het opruimen voor de bewaartermijnen (verlaten wedstrijden > 180 dagen, migratieruns
+  > 90 dagen): besluitrecord §3.2 noemt dat "opruiming via runbook", maar dat is een apart
+  stuk werk en staat hier niet in.
+- Account- en lidmaatschapsverwijdering (PR 8.3c-2) en gebruik, back-up en verwerkersovereenkomst
+  (8.3d).
 
 ## 9. Korte checklist
 
 - [ ] §2.1 status `requested` en ≥ 7 dagen
 - [ ] §2.2 geen recente activiteit, geen open migratie (of schriftelijke overrule, §5)
 - [ ] §2.4 alle leden, ook team-only, geïnformeerd
-- [ ] 3.1 ingelogd zonder sleutel, `GOOGLE_APPLICATION_CREDENTIALS` leeg
+- [ ] 3.1 ingelogd zonder sleutel, `GOOGLE_APPLICATION_CREDENTIALS` en `FIRESTORE_EMULATOR_HOST` leeg, uitvoer toont `target: project <id>`
 - [ ] 3.2 inventaris en dump buiten de repo, `unmapped` is `{}`
 - [ ] 3.4 logboek geopend
 - [ ] 3.5 status opnieuw gelezen, `executing` gezet
+- [ ] 3.6 inventaris opnieuw, `contentHash` gelijk aan stap 2 (anders dump opnieuw)
 - [ ] 3.6 wissen, pad gecontroleerd
 - [ ] 3.7 readback nul
 - [ ] 3.8 uitvoeringsrecord, 3.9 dump verwijderd, 3.10 leden geïnformeerd

@@ -1,6 +1,6 @@
 // PR 8.3c-1d: het minimale uitvoeringsrecord dat het runbook BUITEN Firestore bewaart
 // (`deletionRequests/current` verdwijnt mee met de organisatie; besluitrecord §2.5).
-// Uitsluitend deze zeven velden: organisatie-id, aanvraag- en uitvoeringstijdstip, aantallen
+// Uitsluitend deze zes velden: organisatie-id, aanvraag- en uitvoeringstijdstip, aantallen
 // per gegevensfamilie, de `contentHash` van de beheerdersdump en de uid van de aanvrager.
 // Geen e-mailadressen, geen spelersnamen, geen exportinhoud.
 import {

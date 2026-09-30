@@ -9,10 +9,16 @@ import path from 'node:path';
 import { applicationDefault, initializeApp } from 'firebase-admin/app';
 import { getFirestore } from 'firebase-admin/firestore';
 import { canonicalDump, hashDump, inventoryOrganization } from './lib/orgInventory.js';
-import { assertNoKeyFile, assertOutsideRepo, parseInventoryArgs } from './lib/runbookGuards.js';
+import {
+  assertEmulatorMatchesProject,
+  assertNoKeyFile,
+  assertOutsideRepo,
+  parseInventoryArgs,
+} from './lib/runbookGuards.js';
 
 const args = parseInventoryArgs(process.argv.slice(2));
 assertNoKeyFile();
+assertEmulatorMatchesProject(args.project);
 if (args.out) assertOutsideRepo(args.out);
 
 const usingEmulator = Boolean(process.env.FIRESTORE_EMULATOR_HOST);

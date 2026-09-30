@@ -92,7 +92,10 @@ export function hashDump(dump: string): string {
   return `sha256:${createHash('sha256').update(dump).digest('hex')}`;
 }
 
-/** Aantal documenten dat tegelijk wordt uitgelezen; houdt de walk snel zonder de backend te overspoelen. */
+/**
+ * Aantal kinderen per collectie dat tegelijk wordt uitgelezen. Dit geldt per niveau en
+ * vermenigvuldigt dus bij diepe geneste structuren; het begrenst niet het totaal.
+ */
 const WALK_CONCURRENCY = 25;
 
 async function walk(
