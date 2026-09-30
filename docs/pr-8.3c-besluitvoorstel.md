@@ -1036,6 +1036,20 @@ wedstrijd met `lastWriterActivityAt: null` valt terug op `updatedAt` en dan
 nog niet geclaimde wedstrijd als "verlaten" doorgaan), en de gateway-writes
 hebben een timeout.
 
+### 8.5 Afwijkingen bij 8.3c-1d, ter bevestiging door de eigenaar (30 september 2026)
+
+De uitwerking van het runbook wijkt op twee punten af van de letterlijke tekst van
+dit besluitrecord. Beide zijn in `docs/pr-8.3c-runbook.md` zichtbaar gemaakt en wachten op
+een expliciete bevestiging van de eigenaar vóór de eerste echte uitvoering:
+
+1. **De verse export vlak vóór het wissen (§2.5) is een beheerdersdump**, niet de 8.3b-
+   exportenvelop. Die envelop is een owner-only browserflow; het runbook draait een
+   alleen-lezen inventaris met een eigen canonieke dump en `contentHash`. De dump is een
+   superset van de data maar geen 8.3b-export en niet importcompatibel.
+2. **Inloggen via Application Default Credentials** (`gcloud auth application-default login`)
+   naast de Firebase CLI-sessie, omdat de Admin SDK dat nodig heeft. Er is nog steeds geen
+   sleutelbestand; het script weigert `GOOGLE_APPLICATION_CREDENTIALS`.
+
 ### De vier verfijningen, op één rij
 
 1. De wachttijd van 7 dagen staat in het runbook, niet in de Rules — anders is

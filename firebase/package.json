@@ -19,7 +19,9 @@
     "test:unit": "vitest run tests/unit",
     "test:rules": "vitest run tests/rules",
     "emulators": "firebase emulators:start --project demo-lineup-tracker-dev",
-    "verify": "npm run type-check && npm run test:unit && firebase emulators:exec --project demo-lineup-tracker-dev --only firestore,auth \"npm run seed && npm run test:rules\""
+    "verify": "npm run type-check && npm run test:unit && firebase emulators:exec --project demo-lineup-tracker-dev --only firestore,auth \"npm run seed && npm run test:rules && npm run test:runbook\"",
+    "runbook:inventory": "tsx scripts/orgInventory.ts",
+    "test:runbook": "vitest run tests/runbook"
   },
   "dependencies": {
     "firebase": "^12.17.1"
