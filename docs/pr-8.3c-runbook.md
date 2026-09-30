@@ -93,6 +93,9 @@ Werkmap: een map buiten de repo, bijvoorbeeld `~/lineup-runbook/<orgId>/`. Varia
      (modus 0600, alleen bij een nieuw bestand: bestaat het pad al, controleer de rechten)
      en mag nooit in Git, tickets of chat. `sha256sum dump.json` geeft dezelfde hex als de
      `contentHash` (zonder het voorvoegsel `sha256:`) wanneer het bestand onaangetast is.
+   - Het verzoekdocument `deletionRequests/current` zit **niet** in de dump en de hash: stap 5
+     wijzigt dat document zelf en zou elke herhaalde hashvergelijking laten afwijken. Het
+     staat wel in de telling (`deletionRequests`) en in het logboek.
    - De dump is een eigen, canonieke JSON (Firestore-tijdstempels als `{"__timestamp": ISO}`)
      en **geen** 8.3b-export en niet importcompatibel. Hij is dus een controlemiddel en een
      noodkopie, geen garantie op herstel.
@@ -115,8 +118,11 @@ Werkmap: een map buiten de repo, bijvoorbeeld `~/lineup-runbook/<orgId>/`. Varia
    Raak geen ander veld aan. Vanaf nu ziet elk lid de banner "wordt uitgevoerd".
 6. **Laatste controle en wissen.** Tussen de dump (stap 2) en het wissen is er bewust geen
    lockdown: een lid kan in dat venster nog schrijven. Draai daarom vlak vóór het wissen de
-   inventaris nog een keer (zonder `--out`) en vergelijk `contentHash` met stap 2. Wijkt hij
-   af, maak dan de dump opnieuw (terug naar stap 2) en leg dat vast. Let op de leeskosten:
+   inventaris nog een keer (zonder `--out`) en vergelijk `contentHash` met stap 2 (het
+   verzoekdocument telt niet mee, dus de statuswijziging uit stap 5 veroorzaakt geen
+   verschil). Wijkt hij af, dan is er data bijgekomen of gewijzigd: maak de dump opnieuw
+   (zelfde opdracht als stap 2, eventueel met een nieuw bestand), noteer de nieuwe hash in het
+   logboek en ga dan pas verder. Zet `executing` niet terug; de status blijft staan. Let op de leeskosten:
    de inventaris leest elk document (een `get()` plus `listCollections()` per document) en je
    draait hem minstens drie keer, plus `firestore:delete`. Spark heeft een dagelijks
    leesquotum (actuele waarde op de uitvoeringsdatum controleren, besluitrecord §7 punt 3);
@@ -267,17 +273,10 @@ account remains."
   en de klok van zijn apparaat, of die van de eerste aanvraag, wijkt af), is het
   `cancelled`-document vastgelopen. Controleer dat `status` echt `cancelled` is, noteer het
   document in het logboek en verwijder `organizations/{orgId}/deletionRequests/current` in de
-  Console. Er gaat geen organisatiedata verloren (een geannuleerd verzoek bevat alleen het
+  Console. De app leest dit document één keer per sessie: laat de eigenaar de pagina
+  herladen voordat hij opnieuw aanvraagt. Er gaat geen organisatiedata verloren (een geannuleerd verzoek bevat alleen het
   exportbewijs); de eigenaar kan daarna een nieuw verzoek indienen (`attempt` begint weer op
   1). Doe dit nooit bij `requested`, `executing` of `failed`.
-
-## 10. Niet in dit stuk
-
-- Het opruimen voor de bewaartermijnen (verlaten wedstrijden > 180 dagen, migratieruns
-  > 90 dagen): besluitrecord §3.2 noemt dat "opruiming via runbook", maar dat is een apart
-  stuk werk en staat hier niet in.
-- Account- en lidmaatschapsverwijdering (PR 8.3c-2) en gebruik, back-up en verwerkersovereenkomst
-  (8.3d).
 
 ## 9. Korte checklist
 
@@ -288,7 +287,15 @@ account remains."
 - [ ] 3.2 inventaris en dump buiten de repo, `unmapped` is `{}`
 - [ ] 3.4 logboek geopend
 - [ ] 3.5 status opnieuw gelezen, `executing` gezet
-- [ ] 3.6 inventaris opnieuw, `contentHash` gelijk aan stap 2 (anders dump opnieuw)
-- [ ] 3.6 wissen, pad gecontroleerd
+- [ ] 3.6 inventaris opnieuw, `contentHash` gelijk aan stap 2 (anders dump opnieuw en hash noteren)
+- [ ] 3.6 daarna wissen, pad gecontroleerd
 - [ ] 3.7 readback nul
 - [ ] 3.8 uitvoeringsrecord, 3.9 dump verwijderd, 3.10 leden geïnformeerd
+
+## 10. Niet in dit stuk
+
+- Het opruimen voor de bewaartermijnen (verlaten wedstrijden > 180 dagen, migratieruns
+  > 90 dagen): besluitrecord §3.2 noemt dat "opruiming via runbook", maar dat is een apart
+  stuk werk en staat hier niet in.
+- Account- en lidmaatschapsverwijdering (PR 8.3c-2) en gebruik, back-up en verwerkersovereenkomst
+  (8.3d).

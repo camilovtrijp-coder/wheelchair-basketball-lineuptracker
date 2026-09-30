@@ -19,6 +19,7 @@ import { assertEmulatorEnv } from '../../scripts/assertEmulatorEnv.js';
 import { buildExecutionRecord } from '../../scripts/lib/executionRecord.js';
 import {
   canonicalDump,
+  dumpDocuments,
   hashDump,
   inventoryOrganization,
   isOrganizationEmpty,
@@ -171,11 +172,11 @@ describe('deletion runbook drill (PR 8.3c-1d)', () => {
 
     // 2. Dump met stabiele hash (beheerdersdump, uitvoerpad buiten de repo).
     const dumpFile = path.join(workDir, 'dump.json');
-    const dump = await timed('2-dump', async () => canonicalDump(before.documents));
+    const dump = await timed('2-dump', async () => canonicalDump(dumpDocuments(before)));
     writeFileSync(dumpFile, dump, { mode: 0o600 });
     const contentHash = hashDump(dump);
     const again = await inventoryOrganization(db, ORG);
-    expect(hashDump(canonicalDump(again.documents))).toBe(contentHash);
+    expect(hashDump(canonicalDump(dumpDocuments(again)))).toBe(contentHash);
     expect(readFileSync(dumpFile, 'utf8')).toContain('Speler Een'); // de dump bevat wél PII
 
     // 3. Status `executing` door de beheerder (Admin-rechten; een client mag dit nooit).
@@ -186,6 +187,13 @@ describe('deletion runbook drill (PR 8.3c-1d)', () => {
     };
     await timed('3-executing', () => request.update({ status: 'executing', revision: 1 }));
     expect(((await request.get()).data() as { status: string }).status).toBe('executing');
+    // Stap 5 wijzigt het verzoekdocument, maar de hash van stap 6 blijft gelijk: het verzoek
+    // zit niet in de dump. Een nieuwe schrijfactie elders verandert hem wel.
+    const beforeDelete = await inventoryOrganization(db, ORG);
+    expect(hashDump(canonicalDump(dumpDocuments(beforeDelete)))).toBe(contentHash);
+    expect(
+      dumpDocuments(beforeDelete).some((doc) => doc.path.startsWith('deletionRequests/')),
+    ).toBe(false);
 
     // 4. Wissen (emulator-vervanger van `firebase firestore:delete -r`).
     await timed('4-wissen', () => db.recursiveDelete(db.collection('organizations').doc(ORG)));

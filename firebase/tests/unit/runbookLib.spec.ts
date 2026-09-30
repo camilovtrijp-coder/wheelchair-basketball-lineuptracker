@@ -111,6 +111,13 @@ describe('runbookGuards (PR 8.3c-1d)', () => {
       expect(() => assertOutsideRepo(path.join(scratch, 'link', 'dump.json'), fakeRepo)).toThrow(
         /binnen de repository/,
       );
+      // Een hangende symlink (doel bestaat nog niet) naar een pad in de repo telt als binnen.
+      const outside = path.join(scratch, 'elders');
+      mkdirSync(outside, { recursive: true });
+      symlinkSync(path.join(fakeRepo, 'dump.json'), path.join(outside, 'dump.json'));
+      expect(() => assertOutsideRepo(path.join(outside, 'dump.json'), fakeRepo)).toThrow(
+        /binnen de repository/,
+      );
       // Een map die met twee punten begint is geen `..`-segment en ligt dus binnen de repo.
       expect(() => assertOutsideRepo(path.join(fakeRepo, '..dump', 'x.json'), fakeRepo)).toThrow(
         /binnen de repository/,

@@ -8,7 +8,12 @@ import { mkdirSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { applicationDefault, initializeApp } from 'firebase-admin/app';
 import { getFirestore } from 'firebase-admin/firestore';
-import { canonicalDump, hashDump, inventoryOrganization } from './lib/orgInventory.js';
+import {
+  canonicalDump,
+  dumpDocuments,
+  hashDump,
+  inventoryOrganization,
+} from './lib/orgInventory.js';
 import {
   assertEmulatorMatchesProject,
   assertNoKeyFile,
@@ -31,7 +36,7 @@ const db = getFirestore();
 
 const startedAt = Date.now();
 const inventory = await inventoryOrganization(db, args.org);
-const dump = canonicalDump(inventory.documents);
+const dump = canonicalDump(dumpDocuments(inventory));
 const contentHash = hashDump(dump);
 
 console.log(

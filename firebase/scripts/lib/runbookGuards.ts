@@ -1,6 +1,6 @@
 // PR 8.3c-1d: bewaking voor het alleen-lezen inventarisscript. Puur en unit-testbaar; het
 // CLI-bestand (`orgInventory.ts`) roept deze aan vóór het iets initialiseert.
-import { existsSync, realpathSync } from 'node:fs';
+import { lstatSync, readlinkSync, realpathSync } from 'node:fs';
 import path from 'node:path';
 
 /** Repositoryroot (`firebase/scripts/lib` → drie niveaus omhoog). */
@@ -18,16 +18,34 @@ export function assertNoKeyFile(env: NodeJS.ProcessEnv = process.env): void {
 }
 
 /** Volgt symlinks van het dichtstbijzijnde bestaande pad en plakt de rest erachter. */
+function pathEntryExists(candidate: string): boolean {
+  try {
+    // lstat ziet ook een hangende symlink (doel bestaat nog niet) als bestaand pad; existsSync niet.
+    lstatSync(candidate);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 function resolveThroughSymlinks(target: string): string {
   let existing = path.resolve(target);
   const rest: string[] = [];
-  while (!existsSync(existing)) {
+  while (!pathEntryExists(existing)) {
     const parent = path.dirname(existing);
     if (parent === existing) break;
     rest.unshift(path.basename(existing));
     existing = parent;
   }
-  return path.join(realpathSync(existing), ...rest);
+  let resolved: string;
+  try {
+    // `.native` normaliseert ook hoofdletters op een niet-hoofdlettergevoelig bestandssysteem.
+    resolved = realpathSync.native(existing);
+  } catch {
+    // Hangende symlink: los het doel handmatig op, zodat de guard de echte bestemming ziet.
+    resolved = path.resolve(path.dirname(existing), readlinkSync(existing));
+  }
+  return path.join(resolved, ...rest);
 }
 
 /**

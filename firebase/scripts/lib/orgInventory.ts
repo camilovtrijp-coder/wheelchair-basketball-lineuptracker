@@ -166,6 +166,16 @@ export async function inventoryOrganization(
   };
 }
 
+/**
+ * De documenten die in de dump en de hash horen: alles behalve `deletionRequests/*`. Dat
+ * document is boekhouding van het runbook zelf (stap 5 wijzigt `status` en `revision`) en
+ * zou elke herhaalde hashvergelijking laten afwijken. De aanvraag staat wel in de telling
+ * (`deletionRequests`) en in het logboek.
+ */
+export function dumpDocuments(inventory: OrgInventory): OrgDocument[] {
+  return inventory.documents.filter((entry) => !entry.path.startsWith('deletionRequests/'));
+}
+
 /** Het eindoordeel van de readback: alles moet nul zijn, ook het organisatiedocument. */
 export function isOrganizationEmpty(inventory: OrgInventory): boolean {
   return inventory.totalDocuments === 0 && !inventory.organizationExists;
