@@ -520,6 +520,83 @@ const nl = {
   pwaActionNeededTitle: 'Update mislukt',
   pwaActionNeededMessage:
     'Bijwerken van de app is niet gelukt. Je kunt gewoon doorgaan met de huidige versie.',
+
+  // PR 8.3c-1c: owner-only verwijderverzoek, opruimoverzicht en melding voor alle leden (NL).
+  deletionTitle: 'Organisatie verwijderen',
+  deletionDesc:
+    'Vraag verwijdering van deze organisatie aan. Dit is geen directe verwijdering: de organisatie wordt handmatig door de beheerder verwijderd, ten vroegste na een wachttijd van 7 dagen waarin je kunt annuleren.',
+  deletionStartBtn: 'Verwijdering bekijken',
+  deletionLoading: 'Organisatie wordt gecontroleerd…',
+  deletionCloseBtn: 'Sluiten',
+  deletionErrorGeneric: 'Controleren is mislukt. Probeer het opnieuw.',
+  deletionErrorNotFound: 'Deze organisatie is niet gevonden.',
+  deletionErrorDenied: 'Alleen de eigenaar van de organisatie kan verwijdering aanvragen.',
+  deletionErrorRoundtrip:
+    'De export kon niet worden geverifieerd, dus er is geen verzoek ingediend. Probeer het opnieuw.',
+  deletionBlockersTitle: 'Verwijdering is nu niet mogelijk',
+  deletionBlockerRecentGame:
+    'Team {team}: wedstrijd {game} is de afgelopen 24 uur gebruikt. Rond de wedstrijd af en wacht tot er 24 uur geen activiteit is geweest.',
+  deletionBlockerMigrationRun:
+    'Team {team}: migratierun {run} is niet afgerond. Rond de migratie af, of vraag de beheerder om hulp.',
+  deletionStaleTitle: 'Onafgeronde wedstrijden',
+  deletionStaleDesc:
+    'Er zijn {count} onafgeronde wedstrijden zonder recente activiteit. Ze worden met de organisatie verwijderd (ze staan wel in de export).',
+  deletionStaleAck: 'Ik weet dat deze onafgeronde wedstrijden mee verwijderd worden.',
+  deletionNeedsAck: 'Bevestig eerst dat de onafgeronde wedstrijden mee verwijderd mogen worden.',
+  deletionTeamOnlyNote:
+    'Aantal leden dat alleen via een team toegang heeft: {count}. Zij zien de melding over deze verwijdering niet; informeer hen zelf.',
+  deletionCleanupTitle: 'Opruimoverzicht',
+  deletionCleanupDesc:
+    'Wat volgens de bewaartermijnen opgeruimd kan worden. Alleen aantallen; er wordt niets automatisch verwijderd.',
+  deletionCleanupTombstones: 'Verwijderde wedstrijden ouder dan 90 dagen (te wissen)',
+  deletionCleanupInvitationsPending: 'Verlopen uitnodigingen (ouder dan 30 dagen)',
+  deletionCleanupInvitationsAccepted:
+    'Vastgelopen geaccepteerde uitnodigingen (ouder dan 30 dagen)',
+  deletionCleanupInvitationsClaimed: 'Gebruikte uitnodigingen (ouder dan 30 dagen)',
+  deletionCleanupInvitationsRevoked: 'Ingetrokken uitnodigingen (ouder dan 30 dagen)',
+  deletionCleanupAbandonedGames: 'Verlaten onafgeronde wedstrijden (ouder dan 180 dagen)',
+  deletionCleanupMigrationRuns: 'Afgeronde migratieruns ouder dan 90 dagen',
+  deletionRequestBtn: 'Verwijderverzoek indienen…',
+  deletionConfirmTitle: 'Verwijdering aanvragen?',
+  deletionConfirmDesc:
+    'Er wordt een volledige export van deze organisatie gemaakt en een verwijderverzoek ingediend. De beheerder verwijdert de organisatie handmatig, ten vroegste na 7 dagen. Tot dan kun je annuleren. Verwijderen kan niet ongedaan worden gemaakt.',
+  deletionConfirmTypeLabel: 'Typ de naam van de organisatie ter bevestiging: {org}',
+  deletionConfirmBtn: 'Verwijdering aanvragen',
+  deletionConfirmInProgress: 'Bezig…',
+  deletionConfirmBackBtn: 'Terug',
+  deletionStatusRequested:
+    'Verwijderverzoek ingediend op {date}. De organisatie wordt handmatig door de beheerder verwijderd. Je krijgt hier de uitvoeringsstatus te zien.',
+  deletionStatusExecuting:
+    'De beheerder is bezig met het verwijderen van deze organisatie (verzoek van {date}).',
+  deletionStatusFailed:
+    'Het verwijderen is onderbroken en wordt door de beheerder hervat (verzoek van {date}). De organisatie is nog niet verwijderd.',
+  deletionStatusCompleted: 'Dit verwijderverzoek is afgerond.',
+  deletionStatusCancelled:
+    'Het vorige verwijderverzoek is geannuleerd. Je kunt opnieuw een verzoek indienen.',
+  deletionCancelRequestBtn: 'Verzoek annuleren…',
+  deletionCancelTitle: 'Verwijderverzoek annuleren?',
+  deletionCancelDesc: 'De organisatie blijft bestaan. Je kunt later opnieuw een verzoek indienen.',
+  deletionCancelConfirmBtn: 'Verzoek annuleren',
+  deletionSubmittedTitle: 'Verzoek ingediend',
+  deletionExportDownloadBtn: 'Export downloaden',
+  deletionExportDownloadedLabel: 'Export gedownload.',
+  deletionExportSensitive:
+    'De export bevat e-mailadressen van leden en spelersgegevens. Bewaar het bestand veilig.',
+  deletionErrorClockBehind:
+    'De klok van dit apparaat loopt achter op het vorige verzoek. Controleer de tijd van je apparaat en probeer het opnieuw.',
+  deletionErrorRejected:
+    'Het verzoek is geweigerd. Mogelijk is je rol gewijzigd of is het verzoek al bijgewerkt. Vernieuw de status en probeer het opnieuw.',
+  deletionErrorTimeout:
+    'Geen antwoord van de server. Het verzoek kan alsnog worden verwerkt; controleer de status hieronder.',
+  deletionErrorReadback:
+    'Het verzoek is verstuurd maar kon niet worden teruggelezen. Vernieuw de status.',
+  deletionErrorNotSignedIn: 'Je bent niet ingelogd. Log opnieuw in.',
+  deletionAlreadyOpen: 'Er is al een verwijderverzoek. De status is bijgewerkt.',
+  deletionBannerRequested:
+    'Let op: de verwijdering van deze organisatie is aangevraagd op {date}. De organisatie wordt door de beheerder verwijderd.',
+  deletionBannerExecuting: 'Let op: deze organisatie wordt op dit moment verwijderd.',
+  deletionBannerFailed:
+    'Let op: het verwijderen van deze organisatie is aangevraagd en nog niet afgerond.',
 } as const;
 
 const en = {
@@ -987,6 +1064,80 @@ const en = {
   pwaUpdateConfirmBtn: 'Update now',
   pwaActionNeededTitle: 'Update failed',
   pwaActionNeededMessage: 'Updating the app failed. You can keep using the current version.',
+
+  // PR 8.3c-1c: owner-only deletion request, cleanup overview and notice for all members (EN, mirrors NL key-for-key).
+  deletionTitle: 'Delete organization',
+  deletionDesc:
+    'Request deletion of this organization. This is not an immediate deletion: the administrator deletes the organization manually, after a waiting period of at least 7 days in which you can cancel.',
+  deletionStartBtn: 'Review deletion',
+  deletionLoading: 'Checking the organization…',
+  deletionCloseBtn: 'Close',
+  deletionErrorGeneric: 'Checking failed. Please try again.',
+  deletionErrorNotFound: 'This organization was not found.',
+  deletionErrorDenied: 'Only the organization owner can request deletion.',
+  deletionErrorRoundtrip:
+    'The export could not be verified, so no request was submitted. Please try again.',
+  deletionBlockersTitle: 'Deletion is not possible right now',
+  deletionBlockerRecentGame:
+    'Team {team}: match {game} was used in the last 24 hours. Finish the match and wait until there has been no activity for 24 hours.',
+  deletionBlockerMigrationRun:
+    'Team {team}: migration run {run} is not finished. Finish the migration, or ask the administrator for help.',
+  deletionStaleTitle: 'Unfinished matches',
+  deletionStaleDesc:
+    'There are {count} unfinished matches without recent activity. They are deleted together with the organization (they are included in the export).',
+  deletionStaleAck: 'I understand these unfinished matches will be deleted too.',
+  deletionNeedsAck: 'First confirm that the unfinished matches may be deleted too.',
+  deletionTeamOnlyNote:
+    'Number of members who only have access through a team: {count}. They will not see the notice about this deletion; inform them yourself.',
+  deletionCleanupTitle: 'Cleanup overview',
+  deletionCleanupDesc:
+    'What can be cleaned up according to the retention periods. Counts only; nothing is deleted automatically.',
+  deletionCleanupTombstones: 'Deleted matches older than 90 days (to be wiped)',
+  deletionCleanupInvitationsPending: 'Expired invitations (older than 30 days)',
+  deletionCleanupInvitationsAccepted: 'Stuck accepted invitations (older than 30 days)',
+  deletionCleanupInvitationsClaimed: 'Used invitations (older than 30 days)',
+  deletionCleanupInvitationsRevoked: 'Revoked invitations (older than 30 days)',
+  deletionCleanupAbandonedGames: 'Abandoned unfinished matches (older than 180 days)',
+  deletionCleanupMigrationRuns: 'Finished migration runs older than 90 days',
+  deletionRequestBtn: 'Submit deletion request…',
+  deletionConfirmTitle: 'Request deletion?',
+  deletionConfirmDesc:
+    'A full export of this organization is made and a deletion request is submitted. The administrator deletes the organization manually, after at least 7 days. Until then you can cancel. Deletion cannot be undone.',
+  deletionConfirmTypeLabel: 'Type the organization name to confirm: {org}',
+  deletionConfirmBtn: 'Request deletion',
+  deletionConfirmInProgress: 'Working…',
+  deletionConfirmBackBtn: 'Back',
+  deletionStatusRequested:
+    'Deletion request submitted on {date}. The organization will be deleted manually by the administrator. You will see the execution status here.',
+  deletionStatusExecuting: 'The administrator is deleting this organization (request from {date}).',
+  deletionStatusFailed:
+    'Deletion was interrupted and will be resumed by the administrator (request from {date}). The organization has not been deleted yet.',
+  deletionStatusCompleted: 'This deletion request has been completed.',
+  deletionStatusCancelled:
+    'The previous deletion request was cancelled. You can submit a new request.',
+  deletionCancelRequestBtn: 'Cancel request…',
+  deletionCancelTitle: 'Cancel deletion request?',
+  deletionCancelDesc: 'The organization stays. You can submit a new request later.',
+  deletionCancelConfirmBtn: 'Cancel request',
+  deletionSubmittedTitle: 'Request submitted',
+  deletionExportDownloadBtn: 'Download export',
+  deletionExportDownloadedLabel: 'Export downloaded.',
+  deletionExportSensitive:
+    'The export contains member email addresses and player data. Store the file securely.',
+  deletionErrorClockBehind:
+    'This device clock is behind the previous request. Check your device time and try again.',
+  deletionErrorRejected:
+    'The request was rejected. Your role may have changed or the request was already updated. Refresh the status and try again.',
+  deletionErrorTimeout:
+    'No response from the server. The request may still be processed; check the status below.',
+  deletionErrorReadback: 'The request was sent but could not be read back. Refresh the status.',
+  deletionErrorNotSignedIn: 'You are not signed in. Sign in again.',
+  deletionAlreadyOpen: 'A deletion request already exists. The status has been updated.',
+  deletionBannerRequested:
+    'Note: deletion of this organization was requested on {date}. The organization will be deleted by the administrator.',
+  deletionBannerExecuting: 'Note: this organization is being deleted right now.',
+  deletionBannerFailed:
+    'Note: deletion of this organization has been requested and is not finished yet.',
 } as const;
 
 export const STRINGS = { nl, en } as const;

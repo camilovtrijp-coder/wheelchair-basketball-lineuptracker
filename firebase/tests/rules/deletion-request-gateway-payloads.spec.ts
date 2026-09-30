@@ -8,7 +8,7 @@
 // De payloadfuncties komen uit v2 (`deletionRequestPayloads.ts`, bewust vrij van
 // padopbouw en Auth). De gateway zelf draait hier niet: `getAuth().currentUser`
 // bestaat niet in `@firebase/rules-unit-testing`-contexten; de gateway wordt met
-// echte Auth-sessie in de e2e-auth-suite gedekt (8.3c-1 deel 3).
+// echte Auth-sessie in de e2e-auth-suite gedekt (8.3c-1c-ii).
 
 import { beforeAll, afterAll, beforeEach, describe, expect, it } from 'vitest';
 import { doc, getDoc, setDoc, updateDoc } from 'firebase/firestore';

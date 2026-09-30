@@ -227,6 +227,50 @@ describe('FirestoreDeletionRequestGateway: writes', () => {
     expect(updateDoc).not.toHaveBeenCalled();
   });
 
+  it('cancel weigert zonder ingelogde gebruiker en schrijft niets', async () => {
+    (getAuth as Mock).mockReturnValue({ currentUser: null });
+    const result = await new FirestoreDeletionRequestGateway(fakeDb).cancel('org-1', EXPECTED);
+    expect(result).toEqual({ ok: false, error: { code: 'not-signed-in' } });
+    expect(updateDoc).not.toHaveBeenCalled();
+  });
+
+  describe('timeouts (een offline write resolveert niet)', () => {
+    it('een write zonder serverantwoord eindigt als timeout, niet als hangende UI', async () => {
+      vi.useFakeTimers();
+      try {
+        (updateDoc as Mock).mockReturnValue(new Promise(() => undefined));
+        const pending = new FirestoreDeletionRequestGateway(fakeDb, 50).cancel('org-1', EXPECTED);
+        await vi.advanceTimersByTimeAsync(60);
+        expect(await pending).toEqual({ ok: false, error: { code: 'timeout' } });
+        // geen readback na een timeout: er is niets bevestigd
+        expect(getDoc).not.toHaveBeenCalled();
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it('een read zonder antwoord eindigt als read-failed', async () => {
+      vi.useFakeTimers();
+      try {
+        (getDoc as Mock).mockReturnValue(new Promise(() => undefined));
+        const pending = new FirestoreDeletionRequestGateway(fakeDb, 50).read('org-1');
+        await vi.advanceTimersByTimeAsync(60);
+        expect((await pending).ok).toBe(false);
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it('een snel antwoord binnen de timeout wordt gewoon doorgegeven', async () => {
+      (getDoc as Mock).mockResolvedValue(snap(convertedDocument({ status: 'cancelled' })));
+      const result = await new FirestoreDeletionRequestGateway(fakeDb, 50).cancel(
+        'org-1',
+        EXPECTED,
+      );
+      expect(result.ok).toBe(true);
+    });
+  });
+
   it('heeft geen enkele delete-methode (een client mag dit document nooit verwijderen)', () => {
     const gateway = new FirestoreDeletionRequestGateway(fakeDb) as unknown as Record<
       string,

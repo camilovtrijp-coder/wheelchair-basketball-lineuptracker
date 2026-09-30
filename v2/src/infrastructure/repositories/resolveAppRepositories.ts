@@ -17,6 +17,8 @@ import type { GameCloudWriterContext } from '../../application/game/projectGameF
 import type { CloudMigrationInventoryGateway } from '../../application/migration/CloudMigrationInventoryGateway';
 import type { MigrationCoordinator } from '../../application/migration/MigrationCoordinator';
 import type { OrganizationExportCoordinator } from '../../application/export/OrganizationExportCoordinator';
+import type { DeletionRequestCoordinator } from '../../application/deletion/DeletionRequestCoordinator';
+import type { DeletionRequestGateway } from '../../application/deletion/DeletionRequestGateway';
 import type { KeyValueStorage } from '../../i18n/persistence';
 import type { RepositorySelection } from './selectRepositories';
 import { LocalAsyncRosterRepository } from '../roster/LocalAsyncRosterRepository';
@@ -45,6 +47,9 @@ export interface ResolvedAppRepositories {
   /** PR 8.3b deel 2/2: `null` in lokale modus — er is geen cloudorganisatie
    * om te exporteren, `app/App.tsx` rendert `ExportPanel` dan sowieso niet. */
   exportCoordinator: OrganizationExportCoordinator | null;
+  /** PR 8.3c-1c: `null` in lokale modus — er is geen cloudorganisatie om te verwijderen. */
+  deletionCoordinator: DeletionRequestCoordinator | null;
+  deletionRequestGateway: DeletionRequestGateway | null;
 }
 
 export function resolveAppRepositories(
@@ -62,6 +67,8 @@ export function resolveAppRepositories(
       migrationInventoryGateway: selection.migrationInventoryGateway,
       migrationCoordinator: selection.migrationCoordinator,
       exportCoordinator: selection.exportCoordinator,
+      deletionCoordinator: selection.deletionCoordinator,
+      deletionRequestGateway: selection.deletionRequestGateway,
     };
   }
   return {
@@ -74,5 +81,7 @@ export function resolveAppRepositories(
     migrationInventoryGateway: null,
     migrationCoordinator: null,
     exportCoordinator: null,
+    deletionCoordinator: null,
+    deletionRequestGateway: null,
   };
 }

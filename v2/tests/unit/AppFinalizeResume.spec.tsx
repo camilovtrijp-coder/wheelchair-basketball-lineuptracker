@@ -233,6 +233,8 @@ describe('app/App — hervat een openstaande afronding na reload (PR 7.2a, P1-fi
       migrationInventoryGateway: null,
       migrationCoordinator: null,
       exportCoordinator: null,
+      deletionCoordinator: null,
+      deletionRequestGateway: null,
     };
 
     render(
@@ -279,6 +281,8 @@ describe('app/App — hervat een openstaande afronding na reload (PR 7.2a, P1-fi
       migrationInventoryGateway: null,
       migrationCoordinator: null,
       exportCoordinator: null,
+      deletionCoordinator: null,
+      deletionRequestGateway: null,
     };
 
     const { queryByTestId } = render(
@@ -410,6 +414,8 @@ describe('app/App — een mislukte outbox-write is een echte precondition (PR 7.
         migrationInventoryGateway: null,
         migrationCoordinator: null,
         exportCoordinator: null,
+        deletionCoordinator: null,
+        deletionRequestGateway: null,
       };
 
       const { getByTestId } = render(
@@ -486,6 +492,8 @@ describe('app/App — verwijderen van een nog niet cloud-bevestigde afronding bl
       migrationInventoryGateway: null,
       migrationCoordinator: null,
       exportCoordinator: null,
+      deletionCoordinator: null,
+      deletionRequestGateway: null,
     };
 
     const { getByTestId, unmount } = render(
@@ -549,6 +557,8 @@ describe('app/App — verwijderen van een nog niet cloud-bevestigde afronding bl
       migrationInventoryGateway: null,
       migrationCoordinator: null,
       exportCoordinator: null,
+      deletionCoordinator: null,
+      deletionRequestGateway: null,
     };
 
     render(
@@ -677,6 +687,8 @@ describe('app/App — runFinalize() start nooit twee gelijktijdige gatewaycycli 
       migrationInventoryGateway: null,
       migrationCoordinator: null,
       exportCoordinator: null,
+      deletionCoordinator: null,
+      deletionRequestGateway: null,
     };
 
     const { getByTestId } = render(

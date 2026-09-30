@@ -72,12 +72,31 @@ function isUnfinished(game: OrganizationExportRow): boolean {
 }
 
 /**
- * Eén regel, fail-closed: geen tijdstempel, een onleesbaar tijdstempel of een
- * tijdstempel in de TOEKOMST (klokafwijking) telt als "recent". Liever een
- * onterechte blokkade dan een stil verlies van niet-gesynchroniseerde data.
+ * Het moment van de laatste bekende activiteit van een wedstrijd. Het
+ * besluitrecord (§2.5) hangt de blokkade aan `lastWriterActivityAt`; die is echter
+ * `null` zolang er geen writer is geclaimd. `GameSyncCoordinator` maakt het
+ * game-document eerst aan (`ensureGame`) en claimt de writer pas daarna, dus een
+ * apparaat dat tussen die twee stappen offline valt heeft een wedstrijd met
+ * `lastWriterActivityAt: null` en een `createdAt` van enkele minuten geleden —
+ * terwijl er lokaal gespeeld wordt. Een kale `null` als "geen activiteit" lezen zou
+ * die wedstrijd als "verlaten" presenteren. Daarom valt de beoordeling bij `null`
+ * terug op `updatedAt` en dan `createdAt` (ook wedstrijden van vóór PR 7.3a hebben
+ * er minstens één), exact zoals `buildCleanupOverview()` dat al voor "verlaten"
+ * doet. Alleen als ALLES ontbreekt is er geen bekende activiteit.
+ */
+function lastActivity(game: OrganizationExportRow): unknown {
+  return game.lastWriterActivityAt ?? game.updatedAt ?? game.createdAt;
+}
+
+/**
+ * Eén regel, fail-closed: geen leesbaar tijdstempel of een tijdstempel in de
+ * TOEKOMST (klokafwijking) telt als "recent". Liever een onterechte blokkade dan een
+ * stil verlies van niet-gesynchroniseerde data. Een wedstrijd waarvan werkelijk
+ * niets bekend is (geen enkel tijdstempelveld) valt buiten "recent" en wordt een
+ * te bevestigen waarschuwing.
  */
 function hasRecentActivity(game: OrganizationExportRow, now: number): boolean {
-  const activity = game.lastWriterActivityAt;
+  const activity = lastActivity(game);
   if (activity === null || activity === undefined) return false;
   const age = ageMs(now, activity);
   if (age === null) return true;
@@ -189,7 +208,7 @@ export function buildCleanupOverview(
 
     for (const game of team.games) {
       if (!isUnfinished(game)) continue;
-      const age = ageMs(nowMs, game.lastWriterActivityAt ?? game.createdAt);
+      const age = ageMs(nowMs, lastActivity(game));
       if (age !== null && age > ABANDONED_GAME_DAYS * DAY_MS) overview.abandonedGames += 1;
     }
 

@@ -31,8 +31,9 @@ export type DeletionRequestStatus = (typeof DELETION_REQUEST_STATUSES)[number];
 /**
  * Exact de tien sleutels die `firestore.rules` (`exportCountKeys()`) voor
  * `exportProof.counts` eist — spiegelt `OrganizationExportSectionCounts` uit
- * v2 (`domain/export/types.ts`). Dat v2-type is structureel identiek; een test
- * in v2 bewijst dat de twee niet uit elkaar kunnen lopen.
+ * v2 (`domain/export/types.ts`). Dat v2-type is structureel identiek;
+ * `firebase/tests/rules/deletion-request-gateway-payloads.spec.ts` bewijst tegen een
+ * ECHTE export dat de twee niet uit elkaar kunnen lopen.
  */
 export const DELETION_REQUEST_COUNT_KEYS = [
   'organizationMembers',
