@@ -208,6 +208,47 @@ describe('app/App — melding aan alle leden', () => {
   });
 });
 
+describe('app/App — race tussen de eerste lezing en het paneel', () => {
+  it('een trage eerste lezing overschrijft een nieuwere serverstaat van het paneel niet', async () => {
+    // De eerste lezing (`read`) blijft hangen tot NA de beoordeling van het paneel.
+    let resolveRead!: (r: DeletionRequestReadResult) => void;
+    const gw = gateway({ ok: true, request: null });
+    gw.read.mockReturnValue(
+      new Promise<DeletionRequestReadResult>((resolve) => {
+        resolveRead = resolve;
+      }),
+    );
+    const panelCoordinator = {
+      assess: vi.fn().mockResolvedValue({
+        status: 'ok',
+        assessment: { blockers: [], staleUnfinishedGames: [], teamOnlyMemberCount: 0 },
+        cleanup: {
+          redactableTombstones: 0,
+          removableInvitations: { pending: 0, accepted: 0, claimed: 0, revoked: 0 },
+          abandonedGames: 0,
+          expiredMigrationRuns: 0,
+        },
+        existingRequest: requested(),
+      }),
+      request: vi.fn(),
+      cancel: vi.fn(),
+    } as unknown as DeletionRequestCoordinator;
+
+    const utils = mount(
+      repositories({ deletionRequestGateway: gw, deletionCoordinator: panelCoordinator }),
+      'organizationOwner',
+    );
+    await ready(utils);
+    fireEvent.click(await utils.findByTestId('deletion-start-btn'));
+    await waitFor(() => expect(utils.queryByTestId('deletion-banner')).toBeTruthy());
+
+    // Nu komt de oude, trage lezing binnen met "geen verzoek": de banner mag niet verdwijnen.
+    resolveRead({ ok: true, request: null });
+    await new Promise((r) => setTimeout(r, 20));
+    expect(utils.queryByTestId('deletion-banner')).toBeTruthy();
+  });
+});
+
 describe('app/App — verwijderpaneel', () => {
   it('rendert het paneel voor de owner in cloudmodus', async () => {
     const utils = mount(repositories(), 'organizationOwner');

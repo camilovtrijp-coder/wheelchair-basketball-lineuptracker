@@ -669,7 +669,15 @@ export function App({
   // §8.3). Het owner-paneel houdt deze staat bij via `onRequestChange`.
   const [deletionRequest, setDeletionRequest] = useState<DeletionRequest | null>(null);
   const deletionRequestGateway = repositories.deletionRequestGateway;
+  // Zodra het owner-paneel een verse serverstaat heeft gemeld (na een aanvraag, annulering
+  // of her-inlezing) mag de trage eerste lezing die niet meer overschrijven.
+  const deletionReportedByPanel = useRef(false);
+  const handleDeletionRequestChange = useCallback((request: DeletionRequest | null) => {
+    deletionReportedByPanel.current = true;
+    setDeletionRequest(request);
+  }, []);
   useEffect(() => {
+    deletionReportedByPanel.current = false;
     if (repositories.mode !== 'cloud' || !deletionRequestGateway || !organizationId) {
       setDeletionRequest(null);
       return undefined;
@@ -678,7 +686,9 @@ export function App({
     deletionRequestGateway
       .read(organizationId)
       .then((result) => {
-        if (!cancelled) setDeletionRequest(result.ok ? result.request : null);
+        if (!cancelled && !deletionReportedByPanel.current) {
+          setDeletionRequest(result.ok ? result.request : null);
+        }
       })
       // De gateway meldt fouten als resultaat, maar een gooiende implementatie mag
       // deze informatieve melding nooit tot een onbehandelde rejection maken.
@@ -1562,7 +1572,7 @@ export function App({
                 organizationName={organizationName || organizationId}
                 callerRole={organizationRole}
                 coordinator={repositories.deletionCoordinator}
-                onRequestChange={setDeletionRequest}
+                onRequestChange={handleDeletionRequestChange}
               />
             ) : null}
           </>

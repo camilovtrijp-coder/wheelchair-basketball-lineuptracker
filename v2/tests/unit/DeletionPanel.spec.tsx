@@ -226,6 +226,13 @@ describe('DeletionPanel: beoordeling', () => {
     expect(button.disabled).toBe(true);
   });
 
+  it('de tekst over onafgeronde wedstrijden leest correct bij precies 1 (geen "zijn 1 wedstrijden")', async () => {
+    await openAssessed(fake(assessedOutcome({ stale: 1 })));
+    const tekst = screen.getByTestId('deletion-stale').textContent ?? '';
+    expect(tekst).toContain(': 1.');
+    expect(tekst).not.toMatch(/zijn 1 /);
+  });
+
   it('toont het aantal team-only leden met de opdracht hen zelf te informeren', async () => {
     await openAssessed(fake(assessedOutcome({ teamOnly: 3 })));
     expect(screen.getByTestId('deletion-team-only').textContent).toContain('3');
@@ -312,6 +319,8 @@ describe('DeletionPanel: aanvragen', () => {
     expect(screen.queryByTestId('deletion-request-dialog')).toBeNull();
     expect(screen.getByTestId('deletion-status').textContent).toContain('handmatig');
     expect(screen.getByTestId('deletion-sensitive-warning')).toBeTruthy();
+    // zolang de export niet is gedownload zegt het scherm dat hij alleen hier beschikbaar is
+    expect(screen.getByTestId('deletion-export-only-now').textContent).toContain('nu');
     expect(changes.at(-1)?.status).toBe('requested');
   });
 
@@ -345,6 +354,8 @@ describe('DeletionPanel: aanvragen', () => {
     expect(downloadOrganizationExportFile).toHaveBeenCalledTimes(1);
     expect(vi.mocked(downloadOrganizationExportFile).mock.calls[0]?.[1]).toMatch(/\.json$/);
     expect(screen.getByTestId('deletion-downloaded')).toBeTruthy();
+    // na het downloaden is de waarschuwing dat de export alleen hier beschikbaar is weg
+    expect(screen.queryByTestId('deletion-export-only-now')).toBeNull();
   });
 
   describe('uitkomsten van een mislukte aanvraag', () => {
@@ -367,14 +378,23 @@ describe('DeletionPanel: aanvragen', () => {
       expect(screen.queryByTestId('deletion-request-dialog')).toBeNull();
     });
 
-    it('needs-acknowledgement: sluit de dialoog en toont een melding', async () => {
+    it('needs-acknowledgement: sluit de dialoog, leest opnieuw in en toont het vinkje dat eerst ontbrak', async () => {
+      // De UI kende nog geen verlaten wedstrijden; de verse beoordeling van de coordinator wel.
       const coordinator = fake(assessedOutcome(), {
         status: 'needs-acknowledgement',
         staleGameCount: 1,
       });
+      // eerste beoordeling: geen verlaten wedstrijden; daarna (her-inlezing): wel één
+      coordinator.assess
+        .mockResolvedValueOnce(assessedOutcome())
+        .mockResolvedValue(assessedOutcome({ stale: 1 }));
       await submit(coordinator);
+      await waitFor(() => expect(coordinator.assess).toHaveBeenCalledTimes(2));
       expect((await screen.findByTestId('deletion-notice')).textContent).toContain('Bevestig');
       expect(screen.queryByTestId('deletion-request-dialog')).toBeNull();
+      // nu staat het vinkje er, en de aanvraagknop is pas bruikbaar na bevestiging
+      await screen.findByTestId('deletion-stale-ack');
+      expect((screen.getByTestId('deletion-request-btn') as HTMLButtonElement).disabled).toBe(true);
     });
 
     it('already-open: leest opnieuw in en meldt dat er al een verzoek is', async () => {
@@ -434,6 +454,52 @@ describe('DeletionPanel: aanvragen', () => {
       coordinator.request.mockRejectedValue(new Error('boom'));
       await submit(coordinator);
       await screen.findByTestId('deletion-request-dialog-error');
+    });
+  });
+
+  describe('focus na een dialoog dat de pagina verandert', () => {
+    it('na een geslaagde aanvraag staat de focus op het paneel, niet op body', async () => {
+      await openAssessed(fake());
+      const trigger = screen.getByTestId('deletion-request-btn');
+      trigger.focus();
+      fireEvent.click(trigger);
+      fireEvent.input(await screen.findByTestId('deletion-request-dialog-input'), {
+        target: { value: ORG_NAME },
+      });
+      fireEvent.click(screen.getByTestId('deletion-request-dialog-confirm'));
+      await screen.findByTestId('deletion-submitted');
+      await waitFor(() =>
+        expect(document.activeElement).toBe(screen.getByTestId('deletion-panel')),
+      );
+      expect(document.activeElement).not.toBe(document.body);
+    });
+
+    it('na een geannuleerd verzoek staat de focus op het paneel', async () => {
+      const coordinator = fake(assessedOutcome({ existing: request() }));
+      await openAssessed(coordinator);
+      const trigger = screen.getByTestId('deletion-cancel-request-btn');
+      trigger.focus();
+      fireEvent.click(trigger);
+      fireEvent.click(await screen.findByTestId('deletion-cancel-dialog-confirm'));
+      await screen.findByTestId('deletion-notice');
+      await waitFor(() =>
+        expect(document.activeElement).toBe(screen.getByTestId('deletion-panel')),
+      );
+    });
+
+    it('bij Escape zonder paginawijziging keert de focus gewoon terug naar de knop (geen paneelfocus)', async () => {
+      await openAssessed(fake());
+      const trigger = screen.getByTestId('deletion-request-btn');
+      trigger.focus();
+      fireEvent.click(trigger);
+      fireEvent.keyDown(await screen.findByTestId('deletion-request-dialog'), { key: 'Escape' });
+      await waitFor(() => expect(screen.queryByTestId('deletion-request-dialog')).toBeNull());
+      expect(document.activeElement).toBe(trigger);
+    });
+
+    it('het paneel is programmatisch focusbaar (tabIndex -1) maar geen extra tabstop', () => {
+      mount(fake());
+      expect(screen.getByTestId('deletion-panel').getAttribute('tabindex')).toBe('-1');
     });
   });
 
