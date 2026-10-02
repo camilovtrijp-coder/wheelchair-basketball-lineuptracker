@@ -14,8 +14,11 @@ import {
   getDoc,
   getDocs,
   query,
+  serverTimestamp,
   setDoc,
+  Timestamp,
   where,
+  writeBatch,
 } from 'firebase/firestore';
 import type { RulesTestEnvironment } from '@firebase/rules-unit-testing';
 import {
@@ -50,6 +53,20 @@ const teamMemberRef = (
   team: string,
   key: keyof typeof USERS,
 ) => doc(db, 'organizations', org, 'teams', team, 'teamMembers', user(key).uid);
+
+async function teamMemberExists(key: keyof typeof USERS): Promise<boolean> {
+  return withAdmin(env, async (admin) => {
+    const snap = await admin
+      .collection('organizations')
+      .doc(ORG_A)
+      .collection('teams')
+      .doc(TEAM_A1)
+      .collection('teamMembers')
+      .doc(user(key).uid)
+      .get();
+    return snap.exists;
+  });
+}
 
 beforeEach(async () => {
   await env.clearFirestore();
@@ -180,7 +197,6 @@ describe('organizationMembers: het eigen membership verwijderen (organisatie ver
 
   it('cross-org: een lid van een andere organisatie kan hier niets verwijderen', async () => {
     await assertFails(deleteDoc(orgMemberRef(ctx('henry'), ORG_A, 'carol')));
-    await assertFails(deleteDoc(orgMemberRef(ctx('henry'), ORG_A, 'henry')));
     // en andersom: carol raakt ORG_B niet aan
     await assertFails(deleteDoc(orgMemberRef(ctx('carol'), ORG_B, 'henry')));
   });
@@ -203,17 +219,20 @@ describe('teamMembers: het eigen document verwijderen', () => {
   for (const key of ['carol', 'dave', 'erin'] as const) {
     it(`${key} (org-lid, niet-owner) kan zijn EIGEN teamMembers-document verwijderen`, async () => {
       await assertSucceeds(deleteDoc(teamMemberRef(ctx(key), ORG_A, TEAM_A1, key)));
+      expect(await teamMemberExists(key)).toBe(false);
     });
   }
 
   it('een TEAM-ONLY lid (geen organizationMembers-document) kan zijn eigen teamMembers-document verwijderen', async () => {
     await assertSucceeds(deleteDoc(teamMemberRef(ctx('frank'), ORG_A, TEAM_A1, 'frank')));
+    expect(await teamMemberExists('frank')).toBe(false);
   });
 
   it('een owner kan zijn eigen teamMembers-document verwijderen, maar houdt zijn toegang via het org-membership', async () => {
     // Geen nieuwe tak nodig: owner/admin konden dit al. Het document verleent een owner niets.
     const db = ctx('alice');
     await assertSucceeds(deleteDoc(teamMemberRef(db, ORG_A, TEAM_A1, 'alice')));
+    expect(await teamMemberExists('alice')).toBe(false);
     await assertSucceeds(getDoc(doc(db, 'organizations', ORG_A, 'teams', TEAM_A1)));
     await assertSucceeds(getDoc(orgMemberRef(db, ORG_A, 'alice')));
   });
@@ -301,5 +320,76 @@ describe('volgorde en eindcontrole (§4.3)', () => {
     await assertSucceeds(deleteDoc(orgMemberRef(ctx('carol'), ORG_A, 'carol')));
     await assertSucceeds(getDoc(orgMemberRef(ctx('dave'), ORG_A, 'dave')));
     await assertSucceeds(getDoc(teamMemberRef(ctx('dave'), ORG_A, TEAM_A1, 'dave')));
+  });
+});
+
+// BEKENDE RESTGATEN, vastgelegd in besluitrecord §8.6 (review van PR #98). Deze tests bewijzen
+// bewust wat NU kan, zodat een latere Rules-wijziging ze niet ongemerkt verandert; ze zijn geen
+// goedkeuring. Beide wachten op een besluit van de eigenaar.
+describe('bekende restgaten (besluitrecord §8.6) — gedocumenteerd, niet goedgekeurd', () => {
+  it('RESTGAT 1: een lid dat vertrekt kan een nog openstaande, eerder uitgegeven uitnodiging met een hogere rol claimen', async () => {
+    // erin is viewer; er staat nog een accepted uitnodiging op haar adres met rol admin.
+    await withAdmin(env, async (admin) => {
+      await admin
+        .collection('organizations')
+        .doc(ORG_A)
+        .collection('invitations')
+        .doc('inv-open')
+        .set({
+          email: user('erin').email,
+          role: 'organizationAdmin',
+          status: 'accepted',
+          invitedAt: Timestamp.now(),
+          acceptedAt: Timestamp.now(),
+        });
+    });
+    const db = ctx('erin');
+    // Vóór het vertrekken kan dit niet: de claim vereist dat het eigen membership NIET bestaat.
+    const blocked = writeBatch(db);
+    blocked.update(doc(db, 'organizations', ORG_A, 'invitations', 'inv-open'), {
+      status: 'claimed',
+      claimedAt: serverTimestamp(),
+    });
+    blocked.set(orgMemberRef(db, ORG_A, 'erin'), {
+      role: 'organizationAdmin',
+      email: user('erin').email,
+      uid: user('erin').uid,
+      invitationId: 'inv-open',
+    });
+    await assertFails(blocked.commit());
+    // Na het vertrekken wel (nieuw door 8.3c-2a): de beheerder die dit niet wil, trekt de
+    // uitnodiging in vóór of bij het demoveren/verwijderen (client-discipline in 2b/2c).
+    await assertSucceeds(deleteDoc(orgMemberRef(db, ORG_A, 'erin')));
+    const claim = writeBatch(db);
+    claim.update(doc(db, 'organizations', ORG_A, 'invitations', 'inv-open'), {
+      status: 'claimed',
+      claimedAt: serverTimestamp(),
+    });
+    claim.set(orgMemberRef(db, ORG_A, 'erin'), {
+      role: 'organizationAdmin',
+      email: user('erin').email,
+      uid: user('erin').uid,
+      invitationId: 'inv-open',
+    });
+    await assertSucceeds(claim.commit());
+  });
+
+  it('RESTGAT 2 (bestond al): een gedemoveerde maker die door een owner is verwijderd kan zich via de bootstrap-create weer owner maken', async () => {
+    await withAdmin(env, async (admin) => {
+      await admin
+        .collection('organizations')
+        .doc(ORG_A)
+        .collection('organizationMembers')
+        .doc(USERS.alice.uid)
+        .update({ role: 'coach' });
+    });
+    await assertSucceeds(deleteDoc(orgMemberRef(ctx('kevin'), ORG_A, 'alice')));
+    await assertSucceeds(
+      setDoc(orgMemberRef(ctx('alice'), ORG_A, 'alice'), {
+        role: 'organizationOwner',
+        email: user('alice').email,
+        uid: user('alice').uid,
+      }),
+    );
   });
 });

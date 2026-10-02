@@ -623,8 +623,11 @@ service cloud.firestore {
         // (`createdBy`) mag dit niet. De bootstrap-create hierboven laat de maker zijn eigen
         // owner-membership aanmaken zolang dat document niet bestaat. Een maker die door een
         // andere owner is gedemoveerd, zou zich na een self-delete via die bootstrap weer tot
-        // owner kunnen maken. Een gedemoveerde maker die wil vertrekken laat zich door een
-        // owner verwijderen (de owner-/admin-deletetakken hierboven).
+        // owner kunnen maken. Dit sluit alleen de EENZIJDIGE route: laat een owner die
+        // gedemoveerde maker verwijderen (owner-deletetak in dit blok), dan staat de bootstrap
+        // hem weer open. Dat gat bestond al vóór 8.3c-2a en wacht op een besluit
+        // (besluitrecord §8.6). Zie ook §8.6 punt 3: een vertrekkend lid kan een nog openstaande
+        // uitnodiging met een hogere rol claimen.
         allow delete: if signedIn() && request.auth.uid == uid &&
           resource.data.role != 'organizationOwner' &&
           get(/databases/$(database)/documents/organizations/$(orgId)).data.createdBy != request.auth.uid;
