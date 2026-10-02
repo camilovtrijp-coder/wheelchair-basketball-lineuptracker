@@ -614,6 +614,24 @@ service cloud.firestore {
         allow delete: if isOrgOwnerOrAdmin(orgId) &&
           orgRole(orgId) == 'organizationOwner' && request.auth.uid != uid;
 
+        // PR 8.3c-2a — organisatie VERLATEN (docs/pr-8.3c-besluitvoorstel.md §4.3): iedereen
+        // verwijdert het EIGEN membership, behalve een owner. Een owner kan zichzelf dus nog
+        // steeds niet verwijderen, waardoor een organisatie nooit ongemerkt zonder owner raakt;
+        // die weg loopt via overdracht (§4.2) of een verwijderverzoek (§2).
+        //
+        // Extra grens (niet in §4.3, ontdekt bij de uitwerking): de MAKER van de organisatie
+        // (`createdBy`) mag dit niet. De bootstrap-create hierboven laat de maker zijn eigen
+        // owner-membership aanmaken zolang dat document niet bestaat. Een maker die door een
+        // andere owner is gedemoveerd, zou zich na een self-delete via die bootstrap weer tot
+        // owner kunnen maken. Dit sluit alleen de EENZIJDIGE route: laat een owner die
+        // gedemoveerde maker verwijderen (owner-deletetak in dit blok), dan staat de bootstrap
+        // hem weer open. Dat gat bestond al vóór 8.3c-2a en wacht op een besluit
+        // (besluitrecord §8.6). Zie ook §8.6 punt 3: een vertrekkend lid kan een nog openstaande
+        // uitnodiging met een hogere rol claimen.
+        allow delete: if signedIn() && request.auth.uid == uid &&
+          resource.data.role != 'organizationOwner' &&
+          get(/databases/$(database)/documents/organizations/$(orgId)).data.createdBy != request.auth.uid;
+
         // Owner wijzigt andermans membership onbeperkt — nooit het eigen document.
         // `uid`-veld moet bij UPDATE ongewijzigd blijven (== document-ID == huidige
         // waarde): zonder deze eis kan owner/admin per ongeluk of moedwillig het
@@ -848,6 +866,16 @@ service cloud.firestore {
             request.resource.data.uid == uid && request.resource.data.uid == resource.data.uid;
 
           allow delete: if isOrgOwnerOrAdmin(orgId);
+
+          // PR 8.3c-2a — organisatie verlaten (§4.3): iedereen verwijdert het EIGEN teamMembers-
+          // document. Zonder deze tak blijven er na het verlaten weesdocumenten met de eigen uid
+          // achter. Ook een team-only lid (geen organizationMembers-document) mag dit. Geen
+          // owner-uitzondering nodig: een teamMembers-document verleent een owner niets (die heeft
+          // impliciete toegang via zijn organizationMembers-document) en owner/admin konden dit
+          // document al verwijderen via de tak hierboven. De volgorde (eerst teamMembers, dan als
+          // laatste het organizationMembers-document) is bewijsdiscipline van de client, geen
+          // bevoegdheid: deze regel hangt aan de uid en niet aan lidmaatschap.
+          allow delete: if signedIn() && request.auth.uid == uid;
         }
 
         // Één settings-document per team: settings/current.

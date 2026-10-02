@@ -134,14 +134,26 @@ export const FIRESTORE_ACCESS_MATRIX: readonly FirestoreAccessMatrixEntry[] = [
         "organizationAdmin",
       ],
       update: ["organizationOwner", "organizationAdmin"],
-      delete: ["organizationOwner", "organizationAdmin"],
+      delete: [
+        "organizationOwner",
+        "organizationAdmin",
+        "coach",
+        "scorer",
+        "viewer",
+      ],
     },
     conditions:
-      "Bootstrap/invitation claim are shape- and getAfter-bound; admins cannot grant/remove owner; self-promotion is denied.",
+      "Bootstrap/invitation claim are shape- and getAfter-bound; admins cannot grant/remove owner; self-promotion is denied. " +
+      "Delete: owner/admin remove OTHER members (admins never an owner); every non-owner member may remove ONLY their own document " +
+      "(leave organization, 8.3c-2a) — an owner never can, and neither can the organization's creator (`createdBy`), because a demoted " +
+      "creator could otherwise delete their own membership and re-create it as owner through the bootstrap rule. " +
+      "Known residual gaps (docs/pr-8.3c-besluitvoorstel.md §8.6, pinned by tests): an owner-removed demoted creator can still re-bootstrap as owner (pre-existing), " +
+      "and a member who left can claim a still-open invitation with a higher role.",
     evidence: [
       "tests/rules/bootstrap-and-invitation-flow.spec.ts",
       "tests/rules/membership-and-roles.spec.ts",
       "tests/rules/self-promotion.spec.ts",
+      "tests/rules/leave-organization.spec.ts",
     ],
     clientSources: [
       FIRESTORE_CLIENT_GATEWAY_FILES[0],
@@ -209,9 +221,18 @@ export const FIRESTORE_ACCESS_MATRIX: readonly FirestoreAccessMatrixEntry[] = [
       read: teamReaders,
       create: ["organizationOwner", "organizationAdmin"],
       update: ["organizationOwner", "organizationAdmin"],
-      delete: ["organizationOwner", "organizationAdmin"],
+      delete: [
+        "organizationOwner",
+        "organizationAdmin",
+        "coach",
+        "scorer",
+        "viewer",
+        "teamOnlyMember",
+      ],
     },
     conditions:
+      "Delete: owner/admin remove any teamMembers document; every member (including a team-only member) may remove ONLY their own " +
+      "document (leave organization, 8.3c-2a) — no owner exception is needed, a teamMembers document grants an owner nothing. " +
       "Read requires canReadTeam; create/update only enforce the uid == document-ID invariant. " +
       "Rules do NOT allowlist or shape-validate the role field value on create/update (no `hasOnly`/enum check) — " +
       "an org owner/admin can locally write an arbitrary role string. This never escalates privilege: every " +
@@ -222,7 +243,7 @@ export const FIRESTORE_ACCESS_MATRIX: readonly FirestoreAccessMatrixEntry[] = [
     evidence: [
       "tests/rules/membership-and-roles.spec.ts",
       "tests/rules/team-context-switcher-query.spec.ts",
-      "tests/rules/membership-and-roles.spec.ts",
+      "tests/rules/leave-organization.spec.ts",
     ],
     clientSources: [
       FIRESTORE_CLIENT_GATEWAY_FILES[0],
