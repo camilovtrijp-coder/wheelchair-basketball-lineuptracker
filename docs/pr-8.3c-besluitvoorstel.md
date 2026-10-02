@@ -1050,6 +1050,23 @@ een expliciete bevestiging van de eigenaar vóór de eerste echte uitvoering:
    naast de Firebase CLI-sessie, omdat de Admin SDK dat nodig heeft. Er is nog steeds geen
    sleutelbestand; het script weigert `GOOGLE_APPLICATION_CREDENTIALS`.
 
+### 8.6 Afwijkingen bij 8.3c-2a, uitgewerkt in de Rules (2 oktober 2026)
+
+De uitwerking van §4.3 in de Rules wijkt op twee punten af van de letterlijke tekst. Beide
+zijn strakker of eenvoudiger, geen wijziging van het datacontract:
+
+1. **De maker van de organisatie (`createdBy`) mag zijn eigen membership niet verwijderen,**
+   ook niet als hij gedemoveerd is. Reden: de bootstrap-create laat de maker zijn eigen
+   owner-membership aanmaken zolang dat document niet bestaat. Een maker die door een andere
+   owner is gedemoveerd en dan zijn eigen membership verwijdert (toegestaan onder de
+   letterlijke §4.3-regel `role != 'organizationOwner'`), kan zich daarna via de bootstrap
+   weer tot owner maken. Een gedemoveerde maker die wil vertrekken laat zich door een owner
+   verwijderen (bestaande tak). Bewezen door een Rules-test die zonder deze grens faalt.
+2. **Geen owner-uitzondering op `teamMembers/{uid}`.** §5 noemt die uitzondering voor beide
+   paden, maar voor `teamMembers` is ze niet nodig: een teamMembers-document verleent een
+   owner niets (die heeft impliciete toegang via zijn organizationMembers-document) en
+   owner/admin konden elk teamMembers-document al verwijderen, het eigen document inbegrepen.
+
 ### De vier verfijningen, op één rij
 
 1. De wachttijd van 7 dagen staat in het runbook, niet in de Rules — anders is
