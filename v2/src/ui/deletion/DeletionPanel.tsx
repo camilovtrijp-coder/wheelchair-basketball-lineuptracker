@@ -91,8 +91,10 @@ export function DeletionPanel({
   // her-inlezing of een geannuleerd verzoek bestaat die knop niet meer — de focus zou op
   // `body` belanden en een toetsenbord-/schermlezergebruiker verliest zijn plek. Dan gaat
   // de focus naar het paneel zelf (een `fieldset` met `tabIndex={-1}`, dat de `legend`
-  // als naam draagt). Sluit een dialoog zonder dat de pagina verandert (Escape, Terug),
-  // dan blijft het gewone herstel naar de openende knop gelden.
+  // als naam draagt). Hetzelfde geldt voor "Sluiten": die knop verdwijnt zelf. Sluit een
+  // dialoog zonder dat de pagina verandert (Escape, Terug), dan blijft het gewone herstel
+  // naar de openende knop gelden — daarom wordt de vlag teruggezet als een poging alsnog
+  // in een foutmelding in het dialoog eindigt.
   const panelRef = useRef<HTMLFieldSetElement | null>(null);
   const focusPanelAfterRender = useRef(false);
   useEffect(() => {
@@ -101,6 +103,21 @@ export function DeletionPanel({
       panelRef.current?.focus();
     }
   });
+
+  // Een trage beoordeling of schrijfactie mag na unmount niets meer melden. App.tsx
+  // mount het paneel opnieuw per organisatie (`key`); zonder deze poort zou een
+  // `load()` voor organisatie A die pas na de wissel resolvet de status van A aan de
+  // banner van B doorgeven (en de eerste lezing voor B onderdrukken).
+  const mounted = useRef(true);
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+    };
+  }, []);
+  const reportRequestChange = (request: DeletionRequest | null) => {
+    if (mounted.current) onRequestChange?.(request);
+  };
 
   if (!canRequestOrganizationDeletion(callerRole)) {
     // Defensieve tweede poort — App.tsx rendert dit paneel al niet voor andere
@@ -127,7 +144,7 @@ export function DeletionPanel({
         });
         return;
       }
-      onRequestChange?.(outcome.existingRequest);
+      reportRequestChange(outcome.existingRequest);
       setAcknowledged(false);
       setState({
         step: 'assessed',
@@ -154,7 +171,7 @@ export function DeletionPanel({
       case 'ok':
         focusPanelAfterRender.current = true;
         setDialog(null);
-        onRequestChange?.(outcome.request);
+        reportRequestChange(outcome.request);
         setState({
           step: 'submitted',
           request: outcome.request,
@@ -217,7 +234,7 @@ export function DeletionPanel({
       focusPanelAfterRender.current = true;
       setDialog(null);
       if (outcome.status === 'ok') {
-        onRequestChange?.(outcome.request);
+        reportRequestChange(outcome.request);
         await load('deletionStatusCancelled');
         return;
       }
@@ -231,6 +248,9 @@ export function DeletionPanel({
       }
       await load();
     } catch {
+      // Het dialoog blijft open met een fout; een latere Escape/Terug moet de focus dan
+      // gewoon aan de openende knop teruggeven, niet aan het paneel.
+      focusPanelAfterRender.current = false;
       setDialog({ kind: 'cancel', inProgress: false, errorKey: 'deletionErrorGeneric' });
     }
   }
@@ -242,8 +262,16 @@ export function DeletionPanel({
   }
 
   function handleClose() {
+    // De "Sluiten"-knop verdwijnt met deze overgang: de focus gaat naar het paneel.
+    focusPanelAfterRender.current = true;
     setDialog(null);
     setState({ step: 'idle' });
+  }
+
+  /** "Sluiten" in de ingediende weergave: opnieuw inlezen, focus naar het paneel. */
+  function handleCloseSubmitted() {
+    focusPanelAfterRender.current = true;
+    void load();
   }
 
   return (
@@ -324,7 +352,12 @@ export function DeletionPanel({
             >
               {t('deletionExportDownloadBtn')}
             </button>
-            <button type="button" className="btn-outline" onClick={() => void load()}>
+            <button
+              type="button"
+              className="btn-outline"
+              data-testid="deletion-submitted-close-btn"
+              onClick={handleCloseSubmitted}
+            >
               {t('deletionCloseBtn')}
             </button>
           </div>

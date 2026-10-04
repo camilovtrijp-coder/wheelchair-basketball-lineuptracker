@@ -131,6 +131,41 @@ describe('runbookGuards (PR 8.3c-1d)', () => {
     }
   });
 
+  it('volgt een keten van hangende symlinks tot het einde, met relatieve doelen tegen de echte map', () => {
+    const scratch = mkdtempSync(path.join(tmpdir(), 'guard-chain-'));
+    try {
+      const fakeRepo = path.join(scratch, 'repo');
+      mkdirSync(path.join(fakeRepo, 'sub'), { recursive: true });
+      const outside = path.join(scratch, 'elders');
+      mkdirSync(outside, { recursive: true });
+      // Keten van twee hangende symlinks: elders/a -> b (relatief) -> repo/dump.json.
+      symlinkSync(path.join(fakeRepo, 'dump.json'), path.join(outside, 'b'));
+      symlinkSync('b', path.join(outside, 'a'));
+      expect(() => assertOutsideRepo(path.join(outside, 'a'), fakeRepo)).toThrow(
+        /binnen de repository/,
+      );
+      // Relatief doel via een gesymlinkte map: scratch/via -> repo/sub, en daarin een hangende
+      // link d.json -> ../x/dump.json. Het echte doel is repo/x/dump.json, niet scratch/x.
+      symlinkSync(path.join(fakeRepo, 'sub'), path.join(scratch, 'via'));
+      symlinkSync(path.join('..', 'x', 'dump.json'), path.join(fakeRepo, 'sub', 'd.json'));
+      expect(() => assertOutsideRepo(path.join(scratch, 'via', 'd.json'), fakeRepo)).toThrow(
+        /binnen de repository/,
+      );
+      // Een keten die buiten de repo eindigt blijft toegestaan.
+      symlinkSync(path.join(outside, 'nieuw.json'), path.join(outside, 'd'));
+      symlinkSync('d', path.join(outside, 'c'));
+      expect(() => assertOutsideRepo(path.join(outside, 'c'), fakeRepo)).not.toThrow();
+      // Een kringverwijzing wordt geweigerd in plaats van eindeloos gevolgd.
+      symlinkSync('lus2', path.join(outside, 'lus1'));
+      symlinkSync('lus1', path.join(outside, 'lus2'));
+      expect(() => assertOutsideRepo(path.join(outside, 'lus1'), fakeRepo)).toThrow(
+        /symlinkniveaus/,
+      );
+    } finally {
+      rmSync(scratch, { recursive: true, force: true });
+    }
+  });
+
   it('weigert een emulator-host bij een niet-demo-project (valse "afgerond"-readback)', () => {
     const env = { FIRESTORE_EMULATOR_HOST: '127.0.0.1:8080' };
     expect(() => assertEmulatorMatchesProject('lineup-tracker-prod', env)).toThrow(

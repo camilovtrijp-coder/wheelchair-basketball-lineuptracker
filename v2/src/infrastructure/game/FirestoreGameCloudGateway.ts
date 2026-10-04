@@ -72,6 +72,24 @@ import type { WriterClaimResult } from '../../domain/game/writerClaim';
 
 const DEFAULT_TIMEOUT_MS = 8000;
 
+/**
+ * Leesopties voor elke `getDoc()` van het parent-gamedocument hieronder.
+ * Een `updateDoc()`/`setDoc()` die hier op `withTimeout()` afketst (offline,
+ * trage verbinding) blijft in Firestores lokale schrijfwachtrij staan en
+ * wordt later alsnog verstuurd. Zolang dat zo is, levert een `getDoc()` de
+ * lokale (latency-compensated) weergave op, waarin `updatedAt:
+ * serverTimestamp()` met de Firestore-default `'none'` als `null` verschijnt
+ * — `gameConverter` wees zo'n document af ("veld updatedAt moet een Firestore
+ * Timestamp zijn"), waardoor de eerstvolgende sync-cyclus (o.a. de
+ * reconnect-trigger) altijd op `actie-nodig` strandde zolang die write nog
+ * niet bevestigd was. Met `'estimate'` krijgt `updatedAt` de lokale
+ * schatting; `revision` e.d. komen uit dezelfde lokale weergave, dus een
+ * volgende patch bouwt correct voort op de nog-wachtende write (Firestore
+ * verstuurt de wachtrij in volgorde). Serverbevestigde documenten zijn
+ * ongewijzigd.
+ */
+const PENDING_TIMESTAMP_ESTIMATE = { serverTimestamps: 'estimate' } as const;
+
 class GameSyncTimeoutError extends Error {
   constructor(label: string, ms: number) {
     super(`${label}: geen serverantwoord binnen ${ms}ms`);
@@ -202,7 +220,7 @@ export class FirestoreGameCloudGateway implements GameCloudGateway {
         'ensureGame:getDoc',
       );
       if (existing.exists()) {
-        const data = existing.data();
+        const data = existing.data(PENDING_TIMESTAMP_ESTIMATE);
         return {
           ok: true,
           revision: data.revision,
@@ -211,6 +229,7 @@ export class FirestoreGameCloudGateway implements GameCloudGateway {
           writerEpoch: data.writerEpoch,
           claimedAt: data.claimedAt,
           completedGameId: data.completedGameId,
+          hasPendingWrites: existing.metadata.hasPendingWrites,
         };
       }
       await withTimeout(
@@ -226,6 +245,8 @@ export class FirestoreGameCloudGateway implements GameCloudGateway {
         writerEpoch: snapshot.writerEpoch,
         claimedAt: snapshot.claimedAt,
         completedGameId: snapshot.completedGameId,
+        // setDoc() resolvet pas na serverbevestiging.
+        hasPendingWrites: false,
       };
     } catch (createError) {
       // Race met een ander apparaat dat het document tussen onze getDoc() en
@@ -241,7 +262,7 @@ export class FirestoreGameCloudGateway implements GameCloudGateway {
           'ensureGame:readback',
         );
         if (readback.exists()) {
-          const data = readback.data();
+          const data = readback.data(PENDING_TIMESTAMP_ESTIMATE);
           return {
             ok: true,
             revision: data.revision,
@@ -250,6 +271,7 @@ export class FirestoreGameCloudGateway implements GameCloudGateway {
             writerEpoch: data.writerEpoch,
             claimedAt: data.claimedAt,
             completedGameId: data.completedGameId,
+            hasPendingWrites: readback.metadata.hasPendingWrites,
           };
         }
       } catch {
@@ -284,7 +306,7 @@ export class FirestoreGameCloudGateway implements GameCloudGateway {
         'classifyClaimFailure:readback',
       );
       if (readback.exists()) {
-        const data = readback.data();
+        const data = readback.data(PENDING_TIMESTAMP_ESTIMATE);
         if (data.completedGameId != null) return { ok: false, code: 'game-completed', error };
         if (data.revision !== expected.revision)
           return { ok: false, code: 'stale-revision', error };
@@ -425,7 +447,15 @@ export class FirestoreGameCloudGateway implements GameCloudGateway {
             this.timeoutMs,
             'uploadActions:readback',
           );
-          if (existing.exists() && deepEqual(existing.data(), action)) {
+          // Alleen een SERVER-BEVESTIGDE lezing telt: na een timeout staat de
+          // eigen setDoc() nog in de lokale wachtrij en toont getDoc() die
+          // lokaal alsof hij al bestaat (review PR #100). Dan is de action
+          // nog niet bevestigd en blijft hij in een volgende cyclus retrybaar.
+          if (
+            existing.exists() &&
+            !existing.metadata.hasPendingWrites &&
+            deepEqual(existing.data(), action)
+          ) {
             outcomes.push({ actionId: action.actionId, ok: true, alreadyConfirmed: true });
             continue;
           }
@@ -476,7 +506,7 @@ export class FirestoreGameCloudGateway implements GameCloudGateway {
         'patchSnapshot:readback',
       );
       if (readback.exists()) {
-        const data = readback.data();
+        const data = readback.data(PENDING_TIMESTAMP_ESTIMATE);
         return {
           ok: true,
           revision: data.revision,
@@ -485,6 +515,7 @@ export class FirestoreGameCloudGateway implements GameCloudGateway {
           writerEpoch: data.writerEpoch,
           claimedAt: data.claimedAt,
           completedGameId: data.completedGameId,
+          hasPendingWrites: readback.metadata.hasPendingWrites,
         };
       }
     } catch {
@@ -550,7 +581,7 @@ export class FirestoreGameCloudGateway implements GameCloudGateway {
         'finalizeCompletedGame:readback',
       );
       if (readback.exists()) {
-        const data = readback.data();
+        const data = readback.data(PENDING_TIMESTAMP_ESTIMATE);
         return {
           ok: true,
           revision: data.revision,
@@ -559,6 +590,7 @@ export class FirestoreGameCloudGateway implements GameCloudGateway {
           writerEpoch: data.writerEpoch,
           claimedAt: data.claimedAt,
           completedGameId: data.completedGameId,
+          hasPendingWrites: readback.metadata.hasPendingWrites,
         };
       }
     } catch {

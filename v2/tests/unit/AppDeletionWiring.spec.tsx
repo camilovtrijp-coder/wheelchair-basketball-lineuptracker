@@ -247,6 +247,76 @@ describe('app/App — race tussen de eerste lezing en het paneel', () => {
     await new Promise((r) => setTimeout(r, 20));
     expect(utils.queryByTestId('deletion-banner')).toBeTruthy();
   });
+
+  it('een trage beoordeling van de vorige organisatie onderdrukt na een wissel de eerste lezing van de nieuwe niet', async () => {
+    // org-a heeft geen verzoek; org-b wel. De beoordeling van org-a resolvet pas NA de
+    // wissel naar org-b, en vóór de (eveneens trage) eerste lezing van org-b.
+    let resolveReadB!: (r: DeletionRequestReadResult) => void;
+    const gw = gateway({ ok: true, request: null });
+    gw.read.mockImplementation((orgId: string) =>
+      orgId === 'org-b'
+        ? new Promise<DeletionRequestReadResult>((resolve) => {
+            resolveReadB = resolve;
+          })
+        : Promise.resolve({ ok: true, request: null }),
+    );
+    let resolveAssessA!: (o: unknown) => void;
+    const panelCoordinator = {
+      assess: vi.fn(
+        () =>
+          new Promise((resolve) => {
+            resolveAssessA = resolve;
+          }),
+      ),
+      request: vi.fn(),
+      cancel: vi.fn(),
+    } as unknown as DeletionRequestCoordinator;
+    const repos = repositories({
+      deletionRequestGateway: gw,
+      deletionCoordinator: panelCoordinator,
+    });
+    const app = (organizationId: string) => (
+      <App
+        repositories={repos}
+        syncStatus={syncStatusApi()}
+        canWrite={true}
+        canWriteGame={true}
+        organizationId={organizationId}
+        teamId="team-test"
+        organizationName={organizationId}
+        organizationRole="organizationOwner"
+      />
+    );
+
+    const utils = render(app('org-a'));
+    await ready(utils);
+    fireEvent.click(await utils.findByTestId('deletion-start-btn'));
+    await waitFor(() => expect(panelCoordinator.assess).toHaveBeenCalledWith('org-a'));
+
+    utils.rerender(app('org-b'));
+    await waitFor(() => expect(gw.read).toHaveBeenCalledWith('org-b'));
+
+    // De oude beoordeling (org-a: geen verzoek) komt binnen na de wissel.
+    resolveAssessA({
+      status: 'ok',
+      assessment: { blockers: [], staleUnfinishedGames: [], teamOnlyMemberCount: 0 },
+      cleanup: {
+        redactableTombstones: 0,
+        removableInvitations: { pending: 0, accepted: 0, claimed: 0, revoked: 0 },
+        abandonedGames: 0,
+        expiredMigrationRuns: 0,
+      },
+      existingRequest: null,
+    });
+    await new Promise((r) => setTimeout(r, 20));
+
+    // Daarna de eerste lezing van org-b: die moet de banner tonen.
+    resolveReadB({ ok: true, request: { ...requested(), organizationId: 'org-b' } });
+    await waitFor(() => expect(utils.queryByTestId('deletion-banner')).toBeTruthy());
+    // en het paneel van org-b begint vers, zonder de beoordeling van org-a
+    expect(utils.queryByTestId('deletion-assessed')).toBeNull();
+    expect(utils.getByTestId('deletion-start-btn')).toBeTruthy();
+  });
 });
 
 describe('app/App — verwijderpaneel', () => {

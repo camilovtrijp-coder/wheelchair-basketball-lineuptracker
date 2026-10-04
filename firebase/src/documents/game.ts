@@ -1,4 +1,9 @@
-import type { FirestoreDataConverter, QueryDocumentSnapshot, Timestamp } from 'firebase/firestore';
+import type {
+  FirestoreDataConverter,
+  QueryDocumentSnapshot,
+  SnapshotOptions,
+  Timestamp,
+} from 'firebase/firestore';
 import {
   DocumentValidationError,
   assertBoolean,
@@ -151,8 +156,14 @@ export const gameConverter: FirestoreDataConverter<GameDocument> = {
   toFirestore(game: GameDocument) {
     return game;
   },
-  fromFirestore(snapshot: QueryDocumentSnapshot): GameDocument {
-    const data = snapshot.data();
+  // `options` wordt doorgegeven aan `snapshot.data()`: zonder dat negeert de
+  // converter een expliciete `snap.data({ serverTimestamps: 'estimate' })`
+  // van de aanroeper en levert een document met een nog-onbevestigde lokale
+  // `serverTimestamp()`-write altijd `updatedAt: null` op (Firestore-default
+  // `'none'`), wat `assertTimestamp()` hieronder dan afwijst. Zonder opties
+  // blijft het gedrag ongewijzigd (strikt).
+  fromFirestore(snapshot: QueryDocumentSnapshot, options?: SnapshotOptions): GameDocument {
+    const data = snapshot.data(options);
     // Pad: organizations/{orgId}/teams/{teamId}/games/{gameId}.
     const segments = pathSegments(snapshot.ref.path);
     const organizationId = assertNonEmptyString(TYPE, 'organizationId', data.organizationId);
