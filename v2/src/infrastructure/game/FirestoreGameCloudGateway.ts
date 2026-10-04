@@ -229,6 +229,7 @@ export class FirestoreGameCloudGateway implements GameCloudGateway {
           writerEpoch: data.writerEpoch,
           claimedAt: data.claimedAt,
           completedGameId: data.completedGameId,
+          hasPendingWrites: existing.metadata.hasPendingWrites,
         };
       }
       await withTimeout(
@@ -244,6 +245,8 @@ export class FirestoreGameCloudGateway implements GameCloudGateway {
         writerEpoch: snapshot.writerEpoch,
         claimedAt: snapshot.claimedAt,
         completedGameId: snapshot.completedGameId,
+        // setDoc() resolvet pas na serverbevestiging.
+        hasPendingWrites: false,
       };
     } catch (createError) {
       // Race met een ander apparaat dat het document tussen onze getDoc() en
@@ -268,6 +271,7 @@ export class FirestoreGameCloudGateway implements GameCloudGateway {
             writerEpoch: data.writerEpoch,
             claimedAt: data.claimedAt,
             completedGameId: data.completedGameId,
+            hasPendingWrites: readback.metadata.hasPendingWrites,
           };
         }
       } catch {
@@ -443,7 +447,15 @@ export class FirestoreGameCloudGateway implements GameCloudGateway {
             this.timeoutMs,
             'uploadActions:readback',
           );
-          if (existing.exists() && deepEqual(existing.data(), action)) {
+          // Alleen een SERVER-BEVESTIGDE lezing telt: na een timeout staat de
+          // eigen setDoc() nog in de lokale wachtrij en toont getDoc() die
+          // lokaal alsof hij al bestaat (review PR #100). Dan is de action
+          // nog niet bevestigd en blijft hij in een volgende cyclus retrybaar.
+          if (
+            existing.exists() &&
+            !existing.metadata.hasPendingWrites &&
+            deepEqual(existing.data(), action)
+          ) {
             outcomes.push({ actionId: action.actionId, ok: true, alreadyConfirmed: true });
             continue;
           }
@@ -503,6 +515,7 @@ export class FirestoreGameCloudGateway implements GameCloudGateway {
           writerEpoch: data.writerEpoch,
           claimedAt: data.claimedAt,
           completedGameId: data.completedGameId,
+          hasPendingWrites: readback.metadata.hasPendingWrites,
         };
       }
     } catch {
@@ -577,6 +590,7 @@ export class FirestoreGameCloudGateway implements GameCloudGateway {
           writerEpoch: data.writerEpoch,
           claimedAt: data.claimedAt,
           completedGameId: data.completedGameId,
+          hasPendingWrites: readback.metadata.hasPendingWrites,
         };
       }
     } catch {

@@ -145,6 +145,12 @@ export class GameSyncCoordinator {
       projectGameSnapshot(game),
     );
     if (!ensure.ok) return { kind: 'blocked', code: 'offline' };
+    // Invariant (review PR #100): alleen een server-bevestigde lezing mag een
+    // claim als `confirmed` bestempelen. Na een eerder vastgelopen
+    // claimWriter()/ensureGame()-write toont de lokale weergave de eigen
+    // claim al, terwijl die alleen in Firestores wachtrij staat — dan nog
+    // geen tip-off (docs/pr-7.3-plan.md §B: serverbevestigde writerclaim).
+    if (ensure.hasPendingWrites) return { kind: 'blocked', code: 'offline' };
 
     const writerUid = ensure.writerUid ?? null;
     const deviceId = ensure.deviceId ?? null;
@@ -400,6 +406,17 @@ export class GameSyncCoordinator {
         return this.fail(
           checkpoint,
           `wedstrijd is server-side al afgerond naar een andere cloud-snapshot (completedGameId=${ensure.completedGameId})`,
+        );
+      }
+      // Invariant (review PR #100): alleen een server-bevestigde lezing mag
+      // "al afgerond" beslissen. Staat de afrondingsbatch nog alleen in
+      // Firestores lokale wachtrij (eerdere commit liep op de timeout vast),
+      // dan blijft dit actie-nodig — App.tsx houdt de duurzame outbox-entry
+      // zo vast tot een latere poging de serverbevestiging wél ziet.
+      if (ensure.hasPendingWrites) {
+        return this.fail(
+          checkpoint,
+          'afronding staat nog alleen in de lokale schrijfwachtrij (nog niet serverbevestigd)',
         );
       }
       const alreadyDone: GameSyncCheckpoint = {

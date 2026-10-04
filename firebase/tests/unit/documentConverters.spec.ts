@@ -1007,6 +1007,12 @@ describe('documentcontracten: weigeren malformed serverdata', () => {
     }
 
     it('zonder opties blijft een null-updatedAt (default "none") geweigerd', () => {
+      expect(() => gameConverter.fromFirestore!(pendingTimestampSnapshot())).toThrow(
+        DocumentValidationError,
+      );
+    });
+
+    it('met lege opties ({}) blijft een null-updatedAt ook geweigerd', () => {
       expect(() => gameConverter.fromFirestore!(pendingTimestampSnapshot(), {})).toThrow(
         DocumentValidationError,
       );
