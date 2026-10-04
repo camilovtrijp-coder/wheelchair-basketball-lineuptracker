@@ -90,7 +90,8 @@ beforeEach(async () => {
     const team = org.collection('teams').doc(TEAM_A1);
     await team.set({ name: 'U23', orgName: 'Org A', createdBy: USERS.alice.uid });
     // carol/dave/erin hebben ook een teamMembers-document; frank is TEAM-ONLY (geen org-lidmaatschap);
-    // alice (owner) heeft er ook één, om te bewijzen dat een owner dat niet zelf mag verwijderen.
+    // alice (owner) heeft er ook één, om te bewijzen dat een owner het eigen document wél kan
+    // verwijderen (bestaande owner/admin-tak) en daarna nog steeds toegang heeft.
     const teamMembers: [keyof typeof USERS, string][] = [
       ['carol', 'coach'],
       ['dave', 'scorer'],
@@ -165,7 +166,7 @@ describe('organizationMembers: het eigen membership verwijderen (organisatie ver
     await assertSucceeds(getDoc(orgMemberRef(db, ORG_A, 'alice')));
   });
 
-  it('een gedemoveerde maker kan wel door een owner worden verwijderd (de uitweg blijft bestaan)', async () => {
+  it('een gedemoveerde maker kan door een owner worden verwijderd (let op: dat opent RESTGAT 2, zie onderaan)', async () => {
     await withAdmin(env, async (admin) => {
       await admin
         .collection('organizations')
@@ -372,6 +373,25 @@ describe('bekende restgaten (besluitrecord §8.6) — gedocumenteerd, niet goedg
       invitationId: 'inv-open',
     });
     await assertSucceeds(claim.commit());
+  });
+
+  it('RESTGAT 2b (bestond al): ook een ADMIN kan een gedemoveerde maker verwijderen, waarna die zich weer owner maakt', async () => {
+    await withAdmin(env, async (admin) => {
+      await admin
+        .collection('organizations')
+        .doc(ORG_A)
+        .collection('organizationMembers')
+        .doc(USERS.alice.uid)
+        .update({ role: 'coach' });
+    });
+    await assertSucceeds(deleteDoc(orgMemberRef(ctx('bob'), ORG_A, 'alice')));
+    await assertSucceeds(
+      setDoc(orgMemberRef(ctx('alice'), ORG_A, 'alice'), {
+        role: 'organizationOwner',
+        email: user('alice').email,
+        uid: user('alice').uid,
+      }),
+    );
   });
 
   it('RESTGAT 2 (bestond al): een gedemoveerde maker die door een owner is verwijderd kan zich via de bootstrap-create weer owner maken', async () => {

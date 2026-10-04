@@ -147,7 +147,7 @@ export const FIRESTORE_ACCESS_MATRIX: readonly FirestoreAccessMatrixEntry[] = [
       "Delete: owner/admin remove OTHER members (admins never an owner); every non-owner member may remove ONLY their own document " +
       "(leave organization, 8.3c-2a) — an owner never can, and neither can the organization's creator (`createdBy`), because a demoted " +
       "creator could otherwise delete their own membership and re-create it as owner through the bootstrap rule. " +
-      "Known residual gaps (docs/pr-8.3c-besluitvoorstel.md §8.6, pinned by tests): an owner-removed demoted creator can still re-bootstrap as owner (pre-existing), " +
+      "Known residual gaps (docs/pr-8.3c-besluitvoorstel.md §8.6, pinned by tests): a demoted creator whose membership is removed by an owner OR an admin can still re-bootstrap as owner, and an admin-creator can do so unilaterally with a second account (pre-existing), " +
       "and a member who left can claim a still-open invitation with a higher role.",
     evidence: [
       "tests/rules/bootstrap-and-invitation-flow.spec.ts",

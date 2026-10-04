@@ -1061,8 +1061,8 @@ zijn strakker of eenvoudiger, geen wijziging van het datacontract:
    owner is gedemoveerd en dan zijn eigen membership verwijdert (toegestaan onder de
    letterlijke §4.3-regel `role != 'organizationOwner'`), kan zich daarna via de bootstrap
    weer tot owner maken. Bewezen door een Rules-test die zonder deze grens faalt. **Dit sluit
-   alleen de eenzijdige route** (zie punt 4): een maker die nog lid is kan dus nooit zelf
-   vertrekken en heeft daarvoor een owner nodig.
+   alleen dat directe pad** (zie punt 4, dat breder is dan het eerst was beschreven): een maker
+   die nog lid is kan nooit zelf vertrekken en heeft daarvoor een owner of admin nodig.
 2. **Geen owner-uitzondering op `teamMembers/{uid}`.** §5 noemt die uitzondering voor beide
    paden, maar voor `teamMembers` is ze niet nodig: een teamMembers-document verleent een
    owner niets (die heeft impliciete toegang via zijn organizationMembers-document) en
@@ -1082,10 +1082,15 @@ eigenaar vragen. Beide zijn in `tests/rules/leave-organization.spec.ts` vastgepi
    een latere demotie en geen escalatie uit het niets. **Voorgestelde mitigatie:** 2b/2c trekken
    bij demotie of verwijdering de openstaande uitnodigingen op dat e-mailadres in. **Rules-
    alternatief (eigenaar beslist):** een claimtermijn na `acceptedAt`.
-4. **De bootstrap-create blijft de zwakke plek (bestond al).** De bootstrap-create laat de
-   maker zijn eigen owner-membership aanmaken zodra dat document niet bestaat. Verwijdert een
-   owner de gedemoveerde maker (bestaande tak), dan kan die zich direct weer owner maken. De
-   maker-uitsluiting in punt 1 helpt daar niet tegen. **Echte fix (eigenaar beslist):** de
+4. **De bootstrap-create blijft de zwakke plek (bestond al; breder dan eerst beschreven).** De
+   bootstrap-create laat de maker zijn eigen owner-membership aanmaken zodra dat document niet
+   bestaat. Verwijdert een **owner of een admin** het membership van de gedemoveerde maker
+   (de admin-deletetak laat elk niet-owner-membership toe), dan kan die zich direct weer owner
+   maken; beide varianten zijn als test vastgepind. Een maker die zelf admin is, kan het zelfs
+   **eenzijdig met een tweede account**: een admin mag een uitnodiging met rol admin aanmaken, dat
+   tweede account claimt en verwijdert daarna als admin het membership van de maker, waarna de
+   maker zich opnieuw tot owner bootstrapt (uit de Rules beredeneerd, niet als test vastgepind).
+   De maker-uitsluiting in punt 1 helpt daar niet tegen. **Echte fix (eigenaar beslist):** de
    bootstrap binden aan "organisatie net aangemaakt" (bijvoorbeeld via `createdAt`/`request.time`
    of een vlag); dat raakt `createOrganizationWithOwner`, dat bewust sequentieel schrijft, en dus
    het datacontract. **Gevolg voor 2b:** de `AccountDeletionCoordinator` moet weten dat een
