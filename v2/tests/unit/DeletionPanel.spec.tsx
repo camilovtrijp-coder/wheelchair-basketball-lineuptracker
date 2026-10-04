@@ -497,6 +497,59 @@ describe('DeletionPanel: aanvragen', () => {
       expect(document.activeElement).toBe(trigger);
     });
 
+    it('na een fout in het annuleerdialoog geeft een latere Terug de focus aan de knop, niet aan het paneel', async () => {
+      // `onRequestChange` gooit nadat de focusvlag al gezet is: het dialoog blijft open
+      // met een fout, en de vlag mag daarna niet blijven hangen.
+      const coordinator = fake(assessedOutcome({ existing: request() }));
+      mount(coordinator, 'organizationOwner', (r) => {
+        if (r?.status === 'cancelled') throw new Error('boom');
+      });
+      fireEvent.click(screen.getByTestId('deletion-start-btn'));
+      await screen.findByTestId('deletion-assessed');
+      const trigger = screen.getByTestId('deletion-cancel-request-btn');
+      trigger.focus();
+      fireEvent.click(trigger);
+      fireEvent.click(await screen.findByTestId('deletion-cancel-dialog-confirm'));
+      await screen.findByTestId('deletion-cancel-dialog-error');
+      fireEvent.click(screen.getByTestId('deletion-cancel-dialog-back'));
+      await waitFor(() => expect(screen.queryByTestId('deletion-cancel-dialog')).toBeNull());
+      // geef een eventueel achtergebleven paneelfocus-effect de kans om te draaien
+      await new Promise((r) => setTimeout(r, 20));
+      expect(document.activeElement).toBe(trigger);
+    });
+
+    it('na Sluiten in de ingediende weergave staat de focus op het paneel, niet op body', async () => {
+      await openAssessed(fake());
+      fireEvent.click(screen.getByTestId('deletion-request-btn'));
+      fireEvent.input(await screen.findByTestId('deletion-request-dialog-input'), {
+        target: { value: ORG_NAME },
+      });
+      fireEvent.click(screen.getByTestId('deletion-request-dialog-confirm'));
+      await screen.findByTestId('deletion-submitted');
+      // eerst het paneelfocus-effect van de geslaagde aanvraag zelf laten afronden
+      await waitFor(() =>
+        expect(document.activeElement).toBe(screen.getByTestId('deletion-panel')),
+      );
+      const close = screen.getByTestId('deletion-submitted-close-btn');
+      close.focus();
+      fireEvent.click(close);
+      await screen.findByTestId('deletion-assessed');
+      await waitFor(() =>
+        expect(document.activeElement).toBe(screen.getByTestId('deletion-panel')),
+      );
+    });
+
+    it('na Sluiten in de beoordeling staat de focus op het paneel, niet op body', async () => {
+      await openAssessed(fake());
+      const close = screen.getByText('Sluiten');
+      close.focus();
+      fireEvent.click(close);
+      await screen.findByTestId('deletion-start-btn');
+      await waitFor(() =>
+        expect(document.activeElement).toBe(screen.getByTestId('deletion-panel')),
+      );
+    });
+
     it('het paneel is programmatisch focusbaar (tabIndex -1) maar geen extra tabstop', () => {
       mount(fake());
       expect(screen.getByTestId('deletion-panel').getAttribute('tabindex')).toBe('-1');
