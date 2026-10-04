@@ -1,6 +1,7 @@
 # Uitvoeringsontwerp PR 8.3c-2b — organisatie verlaten, accountverwijdering en overdracht (domein, applicatie, gateways)
 
-Status (4 oktober 2026): **ontwerp, nog niet goedgekeurd.** Dit document bevat geen
+Status (4 oktober 2026): **ontwerp; besluiten B1 t/m B9 genomen door de eigenaar (hij
+volgt de aanbevelingen in §I, zie het besluitblok daar).** Dit document bevat geen
 productiecode, geen tests en geen Rules-wijziging. Het werkt §4 en §5 (8.3c-2) van
 `docs/pr-8.3c-besluitvoorstel.md` uit tot een uitvoerbaar plan voor 8.3c-2b. Het geeft
 geen toestemming voor UI-werk (2c), e2e-werk (2d), een deployment, een
@@ -803,7 +804,32 @@ documentconverters, `localStorage`-sleutels, CSV, export, statistiek,
 
 ---
 
-## I. Open besluiten voor de eigenaar
+## I. Besluiten voor de eigenaar (B1 t/m B9: besloten)
+
+**Besloten op 4 oktober 2026 (eigenaar): alle aanbevelingen in de tabel hieronder zijn
+overgenomen, B1 t/m B9 ongewijzigd.** Wat dat concreet betekent:
+
+- **B1:** 2b gaat in drie stukken: 2b-i, 2b-ii, 2b-iii, in die volgorde.
+- **B2:** reauthenticatie vooraf én, bij `auth/requires-recent-login`, opnieuw vlak vóór
+  `deleteUser`; de harde eindpoort blijft direct vóór `deleteUser`.
+- **B3:** bij "organisatie verlaten" gaan de eigen openstaande (pending/accepted)
+  uitnodigingen in die organisatie mee weg; claimed/revoked blijven.
+- **B4:** RESTGAT 1 voor paden buiten de app sluit een kleine, aparte Rules-PR met een
+  claimtermijn (anker `acceptedAt`, zoals de aanbeveling zegt; het eerdere beslismemo stelde
+  `invitedAt` voor: kies bij het uitwerken van die PR op basis van de dan geldende
+  accept-/claimflow en leg de keuze in die PR vast), plus een runbookregel. Die PR komt vóór 2b-i.
+- **B5:** geen intentiesleutel in `localStorage` voor een hervatbanner.
+- **B6:** bootstrapbinding (RESTGAT 2) is een apart besluit vóór de cutover, niet in 2b;
+  tot dan geldt restrisico R2. NB: het beslismemo wijst erop dat het org-document al een
+  servergebonden `createdAt` heeft, waardoor dit geen datacontractwijziging vraagt maar één
+  Rules-regel; de termijn (bijv. 7 dagen) blijft te beslissen.
+- **B7:** na `deleted` altijd `wipeLocalFirebaseData()`, nooit `clearLocalDeviceData()`.
+- **B8:** pseudonieme audit-uid's accepteren en vastleggen in het threat model (§7).
+- **B9:** 2c toont de B-zijde van de overdracht als "andere eigenaar verwijderen", alleen
+  voor owners, alleen op andere owners, met getypte bevestiging.
+
+De tabel hieronder blijft ter onderbouwing staan. De aannames in §J blijven aannames tot ze
+in 2b-i met de emulator zijn bewezen.
 
 Wat ik binnen het mandaat zelf heb vastgelegd (en dus géén besluit vraagt): geen
 persistente staat (§B.4), `getDocsFromServer` voor controles (§B.5), poort vóór de
