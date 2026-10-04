@@ -28,24 +28,35 @@ function pathEntryExists(candidate: string): boolean {
   }
 }
 
+/** Bovengrens voor een keten van (hangende) symlinks; daarboven weigert de guard (fail-closed). */
+const MAX_SYMLINK_HOPS = 40;
+
 function resolveThroughSymlinks(target: string): string {
-  let existing = path.resolve(target);
-  const rest: string[] = [];
-  while (!pathEntryExists(existing)) {
-    const parent = path.dirname(existing);
-    if (parent === existing) break;
-    rest.unshift(path.basename(existing));
-    existing = parent;
+  let current = path.resolve(target);
+  for (let hop = 0; hop < MAX_SYMLINK_HOPS; hop += 1) {
+    let existing = current;
+    const rest: string[] = [];
+    while (!pathEntryExists(existing)) {
+      const parent = path.dirname(existing);
+      if (parent === existing) break;
+      rest.unshift(path.basename(existing));
+      existing = parent;
+    }
+    try {
+      // `.native` normaliseert ook hoofdletters op een niet-hoofdlettergevoelig bestandssysteem.
+      return path.join(realpathSync.native(existing), ...rest);
+    } catch {
+      // Hangende symlink (of een keten daarvan): volg één niveau en probeer opnieuw. Een
+      // relatief doel hoort bij de ECHTE map van de link, dus eerst de ouder realpathen —
+      // anders wijst `../x` via een gesymlinkte map naar een andere plek dan het systeem kiest.
+      const realParent = realpathSync.native(path.dirname(existing));
+      current = path.join(path.resolve(realParent, readlinkSync(existing)), ...rest);
+    }
   }
-  let resolved: string;
-  try {
-    // `.native` normaliseert ook hoofdletters op een niet-hoofdlettergevoelig bestandssysteem.
-    resolved = realpathSync.native(existing);
-  } catch {
-    // Hangende symlink: los het doel handmatig op, zodat de guard de echte bestemming ziet.
-    resolved = path.resolve(path.dirname(existing), readlinkSync(existing));
-  }
-  return path.join(resolved, ...rest);
+  throw new Error(
+    `--out volgt meer dan ${MAX_SYMLINK_HOPS} symlinkniveaus (of een kringverwijzing); ` +
+      'kies een gewoon pad buiten de werkboom.',
+  );
 }
 
 /**
