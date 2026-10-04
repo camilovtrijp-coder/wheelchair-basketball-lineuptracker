@@ -1053,6 +1053,44 @@ describe('documentcontracten: weigeren malformed serverdata', () => {
     ).toThrow(DocumentValidationError);
   });
 
+  // e2e-stabiliteit (game-sync-offline-reconnect/-weak-network): een lokaal
+  // nog-onbevestigde `serverTimestamp()` verschijnt met de Firestore-default
+  // als `null` en alleen met `{ serverTimestamps: 'estimate' }` als
+  // Timestamp. De converter moet de leesopties van de aanroeper daarom
+  // doorgeven aan `snapshot.data()`, i.p.v. ze te negeren.
+  describe('game: leesopties voor een nog-onbevestigde serverTimestamp()', () => {
+    const estimated = Timestamp.now();
+    function pendingTimestampSnapshot(): QueryDocumentSnapshot {
+      return {
+        data: (options?: { serverTimestamps?: string }) => ({
+          ...validGame,
+          updatedAt: options?.serverTimestamps === 'estimate' ? estimated : null,
+        }),
+        ref: { path: GAME_PATH },
+      } as unknown as QueryDocumentSnapshot;
+    }
+
+    it('zonder opties blijft een null-updatedAt (default "none") geweigerd', () => {
+      expect(() => gameConverter.fromFirestore!(pendingTimestampSnapshot())).toThrow(
+        DocumentValidationError,
+      );
+    });
+
+    it('met lege opties ({}) blijft een null-updatedAt ook geweigerd', () => {
+      expect(() => gameConverter.fromFirestore!(pendingTimestampSnapshot(), {})).toThrow(
+        DocumentValidationError,
+      );
+    });
+
+    it('met serverTimestamps "estimate" wordt de lokale schatting geaccepteerd', () => {
+      const result = gameConverter.fromFirestore!(pendingTimestampSnapshot(), {
+        serverTimestamps: 'estimate',
+      });
+      expect(result.updatedAt).toBe(estimated);
+      expect(result.revision).toBe(validGame.revision);
+    });
+  });
+
   // Reviewerprobe (externe review PR 7.1a): een niet-lege, maar niet-
   // parseerbare string voor een client-autoritatief tijdveld werd voorheen
   // geaccepteerd ("moet een string zijn" volstond niet).

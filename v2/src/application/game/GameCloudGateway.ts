@@ -75,6 +75,16 @@ export interface GameSnapshotWriteResult {
    * aparte leesoperatie nodig te hebben.
    */
   completedGameId?: string | null;
+  /**
+   * `true` als de velden hierboven uit een lokale weergave komen waarin nog
+   * een onbevestigde write in Firestores wachtrij staat (bijv. een write die
+   * eerder op een timeout afketste) — dan staan ze NIET aantoonbaar op de
+   * server. Invariant: alleen een lezing met `hasPendingWrites !== true` mag
+   * beslissen dat een writerclaim bevestigd is of dat een afronding al
+   * server-side gedaan is. `sync()` mag er wél op doorbouwen (revisieketen):
+   * Firestore verstuurt de wachtrij in volgorde.
+   */
+  hasPendingWrites?: boolean;
   error?: unknown;
 }
 

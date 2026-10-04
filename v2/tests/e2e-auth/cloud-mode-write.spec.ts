@@ -41,8 +41,26 @@ test.describe('PR 5.3c-1: cloud-modus schrijft daadwerkelijk naar Firestore', ()
     await page.waitForSelector('[data-testid="nav-settings"]', { timeout: 10_000 });
 
     const teamName = `Cloud Save ${Date.now()}`;
-    await page.getByTestId('settings-teamName').fill(teamName);
-    await page.getByTestId('settings-save').click();
+    // Flaky-oorzaak (trace, e2e-stabiliteitsbranch): de enige settings-write
+    // in de falende run was de volledige DEFAULT-set (teamName "", zonder
+    // patchmasker), 27 ms na de fill verstuurd. Een late initiële
+    // settings-load — read() die pas na de fill resolvet, of App's
+    // `[repositories]`-effect dat na de contextkeuze nog eens draait
+    // (`setSettings(null)` → read() → defaults) — overschreef de ingevulde
+    // naam vóór de klik. Een team zonder settings-document geeft geen
+    // zichtbaar "geladen"-signaal om op te wachten, dus: invullen + opslaan
+    // opnieuw proberen zolang het formulier na de save niet de ingevulde
+    // naam toont. Dezelfde waarde nogmaals opslaan is idempotent; de
+    // Firestore-assertie hieronder blijft ongewijzigd strikt. Dat een late
+    // load een onopgeslagen wijziging overschrijft is een app-bevinding
+    // (aparte beslissing).
+    await expect(async () => {
+      await page.getByTestId('settings-teamName').fill(teamName);
+      await page.getByTestId('settings-save').click();
+      await expect(page.getByTestId('settings-teamName')).toHaveValue(teamName, {
+        timeout: 1_000,
+      });
+    }).toPass({ timeout: 15_000 });
 
     await expect
       .poll(
