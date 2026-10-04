@@ -7,9 +7,9 @@
 // `exportProof.counts` (`DELETION_REQUEST_COUNT_KEYS`).
 //
 // Let op: `contentHash` hier is de hash van de beheerdersdump (canonieke JSON van alle
-// documenten, gesorteerd op pad) en NIET die van de 8.3b-exportenvelop — het runbook
-// gebruikt hem als bewijs van wat er vlak vóór het wissen stond, niet om met het
-// `exportProof` van de eigenaar te vergelijken.
+// documenten behalve `deletionRequests/*`, zie `dumpDocuments()`, gesorteerd op pad) en NIET
+// die van de 8.3b-exportenvelop — het runbook gebruikt hem als bewijs van wat er vlak vóór
+// het wissen stond, niet om met het `exportProof` van de eigenaar te vergelijken.
 import { createHash } from 'node:crypto';
 import type { DocumentReference, Firestore } from 'firebase-admin/firestore';
 import { DELETION_REQUEST_COUNT_KEYS } from '../../src/documents/deletionRequest.js';
