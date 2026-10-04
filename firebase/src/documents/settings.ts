@@ -1,4 +1,9 @@
-import type { FirestoreDataConverter, QueryDocumentSnapshot, Timestamp } from 'firebase/firestore';
+import type {
+  FirestoreDataConverter,
+  QueryDocumentSnapshot,
+  SnapshotOptions,
+  Timestamp,
+} from 'firebase/firestore';
 import { assertBoolean, assertNonEmptyString, assertNumber, assertString, assertTimestamp } from './validation.js';
 
 const TYPE = 'settings';
@@ -33,8 +38,14 @@ export const settingsConverter: FirestoreDataConverter<SettingsDocument> = {
   toFirestore(settings: SettingsDocument) {
     return settings;
   },
-  fromFirestore(snapshot: QueryDocumentSnapshot): SettingsDocument {
-    const data = snapshot.data();
+  // `options` wordt doorgegeven aan `snapshot.data()`: zonder dat negeert de
+  // converter een expliciete `snap.data({ serverTimestamps: 'estimate' })`
+  // van de aanroeper en levert een document met een nog-onbevestigde lokale
+  // `serverTimestamp()`-write altijd `updatedAt: null` op (Firestore-default
+  // `'none'`), wat `assertTimestamp()` hieronder dan afwijst. Zonder opties
+  // blijft het gedrag ongewijzigd (strikt).
+  fromFirestore(snapshot: QueryDocumentSnapshot, options?: SnapshotOptions): SettingsDocument {
+    const data = snapshot.data(options);
     return {
       teamName: assertString(TYPE, 'teamName', data.teamName),
       logoUri: assertString(TYPE, 'logoUri', data.logoUri),
