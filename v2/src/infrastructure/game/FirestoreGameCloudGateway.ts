@@ -72,6 +72,24 @@ import type { WriterClaimResult } from '../../domain/game/writerClaim';
 
 const DEFAULT_TIMEOUT_MS = 8000;
 
+/**
+ * Leesopties voor elke `getDoc()` van het parent-gamedocument hieronder.
+ * Een `updateDoc()`/`setDoc()` die hier op `withTimeout()` afketst (offline,
+ * trage verbinding) blijft in Firestores lokale schrijfwachtrij staan en
+ * wordt later alsnog verstuurd. Zolang dat zo is, levert een `getDoc()` de
+ * lokale (latency-compensated) weergave op, waarin `updatedAt:
+ * serverTimestamp()` met de Firestore-default `'none'` als `null` verschijnt
+ * — `gameConverter` wees zo'n document af ("veld updatedAt moet een Firestore
+ * Timestamp zijn"), waardoor de eerstvolgende sync-cyclus (o.a. de
+ * reconnect-trigger) altijd op `actie-nodig` strandde zolang die write nog
+ * niet bevestigd was. Met `'estimate'` krijgt `updatedAt` de lokale
+ * schatting; `revision` e.d. komen uit dezelfde lokale weergave, dus een
+ * volgende patch bouwt correct voort op de nog-wachtende write (Firestore
+ * verstuurt de wachtrij in volgorde). Serverbevestigde documenten zijn
+ * ongewijzigd.
+ */
+const PENDING_TIMESTAMP_ESTIMATE = { serverTimestamps: 'estimate' } as const;
+
 class GameSyncTimeoutError extends Error {
   constructor(label: string, ms: number) {
     super(`${label}: geen serverantwoord binnen ${ms}ms`);
@@ -202,7 +220,7 @@ export class FirestoreGameCloudGateway implements GameCloudGateway {
         'ensureGame:getDoc',
       );
       if (existing.exists()) {
-        const data = existing.data();
+        const data = existing.data(PENDING_TIMESTAMP_ESTIMATE);
         return {
           ok: true,
           revision: data.revision,
@@ -241,7 +259,7 @@ export class FirestoreGameCloudGateway implements GameCloudGateway {
           'ensureGame:readback',
         );
         if (readback.exists()) {
-          const data = readback.data();
+          const data = readback.data(PENDING_TIMESTAMP_ESTIMATE);
           return {
             ok: true,
             revision: data.revision,
@@ -284,7 +302,7 @@ export class FirestoreGameCloudGateway implements GameCloudGateway {
         'classifyClaimFailure:readback',
       );
       if (readback.exists()) {
-        const data = readback.data();
+        const data = readback.data(PENDING_TIMESTAMP_ESTIMATE);
         if (data.completedGameId != null) return { ok: false, code: 'game-completed', error };
         if (data.revision !== expected.revision)
           return { ok: false, code: 'stale-revision', error };
@@ -476,7 +494,7 @@ export class FirestoreGameCloudGateway implements GameCloudGateway {
         'patchSnapshot:readback',
       );
       if (readback.exists()) {
-        const data = readback.data();
+        const data = readback.data(PENDING_TIMESTAMP_ESTIMATE);
         return {
           ok: true,
           revision: data.revision,
@@ -550,7 +568,7 @@ export class FirestoreGameCloudGateway implements GameCloudGateway {
         'finalizeCompletedGame:readback',
       );
       if (readback.exists()) {
-        const data = readback.data();
+        const data = readback.data(PENDING_TIMESTAMP_ESTIMATE);
         return {
           ok: true,
           revision: data.revision,
