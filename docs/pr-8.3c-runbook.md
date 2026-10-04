@@ -101,8 +101,8 @@ Werkmap: een map buiten de repo, bijvoorbeeld `~/lineup-runbook/<orgId>/`. Varia
      noodkopie, geen garantie op herstel.
    - Dit is de export die telt. De `exportProof` van de eigenaar is een UX-poort, geen
      bewijs: er kan tussen aanvraag en uitvoering data bijgekomen zijn. De `contentHash`
-     hier is de hash van deze beheerdersdump (canonieke JSON van alle documenten, gesorteerd
-     op pad) en is **niet** gelijk aan de hash van de 8.3b-exportenvelop van de eigenaar.
+     hier is de hash van deze beheerdersdump (canonieke JSON van alle documenten behalve
+     `deletionRequests/*`, gesorteerd op pad) en is **niet** gelijk aan de hash van de 8.3b-exportenvelop van de eigenaar.
 3. **Vergelijk met het bewijs van de eigenaar (informatief).** Vergelijk `counts` met
    `exportProof.counts` uit de Console. Meer documenten is normaal als er data is
    bijgekomen; **minder** wijst op tussentijds verwijderen: uitzoeken vóór je doorgaat.
@@ -121,8 +121,10 @@ Werkmap: een map buiten de repo, bijvoorbeeld `~/lineup-runbook/<orgId>/`. Varia
    inventaris nog een keer (zonder `--out`) en vergelijk `contentHash` met stap 2 (het
    verzoekdocument telt niet mee, dus de statuswijziging uit stap 5 veroorzaakt geen
    verschil). Wijkt hij af, dan is er data bijgekomen of gewijzigd: maak de dump opnieuw
-   (zelfde opdracht als stap 2, eventueel met een nieuw bestand), noteer de nieuwe hash in het
-   logboek en ga dan pas verder. Zet `executing` niet terug; de status blijft staan. Let op de leeskosten:
+   (zelfde opdracht als stap 2, eventueel met een nieuw bestand), noteer de nieuwe hash en
+   tellingen in het logboek en herhaal de controle tot de hash stabiel is: na een herdump kan
+   het venster opnieuw openstaan. Ga pas verder als twee opeenvolgende inventarissen dezelfde
+   hash geven. Zet `executing` niet terug; de status blijft staan. Let op de leeskosten:
    de inventaris leest elk document (een `get()` plus `listCollections()` per document) en je
    draait hem minstens drie keer, plus `firestore:delete`. Spark heeft een dagelijks
    leesquotum (actuele waarde op de uitvoeringsdatum controleren, besluitrecord §7 punt 3);
@@ -171,12 +173,13 @@ wissen. Het bewijs van uitvoering staat daarom in een bestand buiten Firestore e
     "settingsDocuments": 0, "rosterPlayers": 0, "games": 0, "gameActions": 0,
     "completedGames": 0, "migrationRuns": 0
   },
-  "contentHash": "sha256:<hash van de beheerdersdump uit stap 2>"
+  "contentHash": "sha256:<hash van de beheerdersdump uit stap 2, of de herdump uit stap 6>"
 }
 ```
 
-- `counts` zijn de aantallen **voor** het wissen (stap 2); de readback (stap 7) wordt als
-  aparte regel in het logboek vastgelegd.
+- `counts` en `contentHash` zijn die van de **laatste** dump vóór het wissen: uit stap 2, of
+  — als stap 6 een herdump nodig maakte — de hash en tellingen van de laatste herdump uit
+  stap 6. De readback (stap 7) wordt als aparte regel in het logboek vastgelegd.
 - Geen e-mailadressen, geen spelersnamen, geen exportinhoud, ook niet "ter verduidelijking".
   De bouwfunctie (`firebase/scripts/lib/executionRecord.ts`) weigert extra velden en elke
   tekstwaarde met een `@`; gebruik haar of controleer het bestand met dezelfde maatstaf.
@@ -287,7 +290,7 @@ account remains."
 - [ ] 3.2 inventaris en dump buiten de repo, `unmapped` is `{}`
 - [ ] 3.4 logboek geopend
 - [ ] 3.5 status opnieuw gelezen, `executing` gezet
-- [ ] 3.6 inventaris opnieuw, `contentHash` gelijk aan stap 2 (anders dump opnieuw en hash noteren)
+- [ ] 3.6 inventaris opnieuw, `contentHash` gelijk aan stap 2 (anders dump opnieuw, hash en tellingen noteren en herhalen tot de hash stabiel is)
 - [ ] 3.6 daarna wissen, pad gecontroleerd
 - [ ] 3.7 readback nul
 - [ ] 3.8 uitvoeringsrecord, 3.9 dump verwijderd, 3.10 leden geïnformeerd

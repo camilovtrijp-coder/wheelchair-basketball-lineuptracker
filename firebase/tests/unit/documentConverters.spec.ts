@@ -854,6 +854,70 @@ describe('documentcontracten: weigeren malformed serverdata', () => {
     ).toThrow(DocumentValidationError);
   });
 
+  // Pending-serverTimestamp (settings/roster): een lokaal nog-onbevestigde
+  // `serverTimestamp()` verschijnt met de Firestore-default (`'none'`) als
+  // `null` en alleen met `{ serverTimestamps: 'estimate' }` als Timestamp.
+  // De converters moeten de leesopties van de aanroeper doorgeven aan
+  // `snapshot.data()`; zonder opties blijft het gedrag even strikt.
+  describe('settings/roster: leesopties voor een nog-onbevestigde serverTimestamp()', () => {
+    const estimated = Timestamp.fromMillis(1_786_278_840_000);
+    function pendingTimestampSnapshot(base: Record<string, unknown>): QueryDocumentSnapshot {
+      return {
+        data: (options?: { serverTimestamps?: string }) => ({
+          ...base,
+          updatedAt: options?.serverTimestamps === 'estimate' ? estimated : null,
+        }),
+        ref: { path: 'mock/doc' },
+      } as unknown as QueryDocumentSnapshot;
+    }
+
+    it('settings: zonder opties blijft een null-updatedAt (default "none") geweigerd', () => {
+      expect(() =>
+        settingsConverter.fromFirestore!(pendingTimestampSnapshot(validSettings), {}),
+      ).toThrow(DocumentValidationError);
+    });
+
+    it('settings: met serverTimestamps "estimate" wordt de lokale schatting geaccepteerd', () => {
+      const result = settingsConverter.fromFirestore!(pendingTimestampSnapshot(validSettings), {
+        serverTimestamps: 'estimate',
+      });
+      expect(result.updatedAt).toBe(estimated);
+      expect(result.teamName).toBe(validSettings.teamName);
+    });
+
+    it('settings: "estimate" maakt een écht ontbrekende updatedAt niet geldig', () => {
+      const { updatedAt: _updatedAt, ...withoutUpdatedAt } = validSettings;
+      expect(() =>
+        settingsConverter.fromFirestore!(mockSnapshot(withoutUpdatedAt), {
+          serverTimestamps: 'estimate',
+        }),
+      ).toThrow(DocumentValidationError);
+    });
+
+    it('roster: zonder opties blijft een null-updatedAt (default "none") geweigerd', () => {
+      expect(() =>
+        rosterConverter.fromFirestore!(pendingTimestampSnapshot(validRoster), {}),
+      ).toThrow(DocumentValidationError);
+    });
+
+    it('roster: met serverTimestamps "estimate" wordt de lokale schatting geaccepteerd', () => {
+      const result = rosterConverter.fromFirestore!(pendingTimestampSnapshot(validRoster), {
+        serverTimestamps: 'estimate',
+      });
+      expect(result.updatedAt).toBe(estimated);
+      expect(result.players).toHaveLength(1);
+    });
+
+    it('roster: "estimate" maakt een écht ontbrekende updatedAt niet geldig', () => {
+      const { updatedAt: _updatedAt, ...withoutUpdatedAt } = validRoster;
+      expect(() =>
+        rosterConverter.fromFirestore!(mockSnapshot(withoutUpdatedAt), {
+          serverTimestamps: 'estimate',
+        }),
+      ).toThrow(DocumentValidationError);
+    });
+  });
+
   // PR 7.1a — het wedstrijdmodel (docs/pr-7.1-plan.md §C 7.1a): "converters
   // roundtrippen geldige fictieve wedstrijden en weigeren malformed nested
   // spelers, segmenten, actions, timestamps en contextvelden".

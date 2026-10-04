@@ -28,6 +28,13 @@
 // issue #27 een harde OPEN gate blijft; zie het PR 5.3d-onderzoeksrapport
 // voor de volledige triangulatie en de nog openstaande vraag of dit ook op
 // een echt apparaat/tegen productie-Firestore optreedt.
+//
+// AANVULLING (pending-serverTimestamp-fix, okt. 2026): tot deze fix gooide
+// de converter op elke lezing van dit document zolang zo'n write openstond
+// (`updatedAt` is dan lokaal `null`, zie PENDING_TIMESTAMP_ESTIMATE
+// hieronder) — in de listener als uncaught fout, in read() als stille
+// terugval op getDoc(). Mogelijk verklaart dat (een deel van) de
+// waarneming hierboven; dat is NIET in e2e/emulator nagemeten.
 import {
   doc,
   getDoc,
@@ -41,6 +48,22 @@ import { settingsConverter } from 'firebase-base/documents';
 import { DEFAULT_SETTINGS, type Settings, type SettingsKey } from '../../domain/settings/types';
 import { deriveSyncState, type SyncState, type WriteResult } from '../../domain/syncState';
 import type { AsyncSettingsRepository } from '../../application/settings/AsyncSettingsRepository';
+
+/**
+ * Leesopties voor elke lezing van dit document (read() en de listener).
+ * Een write() met `updatedAt: serverTimestamp()` die de server nog niet
+ * heeft bevestigd (offline, trage verbinding) staat in Firestores lokale
+ * schrijfwachtrij; zolang dat zo is, levert elke lezing de lokale
+ * (latency-compensated) weergave, waarin `updatedAt` met de default
+ * `'none'` `null` is en de strikte converter het document afwees. Met
+ * `'estimate'` krijgt `updatedAt` de lokale schatting en ziet de gebruiker
+ * zijn eigen optimistische waarde. Dit is UITSLUITEND voor weergave: de
+ * syncstatus komt uit `snap.metadata` (`deriveSyncState`) en blijft
+ * 'wacht-op-synchronisatie' zolang `hasPendingWrites` waar is; een geschatte
+ * `updatedAt` maakt een document dus nooit 'gesynchroniseerd'.
+ * Serverbevestigde documenten zijn ongewijzigd.
+ */
+const PENDING_TIMESTAMP_ESTIMATE = { serverTimestamps: 'estimate' } as const;
 
 export class FirestoreSettingsRepository implements AsyncSettingsRepository {
   private documentExists = false;
@@ -61,12 +84,12 @@ export class FirestoreSettingsRepository implements AsyncSettingsRepository {
       const snap = await getDocFromCache(ref);
       if (!snap.exists()) return { ...DEFAULT_SETTINGS };
       this.documentExists = true;
-      return stripUpdatedAt(snap.data());
+      return stripUpdatedAt(snap.data(PENDING_TIMESTAMP_ESTIMATE));
     } catch {
       const snap = await getDoc(ref);
       if (!snap.exists()) return { ...DEFAULT_SETTINGS };
       this.documentExists = true;
-      return stripUpdatedAt(snap.data());
+      return stripUpdatedAt(snap.data(PENDING_TIMESTAMP_ESTIMATE));
     }
   }
 
@@ -143,7 +166,7 @@ export class FirestoreSettingsRepository implements AsyncSettingsRepository {
           return;
         }
         this.documentExists = true;
-        const data = snap.data();
+        const data = snap.data(PENDING_TIMESTAMP_ESTIMATE);
         onNext(stripUpdatedAt(data), deriveSyncState(snap.metadata), toEpochMillis(data.updatedAt));
       },
       (err) => {
