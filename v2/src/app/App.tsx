@@ -1561,12 +1561,15 @@ export function App({
             ) : null}
             {/* PR 8.3c-1c (besluitrecord §2.5): het verwijderverzoek — alleen in
              * cloudmodus EN alleen voor `organizationOwner`; een andere rol krijgt dit
-             * blok nooit gerenderd. Het paneel verwijdert niets, het dient een verzoek in. */}
+             * blok nooit gerenderd. Het paneel verwijdert niets, het dient een verzoek in.
+             * `key`: na een organisatiewissel een vers paneel, zodat een trage melding over
+             * de vorige organisatie de eerste lezing voor de nieuwe niet onderdrukt. */}
             {repositories.mode === 'cloud' &&
             repositories.deletionCoordinator &&
             organizationRole &&
             canRequestOrganizationDeletion(organizationRole) ? (
               <DeletionPanel
+                key={organizationId}
                 lang={lang}
                 organizationId={organizationId}
                 organizationName={organizationName || organizationId}
