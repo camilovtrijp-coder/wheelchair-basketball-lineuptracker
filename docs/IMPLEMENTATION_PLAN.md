@@ -763,6 +763,50 @@ sandbox worden uitgevoerd en staat expliciet open voor fase-7-acceptatie.
 - rollback en lokale back-up blijven beschikbaar;
 - cloudmigratie is opt-in en wist de bron niet automatisch.
 
+### Stabiliteitsfix game-sync: onbevestigde writes in de lokale weergave
+
+Opvolging van de flaky e2e-auth-suite (geen nieuwe roadmap-PR; branch
+`claude/stoic-sagan-lxtzcf-e2e-stability`).
+
+- **Race:** een game-write die op `withTimeout()` afketst, blijft in de
+  lokale schrijfwachtrij van Firestore staan. Een `getDoc()` daarna toont de
+  lokale weergave met `updatedAt: null` (onopgeloste `serverTimestamp()`).
+  `gameConverter` wees dat af, waardoor de volgende sync-cyclus — ook de
+  `online`-reconnect-trigger — op `actie-nodig` bleef staan. Oorzaak van
+  `game-sync-offline-reconnect` (lokaal 6/8 rood) en `game-sync-weak-network`
+  (2/8 rood). `deliberate-conflict` (3/8 rood) was een fout in de test zelf
+  (die las een tussenwaarde in plaats van de last-write-wins-eindwaarde).
+- **Fix:** de game-reads in `FirestoreGameCloudGateway` gebruiken
+  `serverTimestamps: 'estimate'`, zodat `sync()` op de lokale weergave
+  doorbouwt (revisieketen; Firestore verstuurt de wachtrij in volgorde).
+- **Invariant:** alleen een server-bevestigde lezing (zonder
+  `metadata.hasPendingWrites`) mag beslissen dat een writerclaim bevestigd
+  is, dat een afronding al server-side gedaan is of dat een action al
+  bevestigd is (`GameSnapshotWriteResult.hasPendingWrites`;
+  `ensureWriterClaim()` → `blocked/offline`, `finalize()` → `actie-nodig`,
+  `uploadActions()` → niet `alreadyConfirmed`). De eerste versie van de fix
+  schond dit; een review vond het en het is gerepareerd met unit-tests die de
+  fout aantonen (`GameSyncPendingWritesInvariant.spec.ts`). De laatste
+  regel (actions uit de cache als bevestigd markeren) zat er al vóór de fix in.
+- **Bewijs:** de drie eerder flaky specs 8× los groen; de volledige
+  e2e-auth-suite 5× achter elkaar 99/99 (verse emulator per run), op de
+  eindstand inclusief de `cloud-mode-write`-fix hieronder.
+- **`cloud-mode-write`** (1× rood in een eerdere bewijsrun, 1 van 7 volledige
+  runs): een late initiële settings-load overschreef de ingevulde teamnaam
+  vóór de save (trace: de enige settings-write was de volledige DEFAULT-set).
+  De test herhaalt nu invullen + opslaan tot het formulier de naam vasthoudt.
+  Dat een late load een onopgeslagen wijziging overschrijft, is een
+  app-bevinding voor een apart besluit.
+- **Niet opgelost:** `settingsConverter`/`rosterConverter` met
+  `FirestoreSettingsRepository`/`FirestoreRosterRepository` hebben hetzelfde
+  pending-timestamp-probleem (de settings-listener gooit bij een offline
+  write een uncaught `veld "updatedAt" moet een Firestore Timestamp zijn`).
+  Dit is waarschijnlijk ook de oorzaak van het PR 5.3d-gedrag "listener /
+  `getDocFromCache` reageert niet meer na een offline write". Het raakt het
+  5.3d-ontwerp en vraagt een eigen besluit. De zeldzame CI-failure van
+  `offline-reload-cache-write-second-client` test 3 is lokaal niet
+  gereproduceerd.
+
 ### Acceptatiecriteria
 
 - een wedstrijd kan volledig in vliegtuigmodus worden gespeeld en afgerond;
