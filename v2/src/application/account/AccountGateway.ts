@@ -29,6 +29,17 @@ export type AccountReadError =
   | { code: 'timeout' }
   | { code: 'read-failed'; detail: unknown };
 
+/**
+ * Uitkomst van `readIdentity()`. Een mislukte tokenverversing is GEEN "niet ingelogd":
+ * offline geeft `offline`, zodat de aanroeper "geen verbinding" kan melden.
+ */
+export type IdentityReadResult =
+  | { ok: true; identity: AccountIdentity }
+  | {
+      ok: false;
+      error: Exclude<AccountReadError, { code: 'email-not-verified' }>;
+    };
+
 export type InventoryReadResult =
   { ok: true; inventory: AccountInventory } | { ok: false; error: AccountReadError };
 
@@ -57,8 +68,13 @@ export type SelfDeleteResult =
   { ok: true; outcome: 'deleted' | 'already-gone' } | { ok: false; error: SelfDeleteError };
 
 export interface AccountGateway {
-  /** uid/e-mail en `email_verified` uit de huidige Auth-sessie en het ID-token. Geen invoer. */
-  readIdentity(): Promise<AccountIdentity | null>;
+  /**
+   * uid/e-mail en `email_verified` uit de huidige Auth-sessie en een VERS ververst
+   * ID-token (reviewbevinding A op 2b-i: een gecachet token met een verouderde
+   * `email_verified=false` zou de uitnodigingsstap stil overslaan). Geen invoer. Dit is
+   * de preflight van elke flow; de flow heeft daarna toch netwerk nodig.
+   */
+  readIdentity(): Promise<IdentityReadResult>;
 
   /**
    * De drie collectionGroup-queries uit firebase/docs/QUERY_CONTRACT.md, ALTIJD van de

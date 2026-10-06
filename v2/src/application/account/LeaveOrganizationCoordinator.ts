@@ -37,6 +37,13 @@ export type LeaveOkOutcome = {
   removed: { teamMembers: number; invitations: number; organizationMember: boolean };
   /** Informatief: er loopt een verwijderverzoek voor deze organisatie (geen blokkade). */
   organizationDeletionPending: boolean;
+  /**
+   * `false`: de eigen uitnodigingen in deze organisatie zijn NIET bekeken, omdat het
+   * (vers ververste) token geen geverifieerde e-mailclaim had (reviewbevinding A op
+   * 2b-i). Een openstaande uitnodiging kan dan nog bestaan en na vertrek claimbaar zijn
+   * (restrisico R1); de aanroeper moet dat kunnen melden in plaats van "alles weg".
+   */
+  invitationsChecked: boolean;
 };
 
 export type LeaveOrganizationOutcome =
@@ -71,7 +78,8 @@ function readFailureOutcome(error: AccountReadError): ReadFailureOutcome {
   }
 }
 
-function isDeletionPending(facts: OrganizationFacts | null): boolean {
+/** Er loopt een verwijderverzoek voor de organisatie (`requested`/`executing`). */
+export function isDeletionPending(facts: OrganizationFacts | null): boolean {
   const status = facts?.deletionRequestStatus ?? null;
   return status === 'requested' || status === 'executing';
 }
@@ -151,6 +159,7 @@ export async function executeLeaveSteps(
     status: 'ok',
     removed,
     organizationDeletionPending: input.organizationDeletionPending,
+    invitationsChecked: includeInvitations,
   };
 }
 
@@ -160,7 +169,8 @@ export async function executeLeaveSteps(
  * dus opnieuw `leave()` na een onderbreking hervat precies waar het bleef, en een
  * tweede `leave()` na een geslaagde eerste geeft `not-a-member` zonder één write.
  *
- *   0. niet ingelogd → `not-signed-in`; een lopende leave voor dezelfde organisatie op
+ *   0. identiteit uit een VERS ververst token (offline → `offline`, geen sessie →
+ *      `not-signed-in`); een lopende leave voor dezelfde organisatie op
  *      deze instantie → `in-progress`;
  *   1. inventaris (server; uitnodigingen alleen met een geverifieerde e-mailclaim);
  *      organisatie niet in de inventaris → `not-a-member` (geen write);
@@ -192,8 +202,9 @@ export class LeaveOrganizationCoordinator {
 
   private async run(organizationId: string): Promise<LeaveOrganizationOutcome> {
     // 0
-    const identity = await this.gateway.readIdentity();
-    if (identity === null) return { status: 'not-signed-in' };
+    const identityRead = await this.gateway.readIdentity();
+    if (!identityRead.ok) return readFailureOutcome(identityRead.error);
+    const identity = identityRead.identity;
     const includeInvitations = identity.emailVerified && identity.email !== null;
 
     // 1

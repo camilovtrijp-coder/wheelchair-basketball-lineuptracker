@@ -10,9 +10,12 @@
 //     `phase: 'tracking'`. Een opgezette maar niet gestarte wedstrijd (`setup`) telt niet.
 // Fail closed: een sleutel die niet te lezen of te ontleden is telt als 1, want "geen
 // onbevestigd werk" moet bewezen zijn voordat vertrekken dat werk onsynchroniseerbaar maakt.
+// Dat geldt ook als de sleutels zelf niet op te sommen zijn (reviewbevinding B op 2b-i):
+// "onbekend" blokkeert (telling 1). Alleen "helemaal geen storage" (onvertrouwd apparaat,
+// sandbox) is een bewezen lege lijst en telt 0.
 import type { LocalUnsyncedWorkProbe } from '../../application/account/LocalUnsyncedWorkProbe';
 import type { KeyValueStorage } from '../../i18n/persistence';
-import { listBrowserStorageKeys, strictReadBrowserStorage } from '../../i18n/browserStorage';
+import { listBrowserStorageKeysOrThrow, strictReadBrowserStorage } from '../../i18n/browserStorage';
 import { ACTIVE_GAME_STORAGE_KEY_PREFIX } from '../game/LocalStorageGameRepository';
 import { PENDING_FINALIZE_STORAGE_KEY_PREFIX } from '../game/LocalStoragePendingFinalizeRepository';
 
@@ -50,17 +53,26 @@ function countActiveGame(storage: Reader, key: string): number {
   return 1; // `tracking`, of een onbekende vorm: fail closed.
 }
 
+/** Telling bij sleutels die niet op te sommen zijn: onbekend = blokkeren (fail closed). */
+export const UNKNOWN_KEYS_COUNT = 1;
+
 export class LocalStorageUnsyncedWorkProbe implements LocalUnsyncedWorkProbe {
   constructor(
     private readonly storage: Reader = strictReadBrowserStorage,
-    private readonly listKeys: () => string[] = listBrowserStorageKeys,
+    private readonly listKeys: () => string[] = listBrowserStorageKeysOrThrow,
   ) {}
 
   countForOrganization(organizationId: string): number {
     const pendingPrefix = `${PENDING_FINALIZE_STORAGE_KEY_PREFIX}${organizationId}:`;
     const activePrefix = `${ACTIVE_GAME_STORAGE_KEY_PREFIX}${organizationId}:`;
+    let keys: string[];
+    try {
+      keys = this.listKeys();
+    } catch {
+      return UNKNOWN_KEYS_COUNT;
+    }
     let count = 0;
-    for (const key of this.listKeys()) {
+    for (const key of keys) {
       if (key.startsWith(pendingPrefix)) count += countPendingFinalize(this.storage, key);
       else if (key.startsWith(activePrefix)) count += countActiveGame(this.storage, key);
     }
