@@ -331,6 +331,10 @@ test.describe('8.3c-1c-ii — volledige stroom met serverreadback', () => {
 
     await page.getByTestId('deletion-request-dialog-confirm').click();
     await expect(page.getByTestId('deletion-error')).toBeVisible({ timeout: 15_000 });
+    // De weigering moet om de rol gaan, niet een willekeurige (bijv. generieke) fout.
+    await expect(page.getByTestId('deletion-error')).toContainText(
+      'Alleen de eigenaar van de organisatie kan verwijdering aanvragen.',
+    );
     expect(await readDeletionRequest(org.orgId)).toBeUndefined();
   });
 });
