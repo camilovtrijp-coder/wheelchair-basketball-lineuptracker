@@ -60,6 +60,8 @@ export const FIRESTORE_CLIENT_GATEWAY_FILES = [
   "../v2/src/infrastructure/migration/FirestoreMigrationWriteGateway.ts",
   "../v2/src/infrastructure/export/FirestoreOrganizationExportGateway.ts",
   "../v2/src/infrastructure/deletion/FirestoreDeletionRequestGateway.ts",
+  "../v2/src/infrastructure/account/FirestoreAccountGateway.ts",
+  "../v2/src/infrastructure/account/accountQueries.ts",
 ] as const;
 
 const orgRoles: MatrixActor[] = [
@@ -118,6 +120,7 @@ export const FIRESTORE_ACCESS_MATRIX: readonly FirestoreAccessMatrixEntry[] = [
     clientSources: [
       FIRESTORE_CLIENT_GATEWAY_FILES[0],
       FIRESTORE_CLIENT_GATEWAY_FILES[8],
+      FIRESTORE_CLIENT_GATEWAY_FILES[10],
     ],
     converterSources: ["organizationConverter"],
   },
@@ -156,10 +159,13 @@ export const FIRESTORE_ACCESS_MATRIX: readonly FirestoreAccessMatrixEntry[] = [
       "tests/rules/self-promotion.spec.ts",
       "tests/rules/leave-organization.spec.ts",
       "tests/rules/claim-and-bootstrap-terms.spec.ts",
+      "tests/rules/account-gateway-queries.spec.ts",
     ],
     clientSources: [
       FIRESTORE_CLIENT_GATEWAY_FILES[0],
       FIRESTORE_CLIENT_GATEWAY_FILES[8],
+      FIRESTORE_CLIENT_GATEWAY_FILES[10],
+      FIRESTORE_CLIENT_GATEWAY_FILES[11],
     ],
     converterSources: ["organizationMemberConverter"],
   },
@@ -186,10 +192,13 @@ export const FIRESTORE_ACCESS_MATRIX: readonly FirestoreAccessMatrixEntry[] = [
       "tests/rules/server-bound-timestamps.spec.ts",
       "tests/rules/invitation-retention.spec.ts",
       "tests/rules/claim-and-bootstrap-terms.spec.ts",
+      "tests/rules/account-gateway-queries.spec.ts",
     ],
     clientSources: [
       FIRESTORE_CLIENT_GATEWAY_FILES[0],
       FIRESTORE_CLIENT_GATEWAY_FILES[8],
+      FIRESTORE_CLIENT_GATEWAY_FILES[10],
+      FIRESTORE_CLIENT_GATEWAY_FILES[11],
     ],
     converterSources: ["invitationConverter"],
   },
@@ -248,10 +257,13 @@ export const FIRESTORE_ACCESS_MATRIX: readonly FirestoreAccessMatrixEntry[] = [
       "tests/rules/membership-and-roles.spec.ts",
       "tests/rules/team-context-switcher-query.spec.ts",
       "tests/rules/leave-organization.spec.ts",
+      "tests/rules/account-gateway-queries.spec.ts",
     ],
     clientSources: [
       FIRESTORE_CLIENT_GATEWAY_FILES[0],
       FIRESTORE_CLIENT_GATEWAY_FILES[8],
+      FIRESTORE_CLIENT_GATEWAY_FILES[10],
+      FIRESTORE_CLIENT_GATEWAY_FILES[11],
     ],
     converterSources: ["teamMemberConverter"],
   },
@@ -423,7 +435,10 @@ export const FIRESTORE_ACCESS_MATRIX: readonly FirestoreAccessMatrixEntry[] = [
       "tests/rules/deletion-requests.spec.ts",
       "tests/rules/deletion-request-gateway-payloads.spec.ts",
     ],
-    clientSources: [FIRESTORE_CLIENT_GATEWAY_FILES[9]],
+    clientSources: [
+      FIRESTORE_CLIENT_GATEWAY_FILES[9],
+      FIRESTORE_CLIENT_GATEWAY_FILES[10],
+    ],
     converterSources: ["deletionRequestConverter"],
   },
   {
@@ -444,8 +459,15 @@ export const FIRESTORE_ACCESS_MATRIX: readonly FirestoreAccessMatrixEntry[] = [
     },
     conditions:
       "Collection-group query must filter uid == auth.uid; only the caller own membership is readable.",
-    evidence: ["tests/rules/context-switcher-query.spec.ts"],
-    clientSources: [FIRESTORE_CLIENT_GATEWAY_FILES[0]],
+    evidence: [
+      "tests/rules/context-switcher-query.spec.ts",
+      "tests/rules/account-gateway-queries.spec.ts",
+    ],
+    clientSources: [
+      FIRESTORE_CLIENT_GATEWAY_FILES[0],
+      FIRESTORE_CLIENT_GATEWAY_FILES[10],
+      FIRESTORE_CLIENT_GATEWAY_FILES[11],
+    ],
     converterSources: ["organizationMemberConverter"],
   },
   {
@@ -460,8 +482,15 @@ export const FIRESTORE_ACCESS_MATRIX: readonly FirestoreAccessMatrixEntry[] = [
     },
     conditions:
       "Collection-group query must filter uid == auth.uid; only the caller own team memberships are readable.",
-    evidence: ["tests/rules/team-context-switcher-query.spec.ts"],
-    clientSources: [FIRESTORE_CLIENT_GATEWAY_FILES[0]],
+    evidence: [
+      "tests/rules/team-context-switcher-query.spec.ts",
+      "tests/rules/account-gateway-queries.spec.ts",
+    ],
+    clientSources: [
+      FIRESTORE_CLIENT_GATEWAY_FILES[0],
+      FIRESTORE_CLIENT_GATEWAY_FILES[10],
+      FIRESTORE_CLIENT_GATEWAY_FILES[11],
+    ],
     converterSources: ["teamMemberConverter"],
   },
   {
@@ -476,11 +505,16 @@ export const FIRESTORE_ACCESS_MATRIX: readonly FirestoreAccessMatrixEntry[] = [
     },
     conditions:
       "Collection-group query must filter email == the caller own verified token email; only the caller own invitations are readable, " +
-      "in any organization and without membership. Deleting what the query finds runs through the nested invitations match, not this one.",
-    evidence: ["tests/rules/invitation-retention.spec.ts"],
-    clientSources: [],
+      "in any organization and without membership. Deleting what the query finds runs through the nested invitations match, not this one. " +
+      "Client since 8.3c-2b-i: FirestoreAccountGateway runs it only with a verified email claim, always via getDocsFromServer, built by accountQueries.ts.",
+    evidence: [
+      "tests/rules/invitation-retention.spec.ts",
+      "tests/rules/account-gateway-queries.spec.ts",
+    ],
+    clientSources: [
+      FIRESTORE_CLIENT_GATEWAY_FILES[10],
+      FIRESTORE_CLIENT_GATEWAY_FILES[11],
+    ],
     converterSources: ["invitationConverter"],
-    clientPending:
-      "8.3c-2: account deletion and leave-organization coordinator (the query contract and index ship earlier, with the retention rules)",
   },
 ] as const;

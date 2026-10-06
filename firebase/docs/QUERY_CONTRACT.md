@@ -129,10 +129,30 @@ vereist) en is bewezen in `tests/rules/invitation-retention.spec.ts`,
 inclusief de weigering voor andermans e-mailadres, een ongeverifieerd token,
 een ongefilterde query en een niet-ingelogde aanroeper.
 
-Er is op het moment van schrijven **nog geen clientcode** die deze query
-uitvoert; die komt met de accountverwijdercoördinator in PR 8.3c-2. De Rules
-en de index lopen bewust vooruit zodat het contract eerst zelfstandig
-bewezen is (de matrix markeert dit met `clientPending`).
+Sinds PR 8.3c-2b-i heeft deze query een client:
+`v2/src/infrastructure/account/FirestoreAccountGateway.ts`, met de bouwer uit
+`v2/src/infrastructure/account/accountQueries.ts`. De gateway voert haar alleen
+uit met een geverifieerde e-mailclaim in het ID-token (anders de uitkomst
+`email-not-verified`, zonder query) en filtert op het e-mailadres uit die
+token-claim, nooit op invoer. De `clientPending`-markering in de accessmatrix
+is daarmee vervallen; de lijst van zulke rijen is nu leeg.
+
+## Serverlezing voor inventaris en eindcontroles (PR 8.3c-2b-i)
+
+Met `persistentLocalCache` geeft `getDocs()` offline een gecachet resultaat,
+en latency compensation laat een nog niet bevestigde delete lokaal al als
+verdwenen zien. Een "leeg" resultaat uit de cache bewijst dus niets. Daarom
+geldt voor elke lezing die een beslissing over verlaten of verwijderen
+draagt — de inventaris, de per-organisatiecontrole, de eindcontrole en het
+teruglezen rond een self-delete — dat ze **uitsluitend** via
+`getDocsFromServer()`/`getDocFromServer()` loopt. Offline faalt zo'n lezing
+(`unavailable`) en is de uitkomst `offline`, nooit "leeg". Het teruglezen na
+een delete gebruikt dezelfde drie eigen-identiteit-queries in plaats van een
+directe `get` op het eigen pad: een directe get valt onder `isOrgMember`/
+`canReadTeam` en wordt geweigerd zodra het lidmaatschap weg is, de queries
+niet (besluitrecord §4.3). De per-organisatiefeiten (organisatiedocument,
+ongefilterde ledenlijst van één organisatie, `deletionRequests/current`)
+zijn directe paden en de bewezen 8.3b-vorm; er komt geen nieuwe queryvorm bij.
 
 ## Index
 
@@ -185,6 +205,21 @@ outsider-contextquery die aantoont dat er niets lekt).
 - **Organisatienaam-isolatie:** een team-only lid kan `organizations/{orgId}`
   zelf nog steeds niet direct lezen (`isOrgMember(orgId)` blijft false) —
   alleen de kopie op het eigen teamdocument is bereikbaar.
+
+`tests/rules/account-gateway-queries.spec.ts` (PR 8.3c-2b-i, alle drie de
+queries via de bouwers die de gateway zelf gebruikt):
+
+- **Positief:** eigen uid/e-mail geeft precies de eigen rijen, door de echte
+  converters gelezen; een team-only lid vindt zijn teamMembers-document.
+- **Negatief:** vreemde uid, vreemd e-mailadres en een ongeverifieerde
+  e-mailclaim worden geweigerd.
+- **Volgorde en eindcontrole:** de eigen deletes slagen in de ontworpen
+  volgorde (teamMembers → open uitnodigingen → membership als laatste) en de
+  eindcontrole geeft nul rijen voor die organisatie; een andere organisatie
+  blijft onaangeroerd.
+- **Aanname A1 vastgepind:** een tweede delete van een al verwijderd membership
+  of een al verwijderde uitnodiging wordt geweigerd, een tweede
+  teamMembers-delete niet — vandaar "eerst teruglezen" in de gateway.
 
 ## Buiten scope van dit contract
 
