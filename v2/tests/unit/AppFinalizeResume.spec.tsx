@@ -14,7 +14,7 @@
 // entry na succes opruimt.
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import { render, waitFor, cleanup } from '@testing-library/preact';
-import { App } from '../../src/app/App';
+import { App, FINALIZE_AUTO_RETRY_DELAYS_MS } from '../../src/app/App';
 import { GameSyncCoordinator } from '../../src/application/game/GameSyncCoordinator';
 import { LocalStorageGameSyncCheckpointRepository } from '../../src/infrastructure/game/LocalStorageGameSyncCheckpointRepository';
 import { pendingFinalizeStorageKey } from '../../src/infrastructure/game/LocalStoragePendingFinalizeRepository';
@@ -737,5 +737,152 @@ describe('app/App — runFinalize() start nooit twee gelijktijdige gatewaycycli 
 
     // Nooit een derde, overbodige gatewaycyclus.
     expect(finalizeCalls).toHaveLength(2);
+  });
+});
+
+// Vervolgpunt (2) uit de herreview van #100: op een zwak netwerk blijft de
+// browser 'online', dus een afronding die op een timeout afketst kreeg geen
+// `online`-event en bleef tot een reload op 'actie-nodig'. `runFinalize` plant
+// na een mislukte poging nu een BEGRENSDE automatische herpoging in
+// (`FINALIZE_AUTO_RETRY_DELAYS_MS`), zonder nieuwe tekst of knop.
+describe('app/App — begrensde automatische herpoging van een mislukte afronding (vervolgpunt #100)', () => {
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  type FinalizeFn = GameCloudGateway['finalizeCompletedGame'];
+
+  function renderWithFinalize(finalizeImpl: FinalizeFn) {
+    const entry: PendingFinalizeEntry = { game: pendingGame(), completed: pendingCompleted() };
+    window.localStorage.setItem(
+      pendingFinalizeStorageKey(ORG_ID, TEAM_ID),
+      JSON.stringify([entry]),
+    );
+    const finalizeSpy = vi.fn(finalizeImpl);
+    const gateway: GameCloudGateway = {
+      ...alwaysSucceedsGateway(),
+      finalizeCompletedGame: finalizeSpy,
+    };
+    const coordinator = new GameSyncCoordinator({
+      gateway,
+      checkpoints: new LocalStorageGameSyncCheckpointRepository(window.localStorage),
+    });
+    const { unmount } = render(
+      <App
+        repositories={{
+          mode: 'cloud' as const,
+          settings: new ImmediateSettingsRepository(),
+          roster: new ImmediateRosterRepository(),
+          gameSync: coordinator,
+          gameWriterContext: writer,
+          completedGames: null,
+          migrationInventoryGateway: null,
+          migrationCoordinator: null,
+          exportCoordinator: null,
+          deletionCoordinator: null,
+          deletionRequestGateway: null,
+        }}
+        syncStatus={fakeSyncStatusApi()}
+        canWrite={true}
+        canWriteGame={true}
+        organizationId={ORG_ID}
+        teamId={TEAM_ID}
+        organizationName="Org Resume Test"
+      />,
+    );
+    return { finalizeSpy, unmount };
+  }
+
+  const timeout: FinalizeFn = async () => ({
+    ok: false,
+    error: new Error('finalizeCompletedGame: timeout (test, zwak netwerk)'),
+  });
+  const success: FinalizeFn = async (_o, _t, _g, completedGameId, _snapshot, expectedRevision) => ({
+    ok: true,
+    revision: expectedRevision + 1,
+    completedGameId,
+  });
+  /** Faalt de eerste `failures` aanroepen met een timeout, slaagt daarna. */
+  const failFirst =
+    (failures: number): FinalizeFn =>
+    (...args) => {
+      failures -= 1;
+      return failures >= 0 ? timeout(...args) : success(...args);
+    };
+  const outboxIsEmpty = () => {
+    const raw = window.localStorage.getItem(pendingFinalizeStorageKey(ORG_ID, TEAM_ID));
+    return raw === null || JSON.parse(raw).length === 0;
+  };
+  const [firstDelay, secondDelay] = FINALIZE_AUTO_RETRY_DELAYS_MS as [number, number, number];
+
+  it('zwak netwerk: probeert na een timeout vanzelf opnieuw (oplopende wachttijd) tot het lukt; ruimt dan op', async () => {
+    vi.useFakeTimers();
+    const { finalizeSpy } = renderWithFinalize(failFirst(2));
+    await vi.advanceTimersByTimeAsync(0);
+    expect(finalizeSpy).toHaveBeenCalledTimes(1);
+
+    await vi.advanceTimersByTimeAsync(firstDelay - 1);
+    expect(finalizeSpy).toHaveBeenCalledTimes(1);
+    await vi.advanceTimersByTimeAsync(1);
+    expect(finalizeSpy).toHaveBeenCalledTimes(2);
+
+    await vi.advanceTimersByTimeAsync(secondDelay - 1);
+    expect(finalizeSpy).toHaveBeenCalledTimes(2);
+    await vi.advanceTimersByTimeAsync(1);
+    expect(finalizeSpy).toHaveBeenCalledTimes(3);
+    expect(outboxIsEmpty()).toBe(true);
+
+    // Na het succes geen verdere pogingen.
+    await vi.advanceTimersByTimeAsync(10 * 60_000);
+    expect(finalizeSpy).toHaveBeenCalledTimes(3);
+  });
+
+  it('is begrensd: na de laatste herpoging volgt niets meer en blijft de outbox staan', async () => {
+    vi.useFakeTimers();
+    const { finalizeSpy } = renderWithFinalize(timeout);
+    const maxCalls = 1 + FINALIZE_AUTO_RETRY_DELAYS_MS.length;
+    await vi.advanceTimersByTimeAsync(0);
+    for (const delay of FINALIZE_AUTO_RETRY_DELAYS_MS) {
+      await vi.advanceTimersByTimeAsync(delay);
+    }
+    expect(finalizeSpy).toHaveBeenCalledTimes(maxCalls);
+
+    await vi.advanceTimersByTimeAsync(60 * 60_000);
+    expect(finalizeSpy).toHaveBeenCalledTimes(maxCalls);
+    // De duurzame retrybron blijft intact (hervat-op-load/online blijven werken).
+    expect(outboxIsEmpty()).toBe(false);
+
+    // Een `online`-event begint een nieuwe, weer begrensde reeks.
+    window.dispatchEvent(new Event('online'));
+    await vi.advanceTimersByTimeAsync(0);
+    expect(finalizeSpy).toHaveBeenCalledTimes(maxCalls + 1);
+    await vi.advanceTimersByTimeAsync(firstDelay);
+    expect(finalizeSpy).toHaveBeenCalledTimes(maxCalls + 2);
+  });
+
+  it('offline: plant niets in; de online-handler neemt het over', async () => {
+    vi.useFakeTimers();
+    const onLine = vi.spyOn(window.navigator, 'onLine', 'get').mockReturnValue(false);
+    const { finalizeSpy } = renderWithFinalize(failFirst(1));
+    await vi.advanceTimersByTimeAsync(0);
+    expect(finalizeSpy).toHaveBeenCalledTimes(1);
+    await vi.advanceTimersByTimeAsync(10 * 60_000);
+    expect(finalizeSpy).toHaveBeenCalledTimes(1);
+
+    onLine.mockReturnValue(true);
+    window.dispatchEvent(new Event('online'));
+    await vi.advanceTimersByTimeAsync(0);
+    expect(finalizeSpy).toHaveBeenCalledTimes(2);
+    expect(outboxIsEmpty()).toBe(true);
+  });
+
+  it('een ingeplande herpoging wordt bij unmount geannuleerd', async () => {
+    vi.useFakeTimers();
+    const { finalizeSpy, unmount } = renderWithFinalize(timeout);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(finalizeSpy).toHaveBeenCalledTimes(1);
+    unmount();
+    await vi.advanceTimersByTimeAsync(10 * 60_000);
+    expect(finalizeSpy).toHaveBeenCalledTimes(1);
   });
 });
