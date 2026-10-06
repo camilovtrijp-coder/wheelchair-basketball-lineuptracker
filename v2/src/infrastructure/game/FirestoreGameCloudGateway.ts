@@ -43,12 +43,14 @@ import {
   collection,
   doc,
   getDoc,
+  getDocFromCache,
   onSnapshot,
   orderBy,
   query,
   serverTimestamp,
   setDoc,
   updateDoc,
+  waitForPendingWrites,
   writeBatch,
   type DocumentReference,
   type Firestore,
@@ -428,6 +430,24 @@ export class FirestoreGameCloudGateway implements GameCloudGateway {
     };
   }
 
+  /**
+   * Lokale (cache-only) lezing van een action-document: geen netwerk, dus ook
+   * geen hang. `undefined` bij een cache-miss of een leesfout; de aanroeper valt
+   * dan terug op een gewone `setDoc()`. `hasPendingWrites` onderscheidt een
+   * wachtende eigen write van een server-bevestigd document.
+   */
+  private async readLocalAction(
+    ref: DocumentReference,
+  ): Promise<{ data: GameActionEnvelopeDocument; hasPendingWrites: boolean } | undefined> {
+    try {
+      const snapshot = await getDocFromCache(ref.withConverter(gameActionConverter));
+      if (!snapshot.exists()) return undefined;
+      return { data: snapshot.data(), hasPendingWrites: snapshot.metadata.hasPendingWrites };
+    } catch {
+      return undefined;
+    }
+  }
+
   async uploadActions(
     organizationId: string,
     teamId: string,
@@ -437,6 +457,28 @@ export class FirestoreGameCloudGateway implements GameCloudGateway {
     const outcomes: GameActionUploadOutcome[] = [];
     for (const action of actions) {
       const ref = this.actionRef(organizationId, teamId, gameId, action.actionId);
+      // Niet opnieuw versturen wat al in Firestores lokale schrijfwachtrij staat:
+      // een eerdere cyclus die op `withTimeout()` afketste (offline) liet de create
+      // daar achter, en elke extra `setDoc()` zet een DUBBELE create in de wachtrij
+      // die na reconnect door de Rules wordt geweigerd. Bij een lange offline
+      // wedstrijd groeit die wachtrij anders met elke sync-cyclus.
+      const local = await this.readLocalAction(ref);
+      if (local && deepEqual(local.data, action)) {
+        if (!local.hasPendingWrites) {
+          // Server-bevestigd document in de cache (geen wachtende write).
+          outcomes.push({ actionId: action.actionId, ok: true, alreadyConfirmed: true });
+        } else {
+          outcomes.push({
+            actionId: action.actionId,
+            ok: false,
+            alreadyQueued: true,
+            error: new Error(
+              `uploadActions: action ${action.actionId} staat al in de lokale schrijfwachtrij (nog niet bevestigd)`,
+            ),
+          });
+        }
+        continue;
+      }
       try {
         await withTimeout(setDoc(ref, action), this.timeoutMs, 'uploadActions:setDoc');
         outcomes.push({ actionId: action.actionId, ok: true });
@@ -465,7 +507,52 @@ export class FirestoreGameCloudGateway implements GameCloudGateway {
         outcomes.push({ actionId: action.actionId, ok: false, error: createError });
       }
     }
-    return outcomes;
+    return this.settleQueuedOutcomes(organizationId, teamId, gameId, actions, outcomes);
+  }
+
+  /**
+   * Na een reconnect staat de eigen wachtrij nog vol terwijl de eerste sync-
+   * cyclus al draait: zonder wachten zou elke wachtende action als `alreadyQueued`
+   * terugkomen en strandde de cyclus op `actie-nodig` tot de volgende gebruikers-
+   * actie (reviewbevinding A van #104). Daarom wordt, alleen als er wachtende
+   * actions zijn, EENMALIG gewacht tot de wachtrij leeg is (begrensd door de
+   * gewone timeout, dus offline kost dit hooguit één timeout per cyclus, niet één
+   * per action) en worden precies die actions daarna opnieuw uit de cache gelezen.
+   * Alleen een lezing zonder wachtende write maakt ze `alreadyConfirmed`.
+   */
+  private async settleQueuedOutcomes(
+    organizationId: string,
+    teamId: string,
+    gameId: string,
+    actions: readonly GameActionEnvelopeDocument[],
+    outcomes: GameActionUploadOutcome[],
+  ): Promise<GameActionUploadOutcome[]> {
+    if (!outcomes.some((outcome) => outcome.alreadyQueued)) return outcomes;
+    try {
+      await withTimeout(
+        waitForPendingWrites(this.db),
+        this.timeoutMs,
+        'uploadActions:waitForPendingWrites',
+      );
+    } catch {
+      return outcomes; // nog offline of te traag: blijft queued, volgende cyclus probeert opnieuw
+    }
+    const settled: GameActionUploadOutcome[] = [];
+    for (const outcome of outcomes) {
+      const action = actions.find((candidate) => candidate.actionId === outcome.actionId);
+      if (!outcome.alreadyQueued || !action) {
+        settled.push(outcome);
+        continue;
+      }
+      const ref = this.actionRef(organizationId, teamId, gameId, action.actionId);
+      const local = await this.readLocalAction(ref);
+      if (local && !local.hasPendingWrites && deepEqual(local.data, action)) {
+        settled.push({ actionId: action.actionId, ok: true, alreadyConfirmed: true });
+      } else {
+        settled.push(outcome);
+      }
+    }
+    return settled;
   }
 
   async patchSnapshot(
