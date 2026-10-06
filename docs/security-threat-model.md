@@ -169,6 +169,65 @@ privacyuitleg; niets wordt automatisch verzonden.
   escalatiepad omdat elke consumerende Rules-functie een exact-literal
   allowlist is; wel een open punt voor een toekomstige shapehardening-PR.
 
+### Organisatie verlaten en accountverwijdering (8.3c-2, restrisico's R1–R6)
+
+Stand na PR 8.3c-2b-i (`LeaveOrganizationCoordinator`, `FirestoreAccountGateway`;
+ontwerp `docs/pr-8.3c-2b-plan.md` §F, besluitrecord `docs/pr-8.3c-besluitvoorstel.md`
+§8.6/§8.7). De client verwijdert alleen eigen documenten die uit een verse
+server-inventaris komen, in de vaste volgorde teamMembers → eigen openstaande
+uitnodigingen → per-organisatiecontrole → eigen membership als laatste →
+eindcontrole van de server. Rules blijven de grens; onderstaande restrisico's
+blijven bewust staan.
+
+- **R1 — herclaim van een openstaande uitnodiging (besluitrecord §8.6 punt 3).** Een
+  vertrokken lid kan een nog openstaande uitnodiging met een hogere rol claimen.
+  2b-i sluit het eerlijke vertrekpad: bij verlaten verwijdert de vertrekker zijn eigen
+  `pending`/`accepted` uitnodigingen in die organisatie (besluit B3; `claimed`/`revoked`
+  blijven voor de audit). Het overdrachtspad volgt in 2b-iii. De Rules-claimtermijn
+  van 30 dagen na `invitedAt` (#103) sluit oude uitnodigingen. **Restvenster:** een
+  uitnodiging jonger dan 30 dagen die buiten de app om blijft staan (demotie of
+  verwijdering via de Console, of een vertrekker zonder geverifieerde e-mailclaim, die
+  zijn uitnodigingen niet kan vinden), tot ze is ingetrokken of verlopen.
+- **R2 — re-bootstrap van een verwijderde, gedemoveerde maker (§8.6 punt 4).** De
+  Rules-binding aan de eerste 7 dagen na `createdAt` (#103) laat alleen dat venster
+  open, ook bij een overdracht zonder accountverwijdering en eenzijdig met een tweede
+  account als de maker admin is. De maker kan zelf nooit vertrekken (klasse
+  `creator-needs-owner`, geen write).
+- **R3 — race na de eindcontrole.** Een owner/admin kan direct na de eindcontrole een
+  `teamMembers`-document of uitnodiging voor de vertrekker aanmaken; de eindcontrole is
+  een momentopname. In 2b-ii komt een tweede eindpoort direct vóór `deleteUser()`. Wat
+  daarna nog ontstaat, ruimt een owner/admin op (teamMembers direct, uitnodigingen na
+  30 dagen) of het runbook.
+- **R4 — pseudonieme audit-uid's blijven staan (besluit B8, geaccepteerd).**
+  `organizations.createdBy`, `teams.createdBy`, `invitations.invitedBy`,
+  `games.writerUid`, `actions.authorUid`, `completedGames.deletedBy` (tot redactie),
+  `deletionRequests.requestedBy` en `migrationRuns.createdBy` dragen de uid. Ze zijn
+  onveranderlijk of append-only onder Rules en bevatten geen e-mail. "Geen document
+  meer dat de eigen uid draagt" is beperkt tot lidmaatschaps- en
+  uitnodigingsdocumenten. Herzien bij de juridische toets vóór 8.5.
+- **R5 — hoofdlettergebruik in e-mailadressen.** Een uitnodiging die buiten de app
+  met een afwijkend gespeld adres is aangemaakt, matcht de token-e-mail niet: ze is
+  niet te accepteren, maar ook niet via de query te vinden en blijft na vertrek of
+  accountverwijdering staan (aanname A3: Firebase Auth levert het token-adres in
+  kleine letters; niet in de emulator bewezen). Achtervang: runbook, en het
+  pre-8.5-besluit over het uitnodigingsaanmaakpad hieronder.
+- **R6 — half aangemaakte organisatie na 7 dagen (alleen vastgelegd, niet opgelost).**
+  `createOrganizationWithOwner` schrijft sequentieel eerst het organisatiedocument en
+  dan het owner-membership via de bootstrap-create. Landt die tweede write niet
+  binnen 7 dagen na `createdAt` (bijv. een write die offline in de wachtrij bleef
+  staan of een afgebroken sessie), dan weigeren de Rules sinds #103 de bootstrap (ook
+  de hervatting via `resumeOrgId`) en blijft er een organisatie zonder owner en zonder
+  lid achter. De maker ziet haar niet
+  in zijn inventaris (er is geen eigen document), dus verlaten of accountverwijdering
+  raakt haar niet; opruimen is een beheerdersactie via het runbook.
+
+Verder geldt voor deze flows: elke inventaris-, controle- en readbacklezing komt van
+de server (`getDocsFromServer`/`getDocFromServer`), dus een offline cache kan nooit
+een vals "leeg" opleveren; er is geen nieuwe `localStorage`-sleutel en geen
+persistente voortgang (hervatten gebeurt uit een verse server-inventaris); en
+onbevestigd lokaal wedstrijdwerk voor een organisatie (openstaande afronding of een
+gestarte wedstrijd op dit apparaat) blokkeert het verlaten van die organisatie.
+
 ### Pre-8.5-poort: er bestaat geen uitnodigingsaanmaakpad in `v2/src`
 
 PR 8.3c-0 bindt `invitedAt` aan `request.time`, zodat een uitnodiging niet
