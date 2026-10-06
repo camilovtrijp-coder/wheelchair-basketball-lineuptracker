@@ -596,7 +596,15 @@ service cloud.firestore {
         allow create: if signedIn() && request.auth.uid == uid &&
           request.resource.data.role == 'organizationOwner' &&
           request.resource.data.uid == uid &&
-          get(/databases/$(database)/documents/organizations/$(orgId)).data.createdBy == request.auth.uid;
+          get(/databases/$(database)/documents/organizations/$(orgId)).data.createdBy == request.auth.uid &&
+          // PR 8.3c-2 (besluitrecord §8.7, restgat 2): alleen in de eerste 7 dagen na het
+          // aanmaken van de organisatie. Daarna kan een gedemoveerde en verwijderde maker
+          // zich niet meer via deze tak tot owner terugmaken. `createdAt` is servergebonden
+          // (zie de create-regel van `organizations`); een organisatie zonder (of met een
+          // niet-tijdstip) `createdAt` faalt gesloten.
+          ('createdAt' in get(/databases/$(database)/documents/organizations/$(orgId)).data) &&
+          request.time < get(/databases/$(database)/documents/organizations/$(orgId)).data.createdAt +
+            duration.value(7, 'd');
 
         // Join via geaccepteerde uitnodiging — membership-create en accepted → claimed moeten
         // in dezelfde batch zitten. getAfter() maakt overslaan van de claim-stap onmogelijk.
@@ -725,6 +733,11 @@ service cloud.firestore {
           // WriteBatch deelt elke write dezelfde `request.time`, dus de atomaire
           // claim+membership-constructie hieronder blijft ongewijzigd werken.
           request.resource.data.claimedAt == request.time &&
+          // PR 8.3c-2 (besluitrecord §8.7, restgat 1): ook de claim-stap heeft een termijn,
+          // 30 dagen na `invitedAt` (niet na `acceptedAt`: dat tijdstip is door de uitgenodigde
+          // te beïnvloeden). Een vertrokken lid kan daarmee geen oude, nooit geclaimde
+          // uitnodiging met een hogere rol meer inwisselen.
+          request.time < resource.data.invitedAt + duration.value(30, 'd') &&
           request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'claimedAt']) &&
           !exists(orgMemberRef(orgId, request.auth.uid)) &&
           existsAfter(orgMemberRef(orgId, request.auth.uid)) &&

@@ -324,11 +324,13 @@ describe('volgorde en eindcontrole (§4.3)', () => {
   });
 });
 
-// BEKENDE RESTGATEN, vastgelegd in besluitrecord §8.6 (review van PR #98). Deze tests bewijzen
-// bewust wat NU kan, zodat een latere Rules-wijziging ze niet ongemerkt verandert; ze zijn geen
-// goedkeuring. Beide wachten op een besluit van de eigenaar.
-describe('bekende restgaten (besluitrecord §8.6) — gedocumenteerd, niet goedgekeurd', () => {
-  it('RESTGAT 1: een lid dat vertrekt kan een nog openstaande, eerder uitgegeven uitnodiging met een hogere rol claimen', async () => {
+// RESTGATEN uit besluitrecord §8.6 (review van PR #98), na de besluiten van §8.7. RESTGAT 1
+// (claim na vertrek) is ingesnoerd tot 30 dagen na `invitedAt`; de bewijzen daarvan staan in
+// claim-and-bootstrap-terms.spec.ts, en de pin hieronder blijft als restvenster bestaan.
+// RESTGAT 2 en 2b (bootstrap na verwijdering) zijn dicht na 7 dagen; hier de twee oorspronkelijke
+// paden als negatieve test. Het restvenster van de eerste 7 dagen staat in dezelfde nieuwe spec.
+describe('restgaten uit besluitrecord §8.6 na de termijnen van §8.7', () => {
+  it('RESTGAT 1 (restvenster 30 dagen): een lid dat vertrekt kan een recente, nog openstaande uitnodiging met een hogere rol claimen', async () => {
     // erin is viewer; er staat nog een accepted uitnodiging op haar adres met rol admin.
     await withAdmin(env, async (admin) => {
       await admin
@@ -375,17 +377,16 @@ describe('bekende restgaten (besluitrecord §8.6) — gedocumenteerd, niet goedg
     await assertSucceeds(claim.commit());
   });
 
-  it('RESTGAT 2b (bestond al): ook een ADMIN kan een gedemoveerde maker verwijderen, waarna die zich weer owner maakt', async () => {
+  it('RESTGAT 2b gesloten door de bootstrap-binding: een ADMIN verwijdert een gedemoveerde maker, maar die kan zich na 7 dagen niet meer owner maken', async () => {
     await withAdmin(env, async (admin) => {
-      await admin
-        .collection('organizations')
-        .doc(ORG_A)
-        .collection('organizationMembers')
-        .doc(USERS.alice.uid)
-        .update({ role: 'coach' });
+      const org = admin.collection('organizations').doc(ORG_A);
+      await org.update({
+        createdAt: Timestamp.fromDate(new Date(Date.now() - 30 * 24 * 60 * 60 * 1000)),
+      });
+      await org.collection('organizationMembers').doc(USERS.alice.uid).update({ role: 'coach' });
     });
     await assertSucceeds(deleteDoc(orgMemberRef(ctx('bob'), ORG_A, 'alice')));
-    await assertSucceeds(
+    await assertFails(
       setDoc(orgMemberRef(ctx('alice'), ORG_A, 'alice'), {
         role: 'organizationOwner',
         email: user('alice').email,
@@ -394,17 +395,16 @@ describe('bekende restgaten (besluitrecord §8.6) — gedocumenteerd, niet goedg
     );
   });
 
-  it('RESTGAT 2 (bestond al): een gedemoveerde maker die door een owner is verwijderd kan zich via de bootstrap-create weer owner maken', async () => {
+  it('RESTGAT 2 gesloten door de bootstrap-binding: een OWNER verwijdert een gedemoveerde maker, maar die kan zich na 7 dagen niet meer owner maken', async () => {
     await withAdmin(env, async (admin) => {
-      await admin
-        .collection('organizations')
-        .doc(ORG_A)
-        .collection('organizationMembers')
-        .doc(USERS.alice.uid)
-        .update({ role: 'coach' });
+      const org = admin.collection('organizations').doc(ORG_A);
+      await org.update({
+        createdAt: Timestamp.fromDate(new Date(Date.now() - 30 * 24 * 60 * 60 * 1000)),
+      });
+      await org.collection('organizationMembers').doc(USERS.alice.uid).update({ role: 'coach' });
     });
     await assertSucceeds(deleteDoc(orgMemberRef(ctx('kevin'), ORG_A, 'alice')));
-    await assertSucceeds(
+    await assertFails(
       setDoc(orgMemberRef(ctx('alice'), ORG_A, 'alice'), {
         role: 'organizationOwner',
         email: user('alice').email,

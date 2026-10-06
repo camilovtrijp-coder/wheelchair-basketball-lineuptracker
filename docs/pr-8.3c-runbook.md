@@ -280,6 +280,15 @@ account remains."
   herladen voordat hij opnieuw aanvraagt. Er gaat geen organisatiedata verloren (een geannuleerd verzoek bevat alleen het
   exportbewijs); de eigenaar kan daarna een nieuw verzoek indienen (`attempt` begint weer op
   1). Doe dit nooit bij `requested`, `executing` of `failed`.
+- **Een organisatie zonder owner, of een uitnodiging die niet meer te claimen is.** Sinds de
+  Rules-termijnen van besluitrecord §8.7 kan een maker zich alleen in de eerste 7 dagen na
+  `createdAt` zelf als owner aanmaken, en kan een uitnodiging alleen tot 30 dagen na
+  `invitedAt` worden geclaimd. Is een organisatie ouder dan 7 dagen en heeft ze geen owner
+  meer (of ontbreekt `createdAt`), dan herstelt alleen een beheerder dat in de Console:
+  maak `organizationMembers/{uid}` aan met `role`, `email` en `uid`, noteer het in het
+  logboek en bevestig de identiteit van de persoon buiten de app. Een uitnodiging die ouder
+  is dan 30 dagen geef je opnieuw uit (de oude kan niet meer geclaimd worden). Dit is geen
+  fout van de gebruiker en geen reden om de Rules te versoepelen.
 
 ## 9. Korte checklist
 

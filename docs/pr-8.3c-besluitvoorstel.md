@@ -1115,7 +1115,16 @@ De eigenaar heeft de aanbevelingen overgenomen:
 5. **Uitvoering:** punten 3 en 4 gaan samen in **één kleine Rules-PR** (positieve en negatieve
    emulator-tests, accessmatrix, runbookregel) die vóór 8.3c-2b-i komt. Daarna de afhandeling
    van dubbel opnieuw verstuurde acties offline, en dan 2b-i. Tot die PR is gedeployed (er wordt
-   niets gedeployed zonder aparte opdracht) blijven R1 en R2 in kracht.
+   niets gedeployed zonder aparte opdracht) blijven de restgaten uit punt 3 en 4 (in het
+   2b-ontwerp §F "R1" en "R2" genoemd) volledig in kracht.
+6. **Restvensters ook na deployment van die Rules-PR:** uitnodigingen jonger dan 30 dagen blijven
+   na vertrek claimbaar (R1), en in de eerste 7 dagen na het aanmaken van een organisatie kan een
+   verwijderde, gedemoveerde maker zich nog owner maken (R2, ook eenzijdig met een tweede account
+   als de maker admin is). Beide staan als test vastgepind in
+   `tests/rules/claim-and-bootstrap-terms.spec.ts`.
+7. **e2e-auth retries (besluit 6 oktober 2026):** in CI één retry, lokaal geen; een test die pas
+   bij de retry slaagt telt als bevinding, niet als groen zonder meer. Flake-beleid: één rerun met
+   een PR-comment, daarna beslist de eigenaar; nooit mergen op rood.
 
 ### De vier verfijningen, op één rij
 

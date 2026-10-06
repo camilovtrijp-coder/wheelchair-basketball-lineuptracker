@@ -147,13 +147,15 @@ export const FIRESTORE_ACCESS_MATRIX: readonly FirestoreAccessMatrixEntry[] = [
       "Delete: owner/admin remove OTHER members (admins never an owner); every non-owner member may remove ONLY their own document " +
       "(leave organization, 8.3c-2a) — an owner never can, and neither can the organization's creator (`createdBy`), because a demoted " +
       "creator could otherwise delete their own membership and re-create it as owner through the bootstrap rule. " +
-      "Known residual gaps (docs/pr-8.3c-besluitvoorstel.md §8.6, pinned by tests except the second-account route): a demoted creator whose membership is removed by an owner OR an admin can still re-bootstrap as owner, and an admin-creator can do so unilaterally with a second account (pre-existing), " +
-      "and a member who left can claim a still-open invitation with a higher role.",
+      "The bootstrap-create is only possible within 7 days after the organization's `createdAt` (missing or non-timestamp `createdAt` fails closed; 8.3c-2, docs/pr-8.3c-besluitvoorstel.md §8.7). " +
+      "Residual window (docs/pr-8.3c-besluitvoorstel.md §8.6/§8.7, pinned by tests): within those first 7 days a demoted creator whose membership is removed by an owner or admin can still re-bootstrap as owner (an admin-creator can do so unilaterally with a second account; reasoned from the Rules, not pinned by a test). " +
+      "Joining via an invitation additionally requires the claim to happen within 30 days after `invitedAt` (see `invitations`); a member who left can still claim a RECENT open invitation with a higher role.",
     evidence: [
       "tests/rules/bootstrap-and-invitation-flow.spec.ts",
       "tests/rules/membership-and-roles.spec.ts",
       "tests/rules/self-promotion.spec.ts",
       "tests/rules/leave-organization.spec.ts",
+      "tests/rules/claim-and-bootstrap-terms.spec.ts",
     ],
     clientSources: [
       FIRESTORE_CLIENT_GATEWAY_FILES[0],
@@ -174,6 +176,7 @@ export const FIRESTORE_ACCESS_MATRIX: readonly FirestoreAccessMatrixEntry[] = [
     conditions:
       "Invitee email must match a verified auth token; status transitions and affected fields are allowlisted; claim is atomic. " +
       "invitedAt/acceptedAt/claimedAt/revokedAt are server-bound (== request.time). Accepting is only possible within 30 days of invitedAt. " +
+      "Claiming (accepted → claimed) is likewise only possible within 30 days after invitedAt (8.3c-2, §8.7), so an old, never-claimed invitation cannot be redeemed later. " +
       "Revoking is only possible from pending/accepted. " +
       "Delete has two branches: owner/admin only after a 30-day floor measured at the timestamp of the CURRENT status (with an invitedAt fallback), " +
       "and the invitee themselves with a verified email and NO floor (own personal data). There is no automatic purge.",
@@ -182,6 +185,7 @@ export const FIRESTORE_ACCESS_MATRIX: readonly FirestoreAccessMatrixEntry[] = [
       "tests/rules/membership-and-roles.spec.ts",
       "tests/rules/server-bound-timestamps.spec.ts",
       "tests/rules/invitation-retention.spec.ts",
+      "tests/rules/claim-and-bootstrap-terms.spec.ts",
     ],
     clientSources: [
       FIRESTORE_CLIENT_GATEWAY_FILES[0],
