@@ -20,6 +20,7 @@ vi.mock('firebase/firestore', () => ({
   serverTimestamp: vi.fn(() => 'server-timestamp-sentinel'),
   setDoc: vi.fn(),
   updateDoc: vi.fn(),
+  waitForPendingWrites: vi.fn(),
   writeBatch: vi.fn(),
 }));
 
@@ -28,7 +29,14 @@ vi.mock('firebase-base/documents', () => ({
   gameActionConverter: { toFirestore: (data: unknown) => data },
 }));
 
-import { doc, getDoc, getDocFromCache, setDoc, type Firestore } from 'firebase/firestore';
+import {
+  doc,
+  getDoc,
+  getDocFromCache,
+  setDoc,
+  waitForPendingWrites,
+  type Firestore,
+} from 'firebase/firestore';
 import type { GameActionEnvelopeDocument } from 'firebase-base/documents';
 import { FirestoreGameCloudGateway } from '../../src/infrastructure/game/FirestoreGameCloudGateway';
 
@@ -73,6 +81,8 @@ describe('FirestoreGameCloudGateway.uploadActions() — niet opnieuw versturen w
     vi.resetAllMocks();
     (doc as Mock).mockImplementation((_db: unknown, ...path: string[]) => refFor(path.join('/')));
     (getDoc as Mock).mockImplementation(miss);
+    // Standaard offline: de wachtrij loopt niet leeg, waitForPendingWrites bevestigt niet.
+    (waitForPendingWrites as Mock).mockImplementation(never);
   });
 
   const gateway = () => new FirestoreGameCloudGateway(fakeDb, TIMEOUT_MS);
@@ -88,6 +98,85 @@ describe('FirestoreGameCloudGateway.uploadActions() — niet opnieuw versturen w
     expect(outcomes[0]).toMatchObject({ actionId: 'a-1', ok: false, alreadyQueued: true });
     expect(outcomes[0]?.alreadyConfirmed).toBeUndefined();
     expect(outcomes[0]?.error).toBeInstanceOf(Error);
+  });
+
+  it('reconnect (reviewbevinding A): de wachtrij loopt tijdens de cyclus leeg → alreadyConfirmed binnen dezelfde aanroep, zonder setDoc', async () => {
+    const queued = makeAction('a-1');
+    const fresh = makeAction('a-2');
+    let flushed = false;
+    (getDocFromCache as Mock).mockImplementation((ref: { id: string }) => {
+      if (ref.id.endsWith('a-1')) return Promise.resolve(cached(queued, !flushed));
+      return miss();
+    });
+    (waitForPendingWrites as Mock).mockImplementation(() => {
+      flushed = true;
+      return Promise.resolve();
+    });
+    (setDoc as Mock).mockResolvedValue(undefined);
+
+    const outcomes = await gateway().uploadActions('org-1', 'team-1', 'game-1', [queued, fresh]);
+
+    expect(waitForPendingWrites).toHaveBeenCalledTimes(1);
+    expect(setDoc).toHaveBeenCalledTimes(1); // alleen de nieuwe action
+    expect(outcomes).toEqual([
+      { actionId: 'a-1', ok: true, alreadyConfirmed: true },
+      { actionId: 'a-2', ok: true },
+    ]);
+  });
+
+  it('meerdere wachtende actions: waitForPendingWrites wordt maar één keer aangeroepen', async () => {
+    const actions = [makeAction('a-1'), makeAction('a-2'), makeAction('a-3')];
+    let flushed = false;
+    (getDocFromCache as Mock).mockImplementation((ref: { id: string }) => {
+      const action = actions.find((a) => ref.id.endsWith(a.actionId));
+      return action ? Promise.resolve(cached(action, !flushed)) : miss();
+    });
+    (waitForPendingWrites as Mock).mockImplementation(() => {
+      flushed = true;
+      return Promise.resolve();
+    });
+
+    const outcomes = await gateway().uploadActions('org-1', 'team-1', 'game-1', actions);
+
+    expect(waitForPendingWrites).toHaveBeenCalledTimes(1);
+    expect(setDoc).not.toHaveBeenCalled();
+    expect(outcomes.every((o) => o.ok && o.alreadyConfirmed)).toBe(true);
+  });
+
+  it('nog offline: waitForPendingWrites loopt op de timeout af en de action blijft alreadyQueued (één timeout per cyclus, niet per action)', async () => {
+    const actions = [makeAction('a-1'), makeAction('a-2'), makeAction('a-3')];
+    (getDocFromCache as Mock).mockImplementation((ref: { id: string }) => {
+      const action = actions.find((a) => ref.id.endsWith(a.actionId));
+      return action ? Promise.resolve(cached(action, true)) : miss();
+    });
+
+    const started = Date.now();
+    const outcomes = await gateway().uploadActions('org-1', 'team-1', 'game-1', actions);
+
+    expect(Date.now() - started).toBeLessThan(TIMEOUT_MS * 3);
+    expect(waitForPendingWrites).toHaveBeenCalledTimes(1);
+    expect(setDoc).not.toHaveBeenCalled();
+    expect(outcomes.every((o) => !o.ok && o.alreadyQueued)).toBe(true);
+  });
+
+  it('waitForPendingWrites faalt: de action blijft alreadyQueued (geen vals bevestigd)', async () => {
+    const action = makeAction('a-1');
+    (getDocFromCache as Mock).mockResolvedValue(cached(action, true));
+    (waitForPendingWrites as Mock).mockRejectedValue(new Error('netwerk'));
+
+    const outcomes = await gateway().uploadActions('org-1', 'team-1', 'game-1', [action]);
+
+    expect(outcomes[0]).toMatchObject({ ok: false, alreadyQueued: true });
+  });
+
+  it('zonder wachtende actions wordt niet op de wachtrij gewacht', async () => {
+    const action = makeAction('a-1');
+    (getDocFromCache as Mock).mockImplementation(miss);
+    (setDoc as Mock).mockResolvedValue(undefined);
+
+    await gateway().uploadActions('org-1', 'team-1', 'game-1', [action]);
+
+    expect(waitForPendingWrites).not.toHaveBeenCalled();
   });
 
   it('een server-bevestigde identieke action in de cache is alreadyConfirmed, zonder setDoc', async () => {

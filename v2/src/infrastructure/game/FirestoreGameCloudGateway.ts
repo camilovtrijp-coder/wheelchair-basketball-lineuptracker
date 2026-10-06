@@ -50,6 +50,7 @@ import {
   serverTimestamp,
   setDoc,
   updateDoc,
+  waitForPendingWrites,
   writeBatch,
   type DocumentReference,
   type Firestore,
@@ -506,7 +507,52 @@ export class FirestoreGameCloudGateway implements GameCloudGateway {
         outcomes.push({ actionId: action.actionId, ok: false, error: createError });
       }
     }
-    return outcomes;
+    return this.settleQueuedOutcomes(organizationId, teamId, gameId, actions, outcomes);
+  }
+
+  /**
+   * Na een reconnect staat de eigen wachtrij nog vol terwijl de eerste sync-
+   * cyclus al draait: zonder wachten zou elke wachtende action als `alreadyQueued`
+   * terugkomen en strandde de cyclus op `actie-nodig` tot de volgende gebruikers-
+   * actie (reviewbevinding A van #104). Daarom wordt, alleen als er wachtende
+   * actions zijn, EENMALIG gewacht tot de wachtrij leeg is (begrensd door de
+   * gewone timeout, dus offline kost dit hooguit één timeout per cyclus, niet één
+   * per action) en worden precies die actions daarna opnieuw uit de cache gelezen.
+   * Alleen een lezing zonder wachtende write maakt ze `alreadyConfirmed`.
+   */
+  private async settleQueuedOutcomes(
+    organizationId: string,
+    teamId: string,
+    gameId: string,
+    actions: readonly GameActionEnvelopeDocument[],
+    outcomes: GameActionUploadOutcome[],
+  ): Promise<GameActionUploadOutcome[]> {
+    if (!outcomes.some((outcome) => outcome.alreadyQueued)) return outcomes;
+    try {
+      await withTimeout(
+        waitForPendingWrites(this.db),
+        this.timeoutMs,
+        'uploadActions:waitForPendingWrites',
+      );
+    } catch {
+      return outcomes; // nog offline of te traag: blijft queued, volgende cyclus probeert opnieuw
+    }
+    const settled: GameActionUploadOutcome[] = [];
+    for (const outcome of outcomes) {
+      const action = actions.find((candidate) => candidate.actionId === outcome.actionId);
+      if (!outcome.alreadyQueued || !action) {
+        settled.push(outcome);
+        continue;
+      }
+      const ref = this.actionRef(organizationId, teamId, gameId, action.actionId);
+      const local = await this.readLocalAction(ref);
+      if (local && !local.hasPendingWrites && deepEqual(local.data, action)) {
+        settled.push({ actionId: action.actionId, ok: true, alreadyConfirmed: true });
+      } else {
+        settled.push(outcome);
+      }
+    }
+    return settled;
   }
 
   async patchSnapshot(

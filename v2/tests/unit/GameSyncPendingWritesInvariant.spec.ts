@@ -24,6 +24,7 @@ vi.mock('firebase/firestore', () => ({
   serverTimestamp: vi.fn(() => 'server-timestamp-sentinel'),
   setDoc: vi.fn(),
   updateDoc: vi.fn(),
+  waitForPendingWrites: vi.fn(() => Promise.resolve()),
   writeBatch: vi.fn(),
 }));
 

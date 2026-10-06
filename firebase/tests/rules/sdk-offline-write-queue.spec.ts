@@ -64,4 +64,31 @@ describe('Firestore SDK: offline schrijfwachtrij en cache-only lezen', () => {
     expect(confirmed.exists()).toBe(true);
     expect(confirmed.metadata.hasPendingWrites).toBe(false);
   });
+
+  it('een offline write die de Rules weigeren verdwijnt na de reconnect uit de lokale weergave (geen vals "bevestigd")', async () => {
+    const db = authCtx(env, USERS.henry.uid, {
+      email: USERS.henry.email,
+      email_verified: true,
+    });
+    // Niet toegestaan: een organisatie aanmaken met een ander uid als `createdBy`.
+    const ref = doc(db, 'organizations', 'org-sdk-geweigerd');
+    await disableNetwork(db);
+    const write = setDoc(ref, {
+      name: 'Geweigerd (fictief)',
+      createdBy: USERS.grace.uid,
+      createdAt: serverTimestamp(),
+    });
+    const rejected = write.then(
+      () => 'accepted',
+      (error: { code?: string }) => error.code ?? 'rejected',
+    );
+    const queued = await getDocFromCache(ref);
+    expect(queued.metadata.hasPendingWrites).toBe(true);
+
+    await enableNetwork(db);
+    expect(await rejected).toBe('permission-denied');
+
+    // De lokale laag is teruggedraaid: een cache-miss, geen document zonder wachtende write.
+    await expect(getDocFromCache(ref)).rejects.toMatchObject({ code: 'unavailable' });
+  });
 });
