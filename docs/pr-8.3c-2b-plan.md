@@ -7,12 +7,12 @@ productiecode, geen tests en geen Rules-wijziging. Het werkt §4 en §5 (8.3c-2)
 geen toestemming voor UI-werk (2c), e2e-werk (2d), een deployment, een
 productiecutover of een Blaze-/billingkoppeling.
 
-**Rules-basis.** PR #98 (8.3c-2a, Rules voor "organisatie verlaten") is op het
-moment van schrijven **nog niet gemerged**. Dit ontwerp neemt de Rules en tests van
-branch `claude/stoic-sagan-lxtzcf-2` (`firebase/firestore.rules`,
-`firebase/tests/rules/leave-organization.spec.ts`, besluitrecord §8.6) als
-vaststaande basis. Regelnummers hieronder verwijzen naar die branch. **8.3c-2b mag pas
-starten als #98 gemerged is** (anders bouwt 2b op Rules die nog kunnen veranderen).
+**Rules-basis.** PR #98 (8.3c-2a, Rules voor "organisatie verlaten") is **gemerged**.
+Dit ontwerp neemt de Rules en tests daarvan (`firebase/firestore.rules`,
+`firebase/tests/rules/leave-organization.spec.ts`, besluitrecord §8.6) als basis; de
+regelnummers hieronder verwijzen naar de stand van #98 en kunnen na de Rules-PR met de
+termijnen van besluitrecord §8.7 (#103) iets verschoven zijn. **8.3c-2b-i start pas na die
+Rules-PR** (besluit eigenaar 6 oktober 2026).
 
 Leesvolgorde gevolgd: `AGENTS.md`, `README.md`, `docs/IMPLEMENTATION_PLAN.md`
 (fase 8, 8.3c-rijen), `docs/pr-8.3-plan.md` (§B.5, §C 8.3c, §D, §E, §F),
@@ -294,10 +294,10 @@ client-mitigatie dekt dus alleen de paden die de app zélf bouwt. Ontwerp:
    email)` op `OwnershipTransferGateway`, zodat een toekomstige ledenbeheer-UI
    (demotie/verwijderen, buiten de huidige roadmapscope) hem verplicht kan aanroepen.
 4. **Wat 2b niet kan sluiten:** demotie/verwijdering via Console. Daarvoor zijn er twee
-   routes, beide eigenaarsbesluit (**open besluit B4**): een runbookregel ("trek bij
-   demotie of verwijdering de openstaande uitnodigingen op dat adres in") en/of het
-   Rules-alternatief uit §8.6 (een claimtermijn na `acceptedAt`). Alleen de Rules-route
-   dicht het gat voor álle paden.
+   routes, besloten op 6 oktober 2026 (besluitrecord §8.7): een runbookregel ("trek bij
+   demotie of verwijdering de openstaande uitnodigingen op dat adres in") én de Rules-
+   claimtermijn van 30 dagen na `invitedAt` (Rules-PR #103). De termijn dicht het gat voor
+   alle paden behalve het restvenster van uitnodigingen jonger dan 30 dagen.
 
 ### B.8 Overdracht als tweestapsflow (§4.2)
 
@@ -321,8 +321,9 @@ handeling van B en bewijst dat B bestaat en kan inloggen.
 - **Restgat 2 blijft staan bij een overdracht zonder accountverwijdering:** verwijdert B
   een gedemoveerde of nog-owner maker A, dan kan A zich via de bootstrap-create weer
   owner maken (§8.6 punt 4). In de accountverwijderflow is dat moot (A heeft daarna geen
-  account), bij een losse overdracht niet. 2b-iii verandert daar niets aan; de echte fix
-  (bootstrap binden aan "net aangemaakt") is **open besluit B6**.
+  account), bij een losse overdracht niet. 2b-iii verandert daar niets aan; de Rules-fix
+  (bootstrap alleen de eerste 7 dagen na `createdAt`, besluit B6/§8.7, Rules-PR #103)
+  laat alleen dat venster van 7 dagen open.
 - **2c levert:** de UI voor A (kandidaat kiezen, promoveren, wachtstatus) en voor B
   (afrondactie), NL/EN, dialogen met axe/focus/Escape.
 
@@ -755,11 +756,16 @@ preflightpoort en de `FromServer`-eis weggemuteerd moeten de bijbehorende tests 
 
 ## F. Bekende restrisico's (vast te leggen in `security-threat-model.md` §7 in 2b-i)
 
-- **R1 — RESTGAT 1 (§8.6 punt 3)** blijft open voor demotie/verwijdering buiten de app.
-  2b sluit het eerlijke vertrekpad en het overdrachtspad (§B.7). Volledige sluiting vereist
-  de Rules-claimtermijn (B4).
-- **R2 — RESTGAT 2 (§8.6 punt 4)** blijft open bij een overdracht zónder
-  accountverwijdering (§B.8). Fix = bootstrapbinding (B6), raakt het datacontract.
+- **R1 — RESTGAT 1 (§8.6 punt 3):** een vertrokken lid kan een openstaande uitnodiging met
+  een hogere rol claimen. 2b sluit het eerlijke vertrekpad en het overdrachtspad (§B.7); de
+  Rules-claimtermijn van 30 dagen na `invitedAt` (B4, #103) sluit oude uitnodigingen. **Restvenster
+  na #103:** een uitnodiging jonger dan 30 dagen blijft na vertrek claimbaar tot ze is
+  ingetrokken of verlopen.
+- **R2 — RESTGAT 2 (§8.6 punt 4):** een gedemoveerde maker die is verwijderd kan zich via de
+  bootstrap-create weer owner maken. De Rules-binding aan de eerste 7 dagen na `createdAt`
+  (B6, #103) vraagt geen datacontractwijziging. **Restvenster na #103:** die eerste 7 dagen
+  na het aanmaken van de organisatie, ook bij een overdracht zonder accountverwijdering
+  (§B.8) en eenzijdig met een tweede account als de maker admin is.
 - **R3 — race na de eindpoort.** Een owner/admin kan direct na de eindpoort een
   `teamMembers`-document of uitnodiging voor de vertrekkende gebruiker aanmaken. Eindpoort
   5' verkleint het venster tot milliseconden; wat dan nog ontstaat, kan een owner/admin
@@ -850,9 +856,9 @@ geen nieuwe queryvorm (§B.3), aparte `AccountAuthGateway`, geen teksten in 2b.
 | **B1** | 2b knippen in 2b-i / 2b-ii / 2b-iii (en volgorde) | **Ja, in de volgorde i → ii → iii.** Elk stuk ≈ de omvang van #94; 2b-ii is het enige Auth-stuk met een onomkeerbare actie, 2b-iii het enige dat op andermans documenten schrijft. |
 | **B2** | Reauthenticatie ook vóór de eerste Firestore-write (afwijking van de letterlijke §4.4-volgorde) | **Ja: reauth vooraf én, bij `auth/requires-recent-login`, opnieuw vlak vóór `deleteUser`.** Beschermt tegen een gekaapte open sessie en tegen een vergeten wachtwoord ná de opruiming. De harde eindpoort blijft direct vóór `deleteUser`. |
 | **B3** | Bij "organisatie verlaten" de eigen **openstaande** uitnodigingen in die organisatie meeverwijderen; `claimed`/`revoked` laten staan (die gaan pas weg bij accountverwijdering of na 30 dagen via owner/admin) | **Ja.** Sluit het eerlijke pad van RESTGAT 1 en voorkomt een onbedoelde herclaim; laat de auditwaarde voor de organisatie intact. Alternatief: álle eigen uitnodigingen in die organisatie meeverwijderen (meer privacy, minder audit). |
-| **B4** | Hoe RESTGAT 1 voor demotie/verwijdering buiten de app wordt gesloten | **Rules-claimtermijn na `acceptedAt` als kleine, aparte Rules-PR (zelfde vorm als 2a), plus een runbookregel.** 2b alleen dekt uitsluitend de app-paden. |
+| **B4** | Hoe RESTGAT 1 voor demotie/verwijdering buiten de app wordt gesloten | **Rules-claimtermijn als kleine, aparte Rules-PR (zelfde vorm als 2a), plus een runbookregel.** Besloten: 30 dagen na `invitedAt` (niet de oorspronkelijke aanbeveling `acceptedAt`). 2b alleen dekt uitsluitend de app-paden. |
 | **B5** | Een per-apparaat intentiesleutel in `localStorage` voor een hervatbanner ("je accountverwijdering is nog niet afgerond") | **Niet bouwen.** De toestand "Firestore leeg, Auth aanwezig" is afleidbaar; elke nieuwe sleutel moet bovendien op de wislijst-discussie van 8.2c. |
-| **B6** | Bootstrap-create binden aan "organisatie net aangemaakt" (RESTGAT 2) | **Apart besluit vóór 8.5, niet in 2b.** Raakt `createOrganizationWithOwner` en het datacontract. Tot dan restrisico R2 vastleggen. |
+| **B6** | Bootstrap-create binden aan "organisatie net aangemaakt" (RESTGAT 2) | Oorspronkelijk: apart besluit vóór 8.5. **Besloten:** alleen de eerste 7 dagen na `createdAt`, in dezelfde Rules-PR als B4 (#103); geen datacontractwijziging omdat `createdAt` al servergebonden is. |
 | **B7** | Lokale opruiming na `deleted` (2c) | **Altijd `wipeLocalFirebaseData()` (IndexedDB-cache met org-data en e-mails), maar níet de bestaande `clearLocalDeviceData()`-allowlist**, want die wist ook lokale-modusdata (`SETTINGS_STORAGE_KEY`, `ROSTER_STORAGE_KEY`, `V1_GAMES_STORAGE_KEY`) die niets met het cloudaccount te maken heeft. Hoogstens de org-gescoopte cloudsleutels van de verlaten organisaties, als expliciet getest besluit in 2c. |
 | **B8** | Pseudonieme audit-uid's (R4) accepteren | **Accepteren en vastleggen in threat model §7**; geen redactie van onveranderlijke auditvelden. Herzien bij de juridische toets vóór 8.5 (besluitrecord §7 punt 1). |
 | **B9** | Mag 2c de B-zijde van de overdracht tonen als "andere eigenaar verwijderen" (een bestaande Rules-bevoegdheid die de app voor het eerst zichtbaar maakt) | **Ja, alleen voor owners, alleen op andere owners, met getypte bevestiging.** Zonder deze actie is §4.2 niet in de app af te ronden. |
@@ -873,8 +879,8 @@ geen nieuwe queryvorm (§B.3), aparte `AccountAuthGateway`, geen teksten in 2b.
 - **A5** — Een mislukte `deleteUser()` is in de e2e-auth-suite te forceren door het
   `accounts:delete`-verzoek naar de Auth-emulator via Playwright-routering af te breken.
 - **A6** — De omvangschattingen in §G zijn extrapolaties uit #93–#96, geen metingen.
-- **A7** — PR #98 wordt ongewijzigd gemerged. Wijzigt de review daar nog iets aan de
-  self-deletevoorwaarden, dan moeten §A.1 en §B.6 opnieuw worden nagelopen.
+- **A7** — PR #98 is ongewijzigd gemerged. Wijzigen de termijnen uit #103 iets aan de
+  voorwaarden die §A.1 en §B.6 beschrijven, dan moeten die opnieuw worden nagelopen.
 
 ---
 
@@ -884,6 +890,6 @@ Onverkort uit plan §F en besluitrecord §6: geen Cloud Function, geen Blaze, ge
 deployment, geen Netlify-wijziging, geen recursieve clientdelete, geen door de client
 aangeleverd vrij pad, geen wijziging aan `localStorage`-sleutels, CSV of statistiek
 zonder apart besluit, geen tokens/sleutels/spelersdata in code, tests of logs.
-Aanvullend voor 2b: **niet starten vóór #98 gemerged is**, en stoppen en een besluit
+Aanvullend voor 2b: **niet starten vóór de Rules-PR met de termijnen (#103) gemerged is**, en stoppen en een besluit
 vragen zodra een stuk een Rules-wijziging, een nieuwe queryvorm, een nieuw
 documentveld of een nieuwe opslagsleutel blijkt te vereisen.
