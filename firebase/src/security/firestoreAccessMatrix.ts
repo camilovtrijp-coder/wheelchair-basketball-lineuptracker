@@ -148,7 +148,7 @@ export const FIRESTORE_ACCESS_MATRIX: readonly FirestoreAccessMatrixEntry[] = [
       "(leave organization, 8.3c-2a) — an owner never can, and neither can the organization's creator (`createdBy`), because a demoted " +
       "creator could otherwise delete their own membership and re-create it as owner through the bootstrap rule. " +
       "The bootstrap-create is only possible within 7 days after the organization's `createdAt` (missing or non-timestamp `createdAt` fails closed; 8.3c-2, docs/pr-8.3c-besluitvoorstel.md §8.7). " +
-      "Residual window (docs/pr-8.3c-besluitvoorstel.md §8.6/§8.7, pinned by tests): within those first 7 days a demoted creator whose membership is removed by an owner or admin can still re-bootstrap as owner. " +
+      "Residual window (docs/pr-8.3c-besluitvoorstel.md §8.6/§8.7, pinned by tests): within those first 7 days a demoted creator whose membership is removed by an owner or admin can still re-bootstrap as owner (an admin-creator can do so unilaterally with a second account; reasoned from the Rules, not pinned by a test). " +
       "Joining via an invitation additionally requires the claim to happen within 30 days after `invitedAt` (see `invitations`); a member who left can still claim a RECENT open invitation with a higher role.",
     evidence: [
       "tests/rules/bootstrap-and-invitation-flow.spec.ts",
