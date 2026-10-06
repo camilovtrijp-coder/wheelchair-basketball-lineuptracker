@@ -208,6 +208,13 @@ sleutels. Elke stap wordt afgeleid uit een **verse server-inventaris**:
 | Na Firestore-opruiming, vóór `deleteUser()` | ingelogd, inventaris leeg | **afleidbaar**: ingelogd + drie lege queries = "Firestore-data verwijderd, Auth-account nog aanwezig". De gebruiker landt via `deriveAppState` op het geen-organisaties-scherm; 2c biedt daar "account verwijderen" aan |
 | `deleteUser()` geslaagd, antwoord kwijt | lokaal mogelijk nog ingelogd | volgende tokenverversing faalt (`auth/user-token-expired`/`auth/user-not-found`); uitkomst `auth-state-unknown`, nooit `deleted` |
 
+**Hervatten na een geslaagde laatste delete (reviewnit #98, toe te passen in 2b-i):** een
+tweede "verlaten" nadat het eigen `organizationMembers`-document al weg is, geeft op dat
+document `permission-denied` (de Rules lezen het eigen document om de rol te toetsen). De
+coördinator moet daarom **eerst teruglezen** (de verse inventaris) en bij een afwezig
+membership `already-gone` melden, in plaats van de delete te proberen en een
+permission-denied als fout te classificeren.
+
 **Wat je verliest zonder persistentie:** alleen de *intentie* ("ik was mijn account
 aan het verwijderen") op een ander apparaat of na een crash. Dat is een UX-gemak, geen
 data-integriteitsprobleem: niets wordt ooit als klaar getoond zonder verse
@@ -815,14 +822,16 @@ overgenomen, B1 t/m B9 ongewijzigd.** Wat dat concreet betekent:
 - **B3:** bij "organisatie verlaten" gaan de eigen openstaande (pending/accepted)
   uitnodigingen in die organisatie mee weg; claimed/revoked blijven.
 - **B4:** RESTGAT 1 voor paden buiten de app sluit een kleine, aparte Rules-PR met een
-  claimtermijn (anker `acceptedAt`, zoals de aanbeveling zegt; het eerdere beslismemo stelde
-  `invitedAt` voor: kies bij het uitwerken van die PR op basis van de dan geldende
-  accept-/claimflow en leg de keuze in die PR vast), plus een runbookregel. Die PR komt vóór 2b-i.
+  claimtermijn van **30 dagen na `invitedAt`** (besloten op 6 oktober 2026, besluitrecord
+  §8.7; dit vervangt het anker `acceptedAt` uit de aanbeveling), plus een runbookregel.
+  Die PR komt vóór 2b-i.
 - **B5:** geen intentiesleutel in `localStorage` voor een hervatbanner.
 - **B6:** bootstrapbinding (RESTGAT 2) is een apart besluit vóór de cutover, niet in 2b;
   tot dan geldt restrisico R2. NB: het beslismemo wijst erop dat het org-document al een
   servergebonden `createdAt` heeft, waardoor dit geen datacontractwijziging vraagt maar één
-  Rules-regel; de termijn (bijv. 7 dagen) blijft te beslissen.
+  Rules-regel. **Besloten op 6 oktober 2026 (besluitrecord §8.7): bootstrap alleen de eerste
+  7 dagen na `createdAt`**, samen met B4 in één kleine Rules-PR vóór 2b-i (dit vervangt
+  "apart besluit vóór de cutover, niet in 2b").
 - **B7:** na `deleted` altijd `wipeLocalFirebaseData()`, nooit `clearLocalDeviceData()`.
 - **B8:** pseudonieme audit-uid's accepteren en vastleggen in het threat model (§7).
 - **B9:** 2c toont de B-zijde van de overdracht als "andere eigenaar verwijderen", alleen

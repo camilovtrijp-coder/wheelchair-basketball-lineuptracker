@@ -1098,6 +1098,25 @@ eigenaar vragen. Beide zijn in `tests/rules/leave-organization.spec.ts` vastgepi
    organisatie zonder `createdBy` (buiten de app ontstaan) geeft een fout waarin niemand zelf
    kan vertrekken.
 
+### 8.7 Besluiten van de eigenaar over §8.5 en §8.6 (6 oktober 2026)
+
+De eigenaar heeft de aanbevelingen overgenomen:
+
+1. **§8.5 akkoord:** de verse export vlak vóór het wissen is de alleen-lezen beheerdersdump
+   (Admin SDK, ADC, geen sleutelbestand), niet de 8.3b-envelop.
+2. **§8.6 punt 1 akkoord:** de organisatiemaker kan niet zelf vertrekken; hij laat zich door een
+   owner of admin verwijderen, of draagt eerst de eigendom over. Geen uitzondering.
+3. **Restgat 1 (claimtermijn):** een Rules-claimtermijn van **30 dagen na `invitedAt`**
+   (niet `acceptedAt`: dat tijdstip is door de uitgenodigde te beïnvloeden). Dit vervangt de
+   `acceptedAt`-aanbeveling uit B4 van het 2b-ontwerp.
+4. **Restgat 2 (bootstrap-binding):** de bootstrap-create is alleen toegestaan in de **eerste
+   7 dagen na `createdAt`** van de organisatie (`createdAt` is al servergebonden; één Rules-regel,
+   geen datacontractwijziging).
+5. **Uitvoering:** punten 3 en 4 gaan samen in **één kleine Rules-PR** (positieve en negatieve
+   emulator-tests, accessmatrix, runbookregel) die vóór 8.3c-2b-i komt. Daarna de afhandeling
+   van dubbel opnieuw verstuurde acties offline, en dan 2b-i. Tot die PR is gedeployed (er wordt
+   niets gedeployed zonder aparte opdracht) blijven R1 en R2 in kracht.
+
 ### De vier verfijningen, op één rij
 
 1. De wachttijd van 7 dagen staat in het runbook, niet in de Rules — anders is
