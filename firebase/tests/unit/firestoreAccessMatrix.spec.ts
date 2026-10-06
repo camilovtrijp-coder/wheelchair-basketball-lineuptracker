@@ -248,12 +248,12 @@ describe("PR 8.3a Firestore access matrix", () => {
     const pending = FIRESTORE_ACCESS_MATRIX.filter(
       (entry) => entry.clientPending !== undefined,
     );
-    // Deze lijst moet KRIMPEN, niet groeien: 8.3c-2 haalt
-    // invitations-collection-group eruit (deletion-requests is sinds 8.3c-1
-    // deel 2 aan zijn gateway gekoppeld).
-    expect(pending.map((entry) => entry.id).sort()).toEqual([
-      "invitations-collection-group",
-    ]);
+    // Deze lijst mag niet groeien zonder expliciete reden. Sinds 8.3c-2b-i is
+    // ze LEEG: invitations-collection-group heeft nu een client
+    // (FirestoreAccountGateway/accountQueries), deletion-requests sinds 8.3c-1
+    // deel 2. Een nieuwe Rules-scope die vooruitloopt op zijn client moet hier
+    // bewust worden toegevoegd.
+    expect(pending.map((entry) => entry.id).sort()).toEqual([]);
     for (const entry of pending) {
       expect(entry.clientSources, `${entry.id}: clientSources`).toEqual([]);
       expect(entry.clientPending?.length, `${entry.id}: reden`).toBeGreaterThan(
