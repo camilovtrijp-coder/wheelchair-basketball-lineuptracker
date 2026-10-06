@@ -17,7 +17,7 @@ export function assertNoKeyFile(env: NodeJS.ProcessEnv = process.env): void {
   }
 }
 
-/** Volgt symlinks van het dichtstbijzijnde bestaande pad en plakt de rest erachter. */
+/** Of er op dit pad een directory-entry staat (ook een hangende symlink). */
 function pathEntryExists(candidate: string): boolean {
   try {
     // lstat ziet ook een hangende symlink (doel bestaat nog niet) als bestaand pad; existsSync niet.
@@ -31,32 +31,68 @@ function pathEntryExists(candidate: string): boolean {
 /** Bovengrens voor een keten van (hangende) symlinks; daarboven weigert de guard (fail-closed). */
 const MAX_SYMLINK_HOPS = 40;
 
+/** Splitst een pad in segmenten zonder te normaliseren: `..` blijft een eigen segment. */
+function rawSegments(target: string): string[] {
+  const separators = path.sep === '\\' ? /[\\/]+/ : /\/+/;
+  return target.split(separators).filter((segment) => segment !== '');
+}
+
+/**
+ * Lost een pad op zoals het besturingssysteem dat doet: segment voor segment, met symlinks
+ * opgelost VÓÓR een volgend `..`. `path.resolve()` normaliseert `..` lexicaal; dan wordt
+ * `buiten/link/../x` (met `link` → een map in de repo) ten onrechte `buiten/x`, terwijl het
+ * systeem naar de ouder van het linkdoel gaat — binnen de repo (reviewnit #99).
+ * Bestaande entries gaan via `realpathSync.native` (normaliseert ook hoofdletters op een
+ * niet-hoofdlettergevoelig bestandssysteem); een hangende symlink wordt één niveau gevolgd,
+ * met een relatief doel tegen de echte map van de link. Achter het eerste niet-bestaande
+ * segment is er niets meer om op te lossen; een `..` daarna haalt alleen dat nog niet
+ * bestaande segment weg (zoals `mkdir -p` het zou aanmaken).
+ */
 function resolveThroughSymlinks(target: string): string {
-  let current = path.resolve(target);
-  for (let hop = 0; hop < MAX_SYMLINK_HOPS; hop += 1) {
-    let existing = current;
-    const rest: string[] = [];
-    while (!pathEntryExists(existing)) {
-      const parent = path.dirname(existing);
-      if (parent === existing) break;
-      rest.unshift(path.basename(existing));
-      existing = parent;
+  const absolute = path.isAbsolute(target) ? target : `${process.cwd()}${path.sep}${target}`;
+  const root = path.parse(path.resolve(absolute)).root;
+  const pending = rawSegments(absolute.slice(path.parse(absolute).root.length));
+  let resolved = realpathSync.native(root);
+  let exists = true;
+  let hops = 0;
+  while (pending.length > 0) {
+    const segment = pending.shift() as string;
+    if (segment === '.') continue;
+    if (segment === '..') {
+      // `resolved` is (zolang alles bestaat) een echt pad, dus dirname is de echte ouder.
+      resolved = path.dirname(resolved);
+      continue;
+    }
+    const next = path.join(resolved, segment);
+    if (!exists || !pathEntryExists(next)) {
+      exists = false;
+      resolved = next;
+      continue;
     }
     try {
-      // `.native` normaliseert ook hoofdletters op een niet-hoofdlettergevoelig bestandssysteem.
-      return path.join(realpathSync.native(existing), ...rest);
+      resolved = realpathSync.native(next);
+      continue;
     } catch {
-      // Hangende symlink (of een keten daarvan): volg één niveau en probeer opnieuw. Een
-      // relatief doel hoort bij de ECHTE map van de link, dus eerst de ouder realpathen —
-      // anders wijst `../x` via een gesymlinkte map naar een andere plek dan het systeem kiest.
-      const realParent = realpathSync.native(path.dirname(existing));
-      current = path.join(path.resolve(realParent, readlinkSync(existing)), ...rest);
+      // Hangende symlink (of een keten/kring daarvan): volg één niveau.
+    }
+    hops += 1;
+    if (hops > MAX_SYMLINK_HOPS) {
+      throw new Error(
+        `--out volgt meer dan ${MAX_SYMLINK_HOPS} symlinkniveaus (of een kringverwijzing); ` +
+          'kies een gewoon pad buiten de werkboom.',
+      );
+    }
+    // Faalt readlink (geen symlink, bijv. geen leesrecht), dan gooit de guard: fail-closed.
+    const linkTarget = readlinkSync(next);
+    if (path.isAbsolute(linkTarget)) {
+      resolved = realpathSync.native(path.parse(linkTarget).root);
+      pending.unshift(...rawSegments(linkTarget.slice(path.parse(linkTarget).root.length)));
+    } else {
+      // Relatief doel: tegen de (al echte) map van de link, `resolved` blijft die map.
+      pending.unshift(...rawSegments(linkTarget));
     }
   }
-  throw new Error(
-    `--out volgt meer dan ${MAX_SYMLINK_HOPS} symlinkniveaus (of een kringverwijzing); ` +
-      'kies een gewoon pad buiten de werkboom.',
-  );
+  return resolved;
 }
 
 /**

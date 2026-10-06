@@ -166,6 +166,40 @@ describe('runbookGuards (PR 8.3c-1d)', () => {
     }
   });
 
+  it('lost een `..` NA een symlink op zoals het systeem (ouder van het linkdoel), niet lexicaal', () => {
+    const scratch = mkdtempSync(path.join(tmpdir(), 'guard-dotdot-'));
+    try {
+      const fakeRepo = path.join(scratch, 'repo');
+      mkdirSync(path.join(fakeRepo, 'sub'), { recursive: true });
+      const outside = path.join(scratch, 'elders');
+      mkdirSync(path.join(outside, 'echt'), { recursive: true });
+      // elders/link -> repo/sub. Lexicaal is `elders/link/../dump.json` = `elders/dump.json`
+      // (buiten), maar het systeem schrijft naar `repo/sub/../dump.json` = `repo/dump.json`.
+      symlinkSync(path.join(fakeRepo, 'sub'), path.join(outside, 'link'));
+      const sep = path.sep;
+      expect(() =>
+        assertOutsideRepo(`${outside}${sep}link${sep}..${sep}dump.json`, fakeRepo),
+      ).toThrow(/binnen de repository/);
+      // Ook als het `..` in het (relatieve) doel van een hangende link zit, na een symlinkmap:
+      // elders/via -> elders/link (-> repo/sub); elders/h -> via/../nieuw.json.
+      symlinkSync(path.join(outside, 'link'), path.join(outside, 'via'));
+      symlinkSync(`via${sep}..${sep}nieuw.json`, path.join(outside, 'h'));
+      expect(() => assertOutsideRepo(path.join(outside, 'h'), fakeRepo)).toThrow(
+        /binnen de repository/,
+      );
+      // Een `..` na een gewone (niet-gesymlinkte) map blijft gewoon de ouder: buiten.
+      expect(() =>
+        assertOutsideRepo(`${outside}${sep}echt${sep}..${sep}dump.json`, fakeRepo),
+      ).not.toThrow();
+      // Een `..` na een nog niet bestaande map haalt alleen die map weg: buiten.
+      expect(() =>
+        assertOutsideRepo(`${outside}${sep}nieuw${sep}..${sep}dump.json`, fakeRepo),
+      ).not.toThrow();
+    } finally {
+      rmSync(scratch, { recursive: true, force: true });
+    }
+  });
+
   it('weigert een emulator-host bij een niet-demo-project (valse "afgerond"-readback)', () => {
     const env = { FIRESTORE_EMULATOR_HOST: '127.0.0.1:8080' };
     expect(() => assertEmulatorMatchesProject('lineup-tracker-prod', env)).toThrow(
