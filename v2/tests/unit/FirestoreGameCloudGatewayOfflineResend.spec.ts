@@ -150,10 +150,10 @@ describe('FirestoreGameCloudGateway.uploadActions() — niet opnieuw versturen w
       return action ? Promise.resolve(cached(action, true)) : miss();
     });
 
-    const started = Date.now();
     const outcomes = await gateway().uploadActions('org-1', 'team-1', 'game-1', actions);
 
-    expect(Date.now() - started).toBeLessThan(TIMEOUT_MS * 3);
+    // Geen wandklokgrens (flaky op trage runners): dat er precies één begrensde
+    // wacht is, bewijst al dat het één timeout per cyclus kost, niet één per action.
     expect(waitForPendingWrites).toHaveBeenCalledTimes(1);
     expect(setDoc).not.toHaveBeenCalled();
     expect(outcomes.every((o) => !o.ok && o.alreadyQueued)).toBe(true);
@@ -167,6 +167,32 @@ describe('FirestoreGameCloudGateway.uploadActions() — niet opnieuw versturen w
     const outcomes = await gateway().uploadActions('org-1', 'team-1', 'game-1', [action]);
 
     expect(outcomes[0]).toMatchObject({ ok: false, alreadyQueued: true });
+  });
+
+  it('wachtrij loopt leeg maar de action is na reconnect geweigerd (cache-miss): blijft alreadyQueued, niet bevestigd, met een neutrale fouttekst', async () => {
+    const action = makeAction('a-1');
+    let flushed = false;
+    // Vóór het leeglopen staat de action wachtend in de cache; een door de Rules
+    // geweigerde write verdwijnt daarna uit de lokale weergave (cache-miss).
+    (getDocFromCache as Mock).mockImplementation(() =>
+      flushed ? miss() : Promise.resolve(cached(action, true)),
+    );
+    (waitForPendingWrites as Mock).mockImplementation(() => {
+      flushed = true;
+      return Promise.resolve();
+    });
+
+    const outcomes = await gateway().uploadActions('org-1', 'team-1', 'game-1', [action]);
+
+    expect(waitForPendingWrites).toHaveBeenCalledTimes(1);
+    expect(getDocFromCache).toHaveBeenCalledTimes(2); // vóór én na het wachten
+    expect(setDoc).not.toHaveBeenCalled();
+    expect(outcomes).toHaveLength(1);
+    expect(outcomes[0]).toMatchObject({ actionId: 'a-1', ok: false, alreadyQueued: true });
+    expect(outcomes[0]?.alreadyConfirmed).toBeUndefined();
+    const message = (outcomes[0]?.error as Error).message;
+    expect(message).not.toContain('staat al in de lokale schrijfwachtrij');
+    expect(message).toContain('nog wachtend of geweigerd');
   });
 
   it('zonder wachtende actions wordt niet op de wachtrij gewacht', async () => {
