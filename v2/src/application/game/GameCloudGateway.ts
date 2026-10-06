@@ -93,6 +93,12 @@ export interface GameActionUploadOutcome {
   ok: boolean;
   /** `true` wanneer het action-document al bestond met een semantisch gelijke payload. */
   alreadyConfirmed?: boolean;
+  /**
+   * `true` wanneer dezelfde action al in de lokale schrijfwachtrij staat en er
+   * daarom GEEN nieuwe write is verstuurd. De action is nog NIET bevestigd
+   * (`ok` blijft `false`); de wachtrij levert hem af zodra er verbinding is.
+   */
+  alreadyQueued?: boolean;
   error?: unknown;
 }
 

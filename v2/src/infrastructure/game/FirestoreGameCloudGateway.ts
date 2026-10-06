@@ -43,6 +43,7 @@ import {
   collection,
   doc,
   getDoc,
+  getDocFromCache,
   onSnapshot,
   orderBy,
   query,
@@ -428,6 +429,24 @@ export class FirestoreGameCloudGateway implements GameCloudGateway {
     };
   }
 
+  /**
+   * Lokale (cache-only) lezing van een action-document: geen netwerk, dus ook
+   * geen hang. `undefined` bij een cache-miss of een leesfout; de aanroeper valt
+   * dan terug op een gewone `setDoc()`. `hasPendingWrites` onderscheidt een
+   * wachtende eigen write van een server-bevestigd document.
+   */
+  private async readLocalAction(
+    ref: DocumentReference,
+  ): Promise<{ data: GameActionEnvelopeDocument; hasPendingWrites: boolean } | undefined> {
+    try {
+      const snapshot = await getDocFromCache(ref.withConverter(gameActionConverter));
+      if (!snapshot.exists()) return undefined;
+      return { data: snapshot.data(), hasPendingWrites: snapshot.metadata.hasPendingWrites };
+    } catch {
+      return undefined;
+    }
+  }
+
   async uploadActions(
     organizationId: string,
     teamId: string,
@@ -437,6 +456,28 @@ export class FirestoreGameCloudGateway implements GameCloudGateway {
     const outcomes: GameActionUploadOutcome[] = [];
     for (const action of actions) {
       const ref = this.actionRef(organizationId, teamId, gameId, action.actionId);
+      // Niet opnieuw versturen wat al in Firestores lokale schrijfwachtrij staat:
+      // een eerdere cyclus die op `withTimeout()` afketste (offline) liet de create
+      // daar achter, en elke extra `setDoc()` zet een DUBBELE create in de wachtrij
+      // die na reconnect door de Rules wordt geweigerd. Bij een lange offline
+      // wedstrijd groeit die wachtrij anders met elke sync-cyclus.
+      const local = await this.readLocalAction(ref);
+      if (local && deepEqual(local.data, action)) {
+        if (!local.hasPendingWrites) {
+          // Server-bevestigd document in de cache (geen wachtende write).
+          outcomes.push({ actionId: action.actionId, ok: true, alreadyConfirmed: true });
+        } else {
+          outcomes.push({
+            actionId: action.actionId,
+            ok: false,
+            alreadyQueued: true,
+            error: new Error(
+              `uploadActions: action ${action.actionId} staat al in de lokale schrijfwachtrij (nog niet bevestigd)`,
+            ),
+          });
+        }
+        continue;
+      }
       try {
         await withTimeout(setDoc(ref, action), this.timeoutMs, 'uploadActions:setDoc');
         outcomes.push({ actionId: action.actionId, ok: true });
