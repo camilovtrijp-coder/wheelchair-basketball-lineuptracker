@@ -1,4 +1,9 @@
-import type { FirestoreDataConverter, QueryDocumentSnapshot, Timestamp } from 'firebase/firestore';
+import type {
+  FirestoreDataConverter,
+  QueryDocumentSnapshot,
+  SnapshotOptions,
+  Timestamp,
+} from 'firebase/firestore';
 import {
   DocumentValidationError,
   assertBoolean,
@@ -51,8 +56,14 @@ export const rosterConverter: FirestoreDataConverter<RosterDocument> = {
   toFirestore(roster: RosterDocument) {
     return roster;
   },
-  fromFirestore(snapshot: QueryDocumentSnapshot): RosterDocument {
-    const data = snapshot.data();
+  // `options` wordt doorgegeven aan `snapshot.data()`: zonder dat negeert de
+  // converter een expliciete `snap.data({ serverTimestamps: 'estimate' })`
+  // van de aanroeper en levert een document met een nog-onbevestigde lokale
+  // `serverTimestamp()`-write altijd `updatedAt: null` op (Firestore-default
+  // `'none'`), wat `assertTimestamp()` hieronder dan afwijst. Zonder opties
+  // blijft het gedrag ongewijzigd (strikt).
+  fromFirestore(snapshot: QueryDocumentSnapshot, options?: SnapshotOptions): RosterDocument {
+    const data = snapshot.data(options);
     if (!Array.isArray(data.players)) {
       throw new DocumentValidationError(TYPE, 'players', 'moet een array zijn');
     }

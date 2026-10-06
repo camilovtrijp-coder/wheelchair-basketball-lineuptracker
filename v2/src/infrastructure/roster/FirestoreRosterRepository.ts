@@ -25,6 +25,22 @@ import type { Roster } from '../../domain/roster/types';
 import { deriveSyncState, type SyncState, type WriteResult } from '../../domain/syncState';
 import type { AsyncRosterRepository } from '../../application/roster/AsyncRosterRepository';
 
+/**
+ * Leesopties voor elke lezing van dit document (read() en de listener).
+ * Een write() met `updatedAt: serverTimestamp()` die de server nog niet
+ * heeft bevestigd (offline, trage verbinding) staat in Firestores lokale
+ * schrijfwachtrij; zolang dat zo is, levert elke lezing de lokale
+ * (latency-compensated) weergave, waarin `updatedAt` met de default
+ * `'none'` `null` is en de strikte converter het document afwees. Met
+ * `'estimate'` krijgt `updatedAt` de lokale schatting en ziet de gebruiker
+ * zijn eigen optimistische waarde. Dit is UITSLUITEND voor weergave: de
+ * syncstatus komt uit `snap.metadata` (`deriveSyncState`) en blijft
+ * 'wacht-op-synchronisatie' zolang `hasPendingWrites` waar is; een geschatte
+ * `updatedAt` maakt een document dus nooit 'gesynchroniseerd'.
+ * Serverbevestigde documenten zijn ongewijzigd.
+ */
+const PENDING_TIMESTAMP_ESTIMATE = { serverTimestamps: 'estimate' } as const;
+
 export class FirestoreRosterRepository implements AsyncRosterRepository {
   constructor(
     private readonly db: Firestore,
@@ -41,11 +57,11 @@ export class FirestoreRosterRepository implements AsyncRosterRepository {
     try {
       const snap = await getDocFromCache(ref);
       if (!snap.exists()) return [];
-      return snap.data().players as Roster;
+      return snap.data(PENDING_TIMESTAMP_ESTIMATE).players as Roster;
     } catch {
       const snap = await getDoc(ref);
       if (!snap.exists()) return [];
-      return snap.data().players as Roster;
+      return snap.data(PENDING_TIMESTAMP_ESTIMATE).players as Roster;
     }
   }
 
@@ -75,7 +91,7 @@ export class FirestoreRosterRepository implements AsyncRosterRepository {
       { includeMetadataChanges: true },
       (snap) => {
         if (!snap.exists()) return;
-        const data = snap.data();
+        const data = snap.data(PENDING_TIMESTAMP_ESTIMATE);
         onNext(
           data.players as Roster,
           deriveSyncState(snap.metadata),
