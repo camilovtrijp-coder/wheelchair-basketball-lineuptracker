@@ -221,7 +221,7 @@ describe('claimtermijn: accepted → claimed alleen binnen 30 dagen na invitedAt
     await assertFails(claim('grace'));
   });
 
-  it('het membership aanmaken zonder de claim-update faalt ook na de termijn (geen omweg)', async () => {
+  it('regressiebewaking: het membership aanmaken zonder de claim-update faalt (geen omweg om de termijn)', async () => {
     await seedAcceptedInvitation(31);
     await assertFails(
       setDoc(doc(ctx('grace'), 'organizations', ORG_A, 'organizationMembers', USERS.grace.uid), {

@@ -766,6 +766,16 @@ preflightpoort en de `FromServer`-eis weggemuteerd moeten de bijbehorende tests 
   (B6, #103) vraagt geen datacontractwijziging. **Restvenster na #103:** die eerste 7 dagen
   na het aanmaken van de organisatie, ook bij een overdracht zonder accountverwijdering
   (§B.8) en eenzijdig met een tweede account als de maker admin is.
+- **R5 — half aangemaakte organisatie na 7 dagen (reviewbevinding #103).** Slaagt de
+  org-write maar de membership-write niet (bijvoorbeeld uit een offline-wachtrij die pas na
+  meer dan 7 dagen wordt verstuurd, of een gebruiker die later terugkomt), dan weigert de
+  bootstrap-binding het hervatten. `bootstrapOrgId` blijft in `localStorage` staan en wordt
+  alleen bij succes gewist (`NoOrganizationsScreen.tsx`, `FirestoreOrganizationGateway.ts`),
+  dus elke volgende poging hervat dezelfde dode organisatie met een generieke fout en de
+  gebruiker kan via dat scherm geen nieuwe aanmaken. Zeldzaam; niets is gedeployed.
+  **Fix in 2b/2c, vóór de cutover:** bij `permission-denied` op het hervatpad met een
+  `createdAt` ouder dan 7 dagen de sleutel wissen en een nieuwe organisatie toestaan. Het
+  runbook (§8) dekt alleen de organisatie zonder owner.
 - **R3 — race na de eindpoort.** Een owner/admin kan direct na de eindpoort een
   `teamMembers`-document of uitnodiging voor de vertrekkende gebruiker aanmaken. Eindpoort
   5' verkleint het venster tot milliseconden; wat dan nog ontstaat, kan een owner/admin

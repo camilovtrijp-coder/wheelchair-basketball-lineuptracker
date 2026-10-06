@@ -12,12 +12,14 @@ vi.mock('firebase/firestore', () => ({
   collection: vi.fn(),
   doc: vi.fn(),
   getDoc: vi.fn(),
+  getDocFromCache: vi.fn(() => Promise.reject(new Error('cache miss'))),
   onSnapshot: vi.fn(),
   orderBy: vi.fn(),
   query: vi.fn(),
   serverTimestamp: vi.fn(() => 'server-timestamp-sentinel'),
   setDoc: vi.fn(),
   updateDoc: vi.fn(),
+  waitForPendingWrites: vi.fn(() => Promise.resolve()),
   writeBatch: vi.fn(),
 }));
 
