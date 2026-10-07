@@ -278,6 +278,21 @@ describe('overdracht: openen en kandidatenlijst', () => {
 });
 
 describe('overdracht A: promoveren', () => {
+  // Opruim-PR 2 (reviewnit 3 van #111): de bevestiging zegt uitdrukkelijk dat de nieuwe
+  // eigenaar jou daarna kan verwijderen, met de knopnaam waarmee dat gebeurt.
+  it.each([
+    ['nl', 'jou daarna als eigenaar te verwijderen'],
+    ['en', 'remove you as owner afterwards'],
+  ] as const)(
+    'bevestiging (%s) zegt dat de nieuwe eigenaar jou daarna kan verwijderen',
+    async (lang, phrase) => {
+      await toPromoteConfirm(fakeGate(), lang);
+      const text = screen.getByTestId('transfer-promote-desc').textContent ?? '';
+      expect(text).toContain(phrase);
+      expect(text).toContain(t(lang, 'transferRemoveOwnerStartBtn'));
+    },
+  );
+
   it.each(['nl', 'en'] as const)(
     'bevestiging (%s) legt het tweestapsmodel uit; promote één keer; ok toont de wachtstand',
     async (lang) => {

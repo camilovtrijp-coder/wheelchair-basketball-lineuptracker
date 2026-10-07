@@ -27,8 +27,13 @@
 //   misvormde uitnodiging van een ander adres blokkeert het intrekken niet meer. Een
 //   document zonder leesbaar `email` (geen string) telt als `skippedMalformed`; Rules
 //   laten zo'n uitnodiging nooit accepteren of claimen (die vergelijken `email` met de
-//   token-e-mail). Een document dat op het doeladres MATCHT maar een onleesbare status
-//   heeft, blokkeert wel (fail closed, `read-failed`).
+//   token-e-mail). Een document dat op het doeladres MATCHT maar een onbekende status
+//   heeft, telt ook als `skippedMalformed` (Opruim-PR 2, reviewnit 1 van #110): Rules laten
+//   alleen `pending` accepteren, alleen `accepted` claimen (ook de membership-join eist
+//   `accepted`) en alleen `pending`/`accepted` intrekken, dus zo'n document geeft niemand
+//   toegang en kan ook niet worden ingetrokken. Fail closed blijft waar een BEKENDE open
+//   status niet in te trekken blijkt (`rejected`) en bij een onleesbare status in de
+//   readback na een eigen write.
 // - Na elke write een server-readback; een Rules-weigering wordt met een readback
 //   geclassificeerd (`rejected` als er niets veranderd is).
 // - Elke aanroep naar Firestore heeft een timeout van 8 s.
@@ -467,7 +472,9 @@ export class FirestoreOwnershipTransferGateway implements OwnershipTransferGatew
    * ID's van de `pending`/`accepted` uitnodigingen op `email` in deze organisatie. Leest
    * ruw alleen `email` en `status` (geen converter): een misvormd veld in een uitnodiging
    * van een ánder adres blokkeert niets. Geen string als `email` → overslaan en tellen
-   * (`malformed`). Wel het doeladres maar een onbekende `status` → fail closed.
+   * (`malformed`). Wel het doeladres maar een onbekende `status` → ook overslaan en tellen:
+   * volgens de Rules is zo'n document niet te accepteren, niet te claimen en niet in te
+   * trekken. Het blokkeerde eerder (fail closed) de overdracht tot de opruimtermijn.
    */
   private async readOpenInvitationIds(
     organizationId: string,
@@ -489,7 +496,8 @@ export class FirestoreOwnershipTransferGateway implements OwnershipTransferGatew
         if (!isSameEmailAddress(data.email, email)) continue;
         const status = parseInvitationStatus(data.status);
         if (status === null) {
-          throw new TransferShapeError('invitations: onleesbare status op het doeladres');
+          malformed += 1;
+          continue;
         }
         if (isOpenInvitationStatus(status)) ids.push(entry.id);
       }

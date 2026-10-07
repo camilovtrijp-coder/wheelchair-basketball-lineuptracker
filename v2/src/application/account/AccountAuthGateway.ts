@@ -22,7 +22,8 @@ export type EmailClaimResult =
        * `network`: geen verbinding of geen antwoord. `session-invalid`: het token is niet
        * meer te verversen omdat het account weg of uitgeschakeld is (of de sessie
        * ingetrokken) — na een `deleteUser` met onbekende afloop is dat precies het geval
-       * dat "opnieuw inloggen beslist".
+       * dat "opnieuw inloggen beslist". `not-signed-in`: geen sessie, of de sessie wisselde
+       * tijdens de verversing van account (dan horen uid en claims niet bij elkaar).
        */
       code: 'not-signed-in' | 'network' | 'session-invalid' | 'other';
     };
@@ -44,7 +45,12 @@ export type DeleteUserCode =
   | 'network'
   /** Geen sessie (meer), of de sessie is van een ander account dan `expectedUid`; niets geprobeerd. */
   | 'not-signed-in'
-  /** Het antwoord is kwijt (eigen timeout, of het token bestaat niet meer): afloop onbekend. */
+  /**
+   * Geen antwoord binnen de eigen timeout: het verzoek kan nog onderweg zijn of al zijn
+   * uitgevoerd. De coördinator beslist met een verse tokenverversing (zoals bij `network`).
+   */
+  | 'timeout'
+  /** Het token bestaat niet meer (sessie ongeldig tijdens `deleteUser`): afloop onbekend. */
   | 'unknown-state'
   | 'other';
 

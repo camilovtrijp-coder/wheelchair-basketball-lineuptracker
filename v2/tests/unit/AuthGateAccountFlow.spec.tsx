@@ -60,6 +60,7 @@ vi.mock('../../src/infrastructure/organizations/FirestoreOrganizationGateway', (
 vi.mock('../../src/app/App', () => ({
   App: (props: {
     accountActions?: {
+      organizationName: string;
       onLeaveOrganization: () => void;
       onDeleteAccount: () => void;
       onTransferOwnership?: () => void;
@@ -68,6 +69,7 @@ vi.mock('../../src/app/App', () => ({
     onLangChange?: (lang: 'nl' | 'en') => void;
   }) => (
     <div data-testid="app-stub">
+      <span data-testid="stub-account-org-name">{props.accountActions?.organizationName}</span>
       <button
         type="button"
         data-testid="stub-leave"
@@ -477,6 +479,34 @@ describe('AuthGate — organisatienaam zonder ruwe ID (reviewpunt op 2c-i)', () 
       expect(row.textContent).not.toContain('org-fictief-weg');
     },
   );
+
+  it('accountpaneel (reviewnit 1 van #111): een lege organisatienaam geeft App het neutrale label, niet de ID', async () => {
+    await toActive({ ...ORG_A, orgName: '  ' });
+    const name = screen.getByTestId('stub-account-org-name').textContent ?? '';
+    expect(name).toBe(translate('nl', 'accountOrganizationNameUnknown'));
+  });
+
+  it('accountpaneel: een team-only lid krijgt de organisatienaam uit de team-only context, niet de ID', async () => {
+    localStorage.setItem(
+      SELECTED_CONTEXT_STORAGE_KEY,
+      JSON.stringify({ orgId: 'org-a', teamId: 'team-a' }),
+    );
+    mount();
+    emitMemberships(
+      [],
+      [
+        {
+          orgId: 'org-a',
+          orgName: 'Fictieve Valken',
+          teamId: 'team-a',
+          teamName: 'Valken U18',
+          role: 'coach',
+        },
+      ],
+    );
+    await screen.findByTestId('app-stub');
+    expect(screen.getByTestId('stub-account-org-name').textContent).toBe('Fictieve Valken');
+  });
 
   it('een lege organisatienaam valt ook terug op het neutrale label, niet op de ID', async () => {
     await toActive({ ...ORG_A, orgName: '  ' });

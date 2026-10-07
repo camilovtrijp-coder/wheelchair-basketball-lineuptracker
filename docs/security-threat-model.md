@@ -247,8 +247,13 @@ onderstaande restrisico's blijven bewust staan.
   Console herstellen of verwijderen. Voor uitnodigingen geldt bij de overdracht sinds de
   2b-iii-fix iets anders: ze worden ruw gelezen (alleen `email`/`status`); een
   uitnodiging zonder string-`email` wordt overgeslagen en apart gemeld
-  (`skippedMalformed`), want Rules laten haar door niemand accepteren of claimen; een
-  uitnodiging óp het doeladres met een onleesbare status blokkeert wel (fail closed).
+  (`skippedMalformed`), want Rules laten haar door niemand accepteren of claimen. Sinds
+  Opruim-PR 2 (reviewnit 1 van #110) geldt dat ook voor een uitnodiging óp het doeladres
+  met een onbekende status: Rules laten alleen `pending` accepteren, alleen `accepted`
+  claimen (ook de membership-join) en alleen `pending`/`accepted` intrekken, dus zo'n
+  document is inert; het blokkeerde eerder de overdracht tot de opruimtermijn. Fail closed
+  blijft waar een bekende open status niet in te trekken blijkt (`rejected`) en bij een
+  onleesbare status in de readback na een eigen write. Opruimen: runbook.
 - **R4 — pseudonieme audit-uid's blijven staan (besluit B8, geaccepteerd).**
   `organizations.createdBy`, `teams.createdBy`, `invitations.invitedBy`,
   `games.writerUid`, `actions.authorUid`, `completedGames.deletedBy` (tot redactie),
@@ -295,7 +300,11 @@ onderstaande restrisico's blijven bewust staan.
   (afrondingen in de wachtrij), `lineup-tracker-v2-game-sync-checkpoint:{gameId}`
   (synchronisatiecheckpoints, per wedstrijd) en `lineup-tracker-v2-migration-run:{org}:{team}`
   (migratieruns); daarnaast de niet-org-gescoopte vlaggen
-  `lineup-tracker-cloud-imported-settings`/`-roster` en `lineup-tracker-bootstrap-org-id`.
+  `lineup-tracker-cloud-imported-settings`/`-roster` en `lineup-tracker-bootstrap-org-id`,
+  en `lineup-tracker-v2-device-id` (`DEVICE_ID_STORAGE_KEY`): een pseudoniem, willekeurig
+  apparaat-ID dat in `games.deviceId` en `actions.deviceId` terugkomt en dit apparaat dus
+  aan die cloudschrijfacties koppelt (aangevuld in Opruim-PR 2, reviewnit 2 van #111;
+  `clearLocalDeviceData()` wist het bij uitloggen op een onvertrouwd apparaat wel).
   De probe (`LocalStorageUnsyncedWorkProbe`) liet de verwijdering alleen door zonder
   openstaande afronding en zonder gestarte wedstrijd; wat blijft, zijn volgens die probe
   gesynchroniseerde kopieën en boekhouding (de lokale wedstrijdgeschiedenis en migratieruns

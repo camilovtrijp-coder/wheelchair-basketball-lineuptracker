@@ -757,7 +757,7 @@ const nl = {
   transferRoleScorer: 'Scorer',
   transferRoleViewer: 'Meekijker',
   transferPromoteConfirmDesc:
-    '{member} wordt mede-eigenaar van {org} en krijgt alle rechten van een eigenaar. Jij blijft eigenaar tot {member} jou verwijdert via "Andere eigenaar verwijderen…". Tot dan kun je {org} niet verlaten en je account niet verwijderen.',
+    '{member} wordt mede-eigenaar van {org} en krijgt alle rechten van een eigenaar, ook het recht om jou daarna als eigenaar te verwijderen via "Andere eigenaar verwijderen…". Jij blijft eigenaar tot {member} dat doet. Tot dan kun je {org} niet verlaten en je account niet verwijderen.',
   transferPromoteConfirmBtn: 'Mede-eigenaar maken',
   transferPromoteInProgress: 'Bezig met overdragen…',
   transferRemoveOwnerConfirmDesc:
@@ -796,7 +796,7 @@ const nl = {
   transferCompleteCounts:
     'Ingetrokken uitnodigingen: {invitations}. Verwijderde teamtoegang: {teams}.',
   transferCompleteSkippedMalformed:
-    'Uitnodigingen in deze organisatie zonder leesbaar e-mailadres, overgeslagen: {count}. Niemand kan ze accepteren; laat ze door de beheerder van de app opruimen.',
+    'Uitnodigingen in deze organisatie zonder leesbaar e-mailadres of met een onbekende status, overgeslagen: {count}. Niemand kan ze accepteren; laat ze door de beheerder van de app opruimen.',
   transferCompleteAlreadyGone: 'Het lidmaatschap van {member} was al verwijderd.',
   transferCompleteNotFound:
     '{member} is geen lid meer van deze organisatie: de overdracht is al afgerond. Er is niets gewijzigd.',
@@ -1518,7 +1518,7 @@ const en = {
   transferRoleScorer: 'Scorer',
   transferRoleViewer: 'Viewer',
   transferPromoteConfirmDesc:
-    '{member} becomes co-owner of {org} and gets all rights of an owner. You stay owner until {member} removes you via "Remove other owner…". Until then you cannot leave {org} or delete your account.',
+    '{member} becomes co-owner of {org} and gets all rights of an owner, including the right to remove you as owner afterwards via "Remove other owner…". You stay owner until {member} does so. Until then you cannot leave {org} or delete your account.',
   transferPromoteConfirmBtn: 'Make co-owner',
   transferPromoteInProgress: 'Transferring…',
   transferRemoveOwnerConfirmDesc:
@@ -1555,7 +1555,7 @@ const en = {
   transferCompleteOk: '{member} has been removed as owner of {org}. The transfer is complete.',
   transferCompleteCounts: 'Invitations revoked: {invitations}. Team access removed: {teams}.',
   transferCompleteSkippedMalformed:
-    'Invitations in this organization without a readable email address, skipped: {count}. Nobody can accept them; ask the app administrator to clean them up.',
+    'Invitations in this organization without a readable email address or with an unknown status, skipped: {count}. Nobody can accept them; ask the app administrator to clean them up.',
   transferCompleteAlreadyGone: 'The membership of {member} had already been removed.',
   transferCompleteNotFound:
     '{member} is no longer a member of this organization: the transfer was already completed. Nothing was changed.',

@@ -378,14 +378,21 @@ export class AccountDeletionCoordinator {
         case 'network':
         case 'other':
           return this.probeAfterFailedDelete(uid, deletion.code);
+        case 'timeout':
+          // Geen antwoord: voor de gebruiker "de verbinding viel weg" (reden `network`).
+          return this.probeAfterFailedDelete(uid, 'network');
       }
     }
   }
 
   /**
-   * Na een mislukte `deleteUser` waarvan niet zeker is of het verzoek de server bereikte:
-   * alleen als een verse tokenverversing bewijst dat DIT account nog bestaat, is de
-   * uitkomst "Auth-account nog aanwezig". Anders is de afloop onbekend — nooit `deleted`.
+   * Na een mislukte `deleteUser` waarvan niet zeker is of het verzoek de server bereikte
+   * (`network`, `other`, eigen `timeout`): alleen als een verse tokenverversing bewijst dat
+   * DIT account nog bestaat, is de uitkomst "Auth-account nog aanwezig". Anders is de
+   * afloop onbekend — nooit `deleted`. Bij een timeout kan het verzoek na deze controle
+   * nog landen (`withTimeout` annuleert niets); de volgende poging ziet dan een token dat
+   * niet meer te verversen is en meldt `auth-state-unknown`. Ook dan geen `deleted` en
+   * geen lokale wis zonder bevestiging.
    */
   private async probeAfterFailedDelete(
     uid: string,
