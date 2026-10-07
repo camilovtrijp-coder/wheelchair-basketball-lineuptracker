@@ -35,7 +35,7 @@ import {
   where,
   type Firestore,
 } from 'firebase/firestore';
-import { getAuth } from 'firebase/auth';
+import { getAuth, type Auth } from 'firebase/auth';
 import { DocumentValidationError } from 'firebase-base/documents';
 import {
   ACCOUNT_GATEWAY_TIMEOUT_MS,
@@ -43,6 +43,8 @@ import {
 } from '../../src/infrastructure/account/FirestoreAccountGateway';
 import { createAccountServices } from '../../src/infrastructure/account/createAccountServices';
 import { LeaveOrganizationCoordinator } from '../../src/application/account/LeaveOrganizationCoordinator';
+import { AccountDeletionCoordinator } from '../../src/application/account/AccountDeletionCoordinator';
+import { FirebaseAccountAuthGateway } from '../../src/infrastructure/auth/FirebaseAccountAuthGateway';
 
 const ME = 'uid-fictief-ik';
 const MY_EMAIL = 'ik@example.test';
@@ -581,10 +583,17 @@ describe('self-deletes: eigen pad, teruglezen vóór en na', () => {
 });
 
 describe('createAccountServices', () => {
-  it('levert een gateway en een LeaveOrganizationCoordinator zonder geselecteerde context', () => {
+  it('levert gateways en beide coördinatoren zonder geselecteerde context', () => {
     const services = createAccountServices(fakeDb);
     expect(services.accountGateway).toBeInstanceOf(FirestoreAccountGateway);
+    expect(services.accountAuthGateway).toBeInstanceOf(FirebaseAccountAuthGateway);
     expect(services.leaveCoordinator).toBeInstanceOf(LeaveOrganizationCoordinator);
+    expect(services.accountDeletionCoordinator).toBeInstanceOf(AccountDeletionCoordinator);
+  });
+
+  it('weigert een Auth-instantie van een andere app dan db (reauth/deleteUser moeten hetzelfde account raken)', () => {
+    const otherAuth = { currentUser: null } as unknown as Auth;
+    expect(() => createAccountServices(fakeDb, otherAuth)).toThrow(/hoort niet bij de app/);
   });
 });
 
@@ -592,7 +601,7 @@ describe('end-to-end met de coördinator op de gemockte SDK', () => {
   const noLocalWork = { countForOrganization: () => 0 };
 
   it('leave(org A): teamMembers → open uitnodiging → membership; org B en andermans documenten intact', async () => {
-    const { leaveCoordinator } = createAccountServices(fakeDb, noLocalWork);
+    const { leaveCoordinator } = createAccountServices(fakeDb, getAuth(), noLocalWork);
     expect(await leaveCoordinator.leave(ORG_A)).toEqual({
       status: 'ok',
       removed: { teamMembers: 1, invitations: 1, organizationMember: true },
@@ -625,7 +634,7 @@ describe('end-to-end met de coördinator op de gemockte SDK', () => {
     });
     (getAuth as Mock).mockReturnValue({ currentUser: { uid: ME, getIdTokenResult } });
 
-    const { leaveCoordinator } = createAccountServices(fakeDb, noLocalWork);
+    const { leaveCoordinator } = createAccountServices(fakeDb, getAuth(), noLocalWork);
     expect(await leaveCoordinator.leave(ORG_A)).toMatchObject({
       status: 'ok',
       removed: { invitations: 1 },
@@ -637,7 +646,7 @@ describe('end-to-end met de coördinator op de gemockte SDK', () => {
 
   it('echt ongeverifieerd: ok, maar invitationsChecked=false en de uitnodiging staat er nog', async () => {
     signIn({ email: MY_EMAIL, email_verified: false });
-    const { leaveCoordinator } = createAccountServices(fakeDb, noLocalWork);
+    const { leaveCoordinator } = createAccountServices(fakeDb, getAuth(), noLocalWork);
     expect(await leaveCoordinator.leave(ORG_A)).toMatchObject({
       status: 'ok',
       removed: { invitations: 0 },
