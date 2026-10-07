@@ -95,10 +95,7 @@ export interface OutcomeView {
   canRetry: boolean;
 }
 
-export function leaveOutcomeView(
-  outcome: LeaveFlowOutcome,
-  organizationName: string,
-): OutcomeView {
+export function leaveOutcomeView(outcome: LeaveFlowOutcome, organizationName: string): OutcomeView {
   switch (outcome.status) {
     case 'ok': {
       const lines: MessageLine[] = [{ key: 'leaveOrgOk', params: { org: organizationName } }];
@@ -111,7 +108,11 @@ export function leaveOutcomeView(
     case 'in-progress':
       return { tone: 'error', lines: [{ key: 'accountActionBusy' }], canRetry: true };
     case 'offline':
-      return { tone: 'error', lines: [{ key: 'leaveOrgOffline' }, NOTHING_CHANGED], canRetry: true };
+      return {
+        tone: 'error',
+        lines: [{ key: 'leaveOrgOffline' }, NOTHING_CHANGED],
+        canRetry: true,
+      };
     case 'failed':
       return {
         tone: 'error',
@@ -142,11 +143,17 @@ export function leaveOutcomeView(
     case 'blocked':
       return {
         tone: 'error',
-        lines: [{ key: 'leaveOrgBlockedLocalWork', params: { count: outcome.count } }, NOTHING_CHANGED],
+        lines: [
+          { key: 'leaveOrgBlockedLocalWork', params: { count: outcome.count } },
+          NOTHING_CHANGED,
+        ],
         canRetry: false,
       };
     case 'incomplete': {
-      const lines: MessageLine[] = [{ key: 'leaveOrgIncomplete' }, { key: stageKey(outcome.stage) }];
+      const lines: MessageLine[] = [
+        { key: 'leaveOrgIncomplete' },
+        { key: stageKey(outcome.stage) },
+      ];
       if (outcome.error !== undefined) lines.push({ key: stepErrorKey(outcome.error) });
       return { tone: 'error', lines, canRetry: true };
     }
@@ -214,7 +221,12 @@ export function deletionStopView(outcome: AccountDeletionStopOutcome): DeletionS
     case 'in-progress':
       return { ...base, lines: [{ key: 'accountActionBusy' }], canRetry: true, retry: 'assess' };
     case 'not-signed-in':
-      return { ...base, lines: [{ key: 'accountDeleteNotSignedIn' }], canRetry: false, retry: null };
+      return {
+        ...base,
+        lines: [{ key: 'accountDeleteNotSignedIn' }],
+        canRetry: false,
+        retry: null,
+      };
     case 'email-not-verified':
       return {
         ...base,
@@ -230,7 +242,10 @@ export function deletionStopView(outcome: AccountDeletionStopOutcome): DeletionS
         ...base,
         lines: [
           {
-            key: outcome.reason === 'timeout' ? 'accountDeleteFailedTimeout' : 'accountDeleteFailedRead',
+            key:
+              outcome.reason === 'timeout'
+                ? 'accountDeleteFailedTimeout'
+                : 'accountDeleteFailedRead',
           },
         ],
         canRetry: true,
@@ -278,6 +293,11 @@ export function deletionStopView(outcome: AccountDeletionStopOutcome): DeletionS
         retry: 'auth-delete',
       };
     case 'unexpected':
-      return { ...base, lines: [{ key: 'accountDeleteIncomplete' }], canRetry: true, retry: 'assess' };
+      return {
+        ...base,
+        lines: [{ key: 'accountDeleteIncomplete' }],
+        canRetry: true,
+        retry: 'assess',
+      };
   }
 }

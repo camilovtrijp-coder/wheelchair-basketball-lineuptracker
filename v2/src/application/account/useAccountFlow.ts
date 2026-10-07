@@ -213,7 +213,13 @@ export function useAccountFlow({
     ) {
       return;
     }
-    setState({ kind: 'delete', step: 'password', target: 'auth-delete', running: false, error: null });
+    setState({
+      kind: 'delete',
+      step: 'password',
+      target: 'auth-delete',
+      running: false,
+      error: null,
+    });
   };
 
   const submitPassword = (password: string) => {

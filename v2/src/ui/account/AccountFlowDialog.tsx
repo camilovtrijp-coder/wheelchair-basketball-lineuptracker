@@ -37,8 +37,7 @@ export function AccountFlowDialog(props: AccountFlowDialogProps) {
   return <AccountFlowModal {...props} state={props.flow.state} />;
 }
 
-const FOCUSABLE =
-  'button:not([disabled]), input:not([disabled]), [tabindex]:not([tabindex="-1"])';
+const FOCUSABLE = 'button:not([disabled]), input:not([disabled]), [tabindex]:not([tabindex="-1"])';
 
 function Lines({
   lang,
@@ -92,7 +91,7 @@ function AccountFlowModal({
     const first = container.querySelector<HTMLElement>(FOCUSABLE);
     if (first) first.focus();
     else container.focus();
-  }, [stepKey]);
+  }, [stepKey, trapRef]);
 
   const title =
     state.kind === 'leave'
@@ -431,13 +430,7 @@ function PasswordForm({
   );
 }
 
-function ResendVerification({
-  lang,
-  onResend,
-}: {
-  lang: Lang;
-  onResend: () => Promise<boolean>;
-}) {
+function ResendVerification({ lang, onResend }: { lang: Lang; onResend: () => Promise<boolean> }) {
   const t = (key: StringKey): string => translate(lang, key);
   const [result, setResult] = useState<'idle' | 'sending' | 'sent' | 'failed'>('idle');
   const mounted = useRef(true);
@@ -470,7 +463,9 @@ function ResendVerification({
       </button>
       {result === 'sent' || result === 'failed' ? (
         <span role="status" data-testid="account-delete-verification-result">
-          {t(result === 'sent' ? 'accountDeleteVerificationSent' : 'accountDeleteVerificationFailed')}
+          {t(
+            result === 'sent' ? 'accountDeleteVerificationSent' : 'accountDeleteVerificationFailed',
+          )}
         </span>
       ) : null}
     </div>

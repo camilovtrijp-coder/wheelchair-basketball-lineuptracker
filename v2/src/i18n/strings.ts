@@ -716,7 +716,8 @@ const nl = {
   accountDeleteOffline:
     'Geen verbinding met de server. Account verwijderen kan alleen online; probeer het opnieuw zodra je verbinding hebt.',
   accountDeleteFailedTimeout: 'De server antwoordde niet op tijd. Probeer het opnieuw.',
-  accountDeleteFailedRead: 'Je gegevens konden niet worden gecontroleerd. Probeer het later opnieuw.',
+  accountDeleteFailedRead:
+    'Je gegevens konden niet worden gecontroleerd. Probeer het later opnieuw.',
   accountDeleteAuthStateUnknown:
     'Het is niet zeker of je account is verwijderd. Log opnieuw in: lukt dat niet meer, dan is je account verwijderd; lukt het wel, start dan opnieuw.',
   accountDeleteIncomplete:
