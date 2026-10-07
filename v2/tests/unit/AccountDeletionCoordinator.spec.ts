@@ -731,7 +731,23 @@ describe('AccountDeletionCoordinator.deleteAuthAccount()', () => {
     },
   );
 
+  it('deleteUser timeout, maar een verse tokenverversing bewijst dat het account nog bestaat → firestore-cleared-auth-present (reden network)', async () => {
+    const { gateway, auth, coordinator } = await clearedSetup();
+    auth.failures.set('deleteUser#1', { ok: false, code: 'timeout' });
+    expect(await coordinator.deleteAuthAccount(PASSWORD)).toEqual({
+      status: 'firestore-cleared-auth-present',
+      reason: 'network',
+    });
+    expect(gateway.calls.slice(-2)).toEqual(['deleteUser', 'claim']);
+    expect(gateway.calls.filter((c) => c === 'deleteUser')).toHaveLength(1);
+  });
+
   it.each<[DeleteUserCode, EmailClaimResult]>([
+    ['timeout', { ok: false, code: 'session-invalid' }],
+    ['timeout', { ok: false, code: 'network' }],
+    ['timeout', { ok: false, code: 'not-signed-in' }],
+    ['timeout', { ok: false, code: 'other' }],
+    ['timeout', { ok: true, uid: 'uid-fictief-iemand-anders', email: null, verified: true }],
     ['network', { ok: false, code: 'session-invalid' }],
     ['network', { ok: false, code: 'network' }],
     ['network', { ok: false, code: 'not-signed-in' }],
@@ -766,6 +782,7 @@ describe('AccountDeletionCoordinator.deleteAuthAccount()', () => {
     'requires-recent-login',
     'network',
     'not-signed-in',
+    'timeout',
     'unknown-state',
     'other',
   ])('nooit deleted zolang deleteUser niet bevestigt (%s, elke poging)', async (code) => {

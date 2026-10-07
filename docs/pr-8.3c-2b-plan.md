@@ -672,7 +672,12 @@ in 2b-ii per organisatie hergebruikt.
 - `auth/network-request-failed` en `other` op `deleteUser` zijn dubbelzinnig (het verzoek
   kan zijn uitgevoerd). Alleen als een verse tokenverversing daarna bewijst dat hetzelfde
   account nog bestaat, is de uitkomst `firestore-cleared-auth-present`; anders
-  `auth-state-unknown`. Een eigen timeout op `deleteUser` is altijd `unknown-state`.
+  `auth-state-unknown`. Een eigen timeout op `deleteUser` was eerst altijd `unknown-state`;
+  sinds Opruim-PR 2 (reviewnit 2 van #107) meldt de gateway `timeout` en volgt dezelfde
+  bestaanscontrole (uitkomst `firestore-cleared-auth-present` met reden `network`, anders
+  `auth-state-unknown`). Restvenster: het verzoek kan ná de controle nog landen; de
+  volgende poging meldt dan `auth-state-unknown`. Nooit `deleted` zonder bevestiging.
+  `unknown-state` blijft voor een ongeldige sessie tijdens `deleteUser`.
 - `assess()` geeft `ready-to-clear`/`needs-action` (met plan) of, bij een lege inventaris,
   `ready-for-auth-deletion` (de afleidbare toestand uit §B.4). `incomplete` draagt
   `remaining` alleen bij `final-gate`, en `organizationId`/`error` waar bekend; de stages

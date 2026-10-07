@@ -8,7 +8,8 @@
 //   niet gelogd en niet teruggegeven. Uitkomsten dragen alleen een code, nooit het
 //   SDK-foutobject (Firebase-fouten kunnen in `customData` het e-mailadres dragen).
 // - Elke aanroep heeft een eigen timeout. Een timeout op `deleteUser` betekent dat het
-//   antwoord kwijt is terwijl het verzoek mogelijk wel is uitgevoerd: `unknown-state`.
+//   antwoord kwijt is terwijl het verzoek mogelijk wel is uitgevoerd: `timeout` (de
+//   coördinator controleert daarna met een verse tokenverversing of het account bestaat).
 import {
   deleteUser,
   EmailAuthProvider,
@@ -109,7 +110,7 @@ export class FirebaseAccountAuthGateway implements AccountAuthGateway {
       return { ok: true };
     } catch (error) {
       // Geen antwoord binnen de timeout: het verzoek kan wel zijn uitgevoerd.
-      if (isFirebaseCallTimeout(error)) return { ok: false, code: 'unknown-state' };
+      if (isFirebaseCallTimeout(error)) return { ok: false, code: 'timeout' };
       const code = firebaseErrorCode(error);
       if (code === 'auth/requires-recent-login')
         return { ok: false, code: 'requires-recent-login' };

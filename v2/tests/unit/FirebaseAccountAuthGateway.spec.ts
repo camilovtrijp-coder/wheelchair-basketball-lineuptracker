@@ -223,11 +223,11 @@ describe('deleteCurrentUser', () => {
     expect(await gateway.deleteCurrentUser(GUARD)).toEqual({ ok: false, code: expected });
   });
 
-  it('geen antwoord binnen de timeout → unknown-state (het verzoek kan wel zijn uitgevoerd)', async () => {
+  it('geen antwoord binnen de timeout → timeout (het verzoek kan wel zijn uitgevoerd; de coördinator controleert)', async () => {
     vi.useFakeTimers();
     (deleteUser as Mock).mockReturnValue(new Promise(() => {}));
     const pending = gateway.deleteCurrentUser(GUARD);
     await vi.advanceTimersByTimeAsync(ACCOUNT_AUTH_TIMEOUT_MS);
-    expect(await pending).toEqual({ ok: false, code: 'unknown-state' });
+    expect(await pending).toEqual({ ok: false, code: 'timeout' });
   });
 });
