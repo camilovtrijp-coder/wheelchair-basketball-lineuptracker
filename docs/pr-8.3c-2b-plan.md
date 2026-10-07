@@ -854,6 +854,16 @@ in 2b-ii per organisatie hergebruikt.
 | Gateway: elke self-delete gebruikt exact het eigen-uid-pad; er bestaat geen methode die een uid accepteert (typetest + padassert) | unit | 2b-i |
 | Matrix: `clientPending`-lijst leeg; nieuwe gatewaybestanden ontdekt | firebase unit | 2b-i |
 
+**Stand na 2d (`v2/tests/e2e-auth/account-*.spec.ts`, `ownership-transfer-flow.spec.ts`):**
+de 2d-kolom van D.1 is in een echte browser gedekt voor 1 (herladen na de opruiming en
+opnieuw starten), 2 (dubbelklik), 3 (rolverlies vóór het bevestigen van "andere eigenaar
+verwijderen" → geweigerd, nul writes; voor verlaten: de server maakt de vertrekker owner →
+`owner-sole`, nul writes), 4 (cross-org: elke flow laat een tweede organisatie byte-identiek),
+7 (weigeringen tonen de tekst, niets weg) en 8 (`accounts:delete` afgebroken of
+`requires-recent-login` → "account bestaat nog", opnieuw slaagt). D.2 #3, #5 en #6 lopen in
+de browser mee (eigen open uitnodigingen weg bij vertrek; een jonge uitnodiging is
+verwijderbaar; een uitnodiging die na de opruiming ontstaat houdt `deleteUser` tegen).
+
 ### D.4 Verificatie per stuk (plan §D)
 
 v2: `tsc -b`, eslint, prettier, volledige vitest-suite, productiebuild (incl.
@@ -1024,6 +1034,13 @@ geen nieuwe queryvorm (§B.3), aparte `AccountAuthGateway`, geen teksten in 2b.
   `unavailable`). Er is nog geen gebruik in `v2/src` om naar te verwijzen.
 - **A5** — Een mislukte `deleteUser()` is in de e2e-auth-suite te forceren door het
   `accounts:delete`-verzoek naar de Auth-emulator via Playwright-routering af te breken.
+- **Stand na 8.3c-2d (e2e-auth tegen de echte emulators):** **A3** bewezen voor de
+  Auth-emulator (token-adres in kleine letters bij een account met hoofdletters), niet
+  voor productie-Auth; **A4** bewezen (offline, en met alleen Firestore onbereikbaar faalt
+  `getDocsFromServer` met `unavailable` → `offline`, nul writes); **A5** bewezen (afbreken
+  van `accounts:delete` via Playwright-routering → "account bestaat nog", opnieuw slaagt).
+  `requires-recent-login` produceert de Auth-emulator niet zelf; de e2e vervangt het
+  antwoord door de echte REST-foutcode. Zie de rij 8.3c-2d in `docs/IMPLEMENTATION_PLAN.md`.
 - **A6** — De omvangschattingen in §G zijn extrapolaties uit #93–#96, geen metingen.
 - **A7** — PR #98 is ongewijzigd gemerged. Wijzigen de termijnen uit #103 iets aan de
   voorwaarden die §A.1 en §B.6 beschrijven, dan moeten die opnieuw worden nagelopen.
