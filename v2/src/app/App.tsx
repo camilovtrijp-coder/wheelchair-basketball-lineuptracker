@@ -150,6 +150,9 @@ export interface AppProps {
     busy: boolean;
     onLeaveOrganization: () => void;
     onDeleteAccount: () => void;
+    /** PR 8.3c-2c-ii: overdracht; het paneel toont ze alleen aan een owner. */
+    onTransferOwnership?: () => void;
+    onRemoveOtherOwner?: () => void;
   };
   /** PR 8.3c-2c-i: meldt de taalkeuze van `App` aan `AuthGate` (dialoog en sessiebalk). */
   onLangChange?: (lang: Lang) => void;
@@ -1679,6 +1682,8 @@ export function App({
                 busy={accountActions.busy}
                 onLeaveOrganization={accountActions.onLeaveOrganization}
                 onDeleteAccount={accountActions.onDeleteAccount}
+                onTransferOwnership={accountActions.onTransferOwnership}
+                onRemoveOtherOwner={accountActions.onRemoveOtherOwner}
               />
             ) : null}
           </>

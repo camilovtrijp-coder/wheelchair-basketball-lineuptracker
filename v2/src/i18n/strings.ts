@@ -625,7 +625,7 @@ const nl = {
     'Verlaat {org} als je er niet meer bij hoort. Je verliest dan op al je apparaten de toegang tot de teams van deze organisatie.',
   leaveOrgStartBtn: 'Organisatie verlaten…',
   leaveOrgOwnerNote:
-    'Als eigenaar kun je {org} niet zelf verlaten. Draag eerst het eigendom over aan een ander lid, of vraag verwijdering van de organisatie aan.',
+    'Als eigenaar kun je {org} niet zelf verlaten. Draag eerst het eigendom over met "Eigendom overdragen…" hieronder: het andere lid wordt mede-eigenaar en verwijdert jou daarna. Of vraag verwijdering van de organisatie aan.',
   leaveOrgConfirmTitle: 'Organisatie {org} verlaten?',
   leaveOrgConfirmDesc:
     'Je lidmaatschap, je toegang tot de teams en je openstaande uitnodigingen voor deze organisatie worden verwijderd. Wedstrijden die op dit apparaat staan, blijven staan. Terugkomen kan alleen met een nieuwe uitnodiging.',
@@ -642,9 +642,9 @@ const nl = {
   leaveOrgFailedRead: 'Je lidmaatschap kon niet worden gecontroleerd. Probeer het later opnieuw.',
   leaveOrgNotAMember: 'Je bent geen lid (meer) van deze organisatie.',
   leaveOrgDeniedOwnerSole:
-    'Je bent de enige eigenaar van deze organisatie en kunt haar daarom niet verlaten. Draag eerst het eigendom over, of vraag verwijdering van de organisatie aan.',
+    'Je bent de enige eigenaar van deze organisatie en kunt haar daarom niet verlaten. Draag eerst het eigendom over met "Eigendom overdragen…", of vraag verwijdering van de organisatie aan.',
   leaveOrgDeniedOwnerAwaitingRemoval:
-    'Je bent eigenaar en kunt je eigen lidmaatschap niet verwijderen. Een andere eigenaar (aantal: {count}) moet dat voor je doen.',
+    'Je bent eigenaar en kunt je eigen lidmaatschap niet verwijderen. Dit wacht op bevestiging door de nieuwe eigenaar: een andere eigenaar (aantal: {count}) moet jou verwijderen via "Andere eigenaar verwijderen…".',
   leaveOrgDeniedCreatorNeedsOwner:
     'Jij hebt deze organisatie aangemaakt. Daarom kun je niet zelf vertrekken: vraag een eigenaar of beheerder om je lidmaatschap te verwijderen.',
   leaveOrgDeniedUnsupported:
@@ -671,9 +671,9 @@ const nl = {
   accountDeleteClassLeaveTeamOnly: 'Je teamtoegang in deze organisatie wordt verwijderd.',
   accountDeleteClassInvitationsOnly: 'Je uitnodigingen voor deze organisatie worden verwijderd.',
   accountDeleteClassOwnerSole:
-    'Geblokkeerd: je bent de enige eigenaar. Draag eerst het eigendom over, of vraag verwijdering van de organisatie aan.',
+    'Geblokkeerd: je bent de enige eigenaar. Draag eerst het eigendom over met "Eigendom overdragen…", of vraag verwijdering van de organisatie aan.',
   accountDeleteClassOwnerAwaitingRemoval:
-    'Geblokkeerd: je bent eigenaar. Een andere eigenaar (aantal: {count}) moet je lidmaatschap verwijderen.',
+    'Geblokkeerd: je bent eigenaar en wacht op bevestiging door de nieuwe eigenaar. Een andere eigenaar (aantal: {count}) moet jou verwijderen via "Andere eigenaar verwijderen…".',
   accountDeleteClassCreatorNeedsOwner:
     'Geblokkeerd: jij hebt deze organisatie aangemaakt. Een eigenaar of beheerder moet je lidmaatschap verwijderen.',
   accountDeleteClassAwaitingDeletion:
@@ -735,6 +735,87 @@ const nl = {
     'De clouddata in de cache van deze browser kon niet volledig worden gewist. Wis de browsergegevens als je dit apparaat met anderen deelt.',
   onboardingResumeExpired:
     'De organisatie die je eerder begon aan te maken, kan niet meer worden afgerond. Klik opnieuw op "Organisatie aanmaken" om een nieuwe organisatie aan te maken.',
+  accountOrganizationNameUnknown: 'Organisatie (naam onbekend)',
+  transferStartBtn: 'Eigendom overdragen…',
+  transferRemoveOwnerStartBtn: 'Andere eigenaar verwijderen…',
+  transferPanelDesc:
+    'Draag het eigendom van {org} over aan een ander lid. Dat lid wordt mede-eigenaar en rondt de overdracht zelf af door jou als eigenaar te verwijderen. Dit kan alleen online.',
+  transferRemoveOwnerDesc:
+    'Heeft een andere eigenaar het eigendom aan jou overgedragen? Rond de overdracht dan af door die eigenaar te verwijderen. Dit kan alleen online.',
+  transferPromoteTitle: 'Eigendom van {org} overdragen',
+  transferRemoveOwnerTitle: 'Andere eigenaar van {org} verwijderen',
+  transferLoading: 'De leden worden van de server gelezen…',
+  transferChooseIntro: 'Kies wie mede-eigenaar wordt:',
+  transferRemoveOwnerChooseIntro: 'Kies welke andere eigenaar je verwijdert:',
+  transferNoCandidates:
+    'Er is geen ander lid om het eigendom aan over te dragen. Nodig eerst iemand uit voor deze organisatie.',
+  transferNoOtherOwners: 'Er is geen andere eigenaar in deze organisatie.',
+  transferMemberNoEmail: 'Lid zonder bekend e-mailadres',
+  transferRoleOwner: 'Eigenaar',
+  transferRoleAdmin: 'Beheerder',
+  transferRoleCoach: 'Coach',
+  transferRoleScorer: 'Scorer',
+  transferRoleViewer: 'Meekijker',
+  transferPromoteConfirmDesc:
+    '{member} wordt mede-eigenaar van {org} en krijgt alle rechten van een eigenaar. Jij blijft eigenaar tot {member} jou verwijdert via "Andere eigenaar verwijderen…". Tot dan kun je {org} niet verlaten en je account niet verwijderen.',
+  transferPromoteConfirmBtn: 'Mede-eigenaar maken',
+  transferPromoteInProgress: 'Bezig met overdragen…',
+  transferRemoveOwnerConfirmDesc:
+    'Je verwijdert {member} als eigenaar uit {org}: de openstaande uitnodigingen van {member} worden ingetrokken en de teamtoegang en het lidmaatschap verwijderd. Doe dit alleen als {member} het eigendom aan jou wil overdragen of jullie dit hebben afgesproken. Dit kan niet ongedaan worden gemaakt; terugkomen kan alleen met een nieuwe uitnodiging.',
+  transferRemoveOwnerTypeLabel: 'Typ het e-mailadres {member} om te bevestigen',
+  transferRemoveOwnerMismatch: 'Dit komt niet overeen met het e-mailadres van de gekozen eigenaar.',
+  transferRemoveOwnerConfirmBtn: 'Eigenaar verwijderen',
+  transferRemoveOwnerInProgress: 'Bezig met verwijderen…',
+  transferBackToListBtn: 'Terug naar de lijst',
+  transferNotSignedIn: 'Je bent niet (meer) ingelogd. Log opnieuw in en probeer het nog eens.',
+  transferOffline:
+    'Geen verbinding met de server. Eigendom overdragen kan alleen online; probeer het opnieuw zodra je verbinding hebt. Wedstrijden op dit apparaat kun je gewoon blijven bijhouden.',
+  transferFailedRead:
+    'De leden van deze organisatie konden niet worden gelezen. Probeer het later opnieuw.',
+  transferFailedTimeout: 'De server antwoordde niet op tijd. Probeer het opnieuw.',
+  transferDeniedNotAMember: 'Je bent geen lid (meer) van deze organisatie.',
+  transferDeniedNotOwner:
+    'Volgens de server ben je geen eigenaar (meer) van deze organisatie. Alleen een eigenaar kan het eigendom overdragen of een andere eigenaar verwijderen.',
+  transferDeniedSelf: 'Je kunt jezelf hier niet kiezen.',
+  transferDeniedTargetNotOwner:
+    '{member} is geen eigenaar (meer). Hier kan alleen een andere eigenaar worden verwijderd.',
+  transferPromoteOk: '{member} is nu mede-eigenaar van {org}.',
+  transferPromoteAlreadyOwner: '{member} was al eigenaar van {org}.',
+  transferPromoteAwaiting:
+    'Wacht op bevestiging door de nieuwe eigenaar: {member} moet zelf inloggen en jou via "Andere eigenaar verwijderen…" als eigenaar verwijderen. Pas dan is de overdracht af. Tot die tijd blijf jij eigenaar en kun je {org} niet verlaten of je account verwijderen.',
+  transferPromoteNotFound: '{member} is geen lid meer van deze organisatie.',
+  transferRejectedTargetChanged:
+    'De rol van {member} is intussen gewijzigd; de actie is gestopt. Open de lijst opnieuw.',
+  transferRejectedPermission:
+    'De server weigerde de wijziging. Mogelijk ben je zelf geen eigenaar meer, bijvoorbeeld omdat een andere eigenaar jou tegelijk verwijderde.',
+  transferPromoteTimeout:
+    'De server antwoordde niet op tijd. De promotie van {member} kan later alsnog doorkomen. Probeer het opnieuw: dat controleert eerst de actuele stand.',
+  transferPromoteFailedWrite:
+    'De promotie van {member} is mogelijk niet gelukt. Probeer het opnieuw: dat controleert eerst de actuele stand.',
+  transferCompleteOk: '{member} is verwijderd als eigenaar van {org}. De overdracht is afgerond.',
+  transferCompleteCounts:
+    'Ingetrokken uitnodigingen: {invitations}. Verwijderde teamtoegang: {teams}.',
+  transferCompleteSkippedMalformed:
+    'Uitnodigingen in deze organisatie zonder leesbaar e-mailadres, overgeslagen: {count}. Niemand kan ze accepteren; laat ze door de beheerder van de app opruimen.',
+  transferCompleteAlreadyGone: 'Het lidmaatschap van {member} was al verwijderd.',
+  transferCompleteNotFound:
+    '{member} is geen lid meer van deze organisatie: de overdracht is al afgerond. Er is niets gewijzigd.',
+  transferCompletePartial:
+    'Er kunnen al uitnodigingen van {member} zijn ingetrokken of teamtoegang zijn verwijderd; dat wordt niet teruggedraaid. Het lidmaatschap van {member} staat nog.',
+  transferCompleteIncomplete:
+    'Het verwijderen van {member} is niet helemaal gelukt; {member} is mogelijk nog eigenaar. Probeer het opnieuw: het gaat verder waar het bleef.',
+  transferStageInvitations:
+    'Gestopt bij: het intrekken van de openstaande uitnodigingen van de andere eigenaar.',
+  transferStageTeamMembers:
+    'Gestopt bij: het verwijderen van de teamtoegang van de andere eigenaar.',
+  transferStagePreRemovalCheck:
+    'Gestopt bij: de controle vóór het verwijderen van het lidmaatschap.',
+  transferStageOrganizationMember:
+    'Gestopt bij: het verwijderen van het lidmaatschap van de andere eigenaar.',
+  transferStageFinalCheck: 'Gestopt bij: de eindcontrole.',
+  transferStepErrorRoleChanged: 'De rol was intussen gewijzigd.',
+  transferStepErrorNotFound: 'Het lid werd niet (meer) gevonden.',
+  transferStepErrorSelf: 'Het doel was je eigen account.',
 } as const;
 
 const en = {
@@ -1307,7 +1388,7 @@ const en = {
     'Leave {org} if you no longer belong to it. You will then lose access to the teams of this organization on all your devices.',
   leaveOrgStartBtn: 'Leave organization…',
   leaveOrgOwnerNote:
-    'As an owner you cannot leave {org} yourself. First transfer ownership to another member, or request deletion of the organization.',
+    'As an owner you cannot leave {org} yourself. First transfer ownership with "Transfer ownership…" below: the other member becomes co-owner and then removes you. Or request deletion of the organization.',
   leaveOrgConfirmTitle: 'Leave organization {org}?',
   leaveOrgConfirmDesc:
     'Your membership, your team access and your open invitations for this organization will be removed. Games stored on this device stay. You can only come back with a new invitation.',
@@ -1324,9 +1405,9 @@ const en = {
   leaveOrgFailedRead: 'Your membership could not be checked. Try again later.',
   leaveOrgNotAMember: 'You are not (or no longer) a member of this organization.',
   leaveOrgDeniedOwnerSole:
-    'You are the only owner of this organization, so you cannot leave it. First transfer ownership, or request deletion of the organization.',
+    'You are the only owner of this organization, so you cannot leave it. First transfer ownership with "Transfer ownership…", or request deletion of the organization.',
   leaveOrgDeniedOwnerAwaitingRemoval:
-    'You are an owner and cannot remove your own membership. Another owner (count: {count}) has to do that for you.',
+    'You are an owner and cannot remove your own membership. This is waiting for confirmation by the new owner: another owner (count: {count}) has to remove you via "Remove other owner…".',
   leaveOrgDeniedCreatorNeedsOwner:
     'You created this organization, so you cannot leave it yourself: ask an owner or admin to remove your membership.',
   leaveOrgDeniedUnsupported:
@@ -1353,9 +1434,9 @@ const en = {
   accountDeleteClassLeaveTeamOnly: 'Your team access in this organization is removed.',
   accountDeleteClassInvitationsOnly: 'Your invitations for this organization are removed.',
   accountDeleteClassOwnerSole:
-    'Blocked: you are the only owner. First transfer ownership, or request deletion of the organization.',
+    'Blocked: you are the only owner. First transfer ownership with "Transfer ownership…", or request deletion of the organization.',
   accountDeleteClassOwnerAwaitingRemoval:
-    'Blocked: you are an owner. Another owner (count: {count}) has to remove your membership.',
+    'Blocked: you are an owner and waiting for confirmation by the new owner. Another owner (count: {count}) has to remove you via "Remove other owner…".',
   accountDeleteClassCreatorNeedsOwner:
     'Blocked: you created this organization. An owner or admin has to remove your membership.',
   accountDeleteClassAwaitingDeletion:
@@ -1415,6 +1496,81 @@ const en = {
     'The cloud data cached in this browser could not be wiped completely. Clear the browser data if you share this device with others.',
   onboardingResumeExpired:
     'The organization you started creating earlier can no longer be completed. Click "Create organization" again to create a new organization.',
+  accountOrganizationNameUnknown: 'Organization (name unknown)',
+  transferStartBtn: 'Transfer ownership…',
+  transferRemoveOwnerStartBtn: 'Remove other owner…',
+  transferPanelDesc:
+    'Transfer ownership of {org} to another member. That member becomes co-owner and completes the transfer themselves by removing you as owner. This only works online.',
+  transferRemoveOwnerDesc:
+    'Has another owner transferred ownership to you? Then complete the transfer by removing that owner. This only works online.',
+  transferPromoteTitle: 'Transfer ownership of {org}',
+  transferRemoveOwnerTitle: 'Remove other owner of {org}',
+  transferLoading: 'Reading the members from the server…',
+  transferChooseIntro: 'Choose who becomes co-owner:',
+  transferRemoveOwnerChooseIntro: 'Choose which other owner to remove:',
+  transferNoCandidates:
+    'There is no other member to transfer ownership to. Invite someone to this organization first.',
+  transferNoOtherOwners: 'There is no other owner in this organization.',
+  transferMemberNoEmail: 'Member without a known email address',
+  transferRoleOwner: 'Owner',
+  transferRoleAdmin: 'Admin',
+  transferRoleCoach: 'Coach',
+  transferRoleScorer: 'Scorer',
+  transferRoleViewer: 'Viewer',
+  transferPromoteConfirmDesc:
+    '{member} becomes co-owner of {org} and gets all rights of an owner. You stay owner until {member} removes you via "Remove other owner…". Until then you cannot leave {org} or delete your account.',
+  transferPromoteConfirmBtn: 'Make co-owner',
+  transferPromoteInProgress: 'Transferring…',
+  transferRemoveOwnerConfirmDesc:
+    'You are removing {member} as owner of {org}: the open invitations of {member} will be revoked and their team access and membership removed. Only do this if {member} wants to transfer ownership to you or you have agreed on it. This cannot be undone; coming back is only possible with a new invitation.',
+  transferRemoveOwnerTypeLabel: 'Type the email address {member} to confirm',
+  transferRemoveOwnerMismatch: 'This does not match the email address of the chosen owner.',
+  transferRemoveOwnerConfirmBtn: 'Remove owner',
+  transferRemoveOwnerInProgress: 'Removing…',
+  transferBackToListBtn: 'Back to the list',
+  transferNotSignedIn: 'You are not signed in (anymore). Sign in again and try once more.',
+  transferOffline:
+    'No connection to the server. Transferring ownership only works online; try again once you have a connection. You can keep tracking games on this device as usual.',
+  transferFailedRead: 'The members of this organization could not be read. Try again later.',
+  transferFailedTimeout: 'The server did not respond in time. Try again.',
+  transferDeniedNotAMember: 'You are not a member of this organization (anymore).',
+  transferDeniedNotOwner:
+    'According to the server you are not an owner of this organization (anymore). Only an owner can transfer ownership or remove another owner.',
+  transferDeniedSelf: 'You cannot choose yourself here.',
+  transferDeniedTargetNotOwner:
+    '{member} is not an owner (anymore). Only another owner can be removed here.',
+  transferPromoteOk: '{member} is now co-owner of {org}.',
+  transferPromoteAlreadyOwner: '{member} was already an owner of {org}.',
+  transferPromoteAwaiting:
+    'Waiting for confirmation by the new owner: {member} has to sign in and remove you as owner via "Remove other owner…". Only then is the transfer complete. Until then you stay owner and cannot leave {org} or delete your account.',
+  transferPromoteNotFound: '{member} is no longer a member of this organization.',
+  transferRejectedTargetChanged:
+    'The role of {member} has changed in the meantime; the action was stopped. Open the list again.',
+  transferRejectedPermission:
+    'The server rejected the change. You may no longer be an owner yourself, for example because another owner removed you at the same time.',
+  transferPromoteTimeout:
+    'The server did not respond in time. The promotion of {member} may still go through later. Try again: that first checks the current state.',
+  transferPromoteFailedWrite:
+    'The promotion of {member} may not have succeeded. Try again: that first checks the current state.',
+  transferCompleteOk: '{member} has been removed as owner of {org}. The transfer is complete.',
+  transferCompleteCounts: 'Invitations revoked: {invitations}. Team access removed: {teams}.',
+  transferCompleteSkippedMalformed:
+    'Invitations in this organization without a readable email address, skipped: {count}. Nobody can accept them; ask the app administrator to clean them up.',
+  transferCompleteAlreadyGone: 'The membership of {member} had already been removed.',
+  transferCompleteNotFound:
+    '{member} is no longer a member of this organization: the transfer was already completed. Nothing was changed.',
+  transferCompletePartial:
+    'Invitations of {member} may already have been revoked or team access removed; that is not undone. The membership of {member} still exists.',
+  transferCompleteIncomplete:
+    'Removing {member} did not fully succeed; {member} may still be an owner. Try again: it continues where it stopped.',
+  transferStageInvitations: 'Stopped at: revoking the open invitations of the other owner.',
+  transferStageTeamMembers: 'Stopped at: removing the team access of the other owner.',
+  transferStagePreRemovalCheck: 'Stopped at: the check before removing the membership.',
+  transferStageOrganizationMember: 'Stopped at: removing the membership of the other owner.',
+  transferStageFinalCheck: 'Stopped at: the final check.',
+  transferStepErrorRoleChanged: 'The role had changed in the meantime.',
+  transferStepErrorNotFound: 'The member was not found (anymore).',
+  transferStepErrorSelf: 'The target was your own account.',
 } as const;
 
 export const STRINGS = { nl, en } as const;

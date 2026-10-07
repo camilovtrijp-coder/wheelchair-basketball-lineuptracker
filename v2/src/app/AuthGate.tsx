@@ -73,8 +73,9 @@ function initialInvitationLink(): InvitationLinkParams | null {
 export interface AuthGateProps {
   authGateway: AuthGateway;
   /**
-   * PR 8.3c-2c-i: bouwt de accountcoördinatoren (verlaten, accountverwijdering). Standaard
-   * `createAccountServices(getFirestoreDb(), getFirebaseAuth())`; tests geven nepversies.
+   * PR 8.3c-2c-i/ii: bouwt de accountcoördinatoren (verlaten, accountverwijdering,
+   * overdracht). Standaard `createAccountServices(getFirestoreDb(), getFirebaseAuth())`;
+   * tests geven nepversies.
    * Wordt pas aangeroepen ná de vertrouwd-apparaatvraag (de Firestore-instantie wordt bij
    * die keuze vervangen) en opnieuw na elke login.
    */
@@ -450,12 +451,16 @@ export function AuthGate({
   });
   const accountFlowBusy = accountFlow.state !== null;
 
+  /**
+   * PR 8.3c-2c-ii (reviewpunt op 2c-i): na een vertrek of voor een organisatie die niet (meer)
+   * in de lijsten staat, een neutraal vertaald label, nooit de ruwe organisatie-ID.
+   */
   function organizationNameFor(organizationId: string): string {
-    return (
-      memberships?.find((m) => m.orgId === organizationId)?.orgName ??
-      teamOnlyContexts.find((c) => c.orgId === organizationId)?.orgName ??
-      organizationId
-    );
+    const known = [
+      memberships?.find((m) => m.orgId === organizationId)?.orgName,
+      teamOnlyContexts.find((c) => c.orgId === organizationId)?.orgName,
+    ].find((name) => typeof name === 'string' && name.trim().length > 0);
+    return known ?? translate(lang, 'accountOrganizationNameUnknown');
   }
 
   return (
@@ -644,6 +649,18 @@ export function AuthGate({
                           organizationNameFor(selectedContext.orgId),
                         ),
                       onDeleteAccount: accountFlow.openDelete,
+                      onTransferOwnership: () =>
+                        accountFlow.openTransfer(
+                          selectedContext.orgId,
+                          organizationNameFor(selectedContext.orgId),
+                          'promote',
+                        ),
+                      onRemoveOtherOwner: () =>
+                        accountFlow.openTransfer(
+                          selectedContext.orgId,
+                          organizationNameFor(selectedContext.orgId),
+                          'remove-owner',
+                        ),
                     }
                   : undefined
               }

@@ -10,23 +10,34 @@ import { translate, type Lang, type StringKey } from '../../i18n/strings';
 import { useFocusTrap } from '../../application/a11y/useFocusTrap';
 import {
   isAccountFlowRunning,
+  isTransferConfirmationValid,
   type AccountFlowApi,
   type AccountFlowState,
+  type TransferFlowState,
 } from '../../application/account/useAccountFlow';
+import type { TransferMember } from '../../domain/account/transfer';
 import { isSelfResolvable } from '../../domain/account/classify';
 import {
+  completeTransferOutcomeView,
   deletionClassLine,
   deletionStopView,
   formatLine,
   leaveOutcomeView,
+  promoteOutcomeView,
   reauthErrorKey,
+  transferListStopView,
+  transferMemberLabel,
+  transferRoleKey,
   type MessageLine,
 } from './accountFlowMessages';
 
 export interface AccountFlowDialogProps {
   lang: Lang;
   flow: AccountFlowApi;
-  /** Weergavenaam voor een organisatie in het plan; valt terug op de ID. */
+  /**
+   * Weergavenaam voor een organisatie in het plan. Zonder bekende naam een neutraal,
+   * vertaald label (2c-ii, reviewpunt op 2c-i): nooit de ruwe ID als enige label.
+   */
   organizationName: (organizationId: string) => string;
   /** Bevestigingsmail opnieuw sturen (bij `email-not-verified`); `false` = mislukt. */
   onResendVerification?: () => Promise<boolean>;
@@ -96,9 +107,14 @@ function AccountFlowModal({
   const title =
     state.kind === 'leave'
       ? formatLine(lang, { key: 'leaveOrgConfirmTitle', params: { org: state.organizationName } })
-      : state.step === 'password'
-        ? t('accountDeletePasswordTitle')
-        : t('accountDeleteTitle');
+      : state.kind === 'transfer'
+        ? formatLine(lang, {
+            key: state.mode === 'promote' ? 'transferPromoteTitle' : 'transferRemoveOwnerTitle',
+            params: { org: state.organizationName },
+          })
+        : state.step === 'password'
+          ? t('accountDeletePasswordTitle')
+          : t('accountDeleteTitle');
 
   return (
     // eslint-disable-next-line jsx-a11y/no-noninteractive-element-interactions
@@ -124,6 +140,8 @@ function AccountFlowModal({
         <h2>{title}</h2>
         {state.kind === 'leave' ? (
           <LeaveContent lang={lang} flow={flow} state={state} />
+        ) : state.kind === 'transfer' ? (
+          <TransferContent lang={lang} flow={flow} state={state} />
         ) : (
           <DeleteContent
             lang={lang}
@@ -162,6 +180,16 @@ function LeaveContent({
               onClick={flow.confirmLeave}
             >
               {t('accountRetryBtn')}
+            </button>
+          ) : null}
+          {state.outcome.status === 'denied' && state.outcome.reason === 'owner-sole' ? (
+            <button
+              type="button"
+              className="btn-primary"
+              data-testid="leave-org-transfer-btn"
+              onClick={() => flow.switchToTransfer(state.organizationId, state.organizationName)}
+            >
+              {t('transferStartBtn')}
             </button>
           ) : null}
           <button
@@ -262,6 +290,24 @@ function DeleteContent({
                   >
                     <strong>{organizationName(entry.organizationId)}</strong>:{' '}
                     {formatLine(lang, deletionClassLine(entry))}
+                    {entry.class === 'owner-sole' ? (
+                      <>
+                        {' '}
+                        <button
+                          type="button"
+                          className="btn-outline"
+                          data-testid={`account-delete-transfer-${entry.organizationId}`}
+                          onClick={() =>
+                            flow.switchToTransfer(
+                              entry.organizationId,
+                              organizationName(entry.organizationId),
+                            )
+                          }
+                        >
+                          {t('transferStartBtn')}
+                        </button>
+                      </>
+                    ) : null}
                   </li>
                 ))}
               </ul>
@@ -360,6 +406,252 @@ function DeleteContent({
         </>
       );
   }
+}
+
+/**
+ * PR 8.3c-2c-ii (docs/pr-8.3c-2c-plan.md §8): de overdracht. `promote` (owner A) en
+ * `remove-owner` (owner B, besluit B9). Een lid heeft als label alleen zijn e-mailadres en
+ * rol; de uid komt nooit in de DOM (testid's op index).
+ */
+function TransferContent({
+  lang,
+  flow,
+  state,
+}: {
+  lang: Lang;
+  flow: AccountFlowApi;
+  state: TransferFlowState;
+}) {
+  const t = (key: StringKey): string => translate(lang, key);
+  const org = state.organizationName;
+  const closeButton = (
+    <button
+      type="button"
+      className="btn-outline"
+      data-testid="transfer-close-btn"
+      onClick={flow.close}
+    >
+      {t('accountCloseBtn')}
+    </button>
+  );
+
+  switch (state.step) {
+    case 'loading':
+      return (
+        <p className="settings-explainer" role="status" data-testid="transfer-loading">
+          {t('transferLoading')}
+        </p>
+      );
+
+    case 'list-stopped': {
+      const view = transferListStopView(state.outcome);
+      return (
+        <>
+          <Lines lang={lang} lines={view.lines} tone={view.tone} testId="transfer-result" />
+          <div className="settings-actions">
+            {view.canRetry ? (
+              <button
+                type="button"
+                className="btn-primary"
+                data-testid="transfer-retry-btn"
+                onClick={flow.reloadTransferList}
+              >
+                {t('accountRetryBtn')}
+              </button>
+            ) : null}
+            {closeButton}
+          </div>
+        </>
+      );
+    }
+
+    case 'choose':
+      return (
+        <>
+          {state.members.length === 0 ? (
+            <p className="settings-explainer" data-testid="transfer-empty">
+              {t(state.mode === 'promote' ? 'transferNoCandidates' : 'transferNoOtherOwners')}
+            </p>
+          ) : (
+            <>
+              <p className="settings-explainer">
+                {t(
+                  state.mode === 'promote'
+                    ? 'transferChooseIntro'
+                    : 'transferRemoveOwnerChooseIntro',
+                )}
+              </p>
+              <ul className="backup-preview__list" data-testid="transfer-member-list">
+                {state.members.map((member, index) => (
+                  <li key={member.uid}>
+                    <button
+                      type="button"
+                      className="btn-outline"
+                      data-testid={`transfer-member-${index}`}
+                      onClick={() => flow.chooseTransferTarget(index)}
+                    >
+                      {transferMemberLabel(lang, member)} ({t(transferRoleKey(member.role))})
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            </>
+          )}
+          <div className="settings-actions">{closeButton}</div>
+        </>
+      );
+
+    case 'confirm':
+    case 'running': {
+      const running = state.step === 'running';
+      const member = transferMemberLabel(lang, state.target);
+      if (state.mode === 'remove-owner') {
+        return (
+          <RemoveOwnerConfirm
+            lang={lang}
+            org={org}
+            member={member}
+            target={state.target}
+            running={running}
+            onConfirm={flow.confirmTransfer}
+            onBack={flow.backToTransferList}
+          />
+        );
+      }
+      return (
+        <>
+          <p className="modal__desc" data-testid="transfer-promote-desc">
+            {formatLine(lang, { key: 'transferPromoteConfirmDesc', params: { member, org } })}
+          </p>
+          <div className="settings-actions">
+            <button
+              type="button"
+              className="btn-primary"
+              data-testid="transfer-confirm-btn"
+              disabled={running}
+              onClick={() => flow.confirmTransfer()}
+            >
+              {running ? t('transferPromoteInProgress') : t('transferPromoteConfirmBtn')}
+            </button>
+            <button
+              type="button"
+              className="btn-outline"
+              data-testid="transfer-back-btn"
+              disabled={running}
+              onClick={flow.backToTransferList}
+            >
+              {t('transferBackToListBtn')}
+            </button>
+          </div>
+        </>
+      );
+    }
+
+    case 'result': {
+      const member = transferMemberLabel(lang, state.target);
+      const view =
+        state.mode === 'promote'
+          ? promoteOutcomeView(state.outcome, member, org)
+          : completeTransferOutcomeView(state.outcome, member, org);
+      return (
+        <>
+          <Lines lang={lang} lines={view.lines} tone={view.tone} testId="transfer-result" />
+          <div className="settings-actions">
+            {view.canRetry ? (
+              <button
+                type="button"
+                className="btn-primary"
+                data-testid="transfer-retry-btn"
+                onClick={flow.retryTransfer}
+              >
+                {t('accountRetryBtn')}
+              </button>
+            ) : null}
+            {closeButton}
+          </div>
+        </>
+      );
+    }
+  }
+}
+
+/**
+ * Besluit B9: getypte bevestiging van het e-mailadres van de andere owner. De invoer leeft
+ * alleen hier (lokale state) en gaat als argument naar `confirmTransfer`, dat hem nogmaals
+ * controleert. Beleid: getrimd en zonder hoofdlettergevoeligheid (docs/pr-8.3c-2c-plan.md §8).
+ */
+function RemoveOwnerConfirm({
+  lang,
+  org,
+  member,
+  target,
+  running,
+  onConfirm,
+  onBack,
+}: {
+  lang: Lang;
+  org: string;
+  member: string;
+  target: TransferMember;
+  running: boolean;
+  onConfirm: (typed: string) => void;
+  onBack: () => void;
+}) {
+  const t = (key: StringKey): string => translate(lang, key);
+  const [typed, setTyped] = useState('');
+  const matches = isTransferConfirmationValid(typed, target);
+  const submit = (event: JSX.TargetedEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (running || !matches) return;
+    onConfirm(typed);
+  };
+  return (
+    <form onSubmit={submit} data-testid="transfer-remove-owner-form">
+      <p className="modal__desc" data-testid="transfer-remove-owner-desc">
+        {formatLine(lang, { key: 'transferRemoveOwnerConfirmDesc', params: { member, org } })}
+      </p>
+      <label className="settings-field">
+        <span className="settings-field__label">
+          {formatLine(lang, { key: 'transferRemoveOwnerTypeLabel', params: { member } })}
+        </span>
+        <input
+          type="text"
+          inputMode="email"
+          autoComplete="off"
+          autoCapitalize="off"
+          spellcheck={false}
+          value={typed}
+          disabled={running}
+          data-testid="transfer-remove-owner-input"
+          onInput={(e) => setTyped((e.currentTarget as HTMLInputElement).value)}
+        />
+      </label>
+      {typed.trim() !== '' && !matches ? (
+        <p className="settings-error" data-testid="transfer-remove-owner-mismatch">
+          {t('transferRemoveOwnerMismatch')}
+        </p>
+      ) : null}
+      <div className="settings-actions">
+        <button
+          type="submit"
+          className="btn-primary"
+          data-testid="transfer-confirm-btn"
+          disabled={running || !matches}
+        >
+          {running ? t('transferRemoveOwnerInProgress') : t('transferRemoveOwnerConfirmBtn')}
+        </button>
+        <button
+          type="button"
+          className="btn-outline"
+          data-testid="transfer-back-btn"
+          disabled={running}
+          onClick={onBack}
+        >
+          {t('transferBackToListBtn')}
+        </button>
+      </div>
+    </form>
+  );
 }
 
 /**
