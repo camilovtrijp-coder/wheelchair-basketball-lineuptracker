@@ -599,6 +599,141 @@ const nl = {
   deletionBannerExecuting: 'Let op: deze organisatie wordt op dit moment verwijderd.',
   deletionBannerFailed:
     'Let op: het verwijderen van deze organisatie is aangevraagd en nog niet afgerond.',
+
+  // PR 8.3c-2c-i: organisatie verlaten en account verwijderen (docs/pr-8.3c-2c-plan.md §3).
+  accountPanelTitle: 'Account en lidmaatschap',
+  accountActionBusy: 'Er loopt al een accountactie. Wacht tot die klaar is en probeer het opnieuw.',
+  accountNothingChanged: 'Er is niets gewijzigd.',
+  accountCloseBtn: 'Sluiten',
+  accountBackBtn: 'Terug',
+  accountRetryBtn: 'Opnieuw proberen',
+  accountStageTeamMembers: 'Gestopt bij: je teamtoegang verwijderen.',
+  accountStageInvitations: 'Gestopt bij: je uitnodigingen verwijderen.',
+  accountStagePerOrgCheck: 'Gestopt bij: de controle per organisatie.',
+  accountStageOrganizationMember: 'Gestopt bij: je lidmaatschap verwijderen.',
+  accountStageFinalCheck: 'Gestopt bij: de eindcontrole.',
+  accountStageFinalGate: 'Gestopt bij: de laatste controle vóór het verwijderen van je account.',
+  accountStepErrorRejected: 'De server weigerde een stap; mogelijk is je rol intussen gewijzigd.',
+  accountStepErrorTimeout: 'De server antwoordde niet op tijd.',
+  accountStepErrorOffline: 'De verbinding met de server viel weg.',
+  accountStepErrorNotSignedIn: 'Je bent niet meer ingelogd.',
+  accountStepErrorFailed: 'Er ging iets mis bij de server.',
+  accountStepErrorReadFailed: 'Je gegevens konden niet worden gelezen.',
+  accountStepErrorEmailNotVerified: 'Je e-mailadres is niet bevestigd.',
+
+  leaveOrgDesc:
+    'Verlaat {org} als je er niet meer bij hoort. Je verliest dan op al je apparaten de toegang tot de teams van deze organisatie.',
+  leaveOrgStartBtn: 'Organisatie verlaten…',
+  leaveOrgOwnerNote:
+    'Als eigenaar kun je {org} niet zelf verlaten. Draag eerst het eigendom over aan een ander lid, of vraag verwijdering van de organisatie aan.',
+  leaveOrgConfirmTitle: 'Organisatie {org} verlaten?',
+  leaveOrgConfirmDesc:
+    'Je lidmaatschap, je toegang tot de teams en je openstaande uitnodigingen voor deze organisatie worden verwijderd. Wedstrijden die op dit apparaat staan, blijven staan. Terugkomen kan alleen met een nieuwe uitnodiging.',
+  leaveOrgConfirmBtn: 'Organisatie verlaten',
+  leaveOrgInProgress: 'Bezig met verlaten…',
+  leaveOrgOk: 'Je hebt {org} verlaten.',
+  leaveOrgOkInvitationsUnchecked:
+    'Je e-mailadres is niet bevestigd, daarom konden je uitnodigingen voor deze organisatie niet worden gecontroleerd. Een openstaande uitnodiging kan nog bestaan; vraag een eigenaar of beheerder die in te trekken.',
+  leaveOrgOkDeletionPending: 'Voor deze organisatie loopt een verwijderverzoek.',
+  leaveOrgNotSignedIn: 'Je bent niet (meer) ingelogd. Log opnieuw in en probeer het nog eens.',
+  leaveOrgOffline:
+    'Geen verbinding met de server. Verlaten kan alleen online; probeer het opnieuw zodra je verbinding hebt.',
+  leaveOrgFailedTimeout: 'De server antwoordde niet op tijd. Probeer het opnieuw.',
+  leaveOrgFailedRead: 'Je lidmaatschap kon niet worden gecontroleerd. Probeer het later opnieuw.',
+  leaveOrgNotAMember: 'Je bent geen lid (meer) van deze organisatie.',
+  leaveOrgDeniedOwnerSole:
+    'Je bent de enige eigenaar van deze organisatie en kunt haar daarom niet verlaten. Draag eerst het eigendom over, of vraag verwijdering van de organisatie aan.',
+  leaveOrgDeniedOwnerAwaitingRemoval:
+    'Je bent eigenaar en kunt je eigen lidmaatschap niet verwijderen. Een andere eigenaar (aantal: {count}) moet dat voor je doen.',
+  leaveOrgDeniedCreatorNeedsOwner:
+    'Jij hebt deze organisatie aangemaakt. Daarom kun je niet zelf vertrekken: vraag een eigenaar of beheerder om je lidmaatschap te verwijderen.',
+  leaveOrgDeniedUnsupported:
+    'Bij deze organisatie ontbreken gegevens die nodig zijn om te vertrekken. Vraag een eigenaar om je lidmaatschap te verwijderen, of neem contact op met de beheerder van de app.',
+  leaveOrgDeniedMissing:
+    'Deze organisatie bestaat niet meer, maar je lidmaatschap nog wel. Neem contact op met de beheerder van de app.',
+  leaveOrgDeniedAwaitingDeletion:
+    'Er loopt een verwijderverzoek voor deze organisatie. Als eigenaar wacht je tot dat is uitgevoerd.',
+  leaveOrgDeniedDeletionFailed:
+    'Het verwijderen van deze organisatie is vastgelopen. Neem contact op met de beheerder van de app.',
+  leaveOrgBlockedLocalWork:
+    'Op dit apparaat staat wedstrijdwerk voor deze organisatie dat nog niet met de server is gesynchroniseerd (aantal: {count}). Rond dat eerst af en laat het synchroniseren; anders gaat het verloren.',
+  leaveOrgIncomplete:
+    'Verlaten is niet helemaal gelukt; je bent mogelijk nog lid. Probeer het opnieuw: het gaat verder waar het bleef.',
+
+  accountDeleteDesc:
+    'Verwijder je account met al je lidmaatschappen en uitnodigingen in de cloud. Wedstrijden en instellingen die alleen op dit apparaat staan, blijven staan.',
+  accountDeleteStartBtn: 'Account verwijderen…',
+  accountDeleteNoOrgHint: 'Wil je dit account niet meer gebruiken? Je kunt het hier verwijderen.',
+  accountDeleteTitle: 'Account verwijderen',
+  accountDeleteChecking: 'Je account wordt gecontroleerd…',
+  accountDeletePlanIntro: 'Dit gebeurt per organisatie:',
+  accountDeleteClassLeave: 'Je verlaat deze organisatie.',
+  accountDeleteClassLeaveTeamOnly: 'Je teamtoegang in deze organisatie wordt verwijderd.',
+  accountDeleteClassInvitationsOnly: 'Je uitnodigingen voor deze organisatie worden verwijderd.',
+  accountDeleteClassOwnerSole:
+    'Geblokkeerd: je bent de enige eigenaar. Draag eerst het eigendom over, of vraag verwijdering van de organisatie aan.',
+  accountDeleteClassOwnerAwaitingRemoval:
+    'Geblokkeerd: je bent eigenaar. Een andere eigenaar (aantal: {count}) moet je lidmaatschap verwijderen.',
+  accountDeleteClassCreatorNeedsOwner:
+    'Geblokkeerd: jij hebt deze organisatie aangemaakt. Een eigenaar of beheerder moet je lidmaatschap verwijderen.',
+  accountDeleteClassAwaitingDeletion:
+    'Geblokkeerd: er loopt een verwijderverzoek voor deze organisatie. Wacht tot het is uitgevoerd.',
+  accountDeleteClassDeletionFailed:
+    'Geblokkeerd: het verwijderen van deze organisatie is vastgelopen. Neem contact op met de beheerder van de app.',
+  accountDeleteClassUnsupported:
+    'Geblokkeerd: bij deze organisatie ontbreken gegevens. Vraag een eigenaar om je lidmaatschap te verwijderen.',
+  accountDeleteClassMissing:
+    'Geblokkeerd: deze organisatie bestaat niet meer, maar je lidmaatschap nog wel. Neem contact op met de beheerder van de app.',
+  accountDeleteClassLocalWork:
+    'Geblokkeerd: op dit apparaat staat wedstrijdwerk dat nog niet is gesynchroniseerd (aantal: {count}). Rond dat eerst af en laat het synchroniseren.',
+  accountDeleteInvitations: 'Uitnodigingen op je e-mailadres die worden verwijderd: {count}',
+  accountDeleteBlockedTitle:
+    'Je account kan nog niet worden verwijderd. Los eerst de geblokkeerde punten op; er is niets gewijzigd.',
+  accountDeletePlanChanged: 'De situatie is intussen veranderd. Het plan is bijgewerkt.',
+  accountDeleteReadyIntro:
+    'Daarna wordt je account zelf verwijderd. Dit kan niet ongedaan worden gemaakt.',
+  accountDeleteAuthOnly:
+    'Er staan geen lidmaatschappen of uitnodigingen meer van je in de cloud; alleen je account bestaat nog. Je kunt het nu verwijderen.',
+  accountDeleteContinueBtn: 'Doorgaan',
+  accountDeleteRecheckBtn: 'Opnieuw controleren',
+  accountDeletePasswordTitle: 'Bevestig met je wachtwoord',
+  accountDeletePasswordDesc:
+    'Voer je wachtwoord in om je account definitief te verwijderen. Dit kan niet ongedaan worden gemaakt.',
+  accountDeletePasswordLabel: 'Wachtwoord',
+  accountDeleteConfirmBtn: 'Account definitief verwijderen',
+  accountDeleteInProgress: 'Bezig met verwijderen…',
+  accountDeleteWrongPassword: 'Het wachtwoord klopt niet. Probeer het opnieuw.',
+  accountDeleteTooManyRequests: 'Te veel pogingen. Wacht even en probeer het later opnieuw.',
+  accountDeleteReauthNetwork:
+    'Geen verbinding bij het controleren van je wachtwoord. Probeer het opnieuw zodra je verbinding hebt.',
+  accountDeleteReauthOther: 'Je wachtwoord kon niet worden gecontroleerd. Probeer het opnieuw.',
+  accountDeleteNotSignedIn: 'Je bent niet (meer) ingelogd. Log opnieuw in en probeer het nog eens.',
+  accountDeleteEmailNotVerified:
+    'Bevestig eerst je e-mailadres. Zonder bevestigd adres kunnen je uitnodigingen niet worden gecontroleerd. Open de link in je e-mail en controleer daarna opnieuw.',
+  accountDeleteResendVerificationBtn: 'Bevestigingsmail opnieuw sturen',
+  accountDeleteVerificationSent: 'De bevestigingsmail is verstuurd.',
+  accountDeleteVerificationFailed: 'De bevestigingsmail kon niet worden verstuurd.',
+  accountDeleteOffline:
+    'Geen verbinding met de server. Account verwijderen kan alleen online; probeer het opnieuw zodra je verbinding hebt.',
+  accountDeleteFailedTimeout: 'De server antwoordde niet op tijd. Probeer het opnieuw.',
+  accountDeleteFailedRead: 'Je gegevens konden niet worden gecontroleerd. Probeer het later opnieuw.',
+  accountDeleteAuthStateUnknown:
+    'Het is niet zeker of je account is verwijderd. Log opnieuw in: lukt dat niet meer, dan is je account verwijderd; lukt het wel, start dan opnieuw.',
+  accountDeleteIncomplete:
+    'Het opruimen is niet helemaal gelukt. Je account bestaat nog. Probeer het opnieuw: het gaat verder waar het bleef.',
+  accountDeleteIncompleteFinalGate:
+    'Bij de laatste controle stonden er nog gegevens van je in de cloud (lidmaatschappen: {members}, teamtoegang: {teams}, uitnodigingen: {invitations}). Misschien ben je net opnieuw uitgenodigd. Je account bestaat nog; controleer opnieuw.',
+  accountDeleteClearedAuthPresent:
+    'Je lidmaatschappen en uitnodigingen in de cloud zijn verwijderd, maar je account bestaat nog. Probeer het opnieuw om je account te verwijderen.',
+  accountDeleteReasonRecentLogin: 'Firebase vraagt om een recentere aanmelding.',
+  accountDeleteReasonNetwork: 'De verbinding viel weg.',
+  accountDeleteReasonOther: 'De server gaf een onverwachte fout.',
+  accountDeleteDeleted:
+    'Je account is verwijderd. De clouddata in de cache van deze browser is gewist. Gegevens die alleen op dit apparaat stonden, zoals lokale wedstrijden en instellingen, zijn niet gewist.',
+  accountDeleteLocalWipeFailed:
+    'De clouddata in de cache van deze browser kon niet volledig worden gewist. Wis de browsergegevens als je dit apparaat met anderen deelt.',
+  onboardingResumeExpired:
+    'De organisatie die je eerder begon aan te maken, kan niet meer worden afgerond. Klik opnieuw op "Organisatie aanmaken" om een nieuwe organisatie aan te maken.',
 } as const;
 
 const en = {
@@ -1143,6 +1278,142 @@ const en = {
   deletionBannerExecuting: 'Note: this organization is being deleted right now.',
   deletionBannerFailed:
     'Note: deletion of this organization has been requested and is not finished yet.',
+
+  // PR 8.3c-2c-i: leave organization and delete account (docs/pr-8.3c-2c-plan.md §3).
+  accountPanelTitle: 'Account and membership',
+  accountActionBusy:
+    'Another account action is already running. Wait until it finishes and try again.',
+  accountNothingChanged: 'Nothing was changed.',
+  accountCloseBtn: 'Close',
+  accountBackBtn: 'Back',
+  accountRetryBtn: 'Try again',
+  accountStageTeamMembers: 'Stopped at: removing your team access.',
+  accountStageInvitations: 'Stopped at: removing your invitations.',
+  accountStagePerOrgCheck: 'Stopped at: the per-organization check.',
+  accountStageOrganizationMember: 'Stopped at: removing your membership.',
+  accountStageFinalCheck: 'Stopped at: the final check.',
+  accountStageFinalGate: 'Stopped at: the last check before deleting your account.',
+  accountStepErrorRejected:
+    'The server rejected a step; your role may have changed in the meantime.',
+  accountStepErrorTimeout: 'The server did not respond in time.',
+  accountStepErrorOffline: 'The connection to the server was lost.',
+  accountStepErrorNotSignedIn: 'You are no longer signed in.',
+  accountStepErrorFailed: 'Something went wrong at the server.',
+  accountStepErrorReadFailed: 'Your data could not be read.',
+  accountStepErrorEmailNotVerified: 'Your email address has not been verified.',
+
+  leaveOrgDesc:
+    'Leave {org} if you no longer belong to it. You will then lose access to the teams of this organization on all your devices.',
+  leaveOrgStartBtn: 'Leave organization…',
+  leaveOrgOwnerNote:
+    'As an owner you cannot leave {org} yourself. First transfer ownership to another member, or request deletion of the organization.',
+  leaveOrgConfirmTitle: 'Leave organization {org}?',
+  leaveOrgConfirmDesc:
+    'Your membership, your team access and your open invitations for this organization will be removed. Games stored on this device stay. You can only come back with a new invitation.',
+  leaveOrgConfirmBtn: 'Leave organization',
+  leaveOrgInProgress: 'Leaving…',
+  leaveOrgOk: 'You have left {org}.',
+  leaveOrgOkInvitationsUnchecked:
+    'Your email address is not verified, so your invitations for this organization could not be checked. An open invitation may still exist; ask an owner or admin to revoke it.',
+  leaveOrgOkDeletionPending: 'A deletion request is open for this organization.',
+  leaveOrgNotSignedIn: 'You are not signed in (anymore). Sign in again and try once more.',
+  leaveOrgOffline:
+    'No connection to the server. Leaving only works online; try again once you are connected.',
+  leaveOrgFailedTimeout: 'The server did not respond in time. Try again.',
+  leaveOrgFailedRead: 'Your membership could not be checked. Try again later.',
+  leaveOrgNotAMember: 'You are not (or no longer) a member of this organization.',
+  leaveOrgDeniedOwnerSole:
+    'You are the only owner of this organization, so you cannot leave it. First transfer ownership, or request deletion of the organization.',
+  leaveOrgDeniedOwnerAwaitingRemoval:
+    'You are an owner and cannot remove your own membership. Another owner (count: {count}) has to do that for you.',
+  leaveOrgDeniedCreatorNeedsOwner:
+    'You created this organization, so you cannot leave it yourself: ask an owner or admin to remove your membership.',
+  leaveOrgDeniedUnsupported:
+    'This organization is missing data that is needed to leave. Ask an owner to remove your membership, or contact the app administrator.',
+  leaveOrgDeniedMissing:
+    'This organization no longer exists, but your membership still does. Contact the app administrator.',
+  leaveOrgDeniedAwaitingDeletion:
+    'A deletion request is open for this organization. As an owner, wait until it has been carried out.',
+  leaveOrgDeniedDeletionFailed:
+    'Deleting this organization got stuck. Contact the app administrator.',
+  leaveOrgBlockedLocalWork:
+    'This device has game work for this organization that has not been synced with the server yet (count: {count}). Finish it and let it sync first; otherwise it will be lost.',
+  leaveOrgIncomplete:
+    'Leaving did not fully succeed; you may still be a member. Try again: it continues where it stopped.',
+
+  accountDeleteDesc:
+    'Delete your account together with all your memberships and invitations in the cloud. Games and settings that are stored only on this device stay.',
+  accountDeleteStartBtn: 'Delete account…',
+  accountDeleteNoOrgHint: 'No longer want to use this account? You can delete it here.',
+  accountDeleteTitle: 'Delete account',
+  accountDeleteChecking: 'Checking your account…',
+  accountDeletePlanIntro: 'This is what happens per organization:',
+  accountDeleteClassLeave: 'You leave this organization.',
+  accountDeleteClassLeaveTeamOnly: 'Your team access in this organization is removed.',
+  accountDeleteClassInvitationsOnly: 'Your invitations for this organization are removed.',
+  accountDeleteClassOwnerSole:
+    'Blocked: you are the only owner. First transfer ownership, or request deletion of the organization.',
+  accountDeleteClassOwnerAwaitingRemoval:
+    'Blocked: you are an owner. Another owner (count: {count}) has to remove your membership.',
+  accountDeleteClassCreatorNeedsOwner:
+    'Blocked: you created this organization. An owner or admin has to remove your membership.',
+  accountDeleteClassAwaitingDeletion:
+    'Blocked: a deletion request is open for this organization. Wait until it has been carried out.',
+  accountDeleteClassDeletionFailed:
+    'Blocked: deleting this organization got stuck. Contact the app administrator.',
+  accountDeleteClassUnsupported:
+    'Blocked: this organization is missing data. Ask an owner to remove your membership.',
+  accountDeleteClassMissing:
+    'Blocked: this organization no longer exists, but your membership still does. Contact the app administrator.',
+  accountDeleteClassLocalWork:
+    'Blocked: this device has game work that has not been synced yet (count: {count}). Finish it and let it sync first.',
+  accountDeleteInvitations: 'Invitations to your email address that will be removed: {count}',
+  accountDeleteBlockedTitle:
+    'Your account cannot be deleted yet. Resolve the blocked items first; nothing was changed.',
+  accountDeletePlanChanged: 'The situation has changed in the meantime. The plan has been updated.',
+  accountDeleteReadyIntro: 'After that, your account itself is deleted. This cannot be undone.',
+  accountDeleteAuthOnly:
+    'There are no memberships or invitations of yours left in the cloud; only your account still exists. You can delete it now.',
+  accountDeleteContinueBtn: 'Continue',
+  accountDeleteRecheckBtn: 'Check again',
+  accountDeletePasswordTitle: 'Confirm with your password',
+  accountDeletePasswordDesc:
+    'Enter your password to delete your account permanently. This cannot be undone.',
+  accountDeletePasswordLabel: 'Password',
+  accountDeleteConfirmBtn: 'Delete account permanently',
+  accountDeleteInProgress: 'Deleting…',
+  accountDeleteWrongPassword: 'The password is incorrect. Try again.',
+  accountDeleteTooManyRequests: 'Too many attempts. Wait a moment and try again later.',
+  accountDeleteReauthNetwork:
+    'No connection while checking your password. Try again once you are connected.',
+  accountDeleteReauthOther: 'Your password could not be checked. Try again.',
+  accountDeleteNotSignedIn: 'You are not signed in (anymore). Sign in again and try once more.',
+  accountDeleteEmailNotVerified:
+    'Verify your email address first. Without a verified address your invitations cannot be checked. Open the link in your email and then check again.',
+  accountDeleteResendVerificationBtn: 'Resend verification email',
+  accountDeleteVerificationSent: 'The verification email has been sent.',
+  accountDeleteVerificationFailed: 'The verification email could not be sent.',
+  accountDeleteOffline:
+    'No connection to the server. Deleting your account only works online; try again once you are connected.',
+  accountDeleteFailedTimeout: 'The server did not respond in time. Try again.',
+  accountDeleteFailedRead: 'Your data could not be checked. Try again later.',
+  accountDeleteAuthStateUnknown:
+    'It is not certain whether your account was deleted. Sign in again: if that no longer works, your account was deleted; if it does, start again.',
+  accountDeleteIncomplete:
+    'The cleanup did not fully succeed. Your account still exists. Try again: it continues where it stopped.',
+  accountDeleteIncompleteFinalGate:
+    'The last check still found data of yours in the cloud (memberships: {members}, team access: {teams}, invitations: {invitations}). You may have just been invited again. Your account still exists; check again.',
+  accountDeleteClearedAuthPresent:
+    'Your memberships and invitations in the cloud have been removed, but your account still exists. Try again to delete your account.',
+  accountDeleteReasonRecentLogin: 'Firebase requires a more recent sign-in.',
+  accountDeleteReasonNetwork: 'The connection was lost.',
+  accountDeleteReasonOther: 'The server returned an unexpected error.',
+  accountDeleteDeleted:
+    'Your account has been deleted. The cloud data cached in this browser has been wiped. Data stored only on this device, such as local games and settings, has not been wiped.',
+  accountDeleteLocalWipeFailed:
+    'The cloud data cached in this browser could not be wiped completely. Clear the browser data if you share this device with others.',
+  onboardingResumeExpired:
+    'The organization you started creating earlier can no longer be completed. Click "Create organization" again to create a new organization.',
 } as const;
 
 export const STRINGS = { nl, en } as const;
