@@ -335,6 +335,45 @@ describe('dialooggedrag', () => {
     expect(document.activeElement).toBe(opener);
   });
 
+  it('geeft de focus ook terug als de openende knop tijdens de flow disabled was (Chromium-focusverlies, 2d)', () => {
+    // Zoals `AccountPanel`: de knop staat uit zolang er een flow open is. Chromium zet de
+    // focus dan meteen op <body> (vóór het effect van de focustrap); jsdom doet dat niet,
+    // dus de test bootst het na met `blur()` direct na het openen.
+    function DisablingHarness({ gate }: { gate: FakeGate }) {
+      const flow = useAccountFlow({
+        gate: gate as unknown as AccountActionGate,
+        onLeft: () => undefined,
+        onAccountDeleted: async () => undefined,
+      });
+      return (
+        <>
+          <button
+            type="button"
+            data-testid="open-leave"
+            disabled={flow.state !== null}
+            onClick={(event) => {
+              flow.openLeave('org-a', 'Fictieve Adelaars');
+              event.currentTarget.blur();
+            }}
+          >
+            leave
+          </button>
+          <AccountFlowDialog lang="nl" flow={flow} organizationName={(id) => NAMES[id] ?? id} />
+        </>
+      );
+    }
+    render(<DisablingHarness gate={fakeGate()} />);
+    const opener = screen.getByTestId('open-leave');
+    opener.focus();
+    fireEvent.click(opener);
+    expect(screen.getByTestId('account-flow-dialog')).toBeTruthy();
+    expect(document.activeElement).toBe(screen.getByTestId('leave-org-confirm-btn'));
+    fireEvent.keyDown(screen.getByTestId('account-flow-dialog'), { key: 'Escape' });
+    expect(screen.queryByTestId('account-flow-dialog')).toBeNull();
+    expect(opener.hasAttribute('disabled')).toBe(false);
+    expect(document.activeElement).toBe(opener);
+  });
+
   it('backdrop-klik sluit, een klik in het dialoog niet', () => {
     const gate = fakeGate();
     mount(gate);

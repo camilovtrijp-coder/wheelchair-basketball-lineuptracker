@@ -44,8 +44,30 @@ export interface AccountFlowDialogProps {
 }
 
 export function AccountFlowDialog(props: AccountFlowDialogProps) {
+  const lastFocused = useLastFocusedElement();
   if (props.flow.state === null) return null;
-  return <AccountFlowModal {...props} state={props.flow.state} />;
+  return <AccountFlowModal {...props} state={props.flow.state} lastFocused={lastFocused} />;
+}
+
+/**
+ * PR 8.3c-2d (bevinding in een echte browser): de knoppen die dit dialoog openen
+ * (`AccountPanel`, `NoOrganizationsScreen`) staan `disabled` zolang er een flow open is. In
+ * Chromium verliest een gefocuste knop die `disabled` wordt meteen zijn focus aan `<body>`,
+ * vóórdat `useFocusTrap` (een effect) onthoudt wat focus had — de trap gaf de focus bij
+ * sluiten dus terug aan `<body>` in plaats van aan de openende knop. Daarom houdt dit
+ * (altijd gemounte) deel bij welk element het laatst focus KREEG; `<body>` krijgt bij dat
+ * focusverlies geen `focusin`, dus dat is de openende knop.
+ */
+function useLastFocusedElement(): { current: HTMLElement | null } {
+  const last = useRef<HTMLElement | null>(null);
+  useEffect(() => {
+    const onFocusIn = (event: FocusEvent) => {
+      if (event.target instanceof HTMLElement) last.current = event.target;
+    };
+    document.addEventListener('focusin', onFocusIn, true);
+    return () => document.removeEventListener('focusin', onFocusIn, true);
+  }, []);
+  return last;
 }
 
 const FOCUSABLE = 'button:not([disabled]), input:not([disabled]), [tabindex]:not([tabindex="-1"])';
@@ -80,9 +102,26 @@ function AccountFlowModal({
   state,
   organizationName,
   onResendVerification,
-}: AccountFlowDialogProps & { state: AccountFlowState }) {
+  lastFocused,
+}: AccountFlowDialogProps & {
+  state: AccountFlowState;
+  lastFocused: { current: HTMLElement | null };
+}) {
   const t = (key: StringKey): string => translate(lang, key);
+  // Vastgelegd bij de eerste render, vóór de focus het dialoog in gaat: de openende knop.
+  const [returnFocusTo] = useState<HTMLElement | null>(() => lastFocused.current);
   const trapRef = useFocusTrap<HTMLDivElement>(true);
+  // Ná `useFocusTrap` gedeclareerd, dus bij unmount ná diens focusherstel: heeft dat de
+  // focus niet kunnen terugzetten (hij zag `<body>` als vorige focus), dan hier, mits de
+  // openende knop nog bestaat. Verdwenen (bijv. na een vertrek) → niets te herstellen.
+  useEffect(() => {
+    const container = trapRef.current;
+    return () => {
+      const active = document.activeElement;
+      const lost = active === null || active === document.body || !!container?.contains(active);
+      if (lost && returnFocusTo?.isConnected) returnFocusTo.focus();
+    };
+  }, [returnFocusTo, trapRef]);
   const running = isAccountFlowRunning(state);
   const close = () => {
     if (!running) flow.close();
