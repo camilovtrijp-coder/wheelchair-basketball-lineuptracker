@@ -221,7 +221,10 @@ onderstaande restrisico's blijven bewust staan.
   flow als `timeout`/`offline` opgaf, blijft in de schrijfwachtrij van Firestore en kan
   later alsnog landen zonder dat de flow het merkt; de uitkomst `incomplete` kan dan
   achterhaald zijn. Het is altijd een bedoelde delete in de juiste volgorde; de volgende
-  verse inventaris toont de werkelijke toestand.
+  verse inventaris toont de werkelijke toestand. **Stand na 8.3c-2d:** in een echte browser
+  tegen de emulators bewezen dat een uitnodiging die tussen de opruiming en `deleteUser`
+  ontstaat het verwijderen tegenhoudt (`final-gate`, geen `accounts:delete`-verzoek;
+  `account-delete-flow.spec.ts`). Het venster ná die laatste lezing blijft.
 - **Gelijktijdige overdracht (reviewbevinding A op #108, verholpen in de 2b-iii-fix).**
   Twee owners die elkaar tegelijk verwijderen (twee apparaten) konden volgens de review
   allebei slagen: de transactie las alleen het doel, en de `get()` waarmee de Rules de
@@ -238,7 +241,10 @@ onderstaande restrisico's blijven bewust staan.
   zelfverwijdering van een owner weigeren, niet een Rules-invariant ("minstens één
   owner"). **Rest:** bij gelijktijdige `completeTransfer` over en weer kan de verliezer
   al uitnodigingen van de winnaar hebben ingetrokken en diens teamMembers hebben
-  verwijderd; dat wordt niet teruggedraaid (de winnaar blijft owner).
+  verwijderd; dat wordt niet teruggedraaid (de winnaar blijft owner). **Stand na 8.3c-2d:**
+  ook in een echte browser met twee contexten en twee echte sessies slaagt precies één
+  verwijdering en blijft één owner (`ownership-transfer-flow.spec.ts`; één poging per run,
+  geen racemeting en geen productiemeting).
 - **Misvormd ledendocument blokkeert vertrek (fail closed, runbook).** De
   per-organisatiefeiten lezen de ongefilterde ledenlijst met de converter. Eén ongeldig
   `organizationMembers`-document van een ánder lid (bijv. via de Console aangemaakt met
@@ -265,8 +271,12 @@ onderstaande restrisico's blijven bewust staan.
   met een afwijkend gespeld adres is aangemaakt, matcht de token-e-mail niet: ze is
   niet te accepteren, maar ook niet via de query te vinden en blijft na vertrek of
   accountverwijdering staan (aanname A3: Firebase Auth levert het token-adres in
-  kleine letters; niet in de emulator bewezen). Achtervang: runbook, en het
-  pre-8.5-besluit over het uitnodigingsaanmaakpad hieronder.
+  kleine letters). **Stand na 8.3c-2d:** A3 bewezen voor de Auth-emulator (een account dat
+  met hoofdletters is aangemaakt en zo inlogt, krijgt een token-adres in kleine letters;
+  verlaten, verwijderen en overdragen werken), niet nagemeten tegen productie-Auth; R5 zelf
+  bevestigd in de e2e: de afwijkend gespelde uitnodiging blijft na vertrek en
+  accountverwijdering `pending` (`account-flows-browser-assumptions.spec.ts`). Achtervang:
+  runbook, en het pre-8.5-besluit over het uitnodigingsaanmaakpad hieronder.
 - **R6 — half aangemaakte organisatie na 7 dagen (UI-deel opgelost in 2c-i).**
   `createOrganizationWithOwner` schrijft sequentieel eerst het organisatiedocument en
   dan het owner-membership via de bootstrap-create. Landt die tweede write niet
@@ -291,6 +301,12 @@ onderstaande restrisico's blijven bewust staan.
   blijft als extra weesorganisatie achter (opruimen via het runbook). Geen datalek, geen
   rechtenverlies. Mitigatieoptie, ter beslissing: pas wissen na een **tweede opeenvolgende**
   `permission-denied` (vraagt een teller in componentstate, geen nieuwe sleutel).
+  **Stand na 8.3c-2d (e2e):** binnen 7 dagen hervat het scherm dezelfde organisatie; na 7
+  dagen wist `permission-denied` de sleutel, toont `onboardingResumeExpired` en maakt de
+  volgende klik een nieuwe organisatie (de oude blijft zonder lid); met de browser offline
+  blijft de sleutel staan en wordt de hervatting online afgerond. Een `unavailable`-weigering
+  van de membership-write is in de browser niet te veroorzaken (de SDK houdt een offline
+  write in de wachtrij); die tak blijft alleen in vitest gedekt.
 - **R7 — org-gescoopte `localStorage`-sleutels blijven na `deleted` op het apparaat (open
   besluit voor de eigenaar).** B7 wist na een geslaagde accountverwijdering alleen de
   Firestore-cache (IndexedDB) en de contextpointer, nooit `clearLocalDeviceData()`. Daardoor
@@ -313,7 +329,10 @@ onderstaande restrisico's blijven bewust staan.
   afgemeld zonder die stap. Risico: spelersnamen blijven op een gedeeld apparaat leesbaar
   voor wie de browser opent. **Besluit nodig** (B7 noemde het al als optie): alleen de
   org-gescoopte sleutels van de verwijderde account wissen, als expliciet getest besluit, of
-  het zo laten en documenteren in de gebruikerstekst. 2c-ii wist niets.
+  het zo laten en documenteren in de gebruikerstekst. 2c-ii wist niets. **8.3c-2d** bewijst
+  in een echte browser alleen het B7-deel: na `deleted` is de Firestore-IndexedDB-cache weg
+  en zijn de lokale-modussleutels (instellingen, spelerslijst, v1-wedstrijden, taal)
+  ongewijzigd; het open R7-besluit verandert daar niet door.
 
 Accountverwijdering (2b-ii): geen enkele write vóór een groen plan (alles zelf op te
 lossen) en een geslaagde reauthenticatie (besluit B2); `deleteUser()` alleen direct na
