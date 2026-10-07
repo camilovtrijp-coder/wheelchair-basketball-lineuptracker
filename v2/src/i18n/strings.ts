@@ -757,7 +757,7 @@ const nl = {
   transferRoleScorer: 'Scorer',
   transferRoleViewer: 'Meekijker',
   transferPromoteConfirmDesc:
-    '{member} wordt mede-eigenaar van {org} en krijgt alle rechten van een eigenaar. Jij blijft eigenaar tot {member} jou verwijdert via "Andere eigenaar verwijderen…". Tot dan kun je {org} niet verlaten en je account niet verwijderen.',
+    '{member} wordt mede-eigenaar van {org} en krijgt alle rechten van een eigenaar, ook het recht om jou daarna als eigenaar te verwijderen via "Andere eigenaar verwijderen…". Jij blijft eigenaar tot {member} dat doet. Tot dan kun je {org} niet verlaten en je account niet verwijderen.',
   transferPromoteConfirmBtn: 'Mede-eigenaar maken',
   transferPromoteInProgress: 'Bezig met overdragen…',
   transferRemoveOwnerConfirmDesc:
@@ -1518,7 +1518,7 @@ const en = {
   transferRoleScorer: 'Scorer',
   transferRoleViewer: 'Viewer',
   transferPromoteConfirmDesc:
-    '{member} becomes co-owner of {org} and gets all rights of an owner. You stay owner until {member} removes you via "Remove other owner…". Until then you cannot leave {org} or delete your account.',
+    '{member} becomes co-owner of {org} and gets all rights of an owner, including the right to remove you as owner afterwards via "Remove other owner…". You stay owner until {member} does so. Until then you cannot leave {org} or delete your account.',
   transferPromoteConfirmBtn: 'Make co-owner',
   transferPromoteInProgress: 'Transferring…',
   transferRemoveOwnerConfirmDesc:
