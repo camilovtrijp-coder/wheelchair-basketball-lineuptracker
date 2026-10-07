@@ -411,6 +411,76 @@ describe('useSyncStatus (PR 5.3c-2, schrijfcontract herzien in 5.3d)', () => {
     expect(result.current.status).toBe('gesynchroniseerd');
   });
 
+  // Reviewnit #101: een opslag zonder wijzigingen (adapter meldt `unchanged`)
+  // schrijft niets en bevestigt dus niets — geen synthetische
+  // 'gesynchroniseerd', een eerdere afwijzing blijft staan en een nog lopende
+  // eerdere write blijft gelden.
+  describe('no-op save (unchanged)', () => {
+    const UNCHANGED_RESULT = {
+      ok: true,
+      unchanged: true,
+      syncState: SYNCED,
+      settled: settledOk(true),
+    };
+
+    it('laat wacht-op-synchronisatie van een lopende write staan en die write telt nog', async () => {
+      let resolveFirstSettled!: (value: { ok: boolean; error?: unknown }) => void;
+      const firstSettled = new Promise<{ ok: boolean; error?: unknown }>((resolve) => {
+        resolveFirstSettled = resolve;
+      });
+      const write = vi
+        .fn()
+        .mockResolvedValueOnce({ ok: true, syncState: PENDING, settled: firstSettled })
+        .mockResolvedValueOnce(UNCHANGED_RESULT);
+      const { result } = renderHook(() =>
+        useSyncStatus({ settings: fakeSettingsRepo(write), roster: fakeRosterRepo() }),
+      );
+      const payload = { ...DEFAULT_SETTINGS, teamName: 'A' };
+      await act(async () => {
+        await result.current.saveSettings(payload, ['teamName']);
+      });
+      let ok = false;
+      await act(async () => {
+        ok = await result.current.saveSettings(payload, []);
+      });
+      await flushMicrotasks();
+      expect(ok).toBe(true);
+      expect(result.current.status).toBe('wacht-op-synchronisatie');
+
+      // De eerste write wordt alsnog afgewezen: dat moet zichtbaar worden.
+      await act(async () => {
+        resolveFirstSettled({ ok: false, error: new Error('permission-denied') });
+        await Promise.resolve();
+      });
+      expect(result.current.status).toBe('actie-nodig');
+      expect(result.current.pending).toEqual([
+        { kind: 'settings', payload, settingsChangedKeys: ['teamName'] },
+      ]);
+    });
+
+    it('ruimt een eerdere afwijzing (actie-nodig) niet op', async () => {
+      const write = vi
+        .fn()
+        .mockResolvedValueOnce({ ok: true, syncState: PENDING, settled: settledOk(false) })
+        .mockResolvedValueOnce(UNCHANGED_RESULT);
+      const { result } = renderHook(() =>
+        useSyncStatus({ settings: fakeSettingsRepo(write), roster: fakeRosterRepo() }),
+      );
+      await act(async () => {
+        await result.current.saveSettings({ ...DEFAULT_SETTINGS, teamName: 'A' }, ['teamName']);
+      });
+      await flushMicrotasks();
+      expect(result.current.status).toBe('actie-nodig');
+
+      await act(async () => {
+        await result.current.saveSettings({ ...DEFAULT_SETTINGS, teamName: 'A' }, []);
+      });
+      await flushMicrotasks();
+      expect(result.current.status).toBe('actie-nodig');
+      expect(result.current.pending).toHaveLength(1);
+    });
+  });
+
   // Punt 3 uit dezelfde review: reset() liep voorheen buiten useSyncStatus
   // om (rechtstreeks repo.reset()), dus een server-afwijzing van de reset
   // kreeg nooit een pending-entry/actie-nodig. resetSettings() loopt nu via
