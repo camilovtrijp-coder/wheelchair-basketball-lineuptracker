@@ -58,4 +58,11 @@ export interface WriteResult {
   syncState: SyncState;
   error?: unknown;
   settled: Promise<WriteSettled>;
+  /**
+   * `true` wanneer de adapter niets heeft geschreven (bijv. een opslag zonder
+   * gewijzigde velden op een bestaand document). Er is dan niets verstuurd en
+   * dus ook niets bevestigd: de aanroeper mag uit `syncState`/`settled` geen
+   * nieuwe syncstatus afleiden en geen eerdere afwijzing opruimen.
+   */
+  unchanged?: boolean;
 }

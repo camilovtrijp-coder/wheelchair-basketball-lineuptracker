@@ -65,8 +65,30 @@ import type { AsyncSettingsRepository } from '../../application/settings/AsyncSe
  */
 const PENDING_TIMESTAMP_ESTIMATE = { serverTimestamps: 'estimate' } as const;
 
+const PENDING_SYNC_STATE: SyncState = {
+  status: 'wacht-op-synchronisatie',
+  fromCache: true,
+  hasPendingWrites: true,
+};
+
 export class FirestoreSettingsRepository implements AsyncSettingsRepository {
   private documentExists = false;
+  /**
+   * Aantal volledige (create-)writes dat de server nog niet heeft bevestigd of
+   * afgewezen. Zolang er één openstaat, kan het document na een afwijzing
+   * alsnog niet bestaan; een merge-patch met alleen de gewijzigde velden zou dan
+   * een onvolledig document proberen te maken. Daarom wordt er pas weer
+   * gepatcht als geen create meer openstaat (reviewnit #101). De listener en
+   * read() zien zo'n wachtende create lokaal als 'bestaand', dus
+   * `documentExists` alleen is daarvoor niet genoeg.
+   */
+  private pendingCreates = 0;
+  /** Laatst waargenomen syncstatus (listener, read() of eigen write). */
+  private lastSyncState: SyncState = {
+    status: 'lokaal-beschikbaar',
+    fromCache: true,
+    hasPendingWrites: false,
+  };
 
   constructor(
     private readonly db: Firestore,
@@ -84,11 +106,13 @@ export class FirestoreSettingsRepository implements AsyncSettingsRepository {
       const snap = await getDocFromCache(ref);
       if (!snap.exists()) return { ...DEFAULT_SETTINGS };
       this.documentExists = true;
+      this.lastSyncState = deriveSyncState(snap.metadata);
       return stripUpdatedAt(snap.data(PENDING_TIMESTAMP_ESTIMATE));
     } catch {
       const snap = await getDoc(ref);
       if (!snap.exists()) return { ...DEFAULT_SETTINGS };
       this.documentExists = true;
+      this.lastSyncState = deriveSyncState(snap.metadata);
       return stripUpdatedAt(snap.data(PENDING_TIMESTAMP_ESTIMATE));
     }
   }
@@ -103,27 +127,43 @@ export class FirestoreSettingsRepository implements AsyncSettingsRepository {
     changedKeys?: readonly SettingsKey[],
   ): Promise<WriteResult> {
     if (this.documentExists && changedKeys?.length === 0) {
+      // Niets gewijzigd: er wordt niets geschreven en dus ook niets bevestigd.
+      // `unchanged` zegt de aanroeper dat hij hier geen syncstatus uit mag
+      // afleiden; `syncState` is de laatst waargenomen status, geen
+      // verzonnen 'gesynchroniseerd' (reviewnit #101).
       return {
         ok: true,
-        syncState: {
-          status: 'gesynchroniseerd',
-          fromCache: false,
-          hasPendingWrites: false,
-        },
+        unchanged: true,
+        syncState: { ...this.lastSyncState },
         settled: Promise.resolve({ ok: true }),
       };
     }
-    const shouldPatch = this.documentExists && changedKeys !== undefined && changedKeys.length > 0;
+    const shouldPatch =
+      this.documentExists &&
+      this.pendingCreates === 0 &&
+      changedKeys !== undefined &&
+      changedKeys.length > 0;
     const payload = shouldPatch
       ? Object.fromEntries(changedKeys.map((key) => [key, settings[key]]))
       : settings;
     const serverAck = shouldPatch
       ? setDoc(this.ref(), { ...payload, updatedAt: serverTimestamp() }, { merge: true })
       : setDoc(this.ref(), { ...payload, updatedAt: serverTimestamp() });
+    if (!shouldPatch) this.pendingCreates += 1;
     this.documentExists = true;
+    this.lastSyncState = { ...PENDING_SYNC_STATE };
     const settled = serverAck.then(
-      () => ({ ok: true }),
+      () => {
+        if (!shouldPatch) {
+          this.pendingCreates -= 1;
+          // Een bevestigde volledige write laat het document server-side bestaan,
+          // ook als een eerdere create daarvóór werd afgewezen.
+          this.documentExists = true;
+        }
+        return { ok: true };
+      },
       (error: unknown) => {
+        if (!shouldPatch) this.pendingCreates -= 1;
         // Een afgewezen create kan lokaal al een bestaand snapshot hebben
         // opgeleverd. Forceer de volgende poging daarom terug naar een
         // volledige schemawrite in plaats van een mogelijk ongeldige patch.
@@ -136,11 +176,7 @@ export class FirestoreSettingsRepository implements AsyncSettingsRepository {
     // later, via `settled` — er is geen synchroon-lokaal faalpad zoals bij
     // LocalAsyncSettingsRepository.write() (die daar wél `ok:false` kan
     // teruggeven, bijv. bij een lokale opslagfout).
-    return {
-      ok: true,
-      syncState: { status: 'wacht-op-synchronisatie', fromCache: true, hasPendingWrites: true },
-      settled,
-    };
+    return { ok: true, syncState: { ...PENDING_SYNC_STATE }, settled };
   }
 
   async reset(): Promise<Settings & Record<string, unknown>> {
@@ -167,7 +203,9 @@ export class FirestoreSettingsRepository implements AsyncSettingsRepository {
         }
         this.documentExists = true;
         const data = snap.data(PENDING_TIMESTAMP_ESTIMATE);
-        onNext(stripUpdatedAt(data), deriveSyncState(snap.metadata), toEpochMillis(data.updatedAt));
+        const sync = deriveSyncState(snap.metadata);
+        this.lastSyncState = sync;
+        onNext(stripUpdatedAt(data), sync, toEpochMillis(data.updatedAt));
       },
       (err) => {
         if (onError) onError(err);

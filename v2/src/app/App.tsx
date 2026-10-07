@@ -173,6 +173,12 @@ const langRepo = new LocalStorageLangRepository(browserStorage);
 // wordt toegeschreven zonder onderscheid tussen de vier mogelijke oorzaken.
 const STEP_STALL_TIMEOUT_MS = 8000;
 
+/**
+ * Wachttijden voor de begrensde automatische herpoging van een mislukte
+ * wedstrijdafronding (zie `runFinalize`). Drie pogingen, samen ruim een minuut.
+ */
+export const FINALIZE_AUTO_RETRY_DELAYS_MS: readonly number[] = [5_000, 15_000, 45_000];
+
 export function App({
   repositories,
   syncStatus,
@@ -891,17 +897,58 @@ export function App({
   // hetzelfde ID.
   const finalizeInFlightRef = useRef(new Set<string>());
   const finalizeQueuedRef = useRef(new Set<string>());
+  // Begrensde automatische herpoging (vervolgpunt (2) uit de herreview van
+  // #100): op een zwak netwerk blijft de browser 'online', dus een finalize
+  // die op een timeout afketst krijgt geen `online`-event en bleef tot een
+  // reload op 'actie-nodig'. Na een mislukte poging volgt daarom maximaal
+  // `FINALIZE_AUTO_RETRY_DELAYS_MS.length` keer een herpoging met oplopende
+  // wachttijd, via dezelfde `runFinalize` (in-flight-guard, outbox, status).
+  // Geen nieuwe tekst of knop. Offline (`navigator.onLine === false`) wordt
+  // niets ingepland: dan neemt de `online`-handler het over. Elke aanroep van
+  // buitenaf (afronden, hervat-op-load, `online`) begint een nieuwe, weer
+  // begrensde reeks; een succes of contextwissel ruimt de reeks op.
+  const finalizeRetryAttemptsRef = useRef(new Map<string, number>());
+  const finalizeRetryTimersRef = useRef(new Map<string, ReturnType<typeof setTimeout>>());
+  // Per context (coordinator/writer/outbox) één scope: na een contextwissel of
+  // unmount plant een nog lopende poging uit de oude context niets meer in.
+  const finalizeRetryScope = useMemo(
+    () => ({ disposed: false }),
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- bewust: een nieuwe scope per context, de deps zijn de context zelf.
+    [repositories.gameSync, repositories.gameWriterContext, pendingFinalizeRepo],
+  );
 
   const runFinalize = useCallback(
-    (finishedGame: ActiveGame, completed: CompletedGame) => {
+    (finishedGame: ActiveGame, completed: CompletedGame, autoRetry = false) => {
       const coordinator = repositories.gameSync;
       const writerContext = repositories.gameWriterContext;
       if (!coordinator || !writerContext) return;
       pendingFinalizesRef.current.set(completed.id, { game: finishedGame, completed });
+      const pendingTimer = finalizeRetryTimersRef.current.get(completed.id);
+      if (pendingTimer !== undefined) {
+        clearTimeout(pendingTimer);
+        finalizeRetryTimersRef.current.delete(completed.id);
+      }
+      if (!autoRetry) finalizeRetryAttemptsRef.current.delete(completed.id);
       if (finalizeInFlightRef.current.has(completed.id)) {
         finalizeQueuedRef.current.add(completed.id);
         return;
       }
+      const scheduleRetry = () => {
+        const attempt = finalizeRetryAttemptsRef.current.get(completed.id) ?? 0;
+        const delay = FINALIZE_AUTO_RETRY_DELAYS_MS[attempt];
+        if (delay === undefined || finalizeRetryScope.disposed) return;
+        if (typeof navigator !== 'undefined' && navigator.onLine === false) return;
+        finalizeRetryAttemptsRef.current.set(completed.id, attempt + 1);
+        finalizeRetryTimersRef.current.set(
+          completed.id,
+          setTimeout(() => {
+            finalizeRetryTimersRef.current.delete(completed.id);
+            if (finalizeRetryScope.disposed) return;
+            const entry = pendingFinalizesRef.current.get(completed.id);
+            if (entry) runFinalize(entry.game, entry.completed, true);
+          }, delay),
+        );
+      };
       finalizeInFlightRef.current.add(completed.id);
       setFinalizeStatuses((prev) => ({ ...prev, [completed.id]: 'wacht-op-synchronisatie' }));
       coordinator
@@ -911,13 +958,19 @@ export function App({
             if (checkpoint.status === 'idle') {
               pendingFinalizesRef.current.delete(completed.id);
               pendingFinalizeRepo.remove(completed.id);
+              finalizeRetryAttemptsRef.current.delete(completed.id);
+            } else {
+              scheduleRetry();
             }
             setFinalizeStatuses((prev) => ({
               ...prev,
               [completed.id]: checkpoint.status === 'idle' ? 'gesynchroniseerd' : 'actie-nodig',
             }));
           },
-          () => setFinalizeStatuses((prev) => ({ ...prev, [completed.id]: 'actie-nodig' })),
+          () => {
+            scheduleRetry();
+            setFinalizeStatuses((prev) => ({ ...prev, [completed.id]: 'actie-nodig' }));
+          },
         )
         .finally(() => {
           finalizeInFlightRef.current.delete(completed.id);
@@ -927,8 +980,27 @@ export function App({
           }
         });
     },
-    [repositories.gameSync, repositories.gameWriterContext, pendingFinalizeRepo],
+    [
+      repositories.gameSync,
+      repositories.gameWriterContext,
+      pendingFinalizeRepo,
+      finalizeRetryScope,
+    ],
   );
+
+  // Ingeplande herpogingen horen bij deze context (coordinator/outbox): bij een
+  // contextwissel of unmount worden ze geannuleerd, nooit tegen een nieuwe
+  // context uitgevoerd.
+  useEffect(() => {
+    const timers = finalizeRetryTimersRef.current;
+    const attempts = finalizeRetryAttemptsRef.current;
+    return () => {
+      finalizeRetryScope.disposed = true;
+      for (const timer of timers.values()) clearTimeout(timer);
+      timers.clear();
+      attempts.clear();
+    };
+  }, [finalizeRetryScope]);
 
   // Hervat-op-load (P1-fix, externe review PR #61): elke nog openstaande
   // afronding in de duurzame outbox opnieuw aanbieden aan finalize() — dit

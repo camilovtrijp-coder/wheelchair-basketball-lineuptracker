@@ -549,7 +549,17 @@ export class FirestoreGameCloudGateway implements GameCloudGateway {
       if (local && !local.hasPendingWrites && deepEqual(local.data, action)) {
         settled.push({ actionId: action.actionId, ok: true, alreadyConfirmed: true });
       } else {
-        settled.push(outcome);
+        // De wachtrij is leeg, maar de action is niet als bevestigd terug te lezen:
+        // nog wachtend, of na de reconnect door de Rules geweigerd (dan verdwijnt
+        // hij uit de lokale weergave → cache-miss). Blijft `alreadyQueued` (niet
+        // bevestigd, volgende cyclus probeert opnieuw); de tekst claimt niet meer
+        // dat hij nog in de wachtrij staat. Alleen intern, nooit zichtbaar.
+        settled.push({
+          ...outcome,
+          error: new Error(
+            `uploadActions: action ${action.actionId} na het leeglopen van de lokale schrijfwachtrij niet als server-bevestigd teruggelezen (nog wachtend of geweigerd)`,
+          ),
+        });
       }
     }
     return settled;

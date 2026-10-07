@@ -191,9 +191,91 @@ describe('FirestoreSettingsRepository — write (PR 5.3d-vervolgonderzoek: wacht
 
     const result = await repo.write({ ...DEFAULT_SETTINGS }, []);
 
+    expect(result.unchanged).toBe(true);
+    // Laatst waargenomen status (hier een server-bevestigde lezing), niet verzonnen.
     expect(result.syncState.status).toBe('gesynchroniseerd');
     expect(setDoc).not.toHaveBeenCalled();
     await expect(result.settled).resolves.toEqual({ ok: true });
+  });
+
+  it('een lege patch na een nog wachtende write meldt geen gesynchroniseerd (reviewnit #101)', async () => {
+    (getDocFromCache as Mock).mockResolvedValueOnce(
+      fakeSnap({ ...DEFAULT_SETTINGS, updatedAt: 'OLD' }),
+    );
+    (setDoc as Mock).mockReturnValueOnce(new Promise<void>(() => {})); // offline: nooit bevestigd
+    const repo = new FirestoreSettingsRepository(fakeDb, 'org-1', 'team-1');
+    await repo.read();
+    await repo.write({ ...DEFAULT_SETTINGS, teamName: 'Offline' }, ['teamName']);
+
+    const result = await repo.write({ ...DEFAULT_SETTINGS, teamName: 'Offline' }, []);
+
+    expect(result.unchanged).toBe(true);
+    expect(result.syncState.status).toBe('wacht-op-synchronisatie');
+    expect(setDoc).toHaveBeenCalledTimes(1);
+  });
+
+  it('geen merge-patch zolang een create nog kan worden afgewezen, ook niet na de afwijzing (reviewnit #101)', async () => {
+    const rejection = new Error('permission-denied');
+    let rejectCreate!: (error: unknown) => void;
+    let confirmSecond!: () => void;
+    (getDocFromCache as Mock).mockResolvedValueOnce(fakeSnap(null));
+    (setDoc as Mock)
+      .mockReturnValueOnce(
+        new Promise<void>((_resolve, reject) => {
+          rejectCreate = reject;
+        }),
+      )
+      .mockReturnValueOnce(
+        new Promise<void>((resolve) => {
+          confirmSecond = resolve;
+        }),
+      )
+      .mockResolvedValue(undefined);
+    const repo = new FirestoreSettingsRepository(fakeDb, 'org-1', 'team-1');
+    await repo.read();
+
+    const create = await repo.write({ ...DEFAULT_SETTINGS, teamName: 'Eerste' }, ['teamName']);
+    // Tweede save terwijl de create nog openstaat: volledig document, geen patch.
+    const secondPayload = { ...DEFAULT_SETTINGS, teamName: 'Tweede' };
+    const second = await repo.write(secondPayload, ['teamName']);
+    expect(setDoc).toHaveBeenNthCalledWith(2, fakeRef, {
+      ...secondPayload,
+      updatedAt: 'SERVER_TIMESTAMP',
+    });
+
+    // Firestore handelt de wachtrij in volgorde af: eerst de afwijzing van de
+    // create, daarna de bevestiging van de tweede (volledige) write.
+    rejectCreate(rejection);
+    await expect(create.settled).resolves.toEqual({ ok: false, error: rejection });
+    confirmSecond();
+    await expect(second.settled).resolves.toEqual({ ok: true });
+
+    // Pas nu bestaat het document server-bevestigd en mag er weer worden gepatcht.
+    const third = await repo.write({ ...DEFAULT_SETTINGS, teamName: 'Derde' }, ['teamName']);
+    await third.settled;
+    expect(setDoc).toHaveBeenLastCalledWith(
+      fakeRef,
+      { teamName: 'Derde', updatedAt: 'SERVER_TIMESTAMP' },
+      { merge: true },
+    );
+  });
+
+  it('patcht weer zodra de create door de server is bevestigd', async () => {
+    (getDocFromCache as Mock).mockResolvedValueOnce(fakeSnap(null));
+    (setDoc as Mock).mockResolvedValue(undefined);
+    const repo = new FirestoreSettingsRepository(fakeDb, 'org-1', 'team-1');
+    await repo.read();
+
+    const create = await repo.write({ ...DEFAULT_SETTINGS, teamName: 'Eerste' }, ['teamName']);
+    await create.settled;
+    const patch = await repo.write({ ...DEFAULT_SETTINGS, teamName: 'Tweede' }, ['teamName']);
+    await patch.settled;
+
+    expect(setDoc).toHaveBeenLastCalledWith(
+      fakeRef,
+      { teamName: 'Tweede', updatedAt: 'SERVER_TIMESTAMP' },
+      { merge: true },
+    );
   });
 });
 

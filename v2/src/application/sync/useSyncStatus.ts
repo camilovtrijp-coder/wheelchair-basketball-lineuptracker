@@ -154,6 +154,16 @@ export function useSyncStatus(repositories: {
         if (isCurrent()) setPendingFor('settings', settingsPendingAction(payload, changedKeys));
         return false;
       }
+      if (result.unchanged) {
+        // Niets geschreven, dus niets bevestigd (reviewnit #101): geen
+        // synthetische 'gesynchroniseerd', een eerdere afwijzing blijft staan,
+        // en deze no-op telt niet als nieuwere save — de `settled` van een nog
+        // lopende eerdere write blijft dus gelden.
+        if (settingsGenerationRef.current === generation) {
+          settingsGenerationRef.current = generation - 1;
+        }
+        return true;
+      }
       // Zie headercommentaar: niet louter op de subscribe()-listener
       // vertrouwen voor de wacht-op-synchronisatie-overgang — die bleek na
       // een offline write niet betrouwbaar (tijdig) te vuren.
