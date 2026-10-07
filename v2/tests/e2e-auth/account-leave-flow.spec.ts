@@ -40,6 +40,9 @@ function omit(snapshot: Record<string, unknown>, paths: string[]): Record<string
 
 async function openLeaveDialog(page: Page, orgName: string): Promise<void> {
   await openAccountPanel(page);
+  // Een niet-owner ziet de overdrachtsknoppen nooit.
+  await expect(page.getByTestId('transfer-start-btn')).toHaveCount(0);
+  await expect(page.getByTestId('transfer-remove-owner-start-btn')).toHaveCount(0);
   await page.getByTestId('leave-org-start-btn').click();
   await expect(dialog(page)).toBeVisible();
   await expect(dialog(page)).toHaveAttribute(
