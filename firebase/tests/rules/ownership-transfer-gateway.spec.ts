@@ -701,6 +701,51 @@ describe('revokeOpenInvitationsForEmail (herbruikbaar, R1)', () => {
     expect(changed).toEqual([invitationPath(ORG_A, 'inv-d')]);
   });
 
+  // Opruim-PR 2 (reviewnit 1 van #110): een uitnodiging OP het doeladres met een onbekende
+  // status blokkeerde de overdracht (fail closed) tot de opruimtermijn. De Rules laten zo'n
+  // document niet accepteren (eist `pending`), niet claimen (eist `accepted`) en niet
+  // intrekken (eist `pending`/`accepted`): het is inert en wordt nu overgeslagen en geteld.
+  it('uitnodiging op het doeladres met onbekende status: Rules weigeren accepteren en intrekken; de overdracht slaat haar over', async () => {
+    const { ownerA, candidateB, adminC } = sessions;
+    await seed();
+    await withAdmin(env, async (admin) => {
+      await admin.doc(invitationPath(ORG_A, 'inv-a-onbekend')).set({
+        email: EMAILS.ownerA,
+        role: 'organizationAdmin',
+        status: 'verlopen',
+        invitedBy: adminC.uid,
+        invitedAt: dagenGeleden(1),
+        acceptedAt: null,
+      });
+    });
+    const ref = (db: Firestore) => organizationInvitationRef(db, ORG_A, 'inv-a-onbekend');
+    // De uitgenodigde zelf (geverifieerd adres = `email`) kan niet accepteren of claimen.
+    await expect(
+      updateDoc(ref(ownerA.db), { status: 'accepted', acceptedAt: serverTimestamp() }),
+    ).rejects.toMatchObject({ code: 'permission-denied' });
+    await expect(
+      updateDoc(ref(ownerA.db), { status: 'claimed', claimedAt: serverTimestamp() }),
+    ).rejects.toMatchObject({ code: 'permission-denied' });
+    // Owner en admin kunnen haar niet intrekken.
+    for (const session of [ownerA, adminC]) {
+      await expect(updateDoc(ref(session.db), revokeInvitationPatch())).rejects.toMatchObject({
+        code: 'permission-denied',
+      });
+    }
+
+    await ownerA.coordinator.promote(ORG_A, candidateB.uid);
+    expect(await candidateB.coordinator.completeTransfer(ORG_A, ownerA.uid)).toEqual({
+      status: 'ok',
+      revokedInvitations: 2,
+      skippedMalformedInvitations: 1,
+      removedTeamMemberships: 2,
+      organizationMember: 'deleted',
+    });
+    expect(await adminGet(invitationPath(ORG_A, 'inv-a-onbekend'))).toMatchObject({
+      status: 'verlopen',
+    });
+  });
+
   it('org B blijft onaangeroerd: A’s uitnodiging daar staat nog open', async () => {
     const { ownerA } = sessions;
     await seed();

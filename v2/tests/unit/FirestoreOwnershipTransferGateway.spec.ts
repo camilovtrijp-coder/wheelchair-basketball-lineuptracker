@@ -708,17 +708,24 @@ describe('revokeOpenInvitationsForEmail', () => {
     });
   });
 
-  it('uitnodiging OP het doeladres met onleesbare status → failed (fail closed), geen write', async () => {
+  it('uitnodiging OP het doeladres met onbekende status → overgeslagen en geteld, nooit beschreven (Rules: niet te accepteren, claimen of intrekken)', async () => {
     server.set(invitationPath(ORG, 'inv-a-kapot'), { email: A_EMAIL, status: 'open?' });
-    expect(await gateway.revokeOpenInvitationsForEmail(ORG, A_EMAIL)).toMatchObject({
-      ok: false,
-      error: { code: 'failed' },
-      revoked: 0,
+    server.set(invitationPath(ORG, 'inv-a-zonder-status'), { email: A_EMAIL });
+    expect(await gateway.revokeOpenInvitationsForEmail(ORG, A_EMAIL)).toEqual({
+      ok: true,
+      revoked: 2,
+      alreadyClosed: 0,
+      skippedMalformed: 2,
     });
-    expect(updateDoc).not.toHaveBeenCalled();
+    expect(writtenPaths()).toEqual([
+      `update:${invitationPath(ORG, 'inv-pending')}`,
+      `update:${invitationPath(ORG, 'inv-accepted')}`,
+    ]);
+    expect(server.get(invitationPath(ORG, 'inv-a-kapot'))?.status).toBe('open?');
+    // Geen blokkade van de footprint meer, en niet geteld als open uitnodiging van A.
     expect(await gateway.readMemberFootprint(ORG, A, A_EMAIL)).toMatchObject({
-      ok: false,
-      error: { code: 'read-failed' },
+      ok: true,
+      footprint: { openInvitations: 0 },
     });
   });
 

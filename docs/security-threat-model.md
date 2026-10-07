@@ -247,8 +247,13 @@ onderstaande restrisico's blijven bewust staan.
   Console herstellen of verwijderen. Voor uitnodigingen geldt bij de overdracht sinds de
   2b-iii-fix iets anders: ze worden ruw gelezen (alleen `email`/`status`); een
   uitnodiging zonder string-`email` wordt overgeslagen en apart gemeld
-  (`skippedMalformed`), want Rules laten haar door niemand accepteren of claimen; een
-  uitnodiging óp het doeladres met een onleesbare status blokkeert wel (fail closed).
+  (`skippedMalformed`), want Rules laten haar door niemand accepteren of claimen. Sinds
+  Opruim-PR 2 (reviewnit 1 van #110) geldt dat ook voor een uitnodiging óp het doeladres
+  met een onbekende status: Rules laten alleen `pending` accepteren, alleen `accepted`
+  claimen (ook de membership-join) en alleen `pending`/`accepted` intrekken, dus zo'n
+  document is inert; het blokkeerde eerder de overdracht tot de opruimtermijn. Fail closed
+  blijft waar een bekende open status niet in te trekken blijkt (`rejected`) en bij een
+  onleesbare status in de readback na een eigen write. Opruimen: runbook.
 - **R4 — pseudonieme audit-uid's blijven staan (besluit B8, geaccepteerd).**
   `organizations.createdBy`, `teams.createdBy`, `invitations.invitedBy`,
   `games.writerUid`, `actions.authorUid`, `completedGames.deletedBy` (tot redactie),

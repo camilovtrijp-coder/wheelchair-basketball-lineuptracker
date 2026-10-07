@@ -793,9 +793,16 @@ in 2b-ii per organisatie hergebruikt.
   string-`email` wordt overgeslagen en geteld (`skippedMalformed`, in de coördinator
   `skippedMalformedInvitations`): het is aan geen adres toe te wijzen en de Rules laten het
   door niemand accepteren of claimen (die vergelijken `email` met de token-e-mail). Een
-  document dat op het doeladres matcht maar een onbekende `status` heeft, blijft fail
+  document dat op het doeladres matcht maar een onbekende `status` heeft, bleef hier fail
   closed (`read-failed`, geen write); misvormde andere velden (bijv. `role`) blokkeren niet
-  meer.
+  meer. **Bijgesteld in Opruim-PR 2 (reviewnit 1 van #110):** zo'n document wordt nu óók
+  overgeslagen en geteld als `skippedMalformed`. Getoetst aan `firestore.rules`: accepteren
+  eist `pending`, claimen en de membership-join eisen `accepted`, intrekken eist
+  `pending`/`accepted`; een onbekende status geeft dus niemand toegang en is ook niet in te
+  trekken, terwijl fail closed de overdracht tot de opruimtermijn (30 dagen) blokkeerde.
+  Fail closed blijft bij een bekende open status die niet in te trekken blijkt (`rejected`)
+  en bij een onleesbare status in de readback na een eigen write. De melding
+  `transferCompleteSkippedMalformed` (NL/EN) noemt nu beide gevallen.
 - **Emulatordump.** `dumpAll()` vergelijkt nu alle families die de spec seedt
   (organisatiedocumenten, leden, uitnodigingen, teams, teamMembers); het commentaar zegt dat
   andere families buiten de vergelijking vallen.

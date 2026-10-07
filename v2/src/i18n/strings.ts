@@ -796,7 +796,7 @@ const nl = {
   transferCompleteCounts:
     'Ingetrokken uitnodigingen: {invitations}. Verwijderde teamtoegang: {teams}.',
   transferCompleteSkippedMalformed:
-    'Uitnodigingen in deze organisatie zonder leesbaar e-mailadres, overgeslagen: {count}. Niemand kan ze accepteren; laat ze door de beheerder van de app opruimen.',
+    'Uitnodigingen in deze organisatie zonder leesbaar e-mailadres of met een onbekende status, overgeslagen: {count}. Niemand kan ze accepteren; laat ze door de beheerder van de app opruimen.',
   transferCompleteAlreadyGone: 'Het lidmaatschap van {member} was al verwijderd.',
   transferCompleteNotFound:
     '{member} is geen lid meer van deze organisatie: de overdracht is al afgerond. Er is niets gewijzigd.',
@@ -1555,7 +1555,7 @@ const en = {
   transferCompleteOk: '{member} has been removed as owner of {org}. The transfer is complete.',
   transferCompleteCounts: 'Invitations revoked: {invitations}. Team access removed: {teams}.',
   transferCompleteSkippedMalformed:
-    'Invitations in this organization without a readable email address, skipped: {count}. Nobody can accept them; ask the app administrator to clean them up.',
+    'Invitations in this organization without a readable email address or with an unknown status, skipped: {count}. Nobody can accept them; ask the app administrator to clean them up.',
   transferCompleteAlreadyGone: 'The membership of {member} had already been removed.',
   transferCompleteNotFound:
     '{member} is no longer a member of this organization: the transfer was already completed. Nothing was changed.',

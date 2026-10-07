@@ -73,9 +73,8 @@ export type RevokeInvitationsResult =
   /**
    * `alreadyClosed`: tussendoor door een ander ingetrokken/geclaimd (Rules weigerden,
    * readback: niet meer open). `skippedMalformed`: uitnodigingen in deze organisatie zonder
-   * leesbaar `email`-veld, overgeslagen (niet aan een adres toe te wijzen; Rules laten ze
-   * door niemand accepteren of claimen). Een uitnodiging OP het doeladres met een
-   * onleesbare status blokkeert wel (fail closed, `failed`).
+   * leesbaar `email`-veld, of op het doeladres met een onbekende `status`, overgeslagen
+   * (Rules laten ze door niemand accepteren of claimen, en ook niet intrekken).
    */
   | { ok: true; revoked: number; alreadyClosed: number; skippedMalformed: number }
   /** `revoked`: zoveel zijn er VÓÓR de fout al ingetrokken (en teruggelezen). */
