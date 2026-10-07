@@ -41,6 +41,8 @@ export class FakeAccountGateway implements AccountGateway {
   readonly failures = new Map<string, unknown>();
   readonly hooks = new Map<string, () => void>();
   private readonly counters = new Map<Method, number>();
+  /** Index in `calls` → of die (geslaagde) inventarisread helemaal leeg was. */
+  readonly emptyInventoryAt = new Map<number, boolean>();
 
   constructor(
     readonly state: ServerState,
@@ -78,19 +80,21 @@ export class FakeAccountGateway implements AccountGateway {
     if (options.includeInvitations && !this.identity?.emailVerified) {
       return { ok: false, error: { code: 'email-not-verified' } };
     }
-    return {
-      ok: true,
-      inventory: {
-        organizationMemberships: [...this.state.memberships].map(([organizationId, role]) => ({
-          organizationId,
-          role,
-        })),
-        teamMemberships: this.state.teams.map((t) => ({ ...t })),
-        invitations: options.includeInvitations
-          ? this.state.invitations.map((i) => ({ ...i }))
-          : [],
-      },
+    const inventory = {
+      organizationMemberships: [...this.state.memberships].map(([organizationId, role]) => ({
+        organizationId,
+        role,
+      })),
+      teamMemberships: this.state.teams.map((t) => ({ ...t })),
+      invitations: options.includeInvitations ? this.state.invitations.map((i) => ({ ...i })) : [],
     };
+    this.emptyInventoryAt.set(
+      this.calls.length - 1,
+      inventory.organizationMemberships.length === 0 &&
+        inventory.teamMemberships.length === 0 &&
+        inventory.invitations.length === 0,
+    );
+    return { ok: true, inventory };
   }
 
   async readOrganizationFacts(organizationId: string): Promise<FactsReadResult> {
