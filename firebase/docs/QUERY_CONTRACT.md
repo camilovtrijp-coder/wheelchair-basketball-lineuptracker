@@ -154,6 +154,18 @@ niet (besluitrecord §4.3). De per-organisatiefeiten (organisatiedocument,
 ongefilterde ledenlijst van één organisatie, `deletionRequests/current`)
 zijn directe paden en de bewezen 8.3b-vorm; er komt geen nieuwe queryvorm bij.
 
+Sinds PR 8.3c-2b-iii (overdracht en intrekken,
+`v2/src/infrastructure/account/FirestoreOwnershipTransferGateway.ts` met de
+bouwers uit `ownershipTransferPaths.ts`) geldt hetzelfde voor elke lezing van
+de overdracht: de eigen membershiprol van de aanroeper, de ongefilterde
+listings van `organizationMembers`, `invitations` en `teams` van één
+organisatie (de bewezen 8.3b-vorm; filteren op e-mailadres gebeurt in de
+client) en de directe `get` op `teams/{teamId}/teamMembers/{uid}` lopen via
+`getDocsFromServer()`/`getDocFromServer()`, en promoveren en een membership
+verwijderen lezen de huidige rol in een transactie (altijd van de backend).
+Er komt geen collectionGroup-query en geen nieuwe queryvorm bij; bewezen
+tegen de echte Rules in `tests/rules/ownership-transfer-gateway.spec.ts`.
+
 ## Index
 
 `firestore.indexes.json` bevat expliciete `fieldOverride`s die

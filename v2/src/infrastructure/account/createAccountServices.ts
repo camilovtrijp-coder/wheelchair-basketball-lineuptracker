@@ -5,8 +5,11 @@ import { AccountDeletionCoordinator } from '../../application/account/AccountDel
 import type { AccountGateway } from '../../application/account/AccountGateway';
 import type { LocalUnsyncedWorkProbe } from '../../application/account/LocalUnsyncedWorkProbe';
 import { LeaveOrganizationCoordinator } from '../../application/account/LeaveOrganizationCoordinator';
+import { OwnershipTransferCoordinator } from '../../application/account/OwnershipTransferCoordinator';
+import type { OwnershipTransferGateway } from '../../application/account/OwnershipTransferGateway';
 import { FirebaseAccountAuthGateway } from '../auth/FirebaseAccountAuthGateway';
 import { FirestoreAccountGateway } from './FirestoreAccountGateway';
+import { FirestoreOwnershipTransferGateway } from './FirestoreOwnershipTransferGateway';
 import { LocalStorageUnsyncedWorkProbe } from './LocalStorageUnsyncedWorkProbe';
 
 export interface AccountServices {
@@ -14,10 +17,12 @@ export interface AccountServices {
   accountAuthGateway: AccountAuthGateway;
   leaveCoordinator: LeaveOrganizationCoordinator;
   accountDeletionCoordinator: AccountDeletionCoordinator;
+  ownershipTransferGateway: OwnershipTransferGateway;
+  ownershipTransferCoordinator: OwnershipTransferCoordinator;
 }
 
 /**
- * PR 8.3c-2b-i/ii (docs/pr-8.3c-2b-plan.md §C.1/§C.2/§C.4): fabriek voor de
+ * PR 8.3c-2b-i/ii/iii (docs/pr-8.3c-2b-plan.md §C.1–§C.4): fabriek voor de
  * account-diensten. Heeft bewust GEEN `selectedContext` nodig — "organisatie verlaten" en
  * accountverwijdering moeten ook werken voor iemand die geen context (meer) heeft of op
  * een onvertrouwd apparaat zit. De wiring op `AuthGate`-niveau is 2c; nog niets roept
@@ -37,6 +42,7 @@ export function createAccountServices(
   }
   const accountGateway = new FirestoreAccountGateway(db);
   const accountAuthGateway = new FirebaseAccountAuthGateway(auth);
+  const ownershipTransferGateway = new FirestoreOwnershipTransferGateway(db);
   return {
     accountGateway,
     accountAuthGateway,
@@ -46,5 +52,7 @@ export function createAccountServices(
       accountAuthGateway,
       probe,
     ),
+    ownershipTransferGateway,
+    ownershipTransferCoordinator: new OwnershipTransferCoordinator(ownershipTransferGateway),
   };
 }
