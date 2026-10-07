@@ -212,15 +212,29 @@ test.describe('8.3c-2d — A4: getDocsFromServer met persistente cache zonder ve
     // De tokenverversing (Auth-emulator) lukt; elke Firestore-request faalt als zonder netwerk.
     await page.route(FIRESTORE_HOST, (route) => route.abort('internetdisconnected'));
     await page.getByTestId('account-delete-start-btn').click();
-    await expect(page.getByTestId('account-delete-result')).toContainText(
-      text('nl', 'accountDeleteOffline'),
+    // Een onbereikbare Firestore geeft afhankelijk van de SDK-timing `unavailable` (offline-tekst)
+    // of laat de verzoek-timeout van de coördinator eerst afgaan (timeout-tekst). Beide zijn
+    // een veilige mislukking zonder write; de CI-run op 005b38a toonde beide uitkomsten.
+    await expect(page.getByTestId('account-delete-result')).toHaveText(
+      new RegExp(
+        [text('nl', 'accountDeleteOffline'), text('nl', 'accountDeleteFailedTimeout')]
+          .map((t) => t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'))
+          .join('|'),
+      ),
       { timeout: 20_000 },
     );
     await page.getByTestId('account-delete-close-btn').click();
     await page.getByTestId('leave-org-start-btn').click();
     await page.getByTestId('leave-org-confirm-btn').click();
     const result = page.getByTestId('leave-org-result');
-    await expect(result).toContainText(text('nl', 'leaveOrgOffline'), { timeout: 20_000 });
+    await expect(result).toHaveText(
+      new RegExp(
+        [text('nl', 'leaveOrgOffline'), text('nl', 'leaveOrgFailedTimeout')]
+          .map((t) => t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'))
+          .join('|'),
+      ),
+      { timeout: 20_000 },
+    );
     expect(await snapshotOrganization(org)).toEqual(before);
     expect(await authAccountExists(user.uid)).toBe(true);
 
