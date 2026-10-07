@@ -421,4 +421,48 @@ test.describe('8.3c-2d — account verwijderen: hervatting, eindpoort en mislukt
     await expect(page.getByTestId('account-delete-deleted')).toBeVisible({ timeout: 30_000 });
     expect(await authAccountExists(user.uid)).toBe(false);
   });
+
+  test('herladen midden in de flow (na de opruiming, vóór deleteUser): opnieuw starten hervat met alleen het account', async ({
+    page,
+  }) => {
+    const org = await seedOrg('del-reload Org');
+    const owner = await createUser('del-reload-owner');
+    const user = await createUser('del-reload');
+    await seedMember(org, owner, 'organizationOwner');
+    await seedMember(org, user, 'coach');
+    await seedTeamMember(org, org.teamIds[0] ?? '', user, 'coach');
+    await signInAndSelect(page, user, org.orgId, org.teamIds[0] ?? '');
+    await openDeletePlan(page);
+    await page.getByTestId('account-delete-continue-btn').click();
+
+    // De tweede reauth (in `deleteAuthAccount`, ná de opruiming) blijft hangen; dan herladen.
+    let reauths = 0;
+    let reachedSecond: () => void = () => undefined;
+    const second = new Promise<void>((resolve) => {
+      reachedSecond = resolve;
+    });
+    await page.route(/accounts:signInWithPassword/, async (route) => {
+      if (route.request().method() === 'POST') reauths += 1;
+      if (reauths === 2) {
+        reachedSecond();
+        return; // nooit beantwoord: de pagina wordt herladen
+      }
+      await route.continue();
+    });
+    await submitPassword(page, user.password);
+    await second;
+    expect(await readOwnDocuments(user.uid, user.email)).toEqual(EMPTY);
+    await page.unrouteAll({ behavior: 'ignoreErrors' });
+    await page.reload();
+
+    // Na herladen: geen lidmaatschap meer → geen-organisaties-scherm; de sessie bestaat nog.
+    await expect(page.getByTestId('no-organizations-body')).toBeVisible({ timeout: 20_000 });
+    expect(await authAccountExists(user.uid)).toBe(true);
+    await page.getByTestId('no-org-delete-account-btn').click();
+    await expect(page.getByTestId('account-delete-auth-only')).toBeVisible({ timeout: 20_000 });
+    await page.getByTestId('account-delete-continue-btn').click();
+    await submitPassword(page, user.password);
+    await expect(page.getByTestId('account-delete-deleted')).toBeVisible({ timeout: 30_000 });
+    expect(await authAccountExists(user.uid)).toBe(false);
+  });
 });

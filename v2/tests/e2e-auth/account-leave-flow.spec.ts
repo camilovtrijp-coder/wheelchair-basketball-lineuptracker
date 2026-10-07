@@ -300,4 +300,28 @@ test.describe('8.3c-2d — organisatie verlaten: owner en weigeringen schrijven 
     await expect(result).toContainText(text('nl', 'accountNothingChanged'));
     expect(await snapshotOrganization(org)).toEqual(before);
   });
+
+  test('dubbelklik op bevestigen: één vertrek, geen tweede aanroep-uitkomst', async ({ page }) => {
+    const { org } = await seedLeaveOrg('leave-dblclick');
+    const user = await createUser('leave-dblclick');
+    await seedMember(org, user, 'scorer');
+    await seedTeamMember(org, org.teamIds[0] ?? '', user, 'scorer');
+    const before = await snapshotOrganization(org);
+    await signInAndSelect(page, user, org.orgId, org.teamIds[0] ?? '');
+    await openLeaveDialog(page, org.orgName);
+    await page.getByTestId('leave-org-confirm-btn').dblclick();
+    const result = page.getByTestId('leave-org-result');
+    await expect(result).toContainText(text('nl', 'leaveOrgOk', { org: org.orgName }), {
+      timeout: 20_000,
+    });
+    // Niet "al bezig" en niet "geen lid meer": de tweede klik viel op een uitgeschakelde knop.
+    await expect(result).not.toContainText(text('nl', 'accountActionBusy'));
+    await expect(result).not.toContainText(text('nl', 'leaveOrgNotAMember'));
+    expect(await snapshotOrganization(org)).toEqual(
+      omit(before, [
+        `organizations/${org.orgId}/organizationMembers/${user.uid}`,
+        `organizations/${org.orgId}/teams/${org.teamIds[0] ?? ''}/teamMembers/${user.uid}`,
+      ]),
+    );
+  });
 });

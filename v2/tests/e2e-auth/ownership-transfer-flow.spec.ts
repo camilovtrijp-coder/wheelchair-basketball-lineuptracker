@@ -239,4 +239,29 @@ test.describe('8.3c-2d — overdracht met twee echte gebruikers', () => {
     expect(await snapshotOrganization(bystander)).toEqual(beforeBystander);
     await pageQ.context().close();
   });
+
+  test('rolverlies tijdens de flow: B is geen owner meer bij het bevestigen → geweigerd, A ongemoeid', async ({
+    page,
+  }) => {
+    const ownerA = await createUser('transfer-roleloss-a');
+    const userB = await createUser('transfer-roleloss-b');
+    const org = await seedOrg('transfer-roleloss Org');
+    const team = org.teamIds[0] ?? '';
+    await seedMember(org, ownerA, 'organizationOwner');
+    await seedMember(org, userB, 'organizationOwner');
+    await seedInvitation(org, ownerA.email, 'pending');
+    await signInAndSelect(page, userB, org.orgId, team);
+    await openRemoveOwner(page, ownerA);
+    await page.getByTestId('transfer-remove-owner-input').fill(ownerA.email);
+
+    // A trekt B's ownerrol in terwijl het dialoog open staat.
+    await seedMember(org, userB, 'organizationAdmin');
+    const before = await snapshotOrganization(org);
+    await page.getByTestId('transfer-confirm-btn').click();
+    const result = page.getByTestId('transfer-result');
+    await expect(result).toContainText(text('nl', 'transferDeniedNotOwner'), { timeout: 20_000 });
+    await expect(result).toContainText(text('nl', 'accountNothingChanged'));
+    expect(await snapshotOrganization(org)).toEqual(before);
+    expect(await readMemberRole(org, ownerA.uid)).toBe('organizationOwner');
+  });
 });
