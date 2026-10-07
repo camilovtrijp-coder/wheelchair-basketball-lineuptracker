@@ -222,12 +222,33 @@ onderstaande restrisico's blijven bewust staan.
   later alsnog landen zonder dat de flow het merkt; de uitkomst `incomplete` kan dan
   achterhaald zijn. Het is altijd een bedoelde delete in de juiste volgorde; de volgende
   verse inventaris toont de werkelijke toestand.
+- **Gelijktijdige overdracht (reviewbevinding A op #108, verholpen in de 2b-iii-fix).**
+  Twee owners die elkaar tegelijk verwijderen (twee apparaten) konden volgens de review
+  allebei slagen: de transactie las alleen het doel, en de `get()` waarmee de Rules de
+  rol van de aanroeper lezen, hoort niet bij de transactie van de client. Het slot in de
+  coördinator geldt alleen binnen één app-instantie. Sinds de fix lezen `promoteToOwner`
+  en `removeOrganizationMember` in de transactie ook het eigen membership (uid uit de
+  sessie) en schrijven alleen bij `organizationOwner`; de SDK verifieert die read bij de
+  commit, dus de tweede van twee gelijktijdige verwijderingen faalt en eindigt na de
+  herhaling in `rejected` zonder write. In de emulator (10 iteraties in de spec, metingen
+  van 50) slaagt steeds precies één en blijft precies één owner. **Grens van het bewijs:**
+  zonder de fix gaf de emulator 10/50 keer "beide geweigerd" maar nooit "beide geslaagd";
+  het verlies van de laatste owner is daar niet gereproduceerd en het productiegedrag is
+  niet nagemeten. De laatste-ownerbescherming blijft daarmee client-side plus Rules die
+  zelfverwijdering van een owner weigeren, niet een Rules-invariant ("minstens één
+  owner"). **Rest:** bij gelijktijdige `completeTransfer` over en weer kan de verliezer
+  al uitnodigingen van de winnaar hebben ingetrokken en diens teamMembers hebben
+  verwijderd; dat wordt niet teruggedraaid (de winnaar blijft owner).
 - **Misvormd ledendocument blokkeert vertrek (fail closed, runbook).** De
   per-organisatiefeiten lezen de ongefilterde ledenlijst met de converter. Eén ongeldig
   `organizationMembers`-document van een ánder lid (bijv. via de Console aangemaakt met
   een onbekende rol of zonder `uid`) laat vertrek en accountverwijdering voor iedereen in
   die organisatie stoppen met `read-failed`, zonder write. Runbook: het document in de
-  Console herstellen of verwijderen.
+  Console herstellen of verwijderen. Voor uitnodigingen geldt bij de overdracht sinds de
+  2b-iii-fix iets anders: ze worden ruw gelezen (alleen `email`/`status`); een
+  uitnodiging zonder string-`email` wordt overgeslagen en apart gemeld
+  (`skippedMalformed`), want Rules laten haar door niemand accepteren of claimen; een
+  uitnodiging óp het doeladres met een onleesbare status blokkeert wel (fail closed).
 - **R4 — pseudonieme audit-uid's blijven staan (besluit B8, geaccepteerd).**
   `organizations.createdBy`, `teams.createdBy`, `invitations.invitedBy`,
   `games.writerUid`, `actions.authorUid`, `completedGames.deletedBy` (tot redactie),
