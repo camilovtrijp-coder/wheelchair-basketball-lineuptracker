@@ -54,6 +54,11 @@ export class FirebaseAccountAuthGateway implements AccountAuthGateway {
       // Altijd verversen: de Rules lezen de claim uit het token, en een gecachet token
       // kan nog een oude `email_verified=false` dragen.
       const token = await withTimeout(user.getIdTokenResult(true), this.timeoutMs);
+      // Wisselde de sessie tijdens de verversing (uitgelogd, of als iemand anders
+      // ingelogd), dan horen `user.uid` en deze claims niet meer bij de huidige sessie:
+      // geen uitkomst over een account dat niet meer is ingelogd (zelfde betekenis als de
+      // expectedUid-guard van de andere twee methoden).
+      if (this.auth.currentUser?.uid !== user.uid) return { ok: false, code: 'not-signed-in' };
       const email = token.claims.email;
       return {
         ok: true,

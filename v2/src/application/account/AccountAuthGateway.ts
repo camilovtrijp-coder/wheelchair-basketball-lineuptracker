@@ -22,7 +22,8 @@ export type EmailClaimResult =
        * `network`: geen verbinding of geen antwoord. `session-invalid`: het token is niet
        * meer te verversen omdat het account weg of uitgeschakeld is (of de sessie
        * ingetrokken) — na een `deleteUser` met onbekende afloop is dat precies het geval
-       * dat "opnieuw inloggen beslist".
+       * dat "opnieuw inloggen beslist". `not-signed-in`: geen sessie, of de sessie wisselde
+       * tijdens de verversing van account (dan horen uid en claims niet bij elkaar).
        */
       code: 'not-signed-in' | 'network' | 'session-invalid' | 'other';
     };
