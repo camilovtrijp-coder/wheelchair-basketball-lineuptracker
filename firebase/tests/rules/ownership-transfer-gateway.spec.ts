@@ -224,18 +224,26 @@ async function seed(createdDaysAgo = 60) {
   });
 }
 
-/** Alle documenten (pad → data) onder beide organisaties, via Admin — voor "niets veranderd". */
+/**
+ * Elk document dat `seed()` aanmaakt (pad → data), via Admin — voor "niets veranderd": de
+ * twee organisatiedocumenten, hun `organizationMembers`, `invitations`, `teams` en per team
+ * de `teamMembers`. Andere families seedt deze spec niet (bijv. `deletionRequests`); die
+ * vallen buiten deze vergelijking.
+ */
 async function dumpAll(): Promise<Record<string, unknown>> {
   return withAdmin(env, async (admin) => {
     const out: Record<string, unknown> = {};
     for (const orgId of [ORG_A, ORG_B]) {
       const org = admin.collection('organizations').doc(orgId);
+      const orgSnapshot = await org.get();
+      if (orgSnapshot.exists) out[org.path] = orgSnapshot.data();
       for (const sub of ['organizationMembers', 'invitations']) {
         for (const entry of (await org.collection(sub).get()).docs) {
           out[entry.ref.path] = entry.data();
         }
       }
       for (const team of (await org.collection('teams').get()).docs) {
+        out[team.ref.path] = team.data();
         for (const entry of (await team.ref.collection('teamMembers').get()).docs) {
           out[entry.ref.path] = entry.data();
         }
@@ -322,12 +330,14 @@ describe('overdracht in twee stappen (echte Rules, echte Auth-tokens)', () => {
     expect(await candidateB.coordinator.completeTransfer(ORG_A, ownerA.uid)).toEqual({
       status: 'ok',
       revokedInvitations: 2,
+      skippedMalformedInvitations: 0,
       removedTeamMemberships: 2,
       organizationMember: 'deleted',
     });
 
     const after = await dumpAll();
-    // Precies deze paden zijn veranderd of verdwenen; al het andere is byte-gelijk.
+    // Precies deze paden zijn veranderd of verdwenen; elk ander geseed document (zie
+    // `dumpAll`: organisaties, leden, uitnodigingen, teams, teamMembers) is byte-gelijk.
     const changed = Object.keys(before)
       .filter((path) => JSON.stringify(before[path]) !== JSON.stringify(after[path]))
       .sort();
@@ -384,7 +394,7 @@ describe('overdracht in twee stappen (echte Rules, echte Auth-tokens)', () => {
       });
     });
     const revoked = await candidateB.gateway.revokeOpenInvitationsForEmail(ORG_A, EMAILS.ownerA);
-    expect(revoked).toEqual({ ok: true, revoked: 1, alreadyClosed: 0 });
+    expect(revoked).toEqual({ ok: true, revoked: 1, alreadyClosed: 0, skippedMalformed: 0 });
     const batch = writeBatch(ownerA.db);
     batch.update(organizationInvitationRef(ownerA.db, ORG_A, 'inv-a-accepted-exact'), {
       status: 'claimed',
@@ -612,6 +622,7 @@ describe('revokeOpenInvitationsForEmail (herbruikbaar, R1)', () => {
       ok: true,
       revoked: 1,
       alreadyClosed: 0,
+      skippedMalformed: 0,
     });
     const after = await dumpAll();
     const changed = Object.keys(before).filter(
@@ -622,6 +633,7 @@ describe('revokeOpenInvitationsForEmail (herbruikbaar, R1)', () => {
       ok: true,
       revoked: 0,
       alreadyClosed: 0,
+      skippedMalformed: 0,
     });
   });
 
@@ -632,6 +644,7 @@ describe('revokeOpenInvitationsForEmail (herbruikbaar, R1)', () => {
       ok: true,
       revoked: 1,
       alreadyClosed: 0,
+      skippedMalformed: 0,
     });
     expect(
       await candidateB.gateway.revokeOpenInvitationsForEmail(ORG_A, EMAILS.ownerA),
@@ -657,11 +670,133 @@ describe('revokeOpenInvitationsForEmail (herbruikbaar, R1)', () => {
     ).resolves.toBeUndefined();
   });
 
+  it('een misvormde uitnodiging (geen email-veld; ander adres met onbekende rol) blokkeert niet en wordt niet beschreven', async () => {
+    const { ownerA } = sessions;
+    await seed();
+    await withAdmin(env, async (admin) => {
+      await admin.doc(invitationPath(ORG_A, 'inv-zonder-adres')).set({
+        role: 'coach',
+        status: 'pending',
+        invitedBy: ownerA.uid,
+        invitedAt: dagenGeleden(1),
+        acceptedAt: null,
+      });
+      await admin.doc(invitationPath(ORG_A, 'inv-rare-rol')).set({
+        email: 'iemand-anders-2biii@example.test',
+        role: 'onbekend',
+        status: 'pending',
+      });
+    });
+    const before = await dumpAll();
+    expect(await ownerA.gateway.revokeOpenInvitationsForEmail(ORG_A, COACH_D.email)).toEqual({
+      ok: true,
+      revoked: 1,
+      alreadyClosed: 0,
+      skippedMalformed: 1,
+    });
+    const after = await dumpAll();
+    const changed = Object.keys(before).filter(
+      (path) => JSON.stringify(before[path]) !== JSON.stringify(after[path]),
+    );
+    expect(changed).toEqual([invitationPath(ORG_A, 'inv-d')]);
+  });
+
   it('org B blijft onaangeroerd: A’s uitnodiging daar staat nog open', async () => {
     const { ownerA } = sessions;
     await seed();
     await ownerA.gateway.revokeOpenInvitationsForEmail(ORG_A, EMAILS.ownerA);
     expect((await adminGet(invitationPath(ORG_B, 'inv-b')))?.status).toBe('pending');
     expect(await adminGet(teamMemberPath(ORG_B, TEAM_B1, ownerA.uid))).toBeDefined();
+  });
+});
+
+// Reviewbevinding A op #108: twee owners (twee apparaten, twee app-instanties, dus geen
+// gedeeld slot in de coördinator) verwijderen elkaar TEGELIJK. Zonder de read van het eigen
+// membership in de transactie kunnen beide commits volgens de review slagen, waarna org A
+// zonder owner achterblijft. Elke iteratie begint met een verse seed; herhaald om te tonen
+// dat het geen gelukkige timing is.
+//
+// Eerlijk over wat de emulator laat zien (2b-iii-fix, 50 iteraties per meting): MET de fix
+// 50/50 keer precies één `ok` en één owner, zowel via de gateway als via de coördinator.
+// ZONDER de fix (mutatie: geen read van het eigen membership) gaf de gateway-race 10 van de
+// 50 keer "beide `rejected`" (de emulator weigert dan beide commits) en nooit "beide `ok`,
+// geen owner": het verlies van de laatste owner is in de emulator niet gereproduceerd. De
+// coördinator-race bleef ook zonder fix 50/50 groen (de stappen ervoor ontkoppelen de twee
+// laatste transacties). Deze test bewijst dus de uitkomst MET de fix tegen de echte Rules;
+// dat de fix nodig is, rust op de transactiesemantiek van de client-SDK (unit-test met een
+// commit die tussendoor het eigen membership verwijdert) en op reviewbevinding A.
+describe('gelijktijdige overdracht: twee owners verwijderen elkaar (reviewbevinding A, #108)', () => {
+  const ITERATIONS = 10;
+
+  async function ownersOfOrgA(): Promise<string[]> {
+    return withAdmin(env, async (admin) =>
+      (await admin.collection(`organizations/${ORG_A}/organizationMembers`).get()).docs
+        .filter((entry) => entry.data().role === 'organizationOwner')
+        .map((entry) => entry.id)
+        .sort(),
+    );
+  }
+
+  /** Org A met A én B als owner (B is door A gepromoveerd). */
+  async function seedTwoOwners() {
+    await env.clearFirestore();
+    await seed();
+    await setRole(ORG_A, sessions.candidateB.uid, 'organizationOwner');
+  }
+
+  it(`gateway: removeOrganizationMember over en weer, ${ITERATIONS}×: precies één slaagt, er blijft een owner`, async () => {
+    const { ownerA, candidateB } = sessions;
+    const tally: string[] = [];
+    for (let i = 0; i < ITERATIONS; i += 1) {
+      await seedTwoOwners();
+      const [byA, byB] = await Promise.all([
+        ownerA.gateway.removeOrganizationMember(ORG_A, candidateB.uid, 'organizationOwner'),
+        candidateB.gateway.removeOrganizationMember(ORG_A, ownerA.uid, 'organizationOwner'),
+      ]);
+      const owners = await ownersOfOrgA();
+      const okCount = [byA, byB].filter((result) => result.ok).length;
+      tally.push(`${okCount} ok, ${owners.length} owner(s)`);
+    }
+    // Eerst de hele reeks, zodat een mutatierun toont hoe vaak het misgaat.
+    expect(tally).toEqual(Array.from({ length: ITERATIONS }, () => '1 ok, 1 owner(s)'));
+  });
+
+  it('gateway: de verliezer krijgt `rejected` en de winnaar blijft de enige owner', async () => {
+    const { ownerA, candidateB } = sessions;
+    await seedTwoOwners();
+    const [byA, byB] = await Promise.all([
+      ownerA.gateway.removeOrganizationMember(ORG_A, candidateB.uid, 'organizationOwner'),
+      candidateB.gateway.removeOrganizationMember(ORG_A, ownerA.uid, 'organizationOwner'),
+    ]);
+    const [winner, loser] = byA.ok ? [ownerA, byB] : [candidateB, byA];
+    expect(loser).toEqual({ ok: false, error: { code: 'rejected' } });
+    expect(await ownersOfOrgA()).toEqual([winner.uid]);
+  });
+
+  it(`coördinator: completeTransfer over en weer, ${ITERATIONS}×: precies één ok, er blijft een owner`, async () => {
+    const { ownerA, candidateB } = sessions;
+    const tally: string[] = [];
+    const loserStatuses: string[] = [];
+    for (let i = 0; i < ITERATIONS; i += 1) {
+      await seedTwoOwners();
+      const [byA, byB] = await Promise.all([
+        ownerA.coordinator.completeTransfer(ORG_A, candidateB.uid),
+        candidateB.coordinator.completeTransfer(ORG_A, ownerA.uid),
+      ]);
+      const owners = await ownersOfOrgA();
+      const okCount = [byA, byB].filter((outcome) => outcome.status === 'ok').length;
+      tally.push(`${okCount} ok, ${owners.length} owner(s)`);
+      if (okCount === 1) {
+        const [winner, loser] = byA.status === 'ok' ? [ownerA, byB] : [candidateB, byA];
+        // De winnaar is de enige overgebleven owner; de verliezer (zelf verwijderd) geen ok.
+        expect(owners).toEqual([winner.uid]);
+        loserStatuses.push(loser.status);
+      }
+    }
+    expect(tally).toEqual(Array.from({ length: ITERATIONS }, () => '1 ok, 1 owner(s)'));
+    // Alleen bestaande uitkomsten: de verliezer stuit op Rules of op zijn verloren ownerrol.
+    for (const status of loserStatuses) {
+      expect(['rejected', 'incomplete', 'denied', 'failed']).toContain(status);
+    }
   });
 });

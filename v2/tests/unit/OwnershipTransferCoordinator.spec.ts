@@ -288,6 +288,7 @@ const COMPLETE_CALLS = [
 const OK: CompleteTransferOutcome = {
   status: 'ok',
   revokedInvitations: 2,
+  skippedMalformedInvitations: 0,
   removedTeamMemberships: 2,
   organizationMember: 'deleted',
 };

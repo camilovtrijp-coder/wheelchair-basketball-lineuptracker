@@ -42,7 +42,12 @@ export type FootprintReadResult =
   { ok: true; footprint: MemberFootprint } | { ok: false; error: TransferReadError };
 
 export type TransferWriteError =
-  /** Rules weigerden de write en een server-readback toont dat er niets veranderd is. */
+  /**
+   * Er is NIETS geschreven: Rules weigerden de write en een server-readback toont dat er
+   * niets veranderd is, of die readback werd zelf geweigerd (de aanroeper is geen lid
+   * meer), of de transactie las het eigen membership van de aanroeper zonder ownerrol
+   * (reviewbevinding A op #108: twee owners die elkaar tegelijk verwijderen).
+   */
   | { code: 'rejected' }
   /** De rol van het doel week af van de verwachte rol; er is NIETS geschreven. */
   | { code: 'role-changed'; actualRole: OrganizationRole }
@@ -53,6 +58,8 @@ export type TransferWriteError =
   /**
    * Geen serverantwoord binnen de timeout. Een write kan in de wachtrij van Firestore
    * staan en LATER alsnog landen; de volgende verse lezing toont de werkelijke toestand.
+   * Bij promoveren en membership verwijderen volgt eerst één server-readback van het doel:
+   * staat het al in de bedoelde eindtoestand, dan is de uitkomst `ok` in plaats hiervan.
    */
   | { code: 'timeout' }
   | { code: 'offline' }
@@ -63,8 +70,14 @@ export type PromoteResult =
   { ok: true; outcome: 'promoted' | 'already-owner' } | { ok: false; error: TransferWriteError };
 
 export type RevokeInvitationsResult =
-  /** `alreadyClosed`: tussendoor door een ander ingetrokken/geclaimd (Rules weigerden, readback: niet meer open). */
-  | { ok: true; revoked: number; alreadyClosed: number }
+  /**
+   * `alreadyClosed`: tussendoor door een ander ingetrokken/geclaimd (Rules weigerden,
+   * readback: niet meer open). `skippedMalformed`: uitnodigingen in deze organisatie zonder
+   * leesbaar `email`-veld, overgeslagen (niet aan een adres toe te wijzen; Rules laten ze
+   * door niemand accepteren of claimen). Een uitnodiging OP het doeladres met een
+   * onleesbare status blokkeert wel (fail closed, `failed`).
+   */
+  | { ok: true; revoked: number; alreadyClosed: number; skippedMalformed: number }
   /** `revoked`: zoveel zijn er VÓÓR de fout al ingetrokken (en teruggelezen). */
   | { ok: false; error: TransferWriteError; revoked: number };
 

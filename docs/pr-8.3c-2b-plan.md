@@ -729,9 +729,9 @@ in 2b-ii per organisatie hergebruikt.
   owner-lid is `ok/already-owner` (idempotent, ook na een verloren antwoord).
 - **Intrekken matcht het e-mailadres zonder hoofdlettergevoeligheid** (getrimd, kleine
   letters). Rules vergelijken exact; voor intrekken is "hetzelfde adres in een andere
-  spelling" ook intrekken veiliger (R5). Een ongeldige uitnodiging in de organisatie
-  blokkeert het intrekken (converter, fail closed); de teamlisting leest alleen ID's,
-  zodat een misvormd teamdocument de overdracht niet blokkeert.
+  spelling" ook intrekken veiliger (R5). De teamlisting leest alleen ID's, zodat een
+  misvormd teamdocument de overdracht niet blokkeert. (Tot de fix hieronder blokkeerde één
+  ongeldige uitnodiging in de organisatie het intrekken via de converter.)
 - **De gateway weigert de eigen uid als doel** (`self-target`) op elke schrijfmethode,
   naast de coördinatorcheck en de Rules.
 - **Accessmatrix:** de padbouwers staan in `ownershipTransferPaths.ts`; alleen dát bestand
@@ -744,6 +744,56 @@ in 2b-ii per organisatie hergebruikt.
   ook een admin intrekken en teamMembers verwijderen (bestaande Rules-bevoegdheid); de
   coördinator beperkt de overdracht tot owners. R2 is in de emulatortest vastgepind,
   niet verholpen.
+
+**Fix na de review van #108 (2b-iii-fix, reviewbevinding A en kleinere punten):**
+
+- **Bevinding A — gelijktijdige overdracht.** `promoteToOwner` en
+  `removeOrganizationMember` lazen in hun transactie alleen het doel. De Rules lezen de rol
+  van de aanroeper met `get()`, maar die read hoort niet bij de transactie van de client.
+  Owner A en owner B die elkaar tegelijk verwijderen (twee apparaten) konden zo volgens de
+  review allebei slagen, waarna de organisatie zonder owner is (strijdig met besluitrecord
+  §4.3). Het slot in `OwnershipTransferCoordinator` geldt alleen binnen één instantie (één
+  app op één apparaat) en helpt hier niet. **Fix:** beide transacties lezen eerst het EIGEN
+  `organizationMembers`-document van de aanroeper (uid uit de Auth-sessie, geen parameter)
+  en schrijven alleen bij rol `organizationOwner`. De client-SDK verifieert bij de commit
+  elk in de transactie gelezen document; is het eigen membership intussen verwijderd of
+  gewijzigd, dan faalt de commit, herhaalt de transactie zich en ziet ze het eigen
+  membership weg (Rules weigeren de get) of zonder ownerrol. Uitkomst in beide gevallen
+  het bestaande `rejected` zonder write (coördinator: `rejected/permission-denied`). Een
+  classificatie-readback die zelf `permission-denied` krijgt (aanroeper geen lid meer) is
+  nu ook `rejected` in plaats van `failed`. Geen nieuwe uitkomst, geen Rules-wijziging,
+  geen nieuwe queryvorm.
+- **Emulatorbewijs en de grens ervan.** `firebase/tests/rules/ownership-transfer-gateway.spec.ts`
+  laat twee echte owners elkaar 10× met verse seed tegelijk verwijderen (via de gateway en
+  via `completeTransfer`): steeds precies één `ok` en precies één owner. In metingen van 50
+  iteraties gaf de mutatie zonder de eigen read in de emulator 10/50 keer "beide
+  `rejected`" en nooit "beide `ok`": het verlies van de laatste owner zelf is in de
+  emulator niet gereproduceerd (de emulator lijkt de Rules-reads tijdens de commit te
+  serialiseren); de coördinator-race bleef zonder fix 50/50 groen. Het bewijs dat de fix
+  nodig is, rust daarom op de transactiesemantiek van de client-SDK (unit-test met een
+  commit die tussendoor het eigen membership verwijdert) en de review, niet op de
+  emulator. Productiegedrag van Firestore onder deze race is niet nagemeten.
+- **Restbeperking.** Bij gelijktijdige `completeTransfer` over en weer kan de verliezer
+  vóór zijn laatste (geweigerde) transactie al uitnodigingen van de winnaar hebben
+  ingetrokken en diens teamMembers hebben verwijderd; die stappen worden niet
+  teruggedraaid. De winnaar blijft owner (organisatiebrede toegang via de ownerrol) en kan
+  teamtoegang opnieuw toekennen. Dit is geen verlies van de laatste owner.
+- **Timeout met readback.** `withTimeout` annuleert `runTransaction` niet; de transactie kan
+  na een `timeout` alsnog committen. Na een timeout volgt nu één `getDocFromServer` op het
+  doel: al owner → `ok/promoted`, weg → `ok/deleted` (of déze of een gelijktijdige write de
+  eindtoestand maakte, is niet te onderscheiden); anders, of als de readback mislukt, blijft
+  het `timeout`.
+- **Misvormde uitnodiging.** `revokeOpenInvitationsForEmail` (en de footprint) lezen de
+  uitnodigingen nu ruw, alleen `email` en `status`, zonder converter. Een document zonder
+  string-`email` wordt overgeslagen en geteld (`skippedMalformed`, in de coördinator
+  `skippedMalformedInvitations`): het is aan geen adres toe te wijzen en de Rules laten het
+  door niemand accepteren of claimen (die vergelijken `email` met de token-e-mail). Een
+  document dat op het doeladres matcht maar een onbekende `status` heeft, blijft fail
+  closed (`read-failed`, geen write); misvormde andere velden (bijv. `role`) blokkeren niet
+  meer.
+- **Emulatordump.** `dumpAll()` vergelijkt nu alle families die de spec seedt
+  (organisatiedocumenten, leden, uitnodigingen, teams, teamMembers); het commentaar zegt dat
+  andere families buiten de vergelijking vallen.
 
 ### C.4 Wat expliciet naar 2c en 2d gaat
 

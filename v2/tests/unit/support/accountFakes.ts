@@ -312,7 +312,7 @@ export class FakeOwnershipTransferGateway implements OwnershipTransferGateway {
       this.calls.push(`write:revoke:${organizationId}/${invitation.invitationId}`);
       revoked += 1;
     }
-    return { ok: true, revoked, alreadyClosed: 0 };
+    return { ok: true, revoked, alreadyClosed: 0, skippedMalformed: 0 };
   }
 
   async removeTeamMembershipsOf(

@@ -82,6 +82,8 @@ export type CompleteTransferOutcome =
   | {
       status: 'ok';
       revokedInvitations: number;
+      /** Uitnodigingen zonder leesbaar `email`-veld die bij het intrekken zijn overgeslagen. */
+      skippedMalformedInvitations: number;
       removedTeamMemberships: number;
       organizationMember: 'deleted' | 'already-gone';
     };
@@ -255,6 +257,7 @@ export class OwnershipTransferCoordinator {
     return {
       status: 'ok',
       revokedInvitations: revoked.revoked,
+      skippedMalformedInvitations: revoked.skippedMalformed,
       removedTeamMemberships: teams.removed,
       organizationMember,
     };

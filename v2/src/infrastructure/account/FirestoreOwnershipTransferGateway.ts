@@ -12,6 +12,23 @@
 //   huidige rol wordt atomair gelezen en vergeleken met de verwachte rol; wijkt die af,
 //   dan volgt geen write (`role-changed`). Een transactie werkt niet offline en komt nooit
 //   in de schrijfwachtrij.
+// - Dezelfde transactie leest ook het EIGEN membership van de aanroeper en schrijft alleen
+//   als dat `organizationOwner` is (reviewbevinding A op #108). De Rules lezen de rol van de
+//   aanroeper met `get()`, maar die read hoort niet bij de transactie van de client. Pas
+//   doordat de client het eigen document in de transactie leest, controleert de SDK bij de
+//   commit dat het sindsdien niet veranderd is (precondition op de leesversie). Zo kunnen
+//   twee owners die elkaar tegelijk verwijderen niet allebei slagen: de tweede commit faalt,
+//   de transactie herhaalt zich en ziet het eigen membership weg (Rules weigeren de get →
+//   `rejected`) of zonder ownerrol (→ `rejected`), zonder write.
+// - Na een timeout van een transactie één server-readback van het doel: staat het doel al
+//   in de bedoelde eindtoestand, dan is dat het antwoord; anders blijft het `timeout` (de
+//   transactie kan nog lopen en later landen).
+// - Uitnodigingen worden RUW gelezen (alleen `email` en `status`), zonder converter: een
+//   misvormde uitnodiging van een ander adres blokkeert het intrekken niet meer. Een
+//   document zonder leesbaar `email` (geen string) telt als `skippedMalformed`; Rules
+//   laten zo'n uitnodiging nooit accepteren of claimen (die vergelijken `email` met de
+//   token-e-mail). Een document dat op het doeladres MATCHT maar een onleesbare status
+//   heeft, blokkeert wel (fail closed, `read-failed`).
 // - Na elke write een server-readback; een Rules-weigering wordt met een readback
 //   geclassificeerd (`rejected` als er niets veranderd is).
 // - Elke aanroep naar Firestore heeft een timeout van 8 s.
@@ -25,9 +42,10 @@ import {
   updateDoc,
   type DocumentReference,
   type Firestore,
+  type Transaction,
 } from 'firebase/firestore';
 import { getAuth } from 'firebase/auth';
-import { invitationConverter, organizationMemberConverter } from 'firebase-base/documents';
+import { organizationMemberConverter } from 'firebase-base/documents';
 import type {
   CallerReadResult,
   FootprintReadResult,
@@ -45,7 +63,7 @@ import {
   isSameEmailAddress,
   type TransferMember,
 } from '../../domain/account/transfer';
-import type { InvitationStatus } from '../../domain/invitations/types';
+import { INVITATION_STATUSES, type InvitationStatus } from '../../domain/invitations/types';
 import type { OrganizationRole } from '../../domain/organizations/types';
 import { firebaseErrorCode } from '../firebase/errors';
 import { isFirebaseCallTimeout, withTimeout } from '../firebase/withTimeout';
@@ -78,6 +96,18 @@ class RoleChangedError extends Error {
   }
 }
 
+/**
+ * Binnen een transactie: het eigen membership van de aanroeper heeft (niet meer) de rol
+ * `organizationOwner`. Geen write; naar buiten `rejected` (zelfde uitkomst als een
+ * Rules-weigering, want het is dezelfde grens).
+ */
+class CallerNotOwnerError extends Error {
+  constructor() {
+    super('aanroeper is geen owner (meer)');
+    this.name = 'CallerNotOwnerError';
+  }
+}
+
 /** Binnen een transactie: het doel bestaat niet (meer). Geen write. */
 class TargetMissingError extends Error {
   constructor() {
@@ -87,6 +117,18 @@ class TargetMissingError extends Error {
 }
 
 type Read<T> = { ok: true; value: T } | { ok: false; error: TransferReadError };
+
+interface OpenInvitationIds {
+  ids: string[];
+  /** Uitnodigingen zonder leesbaar `email`-veld: overgeslagen en geteld. */
+  malformed: number;
+}
+
+function parseInvitationStatus(value: unknown): InvitationStatus | null {
+  return (INVITATION_STATUSES as readonly unknown[]).includes(value)
+    ? (value as InvitationStatus)
+    : null;
+}
 
 function toReadError(error: unknown): TransferReadError {
   if (isFirebaseCallTimeout(error)) return { code: 'timeout' };
@@ -113,12 +155,22 @@ function toWriteError(error: unknown): TransferWriteError {
   if (error instanceof RoleChangedError)
     return { code: 'role-changed', actualRole: error.actualRole };
   if (error instanceof TargetMissingError) return { code: 'not-found' };
+  if (error instanceof CallerNotOwnerError) return { code: 'rejected' };
   if (firebaseErrorCode(error) === 'unavailable') return { code: 'offline' };
   return { code: 'failed', detail: error };
 }
 
 function isPermissionDenied(error: unknown): boolean {
   return !isFirebaseCallTimeout(error) && firebaseErrorCode(error) === 'permission-denied';
+}
+
+/**
+ * De classificatie-readback NA een `permission-denied` wordt zelf geweigerd: de aanroeper
+ * is geen lid meer (bijv. net door een andere owner verwijderd). Een geweigerde transactie
+ * heeft niets geschreven, dus dat is `rejected` en geen `failed`.
+ */
+function isDeniedReadback(error: TransferReadError): boolean {
+  return error.code === 'read-failed' && isPermissionDenied(error.detail);
 }
 
 export class FirestoreOwnershipTransferGateway implements OwnershipTransferGateway {
@@ -173,11 +225,14 @@ export class FirestoreOwnershipTransferGateway implements OwnershipTransferGatew
     if (uid === null) return { ok: false, error: { code: 'not-signed-in' } };
     if (targetUid === uid) return { ok: false, error: { code: 'self-target' } };
     const target = organizationMemberRef(this.db, organizationId, targetUid);
+    const self = organizationMemberRef(this.db, organizationId, uid);
 
     let outcome: 'promoted' | 'already-owner';
     try {
       outcome = await withTimeout(
         runTransaction(this.db, async (transaction) => {
+          // Eerst het EIGEN membership (reviewbevinding A op #108), zie `requireCallerOwner`.
+          await requireCallerOwner(transaction, self, uid);
           const snapshot = await transaction.get(target.withConverter(organizationMemberConverter));
           if (!snapshot.exists()) throw new TargetMissingError();
           const role = snapshot.data().role;
@@ -189,10 +244,22 @@ export class FirestoreOwnershipTransferGateway implements OwnershipTransferGatew
         this.timeoutMs,
       );
     } catch (error) {
+      if (isFirebaseCallTimeout(error)) {
+        // De transactie kan alsnog gecommit zijn (of nog lopen). Eén readback: is het doel
+        // al owner, dan is de eindtoestand bereikt (of déze transactie of een gelijktijdige
+        // promotie schreef, is niet te onderscheiden); anders blijft het `timeout`.
+        const afterTimeout = await this.readRole(target);
+        return afterTimeout.ok && afterTimeout.value === 'organizationOwner'
+          ? { ok: true, outcome: 'promoted' }
+          : { ok: false, error: { code: 'timeout' } };
+      }
       if (!isPermissionDenied(error)) return { ok: false, error: toWriteError(error) };
       // Geweigerd: tussendoor door een ander gepromoveerd, of echt geweigerd?
       const after = await this.readRole(target);
-      if (!after.ok) return { ok: false, error: readToWriteError(after.error) };
+      if (!after.ok) {
+        if (isDeniedReadback(after.error)) return { ok: false, error: { code: 'rejected' } };
+        return { ok: false, error: readToWriteError(after.error) };
+      }
       return after.value === 'organizationOwner'
         ? { ok: true, outcome: 'already-owner' }
         : { ok: false, error: { code: 'rejected' } };
@@ -219,7 +286,7 @@ export class FirestoreOwnershipTransferGateway implements OwnershipTransferGatew
     const listed = await this.readOpenInvitationIds(organizationId, email);
     if (!listed.ok) return { ok: false, error: readToWriteError(listed.error), revoked };
 
-    for (const invitationId of listed.value) {
+    for (const invitationId of listed.value.ids) {
       const ref = organizationInvitationRef(this.db, organizationId, invitationId);
       try {
         await withTimeout(updateDoc(ref, revokeInvitationPatch()), this.timeoutMs);
@@ -245,7 +312,7 @@ export class FirestoreOwnershipTransferGateway implements OwnershipTransferGatew
       }
       revoked += 1;
     }
-    return { ok: true, revoked, alreadyClosed };
+    return { ok: true, revoked, alreadyClosed, skippedMalformed: listed.value.malformed };
   }
 
   async removeTeamMembershipsOf(
@@ -300,11 +367,15 @@ export class FirestoreOwnershipTransferGateway implements OwnershipTransferGatew
     if (uid === null) return { ok: false, error: { code: 'not-signed-in' } };
     if (targetUid === uid) return { ok: false, error: { code: 'self-target' } };
     const target = organizationMemberRef(this.db, organizationId, targetUid);
+    const self = organizationMemberRef(this.db, organizationId, uid);
 
     let outcome: 'deleted' | 'already-gone';
     try {
       outcome = await withTimeout(
         runTransaction(this.db, async (transaction) => {
+          // Eerst het EIGEN membership (reviewbevinding A op #108): zonder deze read kunnen
+          // twee owners die elkaar tegelijk verwijderen allebei slagen.
+          await requireCallerOwner(transaction, self, uid);
           const snapshot = await transaction.get(target.withConverter(organizationMemberConverter));
           if (!snapshot.exists()) return 'already-gone' as const;
           const role = snapshot.data().role;
@@ -315,9 +386,20 @@ export class FirestoreOwnershipTransferGateway implements OwnershipTransferGatew
         this.timeoutMs,
       );
     } catch (error) {
+      if (isFirebaseCallTimeout(error)) {
+        // Eén readback: is het doel weg, dan is de eindtoestand bereikt (door déze of een
+        // gelijktijdige delete); staat het er nog, dan blijft het `timeout`.
+        const afterTimeout = await this.readExists(target);
+        return afterTimeout.ok && !afterTimeout.value
+          ? { ok: true, outcome: 'deleted' }
+          : { ok: false, error: { code: 'timeout' } };
+      }
       if (!isPermissionDenied(error)) return { ok: false, error: toWriteError(error) };
       const afterDenied = await this.readExists(target);
-      if (!afterDenied.ok) return { ok: false, error: readToWriteError(afterDenied.error) };
+      if (!afterDenied.ok) {
+        if (isDeniedReadback(afterDenied.error)) return { ok: false, error: { code: 'rejected' } };
+        return { ok: false, error: readToWriteError(afterDenied.error) };
+      }
       return afterDenied.value
         ? { ok: false, error: { code: 'rejected' } }
         : { ok: true, outcome: 'already-gone' };
@@ -358,7 +440,7 @@ export class FirestoreOwnershipTransferGateway implements OwnershipTransferGatew
       footprint: {
         organizationMember: member.value,
         teamMemberships,
-        openInvitations: invitations.value.length,
+        openInvitations: invitations.value.ids.length,
       },
     };
   }
@@ -381,29 +463,37 @@ export class FirestoreOwnershipTransferGateway implements OwnershipTransferGatew
     });
   }
 
-  /** ID's van de `pending`/`accepted` uitnodigingen op `email` in deze organisatie. */
+  /**
+   * ID's van de `pending`/`accepted` uitnodigingen op `email` in deze organisatie. Leest
+   * ruw alleen `email` en `status` (geen converter): een misvormd veld in een uitnodiging
+   * van een ánder adres blokkeert niets. Geen string als `email` → overslaan en tellen
+   * (`malformed`). Wel het doeladres maar een onbekende `status` → fail closed.
+   */
   private async readOpenInvitationIds(
     organizationId: string,
     email: string,
-  ): Promise<Read<string[]>> {
+  ): Promise<Read<OpenInvitationIds>> {
     try {
       const snapshot = await withTimeout(
-        getDocsFromServer(
-          organizationInvitationsCollection(this.db, organizationId).withConverter(
-            invitationConverter,
-          ),
-        ),
+        getDocsFromServer(organizationInvitationsCollection(this.db, organizationId)),
         this.timeoutMs,
       );
-      return {
-        ok: true,
-        value: snapshot.docs
-          .filter((entry) => {
-            const data = entry.data();
-            return isSameEmailAddress(data.email, email) && isOpenInvitationStatus(data.status);
-          })
-          .map((entry) => entry.id),
-      };
+      const ids: string[] = [];
+      let malformed = 0;
+      for (const entry of snapshot.docs) {
+        const data = entry.data() as Record<string, unknown>;
+        if (typeof data.email !== 'string') {
+          malformed += 1;
+          continue;
+        }
+        if (!isSameEmailAddress(data.email, email)) continue;
+        const status = parseInvitationStatus(data.status);
+        if (status === null) {
+          throw new TransferShapeError('invitations: onleesbare status op het doeladres');
+        }
+        if (isOpenInvitationStatus(status)) ids.push(entry.id);
+      }
+      return { ok: true, value: { ids, malformed } };
     } catch (error) {
       return { ok: false, error: toReadError(error) };
     }
@@ -444,18 +534,40 @@ export class FirestoreOwnershipTransferGateway implements OwnershipTransferGatew
     }
   }
 
-  /** De huidige status van een uitnodiging, `null` als ze niet (meer) bestaat. */
+  /**
+   * De huidige status van een uitnodiging, `null` als ze niet (meer) bestaat. Ruw alleen
+   * `status` (zelfde reden als `readOpenInvitationIds`); onbekend → fail closed.
+   */
   private async readInvitationStatus(
     ref: DocumentReference,
   ): Promise<Read<InvitationStatus | null>> {
     try {
-      const snapshot = await withTimeout(
-        getDocFromServer(ref.withConverter(invitationConverter)),
-        this.timeoutMs,
-      );
-      return { ok: true, value: snapshot.exists() ? snapshot.data().status : null };
+      const snapshot = await withTimeout(getDocFromServer(ref), this.timeoutMs);
+      if (!snapshot.exists()) return { ok: true, value: null };
+      const status = parseInvitationStatus((snapshot.data() as Record<string, unknown>).status);
+      if (status === null) throw new TransferShapeError('invitations: onleesbare status');
+      return { ok: true, value: status };
     } catch (error) {
       return { ok: false, error: toReadError(error) };
     }
   }
+}
+
+/**
+ * Leest binnen `transaction` het EIGEN membership van de aanroeper (uid uit de sessie,
+ * nooit uit invoer) en eist de rol `organizationOwner`. Daardoor hoort dit document bij de
+ * leesset van de transactie en controleert de SDK bij de commit dat het niet veranderd is.
+ * Ontbreekt het, dan weigeren de Rules de get al (`permission-denied`); bestaat het zonder
+ * ownerrol → `CallerNotOwnerError`; een afwijkend `uid`-veld → fail closed.
+ */
+async function requireCallerOwner(
+  transaction: Transaction,
+  self: DocumentReference,
+  uid: string,
+): Promise<void> {
+  const snapshot = await transaction.get(self.withConverter(organizationMemberConverter));
+  if (!snapshot.exists()) throw new CallerNotOwnerError();
+  const data = snapshot.data();
+  if (data.uid !== uid) throw new TransferShapeError('organizationMembers: uid wijkt af');
+  if (data.role !== 'organizationOwner') throw new CallerNotOwnerError();
 }
