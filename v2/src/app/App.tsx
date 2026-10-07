@@ -59,6 +59,7 @@ import { canRequestOrganizationDeletion } from '../domain/deletion/capability';
 import type { DeletionRequest } from '../domain/deletion/types';
 import { DeletionPanel } from '../ui/deletion/DeletionPanel';
 import { DeletionRequestBanner } from '../ui/deletion/DeletionRequestBanner';
+import { AccountPanel } from '../ui/account/AccountPanel';
 import type { OrganizationRole } from '../domain/organizations/types';
 import { usePwaUpdate } from '../application/pwa/usePwaUpdate';
 import { usePwaReadiness } from '../application/pwa/usePwaReadiness';
@@ -140,6 +141,18 @@ export interface AppProps {
    * uit — zie `domain/migration/capability.ts`'s docstring).
    */
   organizationRole?: OrganizationRole | null;
+  /**
+   * PR 8.3c-2c-i (docs/pr-8.3c-2c-plan.md §2): ingangen voor "organisatie verlaten" en
+   * "account verwijderen". De flow zelf leeft in `AuthGate` (boven deze component), zodat
+   * hij een unmount van `App` overleeft. Ontbreekt → geen `AccountPanel`.
+   */
+  accountActions?: {
+    busy: boolean;
+    onLeaveOrganization: () => void;
+    onDeleteAccount: () => void;
+  };
+  /** PR 8.3c-2c-i: meldt de taalkeuze van `App` aan `AuthGate` (dialoog en sessiebalk). */
+  onLangChange?: (lang: Lang) => void;
 }
 
 type Tab = 'settings' | 'roster' | 'game' | 'history' | 'stats' | 'trends';
@@ -189,8 +202,13 @@ export function App({
   organizationName,
   onGameLockChange,
   organizationRole = null,
+  accountActions,
+  onLangChange,
 }: AppProps) {
   const [lang, setLang] = useState<Lang>(initialLang);
+  useEffect(() => {
+    onLangChange?.(lang);
+  }, [lang, onLangChange]);
   const [tab, setTab] = useState<Tab>('settings');
   const [settings, setSettings] = useState<(Settings & Record<string, unknown>) | null>(null);
   const [roster, setRoster] = useState<Roster | null>(null);
@@ -1648,6 +1666,19 @@ export function App({
                 callerRole={organizationRole}
                 coordinator={repositories.deletionCoordinator}
                 onRequestChange={handleDeletionRequestChange}
+              />
+            ) : null}
+            {/* PR 8.3c-2c-i: verlaten/accountverwijdering — alleen in cloudmodus; elke rol
+             * ziet het paneel, maar een owner krijgt in plaats van een verlaatknop de uitleg
+             * waarom dat niet kan. */}
+            {repositories.mode === 'cloud' && accountActions ? (
+              <AccountPanel
+                lang={lang}
+                organizationName={organizationName || organizationId}
+                role={organizationRole}
+                busy={accountActions.busy}
+                onLeaveOrganization={accountActions.onLeaveOrganization}
+                onDeleteAccount={accountActions.onDeleteAccount}
               />
             ) : null}
           </>

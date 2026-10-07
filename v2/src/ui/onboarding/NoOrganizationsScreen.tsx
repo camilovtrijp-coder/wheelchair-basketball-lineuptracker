@@ -55,6 +55,13 @@ export interface NoOrganizationsScreenProps {
    * de afgeleide state intussen al 'context-switcher' zou zijn.
    */
   onBootstrapInFlightChange: (inFlight: boolean) => void;
+  /**
+   * PR 8.3c-2c-i: opent "account verwijderen" in `AuthGate` (de hervatting "Firestore leeg,
+   * Auth-account aanwezig", 2b-ontwerp §B.4). Ontbreekt → geen sectie.
+   */
+  onDeleteAccount?: () => void;
+  /** Er loopt al een accountflow: de knop staat uit. */
+  accountActionBusy?: boolean;
 }
 
 function t(lang: Lang, key: StringKey): string {
@@ -66,6 +73,8 @@ export function NoOrganizationsScreen({
   reason,
   organizationGateway,
   onBootstrapInFlightChange,
+  onDeleteAccount,
+  accountActionBusy = false,
 }: NoOrganizationsScreenProps) {
   const [orgName, setOrgName] = useState('');
   const [teamName, setTeamName] = useState('');
@@ -108,12 +117,28 @@ export function NoOrganizationsScreen({
 
     let orgId = bootstrapOrgId;
     if (!orgReady) {
+      const resuming = orgId !== null;
       const orgResult = await organizationGateway.createOrganizationWithOwner(
         orgName.trim(),
         orgId ?? undefined,
       );
       if (!orgResult.ok || !orgResult.value) {
         setSubmitting(false);
+        // R6 (docs/pr-8.3c-2c-plan.md §6, threat model §7): de HERVATTING van een half
+        // aangemaakte organisatie wordt door de Rules geweigerd. Binnen de 7 dagen na
+        // `createdAt` gebeurt dat niet (een bestaand membership geeft `ok`, anders slaagt de
+        // bootstrap); daarna, of als de organisatie niet (meer) bestaat of niet van deze
+        // gebruiker is, blijft elke volgende poging hetzelfde weigeren. De maker kan
+        // `createdAt` zelf niet lezen (geen membership → geen leesrecht), dus geldt de
+        // weigering op het hervatpad als permanent: de sleutel gaat weg en de volgende klik
+        // maakt een nieuwe organisatie. Een netwerkfout (`unavailable`) wist niets.
+        if (resuming && orgResult.errorCode === 'permission-denied') {
+          clearBootstrapOrgId(browserStorage);
+          setBootstrapOrgId(null);
+          setError(t(lang, 'onboardingResumeExpired'));
+          onBootstrapInFlightChange(false);
+          return;
+        }
         setError(t(lang, 'authGenericError'));
         // Als de organisatie zelf al bestaat (alleen de membership-write mislukte), onthouden
         // we het orgId zodat een volgende poging — ook na een reload/crash — dat hervat i.p.v.
@@ -181,6 +206,20 @@ export function NoOrganizationsScreen({
             {t(lang, 'onboardingCreateBtn')}
           </button>
         </form>
+        {onDeleteAccount ? (
+          <section className="settings-section" data-testid="no-org-account-section">
+            <p className="settings-explainer">{t(lang, 'accountDeleteNoOrgHint')}</p>
+            <button
+              type="button"
+              className="btn-outline"
+              data-testid="no-org-delete-account-btn"
+              disabled={accountActionBusy}
+              onClick={onDeleteAccount}
+            >
+              {t(lang, 'accountDeleteStartBtn')}
+            </button>
+          </section>
+        ) : null}
       </main>
     </div>
   );

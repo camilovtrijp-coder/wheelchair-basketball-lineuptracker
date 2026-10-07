@@ -44,6 +44,14 @@ import { SessionBar } from '../ui/context/SessionBar';
 import { ActionNeededPanel } from '../ui/sync/ActionNeededPanel';
 import { AcceptInvitationScreen } from '../ui/invitations/AcceptInvitationScreen';
 import { translate } from '../i18n/strings';
+import { getFirebaseAuth } from '../infrastructure/firebase/firebaseClient';
+import { createAccountServices } from '../infrastructure/account/createAccountServices';
+import {
+  AccountActionGate,
+  type AccountActionCoordinators,
+} from '../application/account/AccountActionGate';
+import { useAccountFlow } from '../application/account/useAccountFlow';
+import { AccountFlowDialog } from '../ui/account/AccountFlowDialog';
 import { App } from './App';
 
 function initialLang(): Lang {
@@ -64,6 +72,17 @@ function initialInvitationLink(): InvitationLinkParams | null {
 
 export interface AuthGateProps {
   authGateway: AuthGateway;
+  /**
+   * PR 8.3c-2c-i: bouwt de accountcoördinatoren (verlaten, accountverwijdering). Standaard
+   * `createAccountServices(getFirestoreDb(), getFirebaseAuth())`; tests geven nepversies.
+   * Wordt pas aangeroepen ná de vertrouwd-apparaatvraag (de Firestore-instantie wordt bij
+   * die keuze vervangen) en opnieuw na elke login.
+   */
+  accountServicesFactory?: () => AccountActionCoordinators;
+}
+
+function defaultAccountServices(): AccountActionCoordinators {
+  return createAccountServices(getFirestoreDb(), getFirebaseAuth());
 }
 
 type AuthFormMode = 'login' | 'signup';
@@ -74,7 +93,10 @@ type AuthFormMode = 'login' | 'signup';
  * status omdat login/signup-schermen gerenderd worden vóórdat `App` (met
  * zijn eigen `lang`-status) bestaat.
  */
-export function AuthGate({ authGateway }: AuthGateProps) {
+export function AuthGate({
+  authGateway,
+  accountServicesFactory = defaultAccountServices,
+}: AuthGateProps) {
   const [lang, setLang] = useState<Lang>(initialLang);
   const [online, setOnline] = useState<boolean>(initialOnline);
   const [authLoading, setAuthLoading] = useState(true);
@@ -111,6 +133,9 @@ export function AuthGate({ authGateway }: AuthGateProps) {
   // abonnement de afgeleide state al naar 'context-switcher' laat springen op basis van
   // alleen de (eerdere) membership-write.
   const [bootstrapInFlight, setBootstrapInFlight] = useState(false);
+  // PR 8.3c-2c-i: verhogen start het membership-abonnement opnieuw met verse maps (na een
+  // geslaagd vertrek, want de maps hieronder vergeten een verdwenen membership nooit).
+  const [membershipEpoch, setMembershipEpoch] = useState(0);
   const lastNoOrganizationsReason = useRef<'fresh-signup' | 'lost-all-memberships'>('fresh-signup');
   // Zie de toelichting bij het membership-abonnement hieronder: laat de subscribeMyMemberships/
   // subscribeMyTeamOnlyContexts-effect lezen of er al een context actief gekozen is, zonder dat
@@ -217,7 +242,7 @@ export function AuthGate({ authGateway }: AuthGateProps) {
       unsubscribeMemberships();
       unsubscribeTeamOnly();
     };
-  }, [authUser, trustedDeviceAnswered]);
+  }, [authUser, trustedDeviceAnswered, membershipEpoch]);
 
   // Hervalideert de TEAM-kant van een geselecteerde context (zie deriveAppState's
   // selectedContextTeamValid): puur organisatielidmaatschap miste een ingetrokken,
@@ -386,167 +411,246 @@ export function AuthGate({ authGateway }: AuthGateProps) {
   // toch niet (mode !== 'cloud'), zie hieronder.
   const syncStatus = useSyncStatus(repositories);
 
-  if (authLoading) {
-    return <LoadingScreen lang={lang} />;
+  // PR 8.3c-2c-i (docs/pr-8.3c-2c-plan.md §2): accountdiensten op AuthGate-niveau — zonder
+  // gekozen context en ook op een onvertrouwd apparaat. Eén poort met één slot voor verlaten
+  // én accountverwijdering. De flowstate leeft hier, boven elk scherm dat door het
+  // membership-abonnement of door `authUser = null` kan unmounten.
+  const accountGate = useMemo(() => {
+    if (!authUser || !trustedDeviceAnswered) return null;
+    return new AccountActionGate(accountServicesFactory());
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [authUser, trustedDeviceAnswered]);
+
+  function handleLeftOrganization(organizationId: string) {
+    if (selectedContextRef.current?.orgId === organizationId) {
+      clearSelectedContext(browserStorage);
+      setSelectedContext(null);
+    }
+    setMembershipEpoch((epoch) => epoch + 1);
   }
 
-  if (authUser && trustedDeviceAnswered && pendingInvitationLink && organizationGateway) {
-    return (
-      <AcceptInvitationScreen
-        lang={lang}
-        authUser={authUser}
-        link={pendingInvitationLink}
-        organizationGateway={organizationGateway}
-        onResolved={handleInvitationResolved}
-        onDismiss={handleInvitationDismiss}
-        onResendVerification={() => authGateway.sendVerificationEmail()}
-        onRefreshIdToken={() => authGateway.refreshIdToken()}
-      />
-    );
+  /**
+   * Besluit B7 (docs/pr-8.3c-2b-plan.md §I): na `deleted` ALTIJD `wipeLocalFirebaseData()`
+   * (Firestore-instantie beëindigen en haar IndexedDB-cache met organisatiedata en
+   * e-mailadressen wissen) en NOOIT `clearLocalDeviceData()`, want die wist ook
+   * lokale-modusdata. Daarna Firestore opnieuw initialiseren zoals `handleSignOut()`, zodat
+   * een volgende login in deze sessie werkt, en de contextpointer wissen.
+   */
+  async function handleAccountDeleted() {
+    clearSelectedContext(browserStorage);
+    setSelectedContext(null);
+    await wipeLocalFirebaseData();
+    initFirebase(readTrustedDevice(browserStorage) ?? false);
   }
 
-  const appState = deriveAppState({
-    online,
-    authUser,
-    trustedDeviceAnswered,
-    memberships,
-    selectedContext,
-    selectedContextTeamValid,
-    hasEverHadMemberships: !justSignedUp,
+  const accountFlow = useAccountFlow({
+    gate: accountGate,
+    onLeft: handleLeftOrganization,
+    onAccountDeleted: handleAccountDeleted,
   });
+  const accountFlowBusy = accountFlow.state !== null;
 
-  // Zie de toelichting bij bootstrapInFlight hierboven: het live membership-abonnement mag de
-  // org+team-aanmaakflow niet preemptief afbreken zodra alleen de membership-write lokaal
-  // geëchood is — createTeam() kan op dat moment nog steeds bezig zijn, en zonder deze gate
-  // zou de contextwisselaar een organisatie zonder enig team tonen (ContextSwitcher's
-  // listTeams() is geen live abonnement, dus dat team zou daar nooit meer vanzelf verschijnen).
-  if (bootstrapInFlight && appState.kind !== 'no-organizations') {
+  function organizationNameFor(organizationId: string): string {
     return (
-      <NoOrganizationsScreen
-        lang={lang}
-        reason={lastNoOrganizationsReason.current}
-        organizationGateway={organizationGateway!}
-        onBootstrapInFlightChange={setBootstrapInFlight}
-      />
+      memberships?.find((m) => m.orgId === organizationId)?.orgName ??
+      teamOnlyContexts.find((c) => c.orgId === organizationId)?.orgName ??
+      organizationId
     );
   }
 
-  switch (appState.kind) {
-    case 'not-logged-in': {
-      const invitationBanner = pendingInvitationLink
-        ? translate(lang, 'invitationLoginHint')
-        : undefined;
-      return mode === 'login' ? (
-        <LoginScreen
+  return (
+    <>
+      {renderScreen()}
+      <AccountFlowDialog
+        lang={lang}
+        flow={accountFlow}
+        organizationName={organizationNameFor}
+        onResendVerification={() => authGateway.sendVerificationEmail()}
+      />
+    </>
+  );
+
+  function renderScreen() {
+    if (authLoading) {
+      return <LoadingScreen lang={lang} />;
+    }
+
+    if (authUser && trustedDeviceAnswered && pendingInvitationLink && organizationGateway) {
+      return (
+        <AcceptInvitationScreen
           lang={lang}
-          onSwitchLang={setLang}
-          onSubmit={(email, password) => authGateway.signIn(email, password)}
-          onSwitchToSignup={() => setMode('signup')}
-          banner={invitationBanner}
-        />
-      ) : (
-        <SignupScreen
-          lang={lang}
-          onSwitchLang={setLang}
-          onSubmit={handleSignUp}
-          onSwitchToLogin={() => setMode('login')}
-          banner={invitationBanner}
+          authUser={authUser}
+          link={pendingInvitationLink}
+          organizationGateway={organizationGateway}
+          onResolved={handleInvitationResolved}
+          onDismiss={handleInvitationDismiss}
+          onResendVerification={() => authGateway.sendVerificationEmail()}
+          onRefreshIdToken={() => authGateway.refreshIdToken()}
         />
       );
     }
 
-    case 'trusted-device-prompt':
-      return <TrustedDevicePrompt lang={lang} onAnswer={handleTrustedDeviceAnswer} />;
+    const appState = deriveAppState({
+      online,
+      authUser,
+      trustedDeviceAnswered,
+      memberships,
+      selectedContext,
+      selectedContextTeamValid,
+      hasEverHadMemberships: !justSignedUp,
+    });
 
-    case 'loading':
-      return <LoadingScreen lang={lang} />;
-
-    case 'uncached-offline':
-      return <OfflineUncachedScreen lang={lang} />;
-
-    case 'no-organizations':
-      lastNoOrganizationsReason.current = appState.reason;
+    // Zie de toelichting bij bootstrapInFlight hierboven: het live membership-abonnement mag de
+    // org+team-aanmaakflow niet preemptief afbreken zodra alleen de membership-write lokaal
+    // geëchood is — createTeam() kan op dat moment nog steeds bezig zijn, en zonder deze gate
+    // zou de contextwisselaar een organisatie zonder enig team tonen (ContextSwitcher's
+    // listTeams() is geen live abonnement, dus dat team zou daar nooit meer vanzelf verschijnen).
+    if (bootstrapInFlight && appState.kind !== 'no-organizations') {
       return (
         <NoOrganizationsScreen
           lang={lang}
-          reason={appState.reason}
+          reason={lastNoOrganizationsReason.current}
           organizationGateway={organizationGateway!}
           onBootstrapInFlightChange={setBootstrapInFlight}
+          onDeleteAccount={accountGate ? accountFlow.openDelete : undefined}
+          accountActionBusy={accountFlowBusy}
         />
       );
+    }
 
-    case 'context-switcher':
-      return (
-        <ContextSwitcher
-          lang={lang}
-          memberships={memberships!}
-          teamOnlyContexts={teamOnlyContexts}
-          organizationGateway={organizationGateway!}
-          onSelect={handleSelectContext}
-        />
-      );
-
-    case 'selected-context-revoked':
-      return <ContextRevokedScreen lang={lang} onBackToSwitcher={handleBackToSwitcher} />;
-
-    case 'active':
-      return (
-        <>
-          <SessionBar
+    switch (appState.kind) {
+      case 'not-logged-in': {
+        const invitationBanner = pendingInvitationLink
+          ? translate(lang, 'invitationLoginHint')
+          : undefined;
+        return mode === 'login' ? (
+          <LoginScreen
             lang={lang}
-            onSignOut={handleSignOut}
-            onSwitchContext={handleBackToSwitcher}
-            syncStatus={repositories.mode === 'cloud' ? syncStatus.status : undefined}
-            syncFromCache={repositories.mode === 'cloud' ? syncStatus.fromCache : undefined}
-            email={authUser?.email}
-            trustedDevice={readTrustedDevice(browserStorage) ?? false}
-            onChangeTrustedDevice={handleChangeTrustedDevice}
+            onSwitchLang={setLang}
+            onSubmit={(email, password) => authGateway.signIn(email, password)}
+            onSwitchToSignup={() => setMode('signup')}
+            banner={invitationBanner}
           />
-          {switchBlockedNotice ? (
-            <p className="settings-error" role="alert" data-testid="context-switch-locked-notice">
-              {translate(lang, 'contextSwitchLockedWhileTracking')}{' '}
-              <button
-                type="button"
-                data-testid="context-switch-locked-dismiss"
-                onClick={() => setSwitchBlockedNotice(false)}
-              >
-                {translate(lang, 'contextSwitchLockedDismiss')}
-              </button>
-            </p>
-          ) : null}
-          {repositories.mode === 'cloud' && syncStatus.pending.length > 0 ? (
-            <ActionNeededPanel
+        ) : (
+          <SignupScreen
+            lang={lang}
+            onSwitchLang={setLang}
+            onSubmit={handleSignUp}
+            onSwitchToLogin={() => setMode('login')}
+            banner={invitationBanner}
+          />
+        );
+      }
+
+      case 'trusted-device-prompt':
+        return <TrustedDevicePrompt lang={lang} onAnswer={handleTrustedDeviceAnswer} />;
+
+      case 'loading':
+        return <LoadingScreen lang={lang} />;
+
+      case 'uncached-offline':
+        return <OfflineUncachedScreen lang={lang} />;
+
+      case 'no-organizations':
+        lastNoOrganizationsReason.current = appState.reason;
+        return (
+          <NoOrganizationsScreen
+            lang={lang}
+            reason={appState.reason}
+            organizationGateway={organizationGateway!}
+            onBootstrapInFlightChange={setBootstrapInFlight}
+            onDeleteAccount={accountGate ? accountFlow.openDelete : undefined}
+            accountActionBusy={accountFlowBusy}
+          />
+        );
+
+      case 'context-switcher':
+        return (
+          <ContextSwitcher
+            lang={lang}
+            memberships={memberships!}
+            teamOnlyContexts={teamOnlyContexts}
+            organizationGateway={organizationGateway!}
+            onSelect={handleSelectContext}
+          />
+        );
+
+      case 'selected-context-revoked':
+        return <ContextRevokedScreen lang={lang} onBackToSwitcher={handleBackToSwitcher} />;
+
+      case 'active':
+        return (
+          <>
+            <SessionBar
               lang={lang}
-              pending={syncStatus.pending}
-              onRetry={syncStatus.retry}
-              onDismiss={syncStatus.dismiss}
-              onExport={(kind) => {
-                const item = syncStatus.pending.find((p) => p.kind === kind);
-                if (item) downloadPendingPayload(item);
-              }}
+              onSignOut={handleSignOut}
+              onSwitchContext={handleBackToSwitcher}
+              syncStatus={repositories.mode === 'cloud' ? syncStatus.status : undefined}
+              syncFromCache={repositories.mode === 'cloud' ? syncStatus.fromCache : undefined}
+              email={authUser?.email}
+              trustedDevice={readTrustedDevice(browserStorage) ?? false}
+              onChangeTrustedDevice={handleChangeTrustedDevice}
             />
-          ) : null}
-          <App
-            repositories={repositories}
-            syncStatus={syncStatus}
-            canWrite={selectedContextCanWrite ?? false}
-            canWriteGame={selectedContextCanWriteGame ?? false}
-            organizationId={selectedContext?.orgId ?? ''}
-            teamId={selectedContext?.teamId ?? ''}
-            organizationName={
-              memberships?.find((m) => m.orgId === selectedContext?.orgId)?.orgName ??
-              selectedContext?.orgId ??
-              ''
-            }
-            onGameLockChange={setGameLocked}
-            // PR 7.4c: dezelfde membership-lookup als organizationName
-            // hierboven, geen extra Firestore-read — bepaalt of
-            // `MigrationPanel` (bulkmigratie) getoond wordt.
-            organizationRole={
-              memberships?.find((m) => m.orgId === selectedContext?.orgId)?.role ?? null
-            }
-          />
-        </>
-      );
+            {switchBlockedNotice ? (
+              <p className="settings-error" role="alert" data-testid="context-switch-locked-notice">
+                {translate(lang, 'contextSwitchLockedWhileTracking')}{' '}
+                <button
+                  type="button"
+                  data-testid="context-switch-locked-dismiss"
+                  onClick={() => setSwitchBlockedNotice(false)}
+                >
+                  {translate(lang, 'contextSwitchLockedDismiss')}
+                </button>
+              </p>
+            ) : null}
+            {repositories.mode === 'cloud' && syncStatus.pending.length > 0 ? (
+              <ActionNeededPanel
+                lang={lang}
+                pending={syncStatus.pending}
+                onRetry={syncStatus.retry}
+                onDismiss={syncStatus.dismiss}
+                onExport={(kind) => {
+                  const item = syncStatus.pending.find((p) => p.kind === kind);
+                  if (item) downloadPendingPayload(item);
+                }}
+              />
+            ) : null}
+            <App
+              repositories={repositories}
+              syncStatus={syncStatus}
+              canWrite={selectedContextCanWrite ?? false}
+              canWriteGame={selectedContextCanWriteGame ?? false}
+              organizationId={selectedContext?.orgId ?? ''}
+              teamId={selectedContext?.teamId ?? ''}
+              organizationName={
+                memberships?.find((m) => m.orgId === selectedContext?.orgId)?.orgName ??
+                selectedContext?.orgId ??
+                ''
+              }
+              onGameLockChange={setGameLocked}
+              // PR 7.4c: dezelfde membership-lookup als organizationName
+              // hierboven, geen extra Firestore-read — bepaalt of
+              // `MigrationPanel` (bulkmigratie) getoond wordt.
+              organizationRole={
+                memberships?.find((m) => m.orgId === selectedContext?.orgId)?.role ?? null
+              }
+              accountActions={
+                accountGate && selectedContext
+                  ? {
+                      busy: accountFlowBusy,
+                      onLeaveOrganization: () =>
+                        accountFlow.openLeave(
+                          selectedContext.orgId,
+                          organizationNameFor(selectedContext.orgId),
+                        ),
+                      onDeleteAccount: accountFlow.openDelete,
+                    }
+                  : undefined
+              }
+              onLangChange={setLang}
+            />
+          </>
+        );
+    }
   }
 }
