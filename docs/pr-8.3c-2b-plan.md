@@ -672,7 +672,12 @@ in 2b-ii per organisatie hergebruikt.
 - `auth/network-request-failed` en `other` op `deleteUser` zijn dubbelzinnig (het verzoek
   kan zijn uitgevoerd). Alleen als een verse tokenverversing daarna bewijst dat hetzelfde
   account nog bestaat, is de uitkomst `firestore-cleared-auth-present`; anders
-  `auth-state-unknown`. Een eigen timeout op `deleteUser` is altijd `unknown-state`.
+  `auth-state-unknown`. Een eigen timeout op `deleteUser` was eerst altijd `unknown-state`;
+  sinds Opruim-PR 2 (reviewnit 2 van #107) meldt de gateway `timeout` en volgt dezelfde
+  bestaanscontrole (uitkomst `firestore-cleared-auth-present` met reden `network`, anders
+  `auth-state-unknown`). Restvenster: het verzoek kan ná de controle nog landen; de
+  volgende poging meldt dan `auth-state-unknown`. Nooit `deleted` zonder bevestiging.
+  `unknown-state` blijft voor een ongeldige sessie tijdens `deleteUser`.
 - `assess()` geeft `ready-to-clear`/`needs-action` (met plan) of, bij een lege inventaris,
   `ready-for-auth-deletion` (de afleidbare toestand uit §B.4). `incomplete` draagt
   `remaining` alleen bij `final-gate`, en `organizationId`/`error` waar bekend; de stages
@@ -788,9 +793,16 @@ in 2b-ii per organisatie hergebruikt.
   string-`email` wordt overgeslagen en geteld (`skippedMalformed`, in de coördinator
   `skippedMalformedInvitations`): het is aan geen adres toe te wijzen en de Rules laten het
   door niemand accepteren of claimen (die vergelijken `email` met de token-e-mail). Een
-  document dat op het doeladres matcht maar een onbekende `status` heeft, blijft fail
+  document dat op het doeladres matcht maar een onbekende `status` heeft, bleef hier fail
   closed (`read-failed`, geen write); misvormde andere velden (bijv. `role`) blokkeren niet
-  meer.
+  meer. **Bijgesteld in Opruim-PR 2 (reviewnit 1 van #110):** zo'n document wordt nu óók
+  overgeslagen en geteld als `skippedMalformed`. Getoetst aan `firestore.rules`: accepteren
+  eist `pending`, claimen en de membership-join eisen `accepted`, intrekken eist
+  `pending`/`accepted`; een onbekende status geeft dus niemand toegang en is ook niet in te
+  trekken, terwijl fail closed de overdracht tot de opruimtermijn (30 dagen) blokkeerde.
+  Fail closed blijft bij een bekende open status die niet in te trekken blijkt (`rejected`)
+  en bij een onleesbare status in de readback na een eigen write. De melding
+  `transferCompleteSkippedMalformed` (NL/EN) noemt nu beide gevallen.
 - **Emulatordump.** `dumpAll()` vergelijkt nu alle families die de spec seedt
   (organisatiedocumenten, leden, uitnodigingen, teams, teamMembers); het commentaar zegt dat
   andere families buiten de vergelijking vallen.

@@ -84,6 +84,33 @@ describe('readVerifiedEmailClaim', () => {
   });
 
   it.each([
+    ['uitgelogd', null],
+    ['als een ander account ingelogd', 'uid-fictief-ander'],
+  ])(
+    'sessie wisselt TIJDENS de tokenverversing (%s) → not-signed-in, geen uid/claims van een ander account',
+    async (_label, nextUid) => {
+      getIdTokenResult.mockImplementation(async () => {
+        auth.currentUser = nextUid === null ? null : user({ uid: nextUid });
+        return { claims: { email: MY_EMAIL, email_verified: true } };
+      });
+      expect(await gateway.readVerifiedEmailClaim()).toEqual({ ok: false, code: 'not-signed-in' });
+    },
+  );
+
+  it('zelfde account opnieuw ingelogd tijdens de verversing (ander User-object) → gewoon ok', async () => {
+    getIdTokenResult.mockImplementation(async () => {
+      auth.currentUser = user();
+      return { claims: { email: MY_EMAIL, email_verified: true } };
+    });
+    expect(await gateway.readVerifiedEmailClaim()).toEqual({
+      ok: true,
+      uid: ME,
+      email: MY_EMAIL,
+      verified: true,
+    });
+  });
+
+  it.each([
     ['auth/network-request-failed', 'network'],
     ['auth/user-token-expired', 'session-invalid'],
     ['auth/user-not-found', 'session-invalid'],
@@ -196,11 +223,11 @@ describe('deleteCurrentUser', () => {
     expect(await gateway.deleteCurrentUser(GUARD)).toEqual({ ok: false, code: expected });
   });
 
-  it('geen antwoord binnen de timeout → unknown-state (het verzoek kan wel zijn uitgevoerd)', async () => {
+  it('geen antwoord binnen de timeout → timeout (het verzoek kan wel zijn uitgevoerd; de coördinator controleert)', async () => {
     vi.useFakeTimers();
     (deleteUser as Mock).mockReturnValue(new Promise(() => {}));
     const pending = gateway.deleteCurrentUser(GUARD);
     await vi.advanceTimersByTimeAsync(ACCOUNT_AUTH_TIMEOUT_MS);
-    expect(await pending).toEqual({ ok: false, code: 'unknown-state' });
+    expect(await pending).toEqual({ ok: false, code: 'timeout' });
   });
 });

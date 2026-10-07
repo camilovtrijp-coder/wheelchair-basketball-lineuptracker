@@ -82,7 +82,10 @@ export type CompleteTransferOutcome =
   | {
       status: 'ok';
       revokedInvitations: number;
-      /** Uitnodigingen zonder leesbaar `email`-veld die bij het intrekken zijn overgeslagen. */
+      /**
+       * Uitnodigingen zonder leesbaar `email`-veld, of op A's adres met een onbekende status,
+       * die bij het intrekken zijn overgeslagen (Rules: door niemand te accepteren of claimen).
+       */
       skippedMalformedInvitations: number;
       removedTeamMemberships: number;
       organizationMember: 'deleted' | 'already-gone';
