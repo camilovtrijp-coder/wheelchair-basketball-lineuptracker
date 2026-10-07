@@ -139,35 +139,50 @@ function setupMocks() {
     server.delete(ref.path);
   });
   // Transactie: reads van de "server", writes gebufferd en pas bij de commit — atomair.
+  // Zoals de client-SDK: elk in de transactie gelezen document moet bij de commit nog
+  // dezelfde versie hebben; anders herhaalt de transactie zich (max. 5 pogingen).
   (runTransaction as Mock).mockImplementation(
     async (_db: unknown, update: (tx: unknown) => Promise<unknown>) => {
-      const writes: (['update', string, Record<string, unknown>] | ['delete', string])[] = [];
-      const transaction = {
-        get: async (ref: FakeRef) => {
-          if (denyRead.has(ref.path)) throw firestoreError('permission-denied');
-          return fakeSnap(ref.path);
-        },
-        update: (ref: FakeRef, patch: Record<string, unknown>) => {
-          writes.push(['update', ref.path, patch]);
-        },
-        delete: (ref: FakeRef) => {
-          writes.push(['delete', ref.path]);
-        },
-      };
-      const result = await update(transaction);
-      for (const write of writes) beforeWrite(write[1]);
-      for (const write of writes) checkWrite(write[1]);
-      for (const write of writes) {
-        if (write[0] === 'update') applyPatch(write[1], write[2]);
-        else server.delete(write[1]);
+      for (let attempt = 0; attempt < 5; attempt += 1) {
+        const writes: (['update', string, Record<string, unknown>] | ['delete', string])[] = [];
+        const readVersions = new Map<string, string>();
+        const version = (path: string) => JSON.stringify(server.get(path) ?? null);
+        const transaction = {
+          get: async (ref: FakeRef) => {
+            transactionReads.push(ref.path);
+            if (denyRead.has(ref.path)) throw firestoreError('permission-denied');
+            readVersions.set(ref.path, version(ref.path));
+            return fakeSnap(ref.path);
+          },
+          update: (ref: FakeRef, patch: Record<string, unknown>) => {
+            writes.push(['update', ref.path, patch]);
+          },
+          delete: (ref: FakeRef) => {
+            writes.push(['delete', ref.path]);
+          },
+        };
+        const result = await update(transaction);
+        beforeCommit();
+        if ([...readVersions].some(([path, read]) => version(path) !== read)) continue;
+        for (const write of writes) beforeWrite(write[1]);
+        for (const write of writes) checkWrite(write[1]);
+        for (const write of writes) {
+          if (write[0] === 'update') applyPatch(write[1], write[2]);
+          else server.delete(write[1]);
+        }
+        transactionWrites.push(...writes);
+        return result;
       }
-      transactionWrites.push(...writes);
-      return result;
+      throw firestoreError('aborted');
     },
   );
 }
 
 const transactionWrites: unknown[] = [];
+/** Elk pad dat een transactie (in elke poging) las, in volgorde. */
+const transactionReads: string[] = [];
+/** Wordt in elke transactiepoging vlak vóór de commit aangeroepen (gelijktijdige commit). */
+let beforeCommit: () => void = () => {};
 
 function signIn(uid: string | null = ME) {
   (getAuth as Mock).mockReturnValue({ currentUser: uid === null ? null : { uid } });
@@ -185,7 +200,9 @@ function seed() {
   denyWrite.clear();
   denyRead.clear();
   transactionWrites.length = 0;
+  transactionReads.length = 0;
   beforeWrite = () => {};
+  beforeCommit = () => {};
   const member = (orgId: string, uid: string, role: string, email: string) =>
     server.set(memberPath(orgId, uid), { role, email, uid });
   member(ORG, ME, 'organizationOwner', 'nieuwe-owner@example.test');
@@ -460,12 +477,93 @@ describe('promoteToOwner', () => {
   });
 });
 
+describe('promoteToOwner — eigen membership in de transactie (reviewbevinding A op #108)', () => {
+  it('leest in de transactie EERST het eigen membership van de aanroeper, dan het doel', async () => {
+    await gateway.promoteToOwner(ORG, COACH, 'coach');
+    expect(transactionReads).toEqual([memberPath(ORG, ME), memberPath(ORG, COACH)]);
+  });
+
+  it('aanroeper is (volgens de transactie) geen owner meer → rejected, GEEN write', async () => {
+    server.set(memberPath(ORG, ME), {
+      role: 'organizationAdmin',
+      email: 'nieuwe-owner@example.test',
+      uid: ME,
+    });
+    expect(await gateway.promoteToOwner(ORG, COACH, 'coach')).toEqual({
+      ok: false,
+      error: { code: 'rejected' },
+    });
+    expect(transactionWrites).toEqual([]);
+    expect(server.get(memberPath(ORG, COACH))?.role).toBe('coach');
+  });
+
+  it('eigen membership verdwijnt vlak vóór de commit → herhaling ziet het niet → rejected, geen write', async () => {
+    beforeCommit = () => {
+      if (!server.has(memberPath(ORG, ME))) return;
+      // Een andere owner verwijdert ons; daarna weigeren Rules ons elke read in org A.
+      server.delete(memberPath(ORG, ME));
+      for (const uid of [ME, A, COACH]) denyRead.add(memberPath(ORG, uid));
+    };
+    expect(await gateway.promoteToOwner(ORG, COACH, 'coach')).toEqual({
+      ok: false,
+      error: { code: 'rejected' },
+    });
+    expect(transactionWrites).toEqual([]);
+    expect(server.get(memberPath(ORG, COACH))?.role).toBe('coach');
+  });
+
+  it('eigen membership met afwijkend uid-veld → failed (fail closed), geen write', async () => {
+    server.set(memberPath(ORG, ME), { role: 'organizationOwner', email: 'x@example.test', uid: A });
+    expect(await gateway.promoteToOwner(ORG, COACH, 'coach')).toMatchObject({
+      ok: false,
+      error: { code: 'failed' },
+    });
+    expect(transactionWrites).toEqual([]);
+  });
+});
+
+describe('promoteToOwner — readback na een timeout', () => {
+  it('transactie loopt uit maar het doel is daarna owner → ok/promoted (één readback)', async () => {
+    const result = await expectTimeout(runTransaction as Mock, () => {
+      const pending = gateway.promoteToOwner(ORG, COACH, 'coach');
+      // De commit landt alsnog, na het verstrijken van de timeout maar vóór de readback.
+      server.set(memberPath(ORG, COACH), {
+        role: 'organizationOwner',
+        email: 'coach@example.test',
+        uid: COACH,
+      });
+      return pending;
+    });
+    expect(result).toEqual({ ok: true, outcome: 'promoted' });
+    expect((getDocFromServer as Mock).mock.calls.map((c) => (c[0] as FakeRef).path)).toEqual([
+      memberPath(ORG, COACH),
+    ]);
+  });
+
+  it('doel ongewijzigd → timeout; readback zelf mislukt → timeout', async () => {
+    expect(
+      await expectTimeout(runTransaction as Mock, () =>
+        gateway.promoteToOwner(ORG, COACH, 'coach'),
+      ),
+    ).toEqual({ ok: false, error: { code: 'timeout' } });
+    expect(getDocFromServer).toHaveBeenCalledTimes(1);
+    vi.useRealTimers();
+    (getDocFromServer as Mock).mockRejectedValueOnce(firestoreError('unavailable'));
+    expect(
+      await expectTimeout(runTransaction as Mock, () =>
+        gateway.promoteToOwner(ORG, COACH, 'coach'),
+      ),
+    ).toEqual({ ok: false, error: { code: 'timeout' } });
+  });
+});
+
 describe('revokeOpenInvitationsForEmail', () => {
   it('trekt ALLEEN open uitnodigingen op dat adres (elke spelling) in deze organisatie in', async () => {
     expect(await gateway.revokeOpenInvitationsForEmail(ORG, A_EMAIL)).toEqual({
       ok: true,
       revoked: 2,
       alreadyClosed: 0,
+      skippedMalformed: 0,
     });
     expect(writtenPaths()).toEqual([
       `update:${invitationPath(ORG, 'inv-pending')}`,
@@ -497,6 +595,7 @@ describe('revokeOpenInvitationsForEmail', () => {
       ok: true,
       revoked: 0,
       alreadyClosed: 0,
+      skippedMalformed: 0,
     });
     expect(updateDoc).not.toHaveBeenCalled();
   });
@@ -512,6 +611,7 @@ describe('revokeOpenInvitationsForEmail', () => {
       ok: true,
       revoked: 1,
       alreadyClosed: 1,
+      skippedMalformed: 0,
     });
   });
 
@@ -572,13 +672,65 @@ describe('revokeOpenInvitationsForEmail', () => {
     });
   });
 
-  it('een ongeldige uitnodiging in de organisatie blokkeert (fail closed, geen write)', async () => {
-    throwOn.add(invitationPath(ORG, 'inv-ander'));
+  it('misvormde uitnodiging van een ánder adres (ongeldige rol/status) blokkeert niet', async () => {
+    server.set(invitationPath(ORG, 'inv-ander'), {
+      email: 'coach@example.test',
+      status: 'onbekend',
+      role: 42,
+    });
+    expect(await gateway.revokeOpenInvitationsForEmail(ORG, A_EMAIL)).toEqual({
+      ok: true,
+      revoked: 2,
+      alreadyClosed: 0,
+      skippedMalformed: 0,
+    });
+    expect(server.get(invitationPath(ORG, 'inv-ander'))?.status).toBe('onbekend');
+  });
+
+  it('uitnodiging zonder leesbaar email-veld → overgeslagen en apart geteld, nooit beschreven', async () => {
+    server.set(invitationPath(ORG, 'inv-zonder-adres'), { status: 'pending', role: 'coach' });
+    server.set(invitationPath(ORG, 'inv-adres-getal'), { email: 7, status: 'accepted' });
+    expect(await gateway.revokeOpenInvitationsForEmail(ORG, A_EMAIL)).toEqual({
+      ok: true,
+      revoked: 2,
+      alreadyClosed: 0,
+      skippedMalformed: 2,
+    });
+    expect(writtenPaths()).toEqual([
+      `update:${invitationPath(ORG, 'inv-pending')}`,
+      `update:${invitationPath(ORG, 'inv-accepted')}`,
+    ]);
+    expect(server.get(invitationPath(ORG, 'inv-zonder-adres'))?.status).toBe('pending');
+    // De footprint telt ze niet als open uitnodiging van A.
+    expect(await gateway.readMemberFootprint(ORG, A, A_EMAIL)).toMatchObject({
+      ok: true,
+      footprint: { openInvitations: 0 },
+    });
+  });
+
+  it('uitnodiging OP het doeladres met onleesbare status → failed (fail closed), geen write', async () => {
+    server.set(invitationPath(ORG, 'inv-a-kapot'), { email: A_EMAIL, status: 'open?' });
     expect(await gateway.revokeOpenInvitationsForEmail(ORG, A_EMAIL)).toMatchObject({
       ok: false,
       error: { code: 'failed' },
+      revoked: 0,
     });
     expect(updateDoc).not.toHaveBeenCalled();
+    expect(await gateway.readMemberFootprint(ORG, A, A_EMAIL)).toMatchObject({
+      ok: false,
+      error: { code: 'read-failed' },
+    });
+  });
+
+  it('readback na intrekken met onleesbare status → failed', async () => {
+    (updateDoc as Mock).mockImplementationOnce(async (ref: FakeRef) => {
+      server.set(ref.path, { ...server.get(ref.path), status: 'kapot' });
+    });
+    expect(await gateway.revokeOpenInvitationsForEmail(ORG, A_EMAIL)).toMatchObject({
+      ok: false,
+      error: { code: 'failed' },
+      revoked: 0,
+    });
   });
 
   it('niet ingelogd → not-signed-in zonder read', async () => {
@@ -760,6 +912,83 @@ describe('removeOrganizationMember', () => {
   });
 });
 
+describe('removeOrganizationMember — eigen membership in de transactie (reviewbevinding A op #108)', () => {
+  it('leest in de transactie EERST het eigen membership van de aanroeper, dan het doel', async () => {
+    await gateway.removeOrganizationMember(ORG, A, 'organizationOwner');
+    expect(transactionReads).toEqual([memberPath(ORG, ME), memberPath(ORG, A)]);
+  });
+
+  it('aanroeper is (volgens de transactie) geen owner meer → rejected, GEEN delete', async () => {
+    server.set(memberPath(ORG, ME), {
+      role: 'organizationAdmin',
+      email: 'nieuwe-owner@example.test',
+      uid: ME,
+    });
+    expect(await gateway.removeOrganizationMember(ORG, A, 'organizationOwner')).toEqual({
+      ok: false,
+      error: { code: 'rejected' },
+    });
+    expect(transactionWrites).toEqual([]);
+    expect(server.has(memberPath(ORG, A))).toBe(true);
+  });
+
+  it('twee owners verwijderen elkaar tegelijk: A wint vlak vóór onze commit → herhaling → rejected, A blijft owner', async () => {
+    beforeCommit = () => {
+      if (!server.has(memberPath(ORG, ME))) return;
+      // De gelijktijdige transactie van A verwijdert ons membership en commit eerst.
+      server.delete(memberPath(ORG, ME));
+      for (const uid of [ME, A, COACH]) denyRead.add(memberPath(ORG, uid));
+    };
+    expect(await gateway.removeOrganizationMember(ORG, A, 'organizationOwner')).toEqual({
+      ok: false,
+      error: { code: 'rejected' },
+    });
+    expect(transactionWrites).toEqual([]);
+    expect(server.get(memberPath(ORG, A))?.role).toBe('organizationOwner');
+    // De tweede poging las opnieuw het eigen membership (geweigerd) en schreef niets.
+    expect(transactionReads.filter((path) => path === memberPath(ORG, ME))).toHaveLength(2);
+  });
+
+  it('eigen membership geweigerd, doel nog leesbaar en aanwezig → rejected', async () => {
+    denyRead.add(memberPath(ORG, ME));
+    expect(await gateway.removeOrganizationMember(ORG, A, 'organizationOwner')).toEqual({
+      ok: false,
+      error: { code: 'rejected' },
+    });
+    expect(transactionWrites).toEqual([]);
+  });
+});
+
+describe('removeOrganizationMember — readback na een timeout', () => {
+  it('transactie loopt uit maar het doel is daarna weg → ok/deleted (één readback)', async () => {
+    const result = await expectTimeout(runTransaction as Mock, () => {
+      const pending = gateway.removeOrganizationMember(ORG, A, 'organizationOwner');
+      server.delete(memberPath(ORG, A));
+      return pending;
+    });
+    expect(result).toEqual({ ok: true, outcome: 'deleted' });
+    expect((getDocFromServer as Mock).mock.calls.map((c) => (c[0] as FakeRef).path)).toEqual([
+      memberPath(ORG, A),
+    ]);
+  });
+
+  it('doel staat er nog → timeout; readback offline → timeout', async () => {
+    expect(
+      await expectTimeout(runTransaction as Mock, () =>
+        gateway.removeOrganizationMember(ORG, A, 'organizationOwner'),
+      ),
+    ).toEqual({ ok: false, error: { code: 'timeout' } });
+    vi.useRealTimers();
+    (getDocFromServer as Mock).mockRejectedValueOnce(firestoreError('unavailable'));
+    expect(
+      await expectTimeout(runTransaction as Mock, () =>
+        gateway.removeOrganizationMember(ORG, A, 'organizationOwner'),
+      ),
+    ).toEqual({ ok: false, error: { code: 'timeout' } });
+    expect(server.has(memberPath(ORG, A))).toBe(true);
+  });
+});
+
 describe('readMemberFootprint', () => {
   it('telt membership, teamMembers en open uitnodigingen van de server, alleen in deze organisatie', async () => {
     expect(await gateway.readMemberFootprint(ORG, A, A_EMAIL)).toEqual({
@@ -807,6 +1036,7 @@ describe('end-to-end met de coördinator op de gemockte SDK', () => {
     expect(await ownershipTransferCoordinator.completeTransfer(ORG, A)).toEqual({
       status: 'ok',
       revokedInvitations: 2,
+      skippedMalformedInvitations: 0,
       removedTeamMemberships: 2,
       organizationMember: 'deleted',
     });

@@ -322,6 +322,7 @@ describe('overdracht in twee stappen (echte Rules, echte Auth-tokens)', () => {
     expect(await candidateB.coordinator.completeTransfer(ORG_A, ownerA.uid)).toEqual({
       status: 'ok',
       revokedInvitations: 2,
+      skippedMalformedInvitations: 0,
       removedTeamMemberships: 2,
       organizationMember: 'deleted',
     });
@@ -384,7 +385,7 @@ describe('overdracht in twee stappen (echte Rules, echte Auth-tokens)', () => {
       });
     });
     const revoked = await candidateB.gateway.revokeOpenInvitationsForEmail(ORG_A, EMAILS.ownerA);
-    expect(revoked).toEqual({ ok: true, revoked: 1, alreadyClosed: 0 });
+    expect(revoked).toEqual({ ok: true, revoked: 1, alreadyClosed: 0, skippedMalformed: 0 });
     const batch = writeBatch(ownerA.db);
     batch.update(organizationInvitationRef(ownerA.db, ORG_A, 'inv-a-accepted-exact'), {
       status: 'claimed',
@@ -612,6 +613,7 @@ describe('revokeOpenInvitationsForEmail (herbruikbaar, R1)', () => {
       ok: true,
       revoked: 1,
       alreadyClosed: 0,
+      skippedMalformed: 0,
     });
     const after = await dumpAll();
     const changed = Object.keys(before).filter(
@@ -622,6 +624,7 @@ describe('revokeOpenInvitationsForEmail (herbruikbaar, R1)', () => {
       ok: true,
       revoked: 0,
       alreadyClosed: 0,
+      skippedMalformed: 0,
     });
   });
 
@@ -632,6 +635,7 @@ describe('revokeOpenInvitationsForEmail (herbruikbaar, R1)', () => {
       ok: true,
       revoked: 1,
       alreadyClosed: 0,
+      skippedMalformed: 0,
     });
     expect(
       await candidateB.gateway.revokeOpenInvitationsForEmail(ORG_A, EMAILS.ownerA),
