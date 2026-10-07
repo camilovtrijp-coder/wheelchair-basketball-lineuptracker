@@ -839,9 +839,17 @@ describe('gelijktijdige overdracht: twee owners verwijderen elkaar (reviewbevind
       }
     }
     expect(tally).toEqual(Array.from({ length: ITERATIONS }, () => '1 ok, 1 owner(s)'));
-    // Alleen bestaande uitkomsten: de verliezer stuit op Rules of op zijn verloren ownerrol.
+    // De verliezer stuit op Rules of op zijn verloren ownerrol: `rejected`, `incomplete` of
+    // `denied`, nooit `failed` (Opruim-PR 2, reviewnit 2 van #110). Gemeten in 12 runs van
+    // deze test (120 races): 120× `incomplete` — 112× bij `pre-removal-check` (de
+    // footprint-read van de verliezer wordt geweigerd zodra hij geen lid meer is) en 8× bij
+    // `team-members`. `failed/read-failed` is alleen denkbaar als de verliezer na zijn
+    // geslaagde owner-check stilvalt tot de winnaar de héle overdracht heeft afgerond; dan
+    // weigeren de Rules zijn ledenlijst. Met gelijk gestarte aanroepen treedt dat hier niet
+    // op; wordt deze test daardoor ooit rood, dan is dat dat venster, geen verlies van de
+    // laatste owner (dat bewaakt de tally hierboven).
     for (const status of loserStatuses) {
-      expect(['rejected', 'incomplete', 'denied', 'failed']).toContain(status);
+      expect(['rejected', 'incomplete', 'denied']).toContain(status);
     }
   });
 });
