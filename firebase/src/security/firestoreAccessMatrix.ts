@@ -62,6 +62,10 @@ export const FIRESTORE_CLIENT_GATEWAY_FILES = [
   "../v2/src/infrastructure/deletion/FirestoreDeletionRequestGateway.ts",
   "../v2/src/infrastructure/account/FirestoreAccountGateway.ts",
   "../v2/src/infrastructure/account/accountQueries.ts",
+  // 8.3c-2b-iii: `FirestoreOwnershipTransferGateway.ts` bouwt zelf geen pad; elk pad en
+  // elke patch (promoveren, intrekken, andermans teamMembers/membership verwijderen,
+  // listings van organizationMembers/invitations/teams) komt uit dit bestand.
+  "../v2/src/infrastructure/account/ownershipTransferPaths.ts",
 ] as const;
 
 const orgRoles: MatrixActor[] = [
@@ -160,12 +164,14 @@ export const FIRESTORE_ACCESS_MATRIX: readonly FirestoreAccessMatrixEntry[] = [
       "tests/rules/leave-organization.spec.ts",
       "tests/rules/claim-and-bootstrap-terms.spec.ts",
       "tests/rules/account-gateway-queries.spec.ts",
+      "tests/rules/ownership-transfer-gateway.spec.ts",
     ],
     clientSources: [
       FIRESTORE_CLIENT_GATEWAY_FILES[0],
       FIRESTORE_CLIENT_GATEWAY_FILES[8],
       FIRESTORE_CLIENT_GATEWAY_FILES[10],
       FIRESTORE_CLIENT_GATEWAY_FILES[11],
+      FIRESTORE_CLIENT_GATEWAY_FILES[12],
     ],
     converterSources: ["organizationMemberConverter"],
   },
@@ -193,12 +199,14 @@ export const FIRESTORE_ACCESS_MATRIX: readonly FirestoreAccessMatrixEntry[] = [
       "tests/rules/invitation-retention.spec.ts",
       "tests/rules/claim-and-bootstrap-terms.spec.ts",
       "tests/rules/account-gateway-queries.spec.ts",
+      "tests/rules/ownership-transfer-gateway.spec.ts",
     ],
     clientSources: [
       FIRESTORE_CLIENT_GATEWAY_FILES[0],
       FIRESTORE_CLIENT_GATEWAY_FILES[8],
       FIRESTORE_CLIENT_GATEWAY_FILES[10],
       FIRESTORE_CLIENT_GATEWAY_FILES[11],
+      FIRESTORE_CLIENT_GATEWAY_FILES[12],
     ],
     converterSources: ["invitationConverter"],
   },
@@ -223,6 +231,7 @@ export const FIRESTORE_ACCESS_MATRIX: readonly FirestoreAccessMatrixEntry[] = [
     clientSources: [
       FIRESTORE_CLIENT_GATEWAY_FILES[0],
       FIRESTORE_CLIENT_GATEWAY_FILES[8],
+      FIRESTORE_CLIENT_GATEWAY_FILES[12],
     ],
     converterSources: ["teamConverter"],
   },
@@ -258,12 +267,14 @@ export const FIRESTORE_ACCESS_MATRIX: readonly FirestoreAccessMatrixEntry[] = [
       "tests/rules/team-context-switcher-query.spec.ts",
       "tests/rules/leave-organization.spec.ts",
       "tests/rules/account-gateway-queries.spec.ts",
+      "tests/rules/ownership-transfer-gateway.spec.ts",
     ],
     clientSources: [
       FIRESTORE_CLIENT_GATEWAY_FILES[0],
       FIRESTORE_CLIENT_GATEWAY_FILES[8],
       FIRESTORE_CLIENT_GATEWAY_FILES[10],
       FIRESTORE_CLIENT_GATEWAY_FILES[11],
+      FIRESTORE_CLIENT_GATEWAY_FILES[12],
     ],
     converterSources: ["teamMemberConverter"],
   },
