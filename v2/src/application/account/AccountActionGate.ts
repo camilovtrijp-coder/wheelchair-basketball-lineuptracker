@@ -8,6 +8,12 @@ import type {
   LeaveOrganizationCoordinator,
   LeaveOrganizationOutcome,
 } from './LeaveOrganizationCoordinator';
+import type {
+  CompleteTransferOutcome,
+  OwnershipTransferCoordinator,
+  PromoteOutcome,
+  TransferCandidatesOutcome,
+} from './OwnershipTransferCoordinator';
 
 /**
  * PR 8.3c-2c-i (docs/pr-8.3c-2c-plan.md §2; reviewnit B op 2b-ii): één ingang en één
@@ -18,6 +24,12 @@ import type {
  * zolang één actie loopt, geeft elke andere `in-progress` zonder dat een coördinator
  * wordt aangeroepen. Het slot wordt synchroon gezet, vóór de eerste `await`.
  *
+ * PR 8.3c-2c-ii (docs/pr-8.3c-2c-plan.md §8): ook de overdracht loopt door dit slot.
+ * `OwnershipTransferCoordinator` heeft alleen een slot over zijn eigen twee schrijfmethoden;
+ * zonder deze poort kon een `completeTransfer()` naast een `leave()` of
+ * `clearFirestoreData()` lopen. De read-only `listTransferCandidates()` zit er ook achter,
+ * net als `assess()`.
+ *
  * De poort bewaart niets en kent geen wachtwoord: dat gaat ongewijzigd als argument door.
  */
 export interface AccountActionCoordinators {
@@ -26,7 +38,13 @@ export interface AccountActionCoordinators {
     AccountDeletionCoordinator,
     'assess' | 'clearFirestoreData' | 'deleteAuthAccount'
   >;
+  ownershipTransferCoordinator: Pick<
+    OwnershipTransferCoordinator,
+    'listTransferCandidates' | 'promote' | 'completeTransfer'
+  >;
 }
+
+type InProgress = { status: 'in-progress' };
 
 export class AccountActionGate {
   private busy = false;
@@ -58,7 +76,31 @@ export class AccountActionGate {
     );
   }
 
-  private async exclusive<T>(run: () => Promise<T>): Promise<T | { status: 'in-progress' }> {
+  listTransferCandidates(organizationId: string): Promise<TransferCandidatesOutcome | InProgress> {
+    return this.exclusive(() =>
+      this.coordinators.ownershipTransferCoordinator.listTransferCandidates(organizationId),
+    );
+  }
+
+  promote(organizationId: string, targetUid: string): Promise<PromoteOutcome> {
+    return this.exclusive(() =>
+      this.coordinators.ownershipTransferCoordinator.promote(organizationId, targetUid),
+    );
+  }
+
+  completeTransfer(
+    organizationId: string,
+    previousOwnerUid: string,
+  ): Promise<CompleteTransferOutcome> {
+    return this.exclusive(() =>
+      this.coordinators.ownershipTransferCoordinator.completeTransfer(
+        organizationId,
+        previousOwnerUid,
+      ),
+    );
+  }
+
+  private async exclusive<T>(run: () => Promise<T>): Promise<T | InProgress> {
     if (this.busy) return { status: 'in-progress' };
     this.busy = true;
     try {

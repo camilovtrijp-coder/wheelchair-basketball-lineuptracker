@@ -81,7 +81,13 @@ function repositories(mode: 'cloud' | 'local'): ResolvedAppRepositories {
 }
 
 function mount(mode: 'cloud' | 'local', role: OrganizationRole | null, withActions = true) {
-  const accountActions = { busy: false, onLeaveOrganization: vi.fn(), onDeleteAccount: vi.fn() };
+  const accountActions = {
+    busy: false,
+    onLeaveOrganization: vi.fn(),
+    onDeleteAccount: vi.fn(),
+    onTransferOwnership: vi.fn(),
+    onRemoveOtherOwner: vi.fn(),
+  };
   const onLangChange = vi.fn();
   const utils = render(
     <App
@@ -121,6 +127,25 @@ describe('app/App — accountpaneel', () => {
     expect(utils.queryByTestId('leave-org-start-btn')).toBeNull();
     expect(utils.getByTestId('leave-org-owner-note').textContent).toContain('Org Test');
   });
+
+  it('owner (2c-ii): beide overdrachtsknoppen gaan naar AuthGate', async () => {
+    const { utils, accountActions } = mount('cloud', 'organizationOwner');
+    await ready(utils);
+    fireEvent.click(utils.getByTestId('transfer-start-btn'));
+    fireEvent.click(utils.getByTestId('transfer-remove-owner-start-btn'));
+    expect(accountActions.onTransferOwnership).toHaveBeenCalledTimes(1);
+    expect(accountActions.onRemoveOtherOwner).toHaveBeenCalledTimes(1);
+  });
+
+  it.each(['organizationAdmin', 'coach', 'scorer', 'viewer', null] as const)(
+    '%s (2c-ii): geen overdrachtsknoppen',
+    async (role) => {
+      const { utils } = mount('cloud', role);
+      await ready(utils);
+      expect(utils.queryByTestId('transfer-start-btn')).toBeNull();
+      expect(utils.queryByTestId('transfer-remove-owner-start-btn')).toBeNull();
+    },
+  );
 
   it('niet in lokale modus', async () => {
     const { utils } = mount('local', 'coach');

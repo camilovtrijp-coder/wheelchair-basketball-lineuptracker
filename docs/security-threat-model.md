@@ -169,7 +169,7 @@ privacyuitleg; niets wordt automatisch verzonden.
   escalatiepad omdat elke consumerende Rules-functie een exact-literal
   allowlist is; wel een open punt voor een toekomstige shapehardening-PR.
 
-### Organisatie verlaten en accountverwijdering (8.3c-2, restrisico's R1–R6)
+### Organisatie verlaten en accountverwijdering (8.3c-2, restrisico's R1–R7)
 
 Stand na PR 8.3c-2b-iii (`LeaveOrganizationCoordinator`, `AccountDeletionCoordinator`,
 `OwnershipTransferCoordinator`, `FirestoreAccountGateway`, `FirebaseAccountAuthGateway`,
@@ -276,6 +276,35 @@ onderstaande restrisico's blijven bewust staan.
   generieke fout en de gebruiker kan via dat scherm geen nieuwe organisatie aanmaken
   (ontwerp `docs/pr-8.3c-2b-plan.md` §F R6; fix vóór de cutover: bij `permission-denied`
   op het hervatpad met een `createdAt` ouder dan 7 dagen de sleutel wissen). **Stand na 8.3c-2c-i:** `NoOrganizationsScreen` wist `bootstrapOrgId` bij elke `permission-denied` op het hervatpad (de maker kan `createdAt` niet lezen; binnen de 7 dagen geeft de hervatting geen weigering) en laat de gebruiker een nieuwe organisatie aanmaken (`docs/pr-8.3c-2c-plan.md` §6). De achtergebleven organisatie zonder lid blijft een runbookactie.
+  **Aanvulling (review van 2c-i, vastgelegd in 2c-ii, niet gebouwd):** een Firestore-
+  `permission-denied` op het hervatpad hoeft niet van de bootstrap-termijn te komen. Hij kan
+  ook komen van een App Check-weigering (zodra App Check wordt afgedwongen, §5) of van een
+  org-write die nog offline in de wachtrij staat (de bootstrap-regel leest dan een
+  organisatiedocument dat op de server nog niet bestaat; volgens de review, niet nagemeten).
+  In die gevallen wist de fix
+  `bootstrapOrgId` te vroeg: de volgende klik maakt een tweede organisatie en de eerste
+  blijft als extra weesorganisatie achter (opruimen via het runbook). Geen datalek, geen
+  rechtenverlies. Mitigatieoptie, ter beslissing: pas wissen na een **tweede opeenvolgende**
+  `permission-denied` (vraagt een teller in componentstate, geen nieuwe sleutel).
+- **R7 — org-gescoopte `localStorage`-sleutels blijven na `deleted` op het apparaat (open
+  besluit voor de eigenaar).** B7 wist na een geslaagde accountverwijdering alleen de
+  Firestore-cache (IndexedDB) en de contextpointer, nooit `clearLocalDeviceData()`. Daardoor
+  blijven op dat apparaat staan (ook na "organisatie verlaten"): `lineup-tracker-v2-active-game:{org}:{team}`
+  (actieve wedstrijd met spelersnamen), `lineup-tracker-v2-completed-games:{org}:{team}`
+  (lokaal bewaarde afgeronde wedstrijden), `lineup-tracker-v2-pending-finalize:{org}:{team}`
+  (afrondingen in de wachtrij), `lineup-tracker-v2-game-sync-checkpoint:{gameId}`
+  (synchronisatiecheckpoints, per wedstrijd) en `lineup-tracker-v2-migration-run:{org}:{team}`
+  (migratieruns); daarnaast de niet-org-gescoopte vlaggen
+  `lineup-tracker-cloud-imported-settings`/`-roster` en `lineup-tracker-bootstrap-org-id`.
+  De probe (`LocalStorageUnsyncedWorkProbe`) liet de verwijdering alleen door zonder
+  openstaande afronding en zonder gestarte wedstrijd; wat blijft, zijn volgens die probe
+  gesynchroniseerde kopieën en boekhouding (de lokale wedstrijdgeschiedenis en migratieruns
+  controleert de probe niet). Op een onvertrouwd apparaat wist
+  uitloggen ze wél (`clearLocalDeviceData`); na `deleted` niet, omdat de gebruiker dan al is
+  afgemeld zonder die stap. Risico: spelersnamen blijven op een gedeeld apparaat leesbaar
+  voor wie de browser opent. **Besluit nodig** (B7 noemde het al als optie): alleen de
+  org-gescoopte sleutels van de verwijderde account wissen, als expliciet getest besluit, of
+  het zo laten en documenteren in de gebruikerstekst. 2c-ii wist niets.
 
 Accountverwijdering (2b-ii): geen enkele write vóór een groen plan (alles zelf op te
 lossen) en een geslaagde reauthenticatie (besluit B2); `deleteUser()` alleen direct na

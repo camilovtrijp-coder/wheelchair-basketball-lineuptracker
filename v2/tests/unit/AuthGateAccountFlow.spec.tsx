@@ -59,7 +59,12 @@ vi.mock('../../src/infrastructure/organizations/FirestoreOrganizationGateway', (
 
 vi.mock('../../src/app/App', () => ({
   App: (props: {
-    accountActions?: { onLeaveOrganization: () => void; onDeleteAccount: () => void };
+    accountActions?: {
+      onLeaveOrganization: () => void;
+      onDeleteAccount: () => void;
+      onTransferOwnership?: () => void;
+      onRemoveOtherOwner?: () => void;
+    };
     onLangChange?: (lang: 'nl' | 'en') => void;
   }) => (
     <div data-testid="app-stub">
@@ -76,6 +81,20 @@ vi.mock('../../src/app/App', () => ({
         onClick={() => props.accountActions?.onDeleteAccount()}
       >
         delete
+      </button>
+      <button
+        type="button"
+        data-testid="stub-transfer"
+        onClick={() => props.accountActions?.onTransferOwnership?.()}
+      >
+        transfer
+      </button>
+      <button
+        type="button"
+        data-testid="stub-remove-owner"
+        onClick={() => props.accountActions?.onRemoveOtherOwner?.()}
+      >
+        remove owner
       </button>
       <button type="button" data-testid="stub-lang-en" onClick={() => props.onLangChange?.('en')}>
         en
@@ -128,6 +147,11 @@ function coordinators() {
       clearFirestoreData: vi.fn(),
       deleteAuthAccount: vi.fn(),
     },
+    ownershipTransferCoordinator: {
+      listTransferCandidates: vi.fn(),
+      promote: vi.fn(),
+      completeTransfer: vi.fn(),
+    },
   };
 }
 
@@ -161,13 +185,13 @@ function mount() {
   return { auth, c, factory };
 }
 
-async function toActive() {
+async function toActive(membership: Membership = ORG_A) {
   localStorage.setItem(
     SELECTED_CONTEXT_STORAGE_KEY,
     JSON.stringify({ orgId: 'org-a', teamId: 'team-a' }),
   );
   const utils = mount();
-  emitMemberships([ORG_A]);
+  emitMemberships([membership]);
   await screen.findByTestId('app-stub');
   return utils;
 }
@@ -323,5 +347,142 @@ describe('AuthGate — accountflow boven de unmount-grens', () => {
         'Leave organization Fictieve Adelaars?',
       ),
     );
+  });
+});
+
+// PR 8.3c-2c-ii (docs/pr-8.3c-2c-plan.md §8): de overdracht in dezelfde flow en poort.
+const OWNER_ORG_A: Membership = { ...ORG_A, role: 'organizationOwner' };
+const CANDIDATE = { uid: 'uid-fictief-b', role: 'coach' as const, email: 'b.fictief@example.test' };
+const OTHER_OWNER = {
+  uid: 'uid-fictief-a',
+  role: 'organizationOwner' as const,
+  email: 'a.fictief@example.test',
+};
+
+describe('AuthGate — overdracht', () => {
+  it('opent vanuit App, roept de lijst één keer aan en overleeft het verdwijnen van App', async () => {
+    const { c, factory } = await toActive(OWNER_ORG_A);
+    const pending = deferred<unknown>();
+    c.ownershipTransferCoordinator.listTransferCandidates.mockReturnValue(pending.promise);
+    expect(c.ownershipTransferCoordinator.listTransferCandidates).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByTestId('stub-transfer'));
+    expect(c.ownershipTransferCoordinator.listTransferCandidates).toHaveBeenCalledTimes(1);
+    expect(c.ownershipTransferCoordinator.listTransferCandidates).toHaveBeenCalledWith('org-a');
+
+    // Terug naar de wisselaar: App unmount, het dialoog en de lopende aanroep niet.
+    fireEvent.click(screen.getByTestId('switch-context'));
+    await screen.findByTestId('context-org-org-a');
+    expect(screen.queryByTestId('app-stub')).toBeNull();
+    expect(screen.getByTestId('transfer-loading')).toBeTruthy();
+    pending.resolve({ status: 'ok', candidates: [CANDIDATE], otherOwners: [] });
+    fireEvent.click(await screen.findByTestId('transfer-member-0'));
+    c.ownershipTransferCoordinator.promote.mockResolvedValue({
+      status: 'ok',
+      outcome: 'promoted',
+    });
+    fireEvent.click(screen.getByTestId('transfer-confirm-btn'));
+    expect((await screen.findByTestId('transfer-result')).textContent).toContain(
+      translate('nl', 'transferPromoteOk')
+        .replace('{member}', CANDIDATE.email)
+        .replace('{org}', 'Fictieve Adelaars'),
+    );
+    expect(c.ownershipTransferCoordinator.listTransferCandidates).toHaveBeenCalledTimes(1);
+    expect(c.ownershipTransferCoordinator.promote).toHaveBeenCalledWith('org-a', CANDIDATE.uid);
+    expect(factory).toHaveBeenCalledTimes(1);
+  });
+
+  it('andere eigenaar verwijderen: getypte bevestiging, dan completeTransfer via dezelfde poort', async () => {
+    const { c } = await toActive(OWNER_ORG_A);
+    c.ownershipTransferCoordinator.listTransferCandidates.mockResolvedValue({
+      status: 'ok',
+      candidates: [CANDIDATE],
+      otherOwners: [OTHER_OWNER],
+    });
+    c.ownershipTransferCoordinator.completeTransfer.mockResolvedValue({
+      status: 'ok',
+      revokedInvitations: 1,
+      skippedMalformedInvitations: 0,
+      removedTeamMemberships: 2,
+      organizationMember: 'deleted',
+    });
+    fireEvent.click(screen.getByTestId('stub-remove-owner'));
+    fireEvent.click(await screen.findByTestId('transfer-member-0'));
+    expect((screen.getByTestId('transfer-confirm-btn') as HTMLButtonElement).disabled).toBe(true);
+    fireEvent.input(screen.getByTestId('transfer-remove-owner-input'), {
+      target: { value: OTHER_OWNER.email },
+    });
+    fireEvent.click(screen.getByTestId('transfer-confirm-btn'));
+    await screen.findByTestId('transfer-result');
+    expect(c.ownershipTransferCoordinator.completeTransfer).toHaveBeenCalledWith(
+      'org-a',
+      OTHER_OWNER.uid,
+    );
+    // Een geslaagde overdracht door B verandert B's eigen context niet.
+    const subscriptionsBefore = subscriptions.memberships.length;
+    fireEvent.click(screen.getByTestId('transfer-close-btn'));
+    expect(localStorage.getItem(SELECTED_CONTEXT_STORAGE_KEY)).not.toBeNull();
+    expect(subscriptions.memberships.length).toBe(subscriptionsBefore);
+    expect(screen.getByTestId('app-stub')).toBeTruthy();
+  });
+
+  it('één poort: terwijl de lijst wordt gelezen, starten verlaten en verwijderen niets', async () => {
+    const { c } = await toActive(OWNER_ORG_A);
+    const pending = deferred<unknown>();
+    c.ownershipTransferCoordinator.listTransferCandidates.mockReturnValue(pending.promise);
+    fireEvent.click(screen.getByTestId('stub-transfer'));
+    fireEvent.click(screen.getByTestId('stub-leave'));
+    fireEvent.click(screen.getByTestId('stub-delete'));
+    fireEvent.click(screen.getByTestId('stub-remove-owner'));
+    expect(c.leaveCoordinator.leave).not.toHaveBeenCalled();
+    expect(c.accountDeletionCoordinator.assess).not.toHaveBeenCalled();
+    expect(c.ownershipTransferCoordinator.listTransferCandidates).toHaveBeenCalledTimes(1);
+    pending.resolve({ status: 'offline' });
+    expect((await screen.findByTestId('transfer-result')).textContent).toContain(
+      translate('nl', 'transferOffline'),
+    );
+  });
+
+  it('één poort: terwijl een vertrek loopt, start de overdracht niets', async () => {
+    const { c } = await toActive();
+    const pending = deferred<unknown>();
+    c.leaveCoordinator.leave.mockReturnValue(pending.promise);
+    fireEvent.click(screen.getByTestId('stub-leave'));
+    fireEvent.click(screen.getByTestId('leave-org-confirm-btn'));
+    fireEvent.click(screen.getByTestId('stub-transfer'));
+    fireEvent.click(screen.getByTestId('stub-remove-owner'));
+    expect(c.ownershipTransferCoordinator.listTransferCandidates).not.toHaveBeenCalled();
+    expect(c.ownershipTransferCoordinator.promote).not.toHaveBeenCalled();
+    expect(c.ownershipTransferCoordinator.completeTransfer).not.toHaveBeenCalled();
+  });
+});
+
+describe('AuthGate — organisatienaam zonder ruwe ID (reviewpunt op 2c-i)', () => {
+  it.each(['nl', 'en'] as const)(
+    'een organisatie buiten de lijsten krijgt in het plan het neutrale label (%s)',
+    async (lang) => {
+      localStorage.setItem('lineup-tracker-lang', lang);
+      const { c } = mount();
+      emitMemberships([]);
+      c.accountDeletionCoordinator.assess.mockResolvedValue({
+        status: 'needs-action',
+        plan: {
+          organizations: [{ organizationId: 'org-fictief-weg', class: 'creator-needs-owner' }],
+          invitationCount: 0,
+          canProceed: false,
+        },
+      });
+      fireEvent.click(await screen.findByTestId('no-org-delete-account-btn'));
+      const row = await screen.findByTestId('account-delete-org-org-fictief-weg');
+      expect(row.textContent).toContain(translate(lang, 'accountOrganizationNameUnknown'));
+      expect(row.textContent).not.toContain('org-fictief-weg');
+    },
+  );
+
+  it('een lege organisatienaam valt ook terug op het neutrale label, niet op de ID', async () => {
+    await toActive({ ...ORG_A, orgName: '  ' });
+    fireEvent.click(screen.getByTestId('stub-leave'));
+    const title = screen.getByTestId('account-flow-dialog').getAttribute('aria-label') ?? '';
+    expect(title).toContain(translate('nl', 'accountOrganizationNameUnknown'));
+    expect(title).not.toContain('org-a');
   });
 });

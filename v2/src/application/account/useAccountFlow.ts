@@ -7,6 +7,12 @@ import type {
   ReauthFailedOutcome,
 } from './AccountDeletionCoordinator';
 import type { LeaveOrganizationOutcome } from './LeaveOrganizationCoordinator';
+import type {
+  CompleteTransferOutcome,
+  PromoteOutcome,
+  TransferCandidatesOutcome,
+} from './OwnershipTransferCoordinator';
+import { isSameEmailAddress, type TransferMember } from '../../domain/account/transfer';
 
 /**
  * PR 8.3c-2c-i (docs/pr-8.3c-2c-plan.md §2/§5): de flowstate van "organisatie verlaten" en
@@ -19,6 +25,11 @@ import type { LeaveOrganizationOutcome } from './LeaveOrganizationCoordinator';
  *
  * Het wachtwoord komt alleen als argument van `submitPassword()` binnen en gaat ongewijzigd
  * naar de poort; het komt nooit in deze state.
+ *
+ * PR 8.3c-2c-ii (docs/pr-8.3c-2c-plan.md §8): ook de overdracht (`kind: 'transfer'`) leeft
+ * hier. `mode: 'promote'` is stap 1 van owner A ("Eigendom overdragen"), `mode:
+ * 'remove-owner'` stap 2 van owner B ("Andere eigenaar verwijderen", besluit B9, met getypte
+ * bevestiging van het e-mailadres). De getypte tekst komt alleen als argument binnen.
  */
 export type LeaveFlowOutcome = LeaveOrganizationOutcome | { status: 'unexpected' };
 
@@ -39,6 +50,51 @@ export type AccountDeletionPlanOutcome = Extract<
   AccountAssessmentOutcome,
   { status: 'needs-action' } | { status: 'ready-to-clear' } | { status: 'ready-for-auth-deletion' }
 >;
+
+/** Een lijst-uitkomst die de overdrachtsflow stopt (geen keuzelijst). */
+export type TransferListStopOutcome =
+  | Exclude<TransferCandidatesOutcome, { status: 'ok' }>
+  | { status: 'in-progress' }
+  | { status: 'unexpected' };
+
+export type PromoteFlowOutcome = PromoteOutcome | { status: 'unexpected' };
+export type CompleteTransferFlowOutcome = CompleteTransferOutcome | { status: 'unexpected' };
+
+export type TransferMode = 'promote' | 'remove-owner';
+
+interface TransferStateBase {
+  kind: 'transfer';
+  organizationId: string;
+  organizationName: string;
+}
+
+export type TransferFlowState = TransferStateBase &
+  (
+    | { mode: TransferMode; step: 'loading' }
+    | { mode: TransferMode; step: 'list-stopped'; outcome: TransferListStopOutcome }
+    /** `members`: kandidaten (promote) of uitsluitend de ándere owners (remove-owner). */
+    | { mode: TransferMode; step: 'choose'; members: TransferMember[] }
+    | {
+        mode: TransferMode;
+        step: 'confirm' | 'running';
+        members: TransferMember[];
+        target: TransferMember;
+      }
+    | {
+        mode: 'promote';
+        step: 'result';
+        members: TransferMember[];
+        target: TransferMember;
+        outcome: PromoteFlowOutcome;
+      }
+    | {
+        mode: 'remove-owner';
+        step: 'result';
+        members: TransferMember[];
+        target: TransferMember;
+        outcome: CompleteTransferFlowOutcome;
+      }
+  );
 
 export type AccountFlowState =
   | {
@@ -65,7 +121,8 @@ export type AccountFlowState =
       error: ReauthFailedOutcome['reason'] | null;
     }
   | { kind: 'delete'; step: 'stopped'; outcome: AccountDeletionStopOutcome }
-  | { kind: 'delete'; step: 'deleted'; localWipeFailed: boolean };
+  | { kind: 'delete'; step: 'deleted'; localWipeFailed: boolean }
+  | TransferFlowState;
 
 export interface UseAccountFlowOptions {
   /** `null` zolang er geen accountdiensten zijn (niet ingelogd): dan opent er niets. */
@@ -85,7 +142,57 @@ export interface AccountFlowApi {
   proceedToPassword: () => void;
   retryAuthDelete: () => void;
   submitPassword: (password: string) => void;
+  /** Overdracht openen voor één organisatie (alleen owners zien de ingang). */
+  openTransfer: (organizationId: string, organizationName: string, mode: TransferMode) => void;
+  /**
+   * Vervangt een afgeronde flow (verlaten/verwijderen, niet tijdens een aanroep) door
+   * "Eigendom overdragen" voor deze organisatie: de knop bij de owner-sole-blokkade.
+   */
+  switchToTransfer: (organizationId: string, organizationName: string) => void;
+  reloadTransferList: () => void;
+  chooseTransferTarget: (index: number) => void;
+  backToTransferList: () => void;
+  /**
+   * Bevestigt de gekozen actie. Bij `remove-owner` MOET `typedConfirmation` het e-mailadres
+   * van het doel zijn (getrimd, zonder hoofdlettergevoeligheid); anders gebeurt er niets.
+   */
+  confirmTransfer: (typedConfirmation?: string) => void;
+  /** Dezelfde actie opnieuw na een hervatbare uitkomst (geen nieuwe invoer nodig). */
+  retryTransfer: () => void;
   close: () => void;
+}
+
+/**
+ * Mag dezelfde overdrachtsactie opnieuw? Alleen bij een tijdelijke of hervatbare uitkomst
+ * (een verse server-lezing beslist dan opnieuw). Nooit na `ok`, `not-found` (al afgerond),
+ * `not-signed-in`, `denied` of `rejected`. De UI toont "Opnieuw" precies hiermee.
+ */
+export function isRetryableTransferOutcome(
+  outcome: PromoteFlowOutcome | CompleteTransferFlowOutcome | TransferListStopOutcome,
+): boolean {
+  switch (outcome.status) {
+    case 'in-progress':
+    case 'offline':
+    case 'failed':
+    case 'timeout':
+    case 'incomplete':
+    case 'unexpected':
+      return true;
+    case 'ok':
+    case 'not-found':
+    case 'not-signed-in':
+    case 'denied':
+    case 'rejected':
+      return false;
+  }
+}
+
+/**
+ * De getypte bevestiging van B9: het e-mailadres van de andere owner, getrimd en zonder
+ * hoofdlettergevoeligheid (zelfde vergelijking als het intrekken); leeg klopt nooit.
+ */
+export function isTransferConfirmationValid(typed: string, target: TransferMember): boolean {
+  return isSameEmailAddress(typed, target.email);
 }
 
 function isPlanOutcome(outcome: AccountAssessmentOutcome): outcome is AccountDeletionPlanOutcome {
@@ -100,6 +207,7 @@ function isPlanOutcome(outcome: AccountAssessmentOutcome): outcome is AccountDel
 export function isAccountFlowRunning(state: AccountFlowState | null): boolean {
   if (state === null) return false;
   if (state.kind === 'leave') return state.step === 'running';
+  if (state.kind === 'transfer') return state.step === 'loading' || state.step === 'running';
   return state.step === 'assessing' || (state.step === 'password' && state.running);
 }
 
@@ -292,6 +400,124 @@ export function useAccountFlow({
     })();
   };
 
+  const loadTransferList = (
+    id: number,
+    organizationId: string,
+    organizationName: string,
+    mode: TransferMode,
+  ) => {
+    if (gate === null) return;
+    setState({ kind: 'transfer', mode, step: 'loading', organizationId, organizationName });
+    void (async () => {
+      let outcome: TransferCandidatesOutcome | { status: 'in-progress' } | { status: 'unexpected' };
+      try {
+        outcome = await gate.listTransferCandidates(organizationId);
+      } catch {
+        outcome = { status: 'unexpected' };
+      }
+      const base = { kind: 'transfer' as const, mode, organizationId, organizationName };
+      if (outcome.status === 'ok') {
+        // B9: de B-zijde biedt UITSLUITEND andere owners aan, nooit een gewoon lid.
+        const members = mode === 'promote' ? outcome.candidates : outcome.otherOwners;
+        settle(id, { ...base, step: 'choose', members });
+      } else {
+        settle(id, { ...base, step: 'list-stopped', outcome });
+      }
+    })();
+  };
+
+  const openTransfer = (organizationId: string, organizationName: string, mode: TransferMode) => {
+    if (gate === null || stateRef.current !== null) return;
+    flowId.current += 1;
+    loadTransferList(flowId.current, organizationId, organizationName, mode);
+  };
+
+  const switchToTransfer = (organizationId: string, organizationName: string) => {
+    const current = stateRef.current;
+    if (gate === null || current === null || isAccountFlowRunning(current)) return;
+    if (current.kind === 'transfer') return;
+    flowId.current += 1;
+    loadTransferList(flowId.current, organizationId, organizationName, 'promote');
+  };
+
+  const reloadTransferList = () => {
+    const current = stateRef.current;
+    if (current?.kind !== 'transfer' || current.step !== 'list-stopped') return;
+    loadTransferList(
+      flowId.current,
+      current.organizationId,
+      current.organizationName,
+      current.mode,
+    );
+  };
+
+  const chooseTransferTarget = (index: number) => {
+    const current = stateRef.current;
+    if (current?.kind !== 'transfer' || current.step !== 'choose') return;
+    const target = current.members[index];
+    if (target === undefined) return;
+    setState({ ...current, step: 'confirm', target });
+  };
+
+  const backToTransferList = () => {
+    const current = stateRef.current;
+    if (current?.kind !== 'transfer' || current.step !== 'confirm') return;
+    const { kind, mode, organizationId, organizationName, members } = current;
+    setState({ kind, mode, organizationId, organizationName, members, step: 'choose' });
+  };
+
+  const runTransfer = (current: {
+    mode: TransferMode;
+    organizationId: string;
+    organizationName: string;
+    members: TransferMember[];
+    target: TransferMember;
+  }): void => {
+    if (gate === null) return;
+    const id = flowId.current;
+    const { mode, organizationId, organizationName, members, target } = current;
+    const base = { kind: 'transfer' as const, organizationId, organizationName, members, target };
+    setState({ ...base, mode, step: 'running' });
+    void (async () => {
+      if (mode === 'promote') {
+        let outcome: PromoteFlowOutcome;
+        try {
+          outcome = await gate.promote(organizationId, target.uid);
+        } catch {
+          outcome = { status: 'unexpected' };
+        }
+        settle(id, { ...base, mode, step: 'result', outcome });
+        return;
+      }
+      let outcome: CompleteTransferFlowOutcome;
+      try {
+        outcome = await gate.completeTransfer(organizationId, target.uid);
+      } catch {
+        outcome = { status: 'unexpected' };
+      }
+      settle(id, { ...base, mode, step: 'result', outcome });
+    })();
+  };
+
+  const confirmTransfer = (typedConfirmation?: string) => {
+    const current = stateRef.current;
+    if (gate === null || current?.kind !== 'transfer' || current.step !== 'confirm') return;
+    if (
+      current.mode === 'remove-owner' &&
+      !isTransferConfirmationValid(typedConfirmation ?? '', current.target)
+    ) {
+      return;
+    }
+    runTransfer(current);
+  };
+
+  const retryTransfer = () => {
+    const current = stateRef.current;
+    if (gate === null || current?.kind !== 'transfer' || current.step !== 'result') return;
+    if (!isRetryableTransferOutcome(current.outcome)) return;
+    runTransfer(current);
+  };
+
   const close = () => {
     const current = stateRef.current;
     if (current === null || isAccountFlowRunning(current)) return;
@@ -311,6 +537,13 @@ export function useAccountFlow({
     proceedToPassword,
     retryAuthDelete,
     submitPassword,
+    openTransfer,
+    switchToTransfer,
+    reloadTransferList,
+    chooseTransferTarget,
+    backToTransferList,
+    confirmTransfer,
+    retryTransfer,
     close,
   };
 }

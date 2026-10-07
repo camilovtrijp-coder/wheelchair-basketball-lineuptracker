@@ -120,3 +120,73 @@ oorzaken (organisatie bestaat niet, niet de maker) zijn evengoed permanent. Een 
   openende knop is verdwenen (na verlaten) en axe zijn 2d. Een contextvergrendeling door een
   wedstrijd in opzet met cloudclaim wordt na een geslaagd vertrek niet apart gerespecteerd
   (de probe blokkeert alleen een gestarte wedstrijd of open afronding).
+
+## 8. 2c-ii — overdracht-UI (B9)
+
+Bovenop de 2b-iii-fix (#110). Bron: ontwerp `docs/pr-8.3c-2b-plan.md` §B.8/§C.3/§I (B9),
+besluitrecord §4.2. **Niet in 2c-ii:** e2e-auth, axe en echte-browserfocus (2d), Rules, CSV,
+statistiek, nieuwe `localStorage`-sleutels, wissen van org-sleutels na `deleted` (R7).
+
+- **Huidige werking:** `OwnershipTransferCoordinator` heeft een eigen slot over `promote` en
+  `completeTransfer`; niets roept hem aan. Owners zien in `AccountPanel` alleen de
+  blokkade-uitleg (doodlopend). `organizationNameFor` valt terug op de ruwe organisatie-ID.
+- **Eén slot:** `AccountActionGate` krijgt `listTransferCandidates`, `promote` en
+  `completeTransfer` achter hetzelfde slot als `leave`/`assess`/`clear`/`deleteAuth` (ook de
+  read-only lijst, zoals `assess`). Flowstate in dezelfde `useAccountFlow` (`kind: 'transfer'`,
+  `mode: 'promote' | 'remove-owner'`); aanroepen alleen vanuit een klik, nooit bij mount.
+- **Plaatsing:** in `AccountPanel`, **alleen voor owners**, onder de blokkade-uitleg (die nu
+  naar de knop verwijst): "Eigendom overdragen…" en "Andere eigenaar verwijderen…". Andere
+  rollen en team-only zien geen van beide. De owner-sole-teksten in het verlaatdialoog en in
+  het verwijderplan krijgen een knop "Eigendom overdragen…" die de afgeronde flow vervangt
+  door de overdrachtsflow voor die organisatie (`switchToTransfer`, nooit tijdens een aanroep).
+- **Flow A:** klik → `listTransferCandidates` → lijst van `candidates` (e-mailadres + rol;
+  een leeg adres krijgt een neutraal label, nooit uid of org-ID; testid's op index) →
+  kiezen → bevestiging (B wordt mede-eigenaar; jij blijft eigenaar tot B jou verwijdert; tot
+  dan kun je niet vertrekken of je account verwijderen) → `promote` → bij `ok` "wacht op
+  bevestiging door de nieuwe eigenaar". Gewone bevestiging: promoveren is terug te draaien
+  (B kan A niet verwijderen zonder eigen handeling, en A blijft owner).
+- **Flow B:** klik → `listTransferCandidates` → lijst van uitsluitend `otherOwners` → kiezen
+  → **getypte bevestiging van het e-mailadres** van die owner (er is geen naamveld in
+  `TransferMember`; het adres komt uit de serverlezing) → `completeTransfer`. Beleid, zoals
+  `DeletionConfirmDialog`: knop uit tot de invoer klopt, invoer getrimd; **afwijking:** zonder
+  hoofdlettergevoeligheid (`isSameEmailAddress`, dezelfde vergelijking als het intrekken;
+  een adres heeft geen betekenisvolle hoofdletters). Spaties binnenin tellen mee. De hook
+  controleert de tekst nogmaals (een gedispatchte klik omzeilt niets). "Opnieuw" na een
+  hervatbare uitkomst vraagt geen nieuwe invoer (zelfde doel, al bevestigd in deze flow).
+- **Netwerk:** elke stap is online; offline zegt de tekst dat overdragen online moet en dat
+  wedstrijden op dit apparaat gewoon door kunnen.
+
+| Methode → uitkomst | Sleutel(s) (`transfer*`, NL+EN) | Opnieuw |
+| --- | --- | --- |
+| lijst → `ok` | lijst; leeg: `transferNoCandidates` / `transferNoOtherOwners` | — |
+| alle → `not-signed-in` | `transferNotSignedIn` | nee |
+| alle → `in-progress` | `accountActionBusy` | ja |
+| alle → `offline` | `transferOffline` + `accountNothingChanged` | ja |
+| alle → `failed/read-failed`, `failed/timeout` | `transferFailedRead` / `transferFailedTimeout` + `accountNothingChanged` | ja |
+| alle → `denied/{not-a-member,not-owner}` | `transferDeniedNotAMember` / `transferDeniedNotOwner` + `accountNothingChanged` | nee |
+| promote/complete → `denied/self` | `transferDeniedSelf` + `accountNothingChanged` | nee |
+| complete → `denied/target-not-owner` | `transferDeniedTargetNotOwner` + `accountNothingChanged` | nee |
+| promote → `ok/promoted`, `ok/already-owner` | `transferPromoteOk` / `transferPromoteAlreadyOwner` + `transferPromoteAwaiting` | nee |
+| promote → `not-found` | `transferPromoteNotFound` + `accountNothingChanged` | nee |
+| promote → `rejected/{target-changed,permission-denied}` | `transferRejectedTargetChanged` / `transferRejectedPermission` + `accountNothingChanged` | nee |
+| promote → `timeout`, `failed/write-failed` | `transferPromoteTimeout` / `transferPromoteFailedWrite` | ja |
+| complete → `ok` | `transferCompleteOk` + `transferCompleteCounts`; + `transferCompleteSkippedMalformed` als > 0; + `transferCompleteAlreadyGone` | nee |
+| complete → `not-found` | `transferCompleteNotFound` ("al afgerond") | nee |
+| complete → `rejected/<reden>/<stage>` | `transferRejectedTargetChanged` / `transferRejectedPermission` + `transferStage*` + `transferCompletePartial` | nee |
+| complete → `incomplete/<stage>` | `transferCompleteIncomplete` + `transferStage*` + `transferStepError*`/`accountStepError*` | ja (hervat) |
+| een gooiende poort | lijst: `transferFailedRead`; promote: `transferPromoteFailedWrite`; complete: `transferCompleteIncomplete` | ja |
+
+`rejected` bij `completeTransfer` meldt altijd "er kan al iets zijn ingetrokken of
+verwijderd" (ook bij `invitations`: intrekkingen vóór de fout worden niet teruggedraaid).
+
+**Kleine punten uit de review van 2c-i:** `organizationNameFor` geeft zonder bekende naam
+`accountOrganizationNameUnknown` in plaats van de ID; `accountDeletePasswordDesc` zegt al in
+beide talen dat het onomkeerbaar is (vastgezet in een test); threat model §7 krijgt R7 en een
+aanvulling op R6.
+
+**Risico's:** *opslag* — geen nieuwe sleutel, niets gewist; *CSV/statistiek* — geen raakvlak;
+*offline* — alleen online, het dialoog blijft sluitbaar en spelen gaat door; *vertalingen* —
+pariteitstest plus mappingtest per uitkomst in beide talen. *Rest:* de lijst is een momentopname
+(de coördinator leest bij promote/complete opnieuw van de server); twee owners die elkaar
+tegelijk verwijderen geeft één `rejected/permission-denied` (2b-iii-fix); R2 (re-bootstrap van
+een verwijderde maker binnen 7 dagen) blijft; focus en axe in een echte browser zijn 2d.
