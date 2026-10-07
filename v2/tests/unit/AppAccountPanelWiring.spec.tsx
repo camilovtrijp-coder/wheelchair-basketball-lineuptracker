@@ -83,6 +83,7 @@ function repositories(mode: 'cloud' | 'local'): ResolvedAppRepositories {
 function mount(mode: 'cloud' | 'local', role: OrganizationRole | null, withActions = true) {
   const accountActions = {
     busy: false,
+    organizationName: 'Org Test (van AuthGate)',
     onLeaveOrganization: vi.fn(),
     onDeleteAccount: vi.fn(),
     onTransferOwnership: vi.fn(),
@@ -126,6 +127,14 @@ describe('app/App — accountpaneel', () => {
     await ready(utils);
     expect(utils.queryByTestId('leave-org-start-btn')).toBeNull();
     expect(utils.getByTestId('leave-org-owner-note').textContent).toContain('Org Test');
+  });
+
+  it('reviewnit 1 van #111: het paneel toont de naam uit accountActions, niet organizationName || organizationId', async () => {
+    const { utils } = mount('cloud', 'coach');
+    await ready(utils);
+    const text = utils.getByTestId('account-panel').textContent ?? '';
+    expect(text).toContain('Org Test (van AuthGate)');
+    expect(text).not.toContain('org-test');
   });
 
   it('owner (2c-ii): beide overdrachtsknoppen gaan naar AuthGate', async () => {

@@ -148,6 +148,12 @@ export interface AppProps {
    */
   accountActions?: {
     busy: boolean;
+    /**
+     * Opruim-PR 2 (reviewnit 1 van #111): de naam voor het accountpaneel, door `AuthGate`
+     * bepaald met `organizationNameFor` (ook voor team-only leden). Ontbreekt de naam, dan
+     * is het een neutraal vertaald label, nooit de ruwe organisatie-ID.
+     */
+    organizationName: string;
     onLeaveOrganization: () => void;
     onDeleteAccount: () => void;
     /** PR 8.3c-2c-ii: overdracht; het paneel toont ze alleen aan een owner. */
@@ -1677,7 +1683,7 @@ export function App({
             {repositories.mode === 'cloud' && accountActions ? (
               <AccountPanel
                 lang={lang}
-                organizationName={organizationName || organizationId}
+                organizationName={accountActions.organizationName}
                 role={organizationRole}
                 busy={accountActions.busy}
                 onLeaveOrganization={accountActions.onLeaveOrganization}

@@ -643,6 +643,7 @@ export function AuthGate({
                 accountGate && selectedContext
                   ? {
                       busy: accountFlowBusy,
+                      organizationName: organizationNameFor(selectedContext.orgId),
                       onLeaveOrganization: () =>
                         accountFlow.openLeave(
                           selectedContext.orgId,
