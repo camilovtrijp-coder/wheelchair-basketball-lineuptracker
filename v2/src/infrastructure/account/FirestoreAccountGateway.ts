@@ -2,7 +2,9 @@
 // §B.3–§B.6, §B.11, §C.1).
 //
 // - Identiteit uitsluitend uit `getAuth(db.app).currentUser` en de claims van het
-//   ID-token (`email`, `email_verified`), nooit uit een parameter.
+//   ID-token (`email`, `email_verified`), nooit uit een parameter. De preflight
+//   (`readIdentity()`) ververst het token altijd; de stappen daarna gebruiken dat verse
+//   token uit de SDK-cache.
 // - ALLE reads van de SERVER (`getDocsFromServer`/`getDocFromServer`): offline faalt een
 //   read met `offline`, nooit met een leeg resultaat uit de persistente cache (§B.5).
 // - Elke aanroep naar Firestore/Auth heeft een timeout van 8 s.
@@ -33,9 +35,9 @@ import {
 } from 'firebase-base/documents';
 import type {
   AccountGateway,
-  AccountIdentity,
   AccountReadError,
   FactsReadResult,
+  IdentityReadResult,
   InventoryReadResult,
   SelfDeleteError,
   SelfDeleteResult,
@@ -74,8 +76,28 @@ type ReadOutcome<T> = { ok: true; value: T } | { ok: false; error: AccountReadEr
 function toReadError(error: unknown): AccountReadError {
   if (isFirebaseCallTimeout(error)) return { code: 'timeout' };
   const code = firebaseErrorCode(error);
-  // `getDocsFromServer`/`getDocFromServer` zonder verbinding.
-  if (code === 'unavailable' || code === 'failed-precondition') return { code: 'offline' };
+  // `getDocsFromServer`/`getDocFromServer` zonder verbinding. Alleen `unavailable`:
+  // `failed-precondition` (bijv. een ontbrekende index) is een echte leesfout en mag
+  // niet als "offline" worden gemeld (reviewbevinding C op 2b-i).
+  if (code === 'unavailable') return { code: 'offline' };
+  return { code: 'read-failed', detail: error };
+}
+
+/** Auth-codes waarbij de sessie niet meer bruikbaar is: geen geauthenticeerd verzoek mogelijk. */
+const UNUSABLE_SESSION_CODES = new Set([
+  'auth/user-token-expired',
+  'auth/user-not-found',
+  'auth/user-disabled',
+  'auth/invalid-user-token',
+]);
+
+type IdentityError = Exclude<AccountReadError, { code: 'email-not-verified' }>;
+
+function toIdentityError(error: unknown): IdentityError {
+  if (isFirebaseCallTimeout(error)) return { code: 'timeout' };
+  const code = firebaseErrorCode(error);
+  if (code === 'auth/network-request-failed') return { code: 'offline' };
+  if (UNUSABLE_SESSION_CODES.has(code)) return { code: 'not-signed-in' };
   return { code: 'read-failed', detail: error };
 }
 
@@ -103,23 +125,36 @@ export class FirestoreAccountGateway implements AccountGateway {
   }
 
   /**
-   * Zonder bruikbaar ID-token (bijv. verlopen en niet te verversen) gaat er ook geen
-   * geauthenticeerd verzoek naar Firestore: dan geldt de gebruiker hier als niet
-   * ingelogd, in plaats van te gokken naar `email_verified`.
+   * Preflight: ververst het ID-token ALTIJD (`getIdTokenResult(true)`, reviewbevinding A
+   * op 2b-i). Een gecachet token kan nog `email_verified=false` dragen terwijl de
+   * gebruiker inmiddels geverifieerd is; dan zou de uitnodigingsstap (B3) stil
+   * overgeslagen worden. Offline faalt de verversing → `offline` (niet "niet ingelogd").
+   * Een sessie die niet meer te verversen is (account weg/uitgeschakeld) → `not-signed-in`.
    */
-  async readIdentity(): Promise<AccountIdentity | null> {
+  async readIdentity(): Promise<IdentityReadResult> {
+    return this.readTokenIdentity(true);
+  }
+
+  /**
+   * Interne variant voor de stappen NA de preflight: gebruikt het (zojuist ververste)
+   * token uit de SDK-cache, zodat niet elke delete een extra tokenverzoek kost.
+   */
+  private async readTokenIdentity(forceRefresh: boolean): Promise<IdentityReadResult> {
     const user = this.currentUser();
-    if (!user) return null;
+    if (!user) return { ok: false, error: { code: 'not-signed-in' } };
     try {
-      const token = await withTimeout(user.getIdTokenResult(), this.timeoutMs);
+      const token = await withTimeout(user.getIdTokenResult(forceRefresh), this.timeoutMs);
       const email = token.claims.email;
       return {
-        uid: user.uid,
-        email: typeof email === 'string' && email.length > 0 ? email : null,
-        emailVerified: token.claims.email_verified === true,
+        ok: true,
+        identity: {
+          uid: user.uid,
+          email: typeof email === 'string' && email.length > 0 ? email : null,
+          emailVerified: token.claims.email_verified === true,
+        },
       };
-    } catch {
-      return null;
+    } catch (error) {
+      return { ok: false, error: toIdentityError(error) };
     }
   }
 
@@ -131,12 +166,12 @@ export class FirestoreAccountGateway implements AccountGateway {
 
     let email: string | null = null;
     if (options.includeInvitations) {
-      const identity = await this.readIdentity();
-      if (identity === null) return { ok: false, error: { code: 'not-signed-in' } };
-      if (!identity.emailVerified || identity.email === null) {
+      const read = await this.readTokenIdentity(false);
+      if (!read.ok) return { ok: false, error: read.error };
+      if (!read.identity.emailVerified || read.identity.email === null) {
         return { ok: false, error: { code: 'email-not-verified' } };
       }
-      email = identity.email;
+      email = read.identity.email;
     }
 
     try {
@@ -235,8 +270,9 @@ export class FirestoreAccountGateway implements AccountGateway {
     organizationId: string;
     invitationId: string;
   }): Promise<SelfDeleteResult> {
-    const identity = await this.readIdentity();
-    if (identity === null) return { ok: false, error: { code: 'not-signed-in' } };
+    const read = await this.readTokenIdentity(false);
+    if (!read.ok) return { ok: false, error: readErrorToDeleteError(read.error) };
+    const identity = read.identity;
     // Zonder geverifieerde e-mailclaim kan de uitnodiging niet gevonden en niet
     // verwijderd worden (Rules); er volgt geen write.
     if (!identity.emailVerified || identity.email === null) {

@@ -35,7 +35,7 @@ import {
   where,
   type Firestore,
 } from 'firebase/firestore';
-import { getAuth } from 'firebase/auth';
+import { getAuth, type Auth } from 'firebase/auth';
 import { DocumentValidationError } from 'firebase-base/documents';
 import {
   ACCOUNT_GATEWAY_TIMEOUT_MS,
@@ -43,6 +43,8 @@ import {
 } from '../../src/infrastructure/account/FirestoreAccountGateway';
 import { createAccountServices } from '../../src/infrastructure/account/createAccountServices';
 import { LeaveOrganizationCoordinator } from '../../src/application/account/LeaveOrganizationCoordinator';
+import { AccountDeletionCoordinator } from '../../src/application/account/AccountDeletionCoordinator';
+import { FirebaseAccountAuthGateway } from '../../src/infrastructure/auth/FirebaseAccountAuthGateway';
 
 const ME = 'uid-fictief-ik';
 const MY_EMAIL = 'ik@example.test';
@@ -195,31 +197,75 @@ afterEach(() => {
 });
 
 describe('readIdentity', () => {
+  const identity = (emailVerified: boolean, email: string | null = MY_EMAIL) => ({
+    ok: true,
+    identity: { uid: ME, email, emailVerified },
+  });
+
   it('uid uit de sessie, e-mail en email_verified uit de TOKEN-claims', async () => {
-    expect(await gateway.readIdentity()).toEqual({ uid: ME, email: MY_EMAIL, emailVerified: true });
+    expect(await gateway.readIdentity()).toEqual(identity(true));
+  });
+
+  // Reviewbevinding A op 2b-i: een gecachet token met een verouderde email_verified=false
+  // liet de uitnodigingsstap stil weg. De preflight ververst daarom altijd.
+  it('ververst het token ALTIJD (getIdTokenResult(true))', async () => {
+    const getIdTokenResult = signIn();
+    await gateway.readIdentity();
+    expect(getIdTokenResult).toHaveBeenCalledTimes(1);
+    expect(getIdTokenResult).toHaveBeenCalledWith(true);
   });
 
   it('email_verified ontbreekt of is geen true → niet geverifieerd', async () => {
     signIn({ email: MY_EMAIL, email_verified: 'true' });
-    expect((await gateway.readIdentity())?.emailVerified).toBe(false);
+    expect(await gateway.readIdentity()).toEqual(identity(false));
     signIn({ email: MY_EMAIL });
-    expect((await gateway.readIdentity())?.emailVerified).toBe(false);
+    expect(await gateway.readIdentity()).toEqual(identity(false));
   });
 
   it('geen e-mailclaim → email null', async () => {
     signIn({ email_verified: true });
-    expect((await gateway.readIdentity())?.email).toBeNull();
+    expect(await gateway.readIdentity()).toEqual(identity(true, null));
   });
 
-  it('niet ingelogd → null', async () => {
+  it('niet ingelogd → not-signed-in', async () => {
     (getAuth as Mock).mockReturnValue({ currentUser: null });
-    expect(await gateway.readIdentity()).toBeNull();
+    expect(await gateway.readIdentity()).toEqual({ ok: false, error: { code: 'not-signed-in' } });
   });
 
-  it('token niet op te halen → null (geen gok naar email_verified)', async () => {
+  it('verversing faalt offline → offline (niet "niet ingelogd", geen gok naar email_verified)', async () => {
+    signIn().mockRejectedValue({ code: 'auth/network-request-failed' });
+    expect(await gateway.readIdentity()).toEqual({ ok: false, error: { code: 'offline' } });
+  });
+
+  it.each([
+    'auth/user-token-expired',
+    'auth/user-not-found',
+    'auth/user-disabled',
+    'auth/invalid-user-token',
+  ])('sessie niet meer bruikbaar (%s) → not-signed-in', async (code) => {
+    signIn().mockRejectedValue({ code });
+    expect(await gateway.readIdentity()).toEqual({ ok: false, error: { code: 'not-signed-in' } });
+  });
+
+  it('andere fout bij verversen → read-failed', async () => {
+    signIn().mockRejectedValue(new Error('onverwacht'));
+    const result = await gateway.readIdentity();
+    expect(!result.ok && result.error.code).toBe('read-failed');
+  });
+
+  it('geen antwoord binnen 8 s → timeout', async () => {
+    vi.useFakeTimers();
+    signIn().mockReturnValue(new Promise(() => {}));
+    const pending = gateway.readIdentity();
+    await vi.advanceTimersByTimeAsync(ACCOUNT_GATEWAY_TIMEOUT_MS);
+    expect(await pending).toEqual({ ok: false, error: { code: 'timeout' } });
+  });
+
+  it('de stappen NA de preflight gebruiken het gecachete (verse) token, zonder extra verversing', async () => {
     const getIdTokenResult = signIn();
-    getIdTokenResult.mockRejectedValue(new Error('netwerk'));
-    expect(await gateway.readIdentity()).toBeNull();
+    await gateway.readInventoryFromServer({ includeInvitations: true });
+    await gateway.deleteOwnInvitation({ organizationId: ORG_A, invitationId: 'inv-1' });
+    expect(getIdTokenResult.mock.calls.every((call) => call[0] === false)).toBe(true);
   });
 });
 
@@ -280,16 +326,21 @@ describe('readInventoryFromServer', () => {
     expect(getDocsFromServer).not.toHaveBeenCalled();
   });
 
-  it.each(['unavailable', 'failed-precondition'])(
-    'offline (%s van getDocsFromServer) → offline, nooit een leeg resultaat',
-    async (code) => {
-      (getDocsFromServer as Mock).mockRejectedValue({ code });
-      expect(await gateway.readInventoryFromServer({ includeInvitations: false })).toEqual({
-        ok: false,
-        error: { code: 'offline' },
-      });
-    },
-  );
+  it('offline (unavailable van getDocsFromServer) → offline, nooit een leeg resultaat', async () => {
+    (getDocsFromServer as Mock).mockRejectedValue({ code: 'unavailable' });
+    expect(await gateway.readInventoryFromServer({ includeInvitations: false })).toEqual({
+      ok: false,
+      error: { code: 'offline' },
+    });
+  });
+
+  // Reviewbevinding C op 2b-i: een ontbrekende index (failed-precondition) is een echte
+  // leesfout, geen "offline".
+  it('failed-precondition (bijv. ontbrekende index) → read-failed, niet offline', async () => {
+    (getDocsFromServer as Mock).mockRejectedValue({ code: 'failed-precondition' });
+    const result = await gateway.readInventoryFromServer({ includeInvitations: false });
+    expect(!result.ok && result.error.code).toBe('read-failed');
+  });
 
   it('permission-denied → read-failed', async () => {
     (getDocsFromServer as Mock).mockRejectedValue({ code: 'permission-denied' });
@@ -532,20 +583,30 @@ describe('self-deletes: eigen pad, teruglezen vóór en na', () => {
 });
 
 describe('createAccountServices', () => {
-  it('levert een gateway en een LeaveOrganizationCoordinator zonder geselecteerde context', () => {
+  it('levert gateways en beide coördinatoren zonder geselecteerde context', () => {
     const services = createAccountServices(fakeDb);
     expect(services.accountGateway).toBeInstanceOf(FirestoreAccountGateway);
+    expect(services.accountAuthGateway).toBeInstanceOf(FirebaseAccountAuthGateway);
     expect(services.leaveCoordinator).toBeInstanceOf(LeaveOrganizationCoordinator);
+    expect(services.accountDeletionCoordinator).toBeInstanceOf(AccountDeletionCoordinator);
+  });
+
+  it('weigert een Auth-instantie van een andere app dan db (reauth/deleteUser moeten hetzelfde account raken)', () => {
+    const otherAuth = { currentUser: null } as unknown as Auth;
+    expect(() => createAccountServices(fakeDb, otherAuth)).toThrow(/hoort niet bij de app/);
   });
 });
 
 describe('end-to-end met de coördinator op de gemockte SDK', () => {
+  const noLocalWork = { countForOrganization: () => 0 };
+
   it('leave(org A): teamMembers → open uitnodiging → membership; org B en andermans documenten intact', async () => {
-    const { leaveCoordinator } = createAccountServices(fakeDb, { countForOrganization: () => 0 });
+    const { leaveCoordinator } = createAccountServices(fakeDb, getAuth(), noLocalWork);
     expect(await leaveCoordinator.leave(ORG_A)).toEqual({
       status: 'ok',
       removed: { teamMembers: 1, invitations: 1, organizationMember: true },
       organizationDeletionPending: false,
+      invitationsChecked: true,
     });
     expect((deleteDoc as Mock).mock.calls.map((call) => call[0].path)).toEqual([
       `organizations/${ORG_A}/teams/team-1/teamMembers/${ME}`,
@@ -559,5 +620,38 @@ describe('end-to-end met de coördinator op de gemockte SDK', () => {
     (deleteDoc as Mock).mockClear();
     expect(await leaveCoordinator.leave(ORG_A)).toEqual({ status: 'not-a-member' });
     expect(deleteDoc).not.toHaveBeenCalled();
+  });
+
+  // Reviewbevinding A op 2b-i: het gecachete token zegt nog email_verified=false, de server
+  // weet al dat het adres geverifieerd is. Vóór de fix sloeg leave() de eigen open
+  // uitnodiging stil over en eindigde toch `ok`.
+  it('verouderd gecachet token (email_verified=false): de preflight ververst, de open uitnodiging gaat mee', async () => {
+    let cached = { claims: { email: MY_EMAIL, email_verified: false } };
+    const fresh = { claims: { email: MY_EMAIL, email_verified: true } };
+    const getIdTokenResult = vi.fn(async (forceRefresh?: boolean) => {
+      if (forceRefresh === true) cached = fresh;
+      return cached;
+    });
+    (getAuth as Mock).mockReturnValue({ currentUser: { uid: ME, getIdTokenResult } });
+
+    const { leaveCoordinator } = createAccountServices(fakeDb, getAuth(), noLocalWork);
+    expect(await leaveCoordinator.leave(ORG_A)).toMatchObject({
+      status: 'ok',
+      removed: { invitations: 1 },
+      invitationsChecked: true,
+    });
+    expect(server.has(`organizations/${ORG_A}/invitations/inv-1`)).toBe(false);
+    expect(getIdTokenResult).toHaveBeenNthCalledWith(1, true);
+  });
+
+  it('echt ongeverifieerd: ok, maar invitationsChecked=false en de uitnodiging staat er nog', async () => {
+    signIn({ email: MY_EMAIL, email_verified: false });
+    const { leaveCoordinator } = createAccountServices(fakeDb, getAuth(), noLocalWork);
+    expect(await leaveCoordinator.leave(ORG_A)).toMatchObject({
+      status: 'ok',
+      removed: { invitations: 0 },
+      invitationsChecked: false,
+    });
+    expect(server.has(`organizations/${ORG_A}/invitations/inv-1`)).toBe(true);
   });
 });

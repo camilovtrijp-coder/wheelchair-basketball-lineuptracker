@@ -171,7 +171,8 @@ privacyuitleg; niets wordt automatisch verzonden.
 
 ### Organisatie verlaten en accountverwijdering (8.3c-2, restrisico's R1–R6)
 
-Stand na PR 8.3c-2b-i (`LeaveOrganizationCoordinator`, `FirestoreAccountGateway`;
+Stand na PR 8.3c-2b-ii (`LeaveOrganizationCoordinator`, `AccountDeletionCoordinator`,
+`FirestoreAccountGateway`, `FirebaseAccountAuthGateway`;
 ontwerp `docs/pr-8.3c-2b-plan.md` §F, besluitrecord `docs/pr-8.3c-besluitvoorstel.md`
 §8.6/§8.7). De client verwijdert alleen eigen documenten die uit een verse
 server-inventaris komen, in de vaste volgorde teamMembers → eigen openstaande
@@ -195,9 +196,21 @@ blijven bewust staan.
   `creator-needs-owner`, geen write).
 - **R3 — race na de eindcontrole.** Een owner/admin kan direct na de eindcontrole een
   `teamMembers`-document of uitnodiging voor de vertrekker aanmaken; de eindcontrole is
-  een momentopname. In 2b-ii komt een tweede eindpoort direct vóór `deleteUser()`. Wat
-  daarna nog ontstaat, ruimt een owner/admin op (teamMembers direct, uitnodigingen na
-  30 dagen) of het runbook.
+  een momentopname. Sinds 2b-ii leest `deleteAuthAccount()` de eindpoort (drie queries
+  van de server) zelf opnieuw, direct vóór `deleteUser()`, na een reauthenticatie in
+  dezelfde aanroep; een groene eindpoort uit een eerdere aanroep telt niet. Wat daarna
+  nog ontstaat (een venster van milliseconden), ruimt een owner/admin op (teamMembers
+  direct, uitnodigingen na 30 dagen) of het runbook. **Omgekeerd:** een self-delete die de
+  flow als `timeout`/`offline` opgaf, blijft in de schrijfwachtrij van Firestore en kan
+  later alsnog landen zonder dat de flow het merkt; de uitkomst `incomplete` kan dan
+  achterhaald zijn. Het is altijd een bedoelde delete in de juiste volgorde; de volgende
+  verse inventaris toont de werkelijke toestand.
+- **Misvormd ledendocument blokkeert vertrek (fail closed, runbook).** De
+  per-organisatiefeiten lezen de ongefilterde ledenlijst met de converter. Eén ongeldig
+  `organizationMembers`-document van een ánder lid (bijv. via de Console aangemaakt met
+  een onbekende rol of zonder `uid`) laat vertrek en accountverwijdering voor iedereen in
+  die organisatie stoppen met `read-failed`, zonder write. Runbook: het document in de
+  Console herstellen of verwijderen.
 - **R4 — pseudonieme audit-uid's blijven staan (besluit B8, geaccepteerd).**
   `organizations.createdBy`, `teams.createdBy`, `invitations.invitedBy`,
   `games.writerUid`, `actions.authorUid`, `completedGames.deletedBy` (tot redactie),
@@ -219,14 +232,28 @@ blijven bewust staan.
   de hervatting via `resumeOrgId`) en blijft er een organisatie zonder owner en zonder
   lid achter. De maker ziet haar niet
   in zijn inventaris (er is geen eigen document), dus verlaten of accountverwijdering
-  raakt haar niet; opruimen is een beheerdersactie via het runbook.
+  raakt haar niet; opruimen is een beheerdersactie via het runbook. Bovendien blijft
+  `NoOrganizationsScreen` hangen: `bootstrapOrgId` staat in `localStorage` en wordt alleen
+  bij succes gewist, dus elke volgende poging hervat dezelfde dode organisatie met een
+  generieke fout en de gebruiker kan via dat scherm geen nieuwe organisatie aanmaken
+  (ontwerp `docs/pr-8.3c-2b-plan.md` §F R6; fix vóór de cutover: bij `permission-denied`
+  op het hervatpad met een `createdAt` ouder dan 7 dagen de sleutel wissen).
+
+Accountverwijdering (2b-ii): geen enkele write vóór een groen plan (alles zelf op te
+lossen) en een geslaagde reauthenticatie (besluit B2); `deleteUser()` alleen direct na
+een lege eindpoort uit dezelfde aanroep; `deleted` alleen na een bevestigend antwoord,
+een onbekende afloop is `auth-state-unknown`. Het wachtwoord bestaat alleen als argument
+van één aanroep en komt in geen uitkomst of log. De preflight ververst het ID-token altijd
+(een verouderde `email_verified=false` liet in 2b-i de uitnodigingsstap stil weg; een
+geslaagd vertrek meldt nu `invitationsChecked`).
 
 Verder geldt voor deze flows: elke inventaris-, controle- en readbacklezing komt van
 de server (`getDocsFromServer`/`getDocFromServer`), dus een offline cache kan nooit
 een vals "leeg" opleveren; er is geen nieuwe `localStorage`-sleutel en geen
 persistente voortgang (hervatten gebeurt uit een verse server-inventaris); en
 onbevestigd lokaal wedstrijdwerk voor een organisatie (openstaande afronding of een
-gestarte wedstrijd op dit apparaat) blokkeert het verlaten van die organisatie.
+gestarte wedstrijd op dit apparaat) blokkeert het verlaten van die organisatie, ook als
+de sleutels niet op te sommen zijn (onbekend = blokkeren; alleen "geen storage" telt 0).
 
 ### Pre-8.5-poort: er bestaat geen uitnodigingsaanmaakpad in `v2/src`
 

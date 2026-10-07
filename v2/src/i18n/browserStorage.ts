@@ -131,16 +131,37 @@ export const strictReadBrowserStorage: KeyValueStorage = createBrowserStorage(
  * gegarandeerd cross-browser contract voor `Storage`-objecten.
  */
 export function listBrowserStorageKeys(): string[] {
-  const storage = tryGetStorage(getWindowLocalStorage);
-  if (storage === null) return [];
   try {
-    const keys: string[] = [];
-    for (let i = 0; i < storage.length; i += 1) {
-      const key = storage.key(i);
-      if (key !== null) keys.push(key);
-    }
-    return keys;
+    return listStorageKeysOrThrow(getWindowLocalStorage);
   } catch {
     return [];
   }
+}
+
+/**
+ * Sleutels van de storage uit `getStorage`. "Geen storage beschikbaar" (de getter gooit
+ * of geeft `null`) is een LEGE lijst; een fout TIJDENS het opsommen (`length`/`key(i)`)
+ * gooit door. Exporteerbaar voor tests; productiecode gebruikt
+ * `listBrowserStorageKeysOrThrow()`.
+ */
+export function listStorageKeysOrThrow(getStorage: () => Storage | null): string[] {
+  const storage = tryGetStorage(getStorage);
+  if (storage === null) return [];
+  const keys: string[] = [];
+  for (let i = 0; i < storage.length; i += 1) {
+    const key = storage.key(i);
+    if (key !== null) keys.push(key);
+  }
+  return keys;
+}
+
+/**
+ * Als `listBrowserStorageKeys()`, maar een fout tijdens het opsommen GOOIT in plaats
+ * van stil een lege lijst te geven (reviewbevinding B op 8.3c-2b-i). Voor callers die
+ * "geen sleutels" moeten kunnen onderscheiden van "sleutels onbekend" en dan fail closed
+ * willen blokkeren (`LocalStorageUnsyncedWorkProbe`). `listBrowserStorageKeys()` zelf
+ * blijft ongewijzigd voor het wissen bij uitloggen (`clearLocalDeviceData`).
+ */
+export function listBrowserStorageKeysOrThrow(): string[] {
+  return listStorageKeysOrThrow(getWindowLocalStorage);
 }

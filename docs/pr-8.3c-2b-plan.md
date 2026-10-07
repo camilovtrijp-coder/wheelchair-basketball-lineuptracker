@@ -453,7 +453,8 @@ kopie in de deletiongateway blijft ongemoeid; deduplicatie is een losse opruimta
 | --- | --- | --- |
 | Firestore | `permission-denied` op een delete | readback: weg → `already-gone`; staat er nog → `rejected` |
 | Firestore | `permission-denied` op een read | `read-failed` (en bij de invitations-query zonder geverifieerde claim: `email-not-verified`, vooraf gecontroleerd) |
-| Firestore | `unavailable`, `failed-precondition` (offline `FromServer`) | `offline` |
+| Firestore | `unavailable` (offline `FromServer`) | `offline` |
+| Firestore | `failed-precondition` (bijv. ontbrekende index) | `read-failed` — **niet** `offline` (reviewbevinding C op 2b-i, toegepast in 2b-ii) |
 | eigen timeout | — | `timeout` |
 | converter | `DocumentValidationError` | `read-failed` — fail closed, geen write, geen `deleteUser` |
 | Auth | `auth/requires-recent-login` | `firestore-cleared-auth-present` (reason `requires-recent-login`) |
@@ -653,6 +654,33 @@ in 2b-ii per organisatie hergebruikt.
   dat **deze aanroep zelf** de eindpoort groen zag.
 - Fabriek uitbreiden: `createAccountServices(db, auth)`.
 
+**Uitvoering 2b-ii (afwijkingen, met reden):**
+
+- `readVerifiedEmailClaim()` geeft een resultaatunie `{ ok, uid, email, verified }` of een
+  code (`not-signed-in`, `network`, `session-invalid`, `other`) in plaats van `… | null`:
+  offline moet `offline` kunnen opleveren en een niet meer te verversen token
+  (`session-invalid`) is precies de hervatting na een verloren `deleteUser`-antwoord
+  (`auth-state-unknown`). De `uid` voedt de classificatie.
+- `reauthenticateWithPassword` en `deleteCurrentUser` krijgen `{ expectedUid }` als
+  **guard** (geen identiteitsbron): wisselt de sessie tijdens de flow van account, dan
+  volgt geen reauth en geen `deleteUser` (`not-signed-in`).
+- **B2 strikt uitgevoerd:** `clearFirestoreData()` reauthenticeert na de plan-poort en vóór
+  de eerste write; `deleteAuthAccount()` reauthenticeert óók zelf vóór de eindpoort 5'
+  (een open sessie kan zonder wachtwoord dus geen account verwijderen, ook niet als
+  Firestore al leeg is), en bij `requires-recent-login` nog één keer: reauth → eindpoort →
+  `deleteUser`. Daarna `firestore-cleared-auth-present`.
+- `auth/network-request-failed` en `other` op `deleteUser` zijn dubbelzinnig (het verzoek
+  kan zijn uitgevoerd). Alleen als een verse tokenverversing daarna bewijst dat hetzelfde
+  account nog bestaat, is de uitkomst `firestore-cleared-auth-present`; anders
+  `auth-state-unknown`. Een eigen timeout op `deleteUser` is altijd `unknown-state`.
+- `assess()` geeft `ready-to-clear`/`needs-action` (met plan) of, bij een lege inventaris,
+  `ready-for-auth-deletion` (de afleidbare toestand uit §B.4). `incomplete` draagt
+  `remaining` alleen bij `final-gate`, en `organizationId`/`error` waar bekend; de stages
+  van "organisatie verlaten" worden doorgegeven. `failed` kent ook `timeout`.
+- Eén slot over alle drie de methoden (`in-progress`).
+- Alleen e-mail/wachtwoord bestaat als aanmeldmethode (`FirebaseAuthGateway`); er is
+  daarom geen andere reauth-provider en geen aparte code `no-password-provider` gebouwd.
+
 ### C.3 2b-iii — overdracht en intrekken
 
 - `v2/src/application/account/OwnershipTransferGateway.ts` en
@@ -766,20 +794,22 @@ preflightpoort en de `FromServer`-eis weggemuteerd moeten de bijbehorende tests 
   (B6, #103) vraagt geen datacontractwijziging. **Restvenster na #103:** die eerste 7 dagen
   na het aanmaken van de organisatie, ook bij een overdracht zonder accountverwijdering
   (§B.8) en eenzijdig met een tweede account als de maker admin is.
-- **R5 — half aangemaakte organisatie na 7 dagen (reviewbevinding #103).** Slaagt de
-  org-write maar de membership-write niet (bijvoorbeeld uit een offline-wachtrij die pas na
-  meer dan 7 dagen wordt verstuurd, of een gebruiker die later terugkomt), dan weigert de
-  bootstrap-binding het hervatten. `bootstrapOrgId` blijft in `localStorage` staan en wordt
-  alleen bij succes gewist (`NoOrganizationsScreen.tsx`, `FirestoreOrganizationGateway.ts`),
-  dus elke volgende poging hervat dezelfde dode organisatie met een generieke fout en de
-  gebruiker kan via dat scherm geen nieuwe aanmaken. Zeldzaam; niets is gedeployed.
-  **Fix in 2b/2c, vóór de cutover:** bij `permission-denied` op het hervatpad met een
-  `createdAt` ouder dan 7 dagen de sleutel wissen en een nieuwe organisatie toestaan. Het
-  runbook (§8) dekt alleen de organisatie zonder owner.
 - **R3 — race na de eindpoort.** Een owner/admin kan direct na de eindpoort een
   `teamMembers`-document of uitnodiging voor de vertrekkende gebruiker aanmaken. Eindpoort
   5' verkleint het venster tot milliseconden; wat dan nog ontstaat, kan een owner/admin
   opruimen (teamMembers direct, uitnodigingen na 30 dagen) of het runbook.
+  **Ook omgekeerd (reviewbevinding D op 2b-i):** een delete die de flow als `timeout` of
+  `offline` opgaf, staat in de schrijfwachtrij van Firestore en kan later alsnog landen
+  zonder dat de flow het merkt. Dat is altijd een delete die we wilden, in de juiste
+  volgorde (de membership-delete komt pas na een groene per-organisatiecontrole), maar de
+  uitkomst `incomplete` kan dus achterhaald zijn; de volgende verse inventaris toont de
+  werkelijke toestand.
+- **Misvormd document van een ander lid blokkeert (fail closed).** De feitenread leest
+  de ongefilterde ledenlijst van de organisatie met `organizationMemberConverter`. Eén
+  ongeldig `organizationMembers`-document van een ánder lid (onbekende rol, ontbrekende
+  `uid`) laat de converter gooien: vertrek en accountverwijdering stoppen met
+  `failed`/`read-failed`, zonder write. Runbook: zo'n document in de Console herstellen of
+  verwijderen.
 - **R4 — pseudonieme audit-uid's blijven staan.** `organizations.createdBy`,
   `teams.createdBy`, `invitations.invitedBy`, `games.writerUid`, `actions.authorUid`,
   `completedGames.deletedBy` (tot redactie), `deletionRequests.requestedBy` en
@@ -792,6 +822,18 @@ preflightpoort en de `FromServer`-eis weggemuteerd moeten de bijbehorende tests 
   accepteren, maar ook niet via de query te vinden en blijft na accountverwijdering staan.
   *(Aanname A3: Firebase Auth levert het token-adres in kleine letters.)* Achtervang:
   runbook, en het pre-8.5-besluit over het uitnodigingsaanmaakpad (threat model §7).
+- **R6 — half aangemaakte organisatie na 7 dagen (reviewbevinding #103).** Slaagt de
+  org-write maar de membership-write niet (bijvoorbeeld uit een offline-wachtrij die pas na
+  meer dan 7 dagen wordt verstuurd, of een gebruiker die later terugkomt), dan weigert de
+  bootstrap-binding het hervatten. `bootstrapOrgId` blijft in `localStorage` staan en wordt
+  alleen bij succes gewist (`NoOrganizationsScreen.tsx`, `FirestoreOrganizationGateway.ts`),
+  dus elke volgende poging hervat dezelfde dode organisatie met een generieke fout en de
+  gebruiker kan via dat scherm geen nieuwe aanmaken. Zeldzaam; niets is gedeployed.
+  **Fix in 2b/2c, vóór de cutover:** bij `permission-denied` op het hervatpad met een
+  `createdAt` ouder dan 7 dagen de sleutel wissen en een nieuwe organisatie toestaan. Het
+  runbook (§8) dekt alleen de organisatie zonder owner. *(Nummering gelijkgetrokken met
+  `docs/security-threat-model.md` §7 in 2b-ii; heette hier eerder ook R5, naast het
+  e-mailgeval.)*
 
 ---
 

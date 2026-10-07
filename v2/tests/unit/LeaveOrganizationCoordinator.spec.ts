@@ -8,162 +8,16 @@ import {
   LeaveOrganizationCoordinator,
   type LeaveOrganizationOutcome,
 } from '../../src/application/account/LeaveOrganizationCoordinator';
-import type {
-  AccountGateway,
-  AccountIdentity,
-  AccountReadError,
-  FactsReadResult,
-  InventoryReadResult,
-  SelfDeleteResult,
-} from '../../src/application/account/AccountGateway';
-import type { LocalUnsyncedWorkProbe } from '../../src/application/account/LocalUnsyncedWorkProbe';
+import type { AccountReadError } from '../../src/application/account/AccountGateway';
 import type { OrganizationFacts } from '../../src/domain/account/types';
 import type { DeletionRequestStatus } from '../../src/domain/deletion/types';
-import type { InvitationStatus } from '../../src/domain/invitations/types';
 import type { OrganizationRole } from '../../src/domain/organizations/types';
+import { FakeAccountGateway, FakeProbe, type ServerState } from './support/accountFakes';
 
 const ME = 'uid-fictief-coach';
 const OTHER_OWNER = 'uid-fictief-owner';
 const ORG_A = 'org-fictief-a';
 const ORG_B = 'org-fictief-b';
-
-interface ServerState {
-  memberships: Map<string, OrganizationRole>;
-  teams: { organizationId: string; teamId: string; role: OrganizationRole }[];
-  invitations: {
-    organizationId: string;
-    invitationId: string;
-    status: InvitationStatus;
-    role: OrganizationRole;
-  }[];
-  facts: Map<string, Omit<OrganizationFacts, 'organizationId'>>;
-}
-
-type Method =
-  'inventory' | 'facts' | 'deleteTeam' | 'deleteInvitation' | 'deleteMembership' | 'identity';
-
-/**
- * Nep-implementatie van de poort. Gedraagt zich als het gatewaycontract: reads komen
- * uit `state`, een delete van een document dat er niet (meer) is geeft `already-gone`.
- * `failures` laat de n-de aanroep van een methode een vaste uitkomst geven; `hooks`
- * laat de "server" tussendoor veranderen (bijv. een owner die een teamMembers-document
- * toevoegt — restrisico R3).
- */
-class FakeAccountGateway implements AccountGateway {
-  readonly calls: string[] = [];
-  identity: AccountIdentity | null = { uid: ME, email: 'coach@example.test', emailVerified: true };
-  readonly failures = new Map<string, unknown>();
-  readonly hooks = new Map<string, () => void>();
-  private readonly counters = new Map<Method, number>();
-
-  constructor(readonly state: ServerState) {}
-
-  private tick(method: Method): string {
-    const n = (this.counters.get(method) ?? 0) + 1;
-    this.counters.set(method, n);
-    const key = `${method}#${n}`;
-    this.hooks.get(key)?.();
-    return key;
-  }
-
-  private failure<T>(key: string): T | undefined {
-    return this.failures.get(key) as T | undefined;
-  }
-
-  async readIdentity(): Promise<AccountIdentity | null> {
-    this.tick('identity');
-    this.calls.push('identity');
-    return this.identity;
-  }
-
-  async readInventoryFromServer(options: {
-    includeInvitations: boolean;
-  }): Promise<InventoryReadResult> {
-    const key = this.tick('inventory');
-    this.calls.push(options.includeInvitations ? 'inventory+inv' : 'inventory');
-    const failed = this.failure<InventoryReadResult>(key);
-    if (failed) return failed;
-    if (options.includeInvitations && !this.identity?.emailVerified) {
-      return { ok: false, error: { code: 'email-not-verified' } };
-    }
-    return {
-      ok: true,
-      inventory: {
-        organizationMemberships: [...this.state.memberships].map(([organizationId, role]) => ({
-          organizationId,
-          role,
-        })),
-        teamMemberships: this.state.teams.map((t) => ({ ...t })),
-        invitations: options.includeInvitations
-          ? this.state.invitations.map((i) => ({ ...i }))
-          : [],
-      },
-    };
-  }
-
-  async readOrganizationFacts(organizationId: string): Promise<FactsReadResult> {
-    const key = this.tick('facts');
-    this.calls.push(`facts:${organizationId}`);
-    const failed = this.failure<FactsReadResult>(key);
-    if (failed) return failed;
-    const facts = this.state.facts.get(organizationId);
-    if (!facts) return { ok: false, error: { code: 'read-failed', detail: 'geen feiten' } };
-    return { ok: true, facts: { organizationId, ...facts } };
-  }
-
-  async deleteOwnTeamMembership(ref: {
-    organizationId: string;
-    teamId: string;
-  }): Promise<SelfDeleteResult> {
-    const key = this.tick('deleteTeam');
-    this.calls.push(`deleteTeam:${ref.organizationId}/${ref.teamId}`);
-    const failed = this.failure<SelfDeleteResult>(key);
-    if (failed) return failed;
-    const index = this.state.teams.findIndex(
-      (t) => t.organizationId === ref.organizationId && t.teamId === ref.teamId,
-    );
-    if (index < 0) return { ok: true, outcome: 'already-gone' };
-    this.state.teams.splice(index, 1);
-    return { ok: true, outcome: 'deleted' };
-  }
-
-  async deleteOwnInvitation(ref: {
-    organizationId: string;
-    invitationId: string;
-  }): Promise<SelfDeleteResult> {
-    const key = this.tick('deleteInvitation');
-    this.calls.push(`deleteInvitation:${ref.organizationId}/${ref.invitationId}`);
-    const failed = this.failure<SelfDeleteResult>(key);
-    if (failed) return failed;
-    const index = this.state.invitations.findIndex(
-      (i) => i.organizationId === ref.organizationId && i.invitationId === ref.invitationId,
-    );
-    if (index < 0) return { ok: true, outcome: 'already-gone' };
-    this.state.invitations.splice(index, 1);
-    return { ok: true, outcome: 'deleted' };
-  }
-
-  async deleteOwnOrganizationMembership(organizationId: string): Promise<SelfDeleteResult> {
-    const key = this.tick('deleteMembership');
-    this.calls.push(`deleteMembership:${organizationId}`);
-    const failed = this.failure<SelfDeleteResult>(key);
-    if (failed) return failed;
-    if (!this.state.memberships.has(organizationId)) return { ok: true, outcome: 'already-gone' };
-    this.state.memberships.delete(organizationId);
-    return { ok: true, outcome: 'deleted' };
-  }
-
-  writes(): string[] {
-    return this.calls.filter((call) => call.startsWith('delete'));
-  }
-}
-
-class FakeProbe implements LocalUnsyncedWorkProbe {
-  constructor(readonly counts: Record<string, number> = {}) {}
-  countForOrganization(organizationId: string): number {
-    return this.counts[organizationId] ?? 0;
-  }
-}
 
 function facts(
   overrides: Partial<Omit<OrganizationFacts, 'organizationId'>> = {},
@@ -214,7 +68,11 @@ function standardState(): ServerState {
 }
 
 function setup(state: ServerState = standardState(), probe = new FakeProbe()) {
-  const gateway = new FakeAccountGateway(state);
+  const gateway = new FakeAccountGateway(state, {
+    uid: ME,
+    email: 'coach@example.test',
+    emailVerified: true,
+  });
   const coordinator = new LeaveOrganizationCoordinator(gateway, probe);
   return { gateway, coordinator, state };
 }
@@ -241,6 +99,7 @@ describe('LeaveOrganizationCoordinator — geslaagd vertrek', () => {
       status: 'ok',
       removed: { teamMembers: 2, invitations: 2, organizationMember: true },
       organizationDeletionPending: false,
+      invitationsChecked: true,
     });
     expect(gateway.calls).toEqual(HAPPY_CALLS);
     // Het membership is de allerlaatste write, en de eindcontrole komt daarná.
@@ -279,6 +138,7 @@ describe('LeaveOrganizationCoordinator — geslaagd vertrek', () => {
       status: 'ok',
       removed: { teamMembers: 2, invitations: 0, organizationMember: false },
       organizationDeletionPending: false,
+      invitationsChecked: true,
     });
     expect(gateway.calls).not.toContain(`facts:${ORG_A}`);
     expect(gateway.writes()).toEqual([
@@ -301,7 +161,12 @@ describe('LeaveOrganizationCoordinator — geslaagd vertrek', () => {
     gateway.identity = { uid: ME, email: 'coach@example.test', emailVerified: false };
     const outcome = await coordinator.leave(ORG_A);
 
-    expect(outcome).toMatchObject({ status: 'ok', removed: { invitations: 0 } });
+    // Reviewbevinding A op 2b-i: de aanroeper ziet dat de uitnodigingen NIET bekeken zijn.
+    expect(outcome).toMatchObject({
+      status: 'ok',
+      removed: { invitations: 0 },
+      invitationsChecked: false,
+    });
     expect(gateway.calls).not.toContain('inventory+inv');
     expect(gateway.writes().some((w) => w.startsWith('deleteInvitation'))).toBe(false);
   });
@@ -309,7 +174,10 @@ describe('LeaveOrganizationCoordinator — geslaagd vertrek', () => {
   it('zonder e-mailadres in het token: idem, geen uitnodigingsquery', async () => {
     const { gateway, coordinator } = setup();
     gateway.identity = { uid: ME, email: null, emailVerified: true };
-    await coordinator.leave(ORG_A);
+    expect(await coordinator.leave(ORG_A)).toMatchObject({
+      status: 'ok',
+      invitationsChecked: false,
+    });
     expect(gateway.calls).not.toContain('inventory+inv');
   });
 
@@ -339,6 +207,23 @@ describe('LeaveOrganizationCoordinator — geslaagd vertrek', () => {
 });
 
 describe('LeaveOrganizationCoordinator — preflight zonder enige write', () => {
+  it.each<[AccountReadError, LeaveOrganizationOutcome]>([
+    [{ code: 'offline' }, { status: 'offline' }],
+    [{ code: 'timeout' }, { status: 'failed', reason: 'timeout' }],
+    [
+      { code: 'read-failed', detail: 'x' },
+      { status: 'failed', reason: 'read-failed' },
+    ],
+  ])(
+    'tokenverversing in de preflight faalt (%o) → %o, geen inventaris en geen write',
+    async (error, expected) => {
+      const { gateway, coordinator } = setup();
+      gateway.failures.set('identity#1', { ok: false, error });
+      expect(await coordinator.leave(ORG_A)).toEqual(expected);
+      expect(gateway.calls).toEqual(['identity']);
+    },
+  );
+
   it('niet ingelogd → not-signed-in', async () => {
     const { gateway, coordinator } = setup();
     gateway.identity = null;
