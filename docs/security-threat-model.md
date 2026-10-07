@@ -241,7 +241,7 @@ onderstaande restrisico's blijven bewust staan.
   accountverwijdering staan (aanname A3: Firebase Auth levert het token-adres in
   kleine letters; niet in de emulator bewezen). Achtervang: runbook, en het
   pre-8.5-besluit over het uitnodigingsaanmaakpad hieronder.
-- **R6 — half aangemaakte organisatie na 7 dagen (alleen vastgelegd, niet opgelost).**
+- **R6 — half aangemaakte organisatie na 7 dagen (UI-deel opgelost in 2c-i).**
   `createOrganizationWithOwner` schrijft sequentieel eerst het organisatiedocument en
   dan het owner-membership via de bootstrap-create. Landt die tweede write niet
   binnen 7 dagen na `createdAt` (bijv. een write die offline in de wachtrij bleef
@@ -254,7 +254,7 @@ onderstaande restrisico's blijven bewust staan.
   bij succes gewist, dus elke volgende poging hervat dezelfde dode organisatie met een
   generieke fout en de gebruiker kan via dat scherm geen nieuwe organisatie aanmaken
   (ontwerp `docs/pr-8.3c-2b-plan.md` §F R6; fix vóór de cutover: bij `permission-denied`
-  op het hervatpad met een `createdAt` ouder dan 7 dagen de sleutel wissen).
+  op het hervatpad met een `createdAt` ouder dan 7 dagen de sleutel wissen). **Stand na 8.3c-2c-i:** `NoOrganizationsScreen` wist `bootstrapOrgId` bij elke `permission-denied` op het hervatpad (de maker kan `createdAt` niet lezen; binnen de 7 dagen geeft de hervatting geen weigering) en laat de gebruiker een nieuwe organisatie aanmaken (`docs/pr-8.3c-2c-plan.md` §6). De achtergebleven organisatie zonder lid blijft een runbookactie.
 
 Accountverwijdering (2b-ii): geen enkele write vóór een groen plan (alles zelf op te
 lossen) en een geslaagde reauthenticatie (besluit B2); `deleteUser()` alleen direct na
