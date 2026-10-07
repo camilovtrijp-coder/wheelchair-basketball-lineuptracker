@@ -701,6 +701,50 @@ in 2b-ii per organisatie hergebruikt.
   (update, delete), `team-members` (delete), `invitations` (update/revoke, read),
   `teams` (read).
 
+**Uitvoering 2b-iii (afwijkingen, met reden):**
+
+- **Owner-check via de eigen poort, niet via `readAuthoritativeCaller()`.**
+  `OwnershipTransferGateway.readCaller(orgId)` leest uid uit de Auth-sessie en de rol uit
+  het eigen membership met `getDocFromServer`. `OrganizationExportGateway.
+  readAuthoritativeCaller()` leest via `getDoc` (mag uit de cache, §B.5) en maakt van
+  offline `null` (dus "geen lid"). De exportcode blijft ongewijzigd.
+- **Rolvoorwaarde atomair, ook bij verwijderen.** `promoteToOwner` én
+  `removeOrganizationMember` lezen de huidige rol in een Firestore-transactie en schrijven
+  alleen als die gelijk is aan de verwachte rol (anders `role-changed`, geen write). Een
+  transactie leest altijd van de backend en komt nooit in de offline-schrijfwachtrij.
+  `completeTransfer` verwijdert A alleen als A op dat moment nog `organizationOwner` is.
+- **Extra serverlezing `readMemberFootprint(orgId, uid, email)`** (membership, teamMembers
+  in alle teams, open uitnodigingen op dat adres): als controle vóór de laatste write
+  (stage `pre-removal-check`, analoog aan de per-organisatiecontrole van 2b-i) en als
+  eindcontrole (d) ná de laatste write.
+- **`listTransferCandidates` geeft ook `otherOwners`** (de doelen voor B, besluit B9), naast
+  de niet-owner-kandidaten voor A. `completeTransfer` weigert een doel dat geen owner is
+  (`denied/target-not-owner`): het is geen algemene "lid verwijderen"-actie.
+- **Uitkomsten precies:** naast `denied`, `not-found`, `rejected`, `timeout`,
+  `incomplete(stage)`, `ok` ook `not-signed-in`, `offline`, `failed` (`read-failed`/
+  `timeout`/`write-failed`) en `in-progress` (één slot over `promote` en
+  `completeTransfer`). `rejected` draagt `reason` (`target-changed`/`permission-denied`)
+  en bij `completeTransfer` de `stage`. `timeout` bestaat alleen bij `promote` (één write);
+  in `completeTransfer` is een timeout `incomplete(stage, error)`. `promote` op een al
+  owner-lid is `ok/already-owner` (idempotent, ook na een verloren antwoord).
+- **Intrekken matcht het e-mailadres zonder hoofdlettergevoeligheid** (getrimd, kleine
+  letters). Rules vergelijken exact; voor intrekken is "hetzelfde adres in een andere
+  spelling" ook intrekken veiliger (R5). Een ongeldige uitnodiging in de organisatie
+  blokkeert het intrekken (converter, fail closed); de teamlisting leest alleen ID's,
+  zodat een misvormd teamdocument de overdracht niet blokkeert.
+- **De gateway weigert de eigen uid als doel** (`self-target`) op elke schrijfmethode,
+  naast de coördinatorcheck en de Rules.
+- **Accessmatrix:** de padbouwers staan in `ownershipTransferPaths.ts`; alleen dát bestand
+  bouwt paden en staat in `FIRESTORE_CLIENT_GATEWAY_FILES` (de gateway zelf bouwt geen
+  pad, dus de automatische ontdekking vindt hem niet).
+- **Bekend, niet opgelost (vastgelegd):** het e-mailadres van A komt uit A's
+  membership. Bij een bootstrap-owner schrijft de client dat veld zelf en Rules binden het
+  niet aan de token-e-mail; wijkt het af, dan worden uitnodigingen op A's token-adres niet
+  ingetrokken (restvenster van R1, 30-dagentermijn blijft gelden). Op gatewayniveau mag
+  ook een admin intrekken en teamMembers verwijderen (bestaande Rules-bevoegdheid); de
+  coördinator beperkt de overdracht tot owners. R2 is in de emulatortest vastgepind,
+  niet verholpen.
+
 ### C.4 Wat expliciet naar 2c en 2d gaat
 
 - **2c (UI/wiring):** `createAccountServices` op `AuthGate`-niveau (werkt zonder

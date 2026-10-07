@@ -171,20 +171,34 @@ privacyuitleg; niets wordt automatisch verzonden.
 
 ### Organisatie verlaten en accountverwijdering (8.3c-2, restrisico's R1–R6)
 
-Stand na PR 8.3c-2b-ii (`LeaveOrganizationCoordinator`, `AccountDeletionCoordinator`,
-`FirestoreAccountGateway`, `FirebaseAccountAuthGateway`;
+Stand na PR 8.3c-2b-iii (`LeaveOrganizationCoordinator`, `AccountDeletionCoordinator`,
+`OwnershipTransferCoordinator`, `FirestoreAccountGateway`, `FirebaseAccountAuthGateway`,
+`FirestoreOwnershipTransferGateway`;
 ontwerp `docs/pr-8.3c-2b-plan.md` §F, besluitrecord `docs/pr-8.3c-besluitvoorstel.md`
 §8.6/§8.7). De client verwijdert alleen eigen documenten die uit een verse
 server-inventaris komen, in de vaste volgorde teamMembers → eigen openstaande
 uitnodigingen → per-organisatiecontrole → eigen membership als laatste →
-eindcontrole van de server. Rules blijven de grens; onderstaande restrisico's
-blijven bewust staan.
+eindcontrole van de server. Op andermans documenten schrijft alleen de overdracht
+(2b-iii): na een gezaghebbende owner-check van de server promoveert owner A een
+bestaand niet-owner-lid B, en verwijdert owner B daarna een ándere owner A (open
+uitnodigingen intrekken → teamMembers → controle → membership als laatste →
+eindcontrole), met de verwachte rol van het doel als transactievoorwaarde en nooit de
+eigen uid als doel. Dat zijn bestaande Rules-bevoegdheden; Rules blijven de grens;
+onderstaande restrisico's blijven bewust staan.
 
 - **R1 — herclaim van een openstaande uitnodiging (besluitrecord §8.6 punt 3).** Een
   vertrokken lid kan een nog openstaande uitnodiging met een hogere rol claimen.
   2b-i sluit het eerlijke vertrekpad: bij verlaten verwijdert de vertrekker zijn eigen
   `pending`/`accepted` uitnodigingen in die organisatie (besluit B3; `claimed`/`revoked`
-  blijven voor de audit). Het overdrachtspad volgt in 2b-iii. De Rules-claimtermijn
+  blijven voor de audit). Sinds 2b-iii sluit ook het overdrachtspad: vóór B het
+  membership van de vorige owner A verwijdert, trekt `completeTransfer()` A's
+  `pending`/`accepted` uitnodigingen in die organisatie in (adres uit A's membership,
+  server-read; `claimed`/`revoked` en andere organisaties blijven), en
+  `OwnershipTransferGateway.revokeOpenInvitationsForEmail(orgId, email)` is de verplichte
+  aanroep voor een toekomstige ledenbeheer-UI bij demotie of verwijdering. Kanttekening:
+  bij een bootstrap-owner schrijft de client het `email`-veld van het membership zelf en
+  binden de Rules het niet aan de token-e-mail; wijkt het af, dan blijven uitnodigingen
+  op het token-adres staan (tot de termijn). De Rules-claimtermijn
   van 30 dagen na `invitedAt` (#103) sluit oude uitnodigingen. **Restvenster:** een
   uitnodiging jonger dan 30 dagen die buiten de app om blijft staan (demotie of
   verwijdering via de Console, of een vertrekker zonder geverifieerde e-mailclaim, die
@@ -193,7 +207,10 @@ blijven bewust staan.
   Rules-binding aan de eerste 7 dagen na `createdAt` (#103) laat alleen dat venster
   open, ook bij een overdracht zonder accountverwijdering en eenzijdig met een tweede
   account als de maker admin is. De maker kan zelf nooit vertrekken (klasse
-  `creator-needs-owner`, geen write).
+  `creator-needs-owner`, geen write). Een overdracht (2b-iii) waarin B de maker A
+  verwijdert, verandert daar niets aan: binnen die 7 dagen kan A zich daarna weer owner
+  maken, daarna niet (vastgepind in `firebase/tests/rules/ownership-transfer-gateway.spec.ts`,
+  bewust niet in de client of de Rules opgelost).
 - **R3 — race na de eindcontrole.** Een owner/admin kan direct na de eindcontrole een
   `teamMembers`-document of uitnodiging voor de vertrekker aanmaken; de eindcontrole is
   een momentopname. Sinds 2b-ii leest `deleteAuthAccount()` de eindpoort (drie queries
