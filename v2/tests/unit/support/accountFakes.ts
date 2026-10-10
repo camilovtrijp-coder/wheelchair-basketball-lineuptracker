@@ -285,8 +285,11 @@ export class FakeOwnershipTransferGateway implements OwnershipTransferGateway {
     organizationId: string,
     targetUid: string,
     expectedRole: OrganizationRole,
+    expectedCallerUid: string,
   ): Promise<PromoteResult> {
     const key = this.tick('promote');
+    if (this.callerUid !== expectedCallerUid)
+      return { ok: false, error: { code: 'not-signed-in' } };
     this.calls.push(`promote:${organizationId}/${targetUid}`);
     const failed = this.failure<PromoteResult>(key);
     if (failed) return failed;
@@ -308,8 +311,12 @@ export class FakeOwnershipTransferGateway implements OwnershipTransferGateway {
   async revokeOpenInvitationsForEmail(
     organizationId: string,
     email: string,
+    expectedCallerUid: string,
   ): Promise<RevokeInvitationsResult> {
     const key = this.tick('revoke');
+    if (this.callerUid !== expectedCallerUid) {
+      return { ok: false, error: { code: 'not-signed-in' }, revoked: 0 };
+    }
     this.calls.push(`revoke:${organizationId}/${email}`);
     const failed = this.failure<RevokeInvitationsResult>(key);
     if (failed) return failed;
@@ -328,8 +335,12 @@ export class FakeOwnershipTransferGateway implements OwnershipTransferGateway {
   async removeTeamMembershipsOf(
     organizationId: string,
     targetUid: string,
+    expectedCallerUid: string,
   ): Promise<RemoveTeamMembershipsResult> {
     const key = this.tick('removeTeams');
+    if (this.callerUid !== expectedCallerUid) {
+      return { ok: false, error: { code: 'not-signed-in' }, removed: 0 };
+    }
     this.calls.push(`removeTeams:${organizationId}/${targetUid}`);
     const failed = this.failure<RemoveTeamMembershipsResult>(key);
     if (failed) return failed;
@@ -354,8 +365,11 @@ export class FakeOwnershipTransferGateway implements OwnershipTransferGateway {
     organizationId: string,
     targetUid: string,
     expectedRole: OrganizationRole,
+    expectedCallerUid: string,
   ): Promise<RemoveMemberResult> {
     const key = this.tick('removeMember');
+    if (this.callerUid !== expectedCallerUid)
+      return { ok: false, error: { code: 'not-signed-in' } };
     this.calls.push(`removeMember:${organizationId}/${targetUid}`);
     const failed = this.failure<RemoveMemberResult>(key);
     if (failed) return failed;

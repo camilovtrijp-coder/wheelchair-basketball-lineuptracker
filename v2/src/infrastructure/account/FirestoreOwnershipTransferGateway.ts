@@ -225,9 +225,12 @@ export class FirestoreOwnershipTransferGateway implements OwnershipTransferGatew
     organizationId: string,
     targetUid: string,
     expectedRole: OrganizationRole,
+    expectedCallerUid: string,
   ): Promise<PromoteResult> {
     const uid = this.currentUid();
-    if (uid === null) return { ok: false, error: { code: 'not-signed-in' } };
+    if (uid === null || uid !== expectedCallerUid) {
+      return { ok: false, error: { code: 'not-signed-in' } };
+    }
     if (targetUid === uid) return { ok: false, error: { code: 'self-target' } };
     const target = organizationMemberRef(this.db, organizationId, targetUid);
     const self = organizationMemberRef(this.db, organizationId, uid);
@@ -281,10 +284,11 @@ export class FirestoreOwnershipTransferGateway implements OwnershipTransferGatew
   async revokeOpenInvitationsForEmail(
     organizationId: string,
     email: string,
+    expectedCallerUid: string,
   ): Promise<RevokeInvitationsResult> {
     let revoked = 0;
     let alreadyClosed = 0;
-    if (this.currentUid() === null) {
+    if (this.currentUid() !== expectedCallerUid) {
       return { ok: false, error: { code: 'not-signed-in' }, revoked };
     }
 
@@ -292,6 +296,10 @@ export class FirestoreOwnershipTransferGateway implements OwnershipTransferGatew
     if (!listed.ok) return { ok: false, error: readToWriteError(listed.error), revoked };
 
     for (const invitationId of listed.value.ids) {
+      // De sessie kan tijdens de lus wisselen: vóór elke write opnieuw controleren.
+      if (this.currentUid() !== expectedCallerUid) {
+        return { ok: false, error: { code: 'not-signed-in' }, revoked };
+      }
       const ref = organizationInvitationRef(this.db, organizationId, invitationId);
       try {
         await withTimeout(updateDoc(ref, revokeInvitationPatch()), this.timeoutMs);
@@ -323,10 +331,13 @@ export class FirestoreOwnershipTransferGateway implements OwnershipTransferGatew
   async removeTeamMembershipsOf(
     organizationId: string,
     targetUid: string,
+    expectedCallerUid: string,
   ): Promise<RemoveTeamMembershipsResult> {
     let removed = 0;
     const uid = this.currentUid();
-    if (uid === null) return { ok: false, error: { code: 'not-signed-in' }, removed };
+    if (uid === null || uid !== expectedCallerUid) {
+      return { ok: false, error: { code: 'not-signed-in' }, removed };
+    }
     if (targetUid === uid) return { ok: false, error: { code: 'self-target' }, removed };
 
     const teams = await this.readTeamIds(organizationId);
@@ -337,6 +348,10 @@ export class FirestoreOwnershipTransferGateway implements OwnershipTransferGatew
       const before = await this.readExists(ref);
       if (!before.ok) return { ok: false, error: readToWriteError(before.error), removed };
       if (!before.value) continue;
+      // De sessie kan tijdens de lus wisselen: vóór elke write opnieuw controleren.
+      if (this.currentUid() !== expectedCallerUid) {
+        return { ok: false, error: { code: 'not-signed-in' }, removed };
+      }
 
       try {
         await withTimeout(deleteDoc(ref), this.timeoutMs);
@@ -367,9 +382,12 @@ export class FirestoreOwnershipTransferGateway implements OwnershipTransferGatew
     organizationId: string,
     targetUid: string,
     expectedRole: OrganizationRole,
+    expectedCallerUid: string,
   ): Promise<RemoveMemberResult> {
     const uid = this.currentUid();
-    if (uid === null) return { ok: false, error: { code: 'not-signed-in' } };
+    if (uid === null || uid !== expectedCallerUid) {
+      return { ok: false, error: { code: 'not-signed-in' } };
+    }
     if (targetUid === uid) return { ok: false, error: { code: 'self-target' } };
     const target = organizationMemberRef(this.db, organizationId, targetUid);
     const self = organizationMemberRef(this.db, organizationId, uid);
