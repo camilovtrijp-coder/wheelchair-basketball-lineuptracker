@@ -129,8 +129,12 @@ export interface UseAccountFlowOptions {
   gate: AccountActionGate | null;
   /** Na "Sluiten" op een geslaagd vertrek. */
   onLeft: (organizationId: string) => void;
-  /** B7: direct na `deleted`, vóór de bevestiging zichtbaar wordt. Mag gooien. */
-  onAccountDeleted: () => Promise<void>;
+  /**
+   * B7: direct na `deleted`, vóór de bevestiging zichtbaar wordt. Mag gooien. Krijgt de
+   * organisaties uit het laatst beoordeelde verwijderplan van dit account (leeg als de
+   * verwijdering zonder plan hervat), zodat het lokale opruimen (R7) alleen hun gegevens raakt.
+   */
+  onAccountDeleted: (organizationIds: readonly string[]) => Promise<void>;
 }
 
 export interface AccountFlowApi {
@@ -220,6 +224,7 @@ export function useAccountFlow({
   // Synchroon bijgehouden naast de state: twee klikken in dezelfde tick zien elkaar.
   const stateRef = useRef<AccountFlowState | null>(null);
   const flowId = useRef(0);
+  const deletionOrganizationIds = useRef<readonly string[]>([]);
   const mounted = useRef(true);
   useEffect(() => {
     mounted.current = true;
@@ -276,6 +281,9 @@ export function useAccountFlow({
       } catch {
         outcome = { status: 'failed', reason: 'read-failed' };
       }
+      if (outcome.status === 'needs-action' || outcome.status === 'ready-to-clear') {
+        deletionOrganizationIds.current = outcome.plan.organizations.map((o) => o.organizationId);
+      }
       settle(
         id,
         isPlanOutcome(outcome)
@@ -288,6 +296,8 @@ export function useAccountFlow({
   const openDelete = () => {
     if (gate === null || stateRef.current !== null) return;
     flowId.current += 1;
+    // Een nieuwe verwijderflow begint zonder organisaties van een eerdere (mogelijk ander account).
+    deletionOrganizationIds.current = [];
     runAssess(flowId.current, false);
   };
 
@@ -379,7 +389,7 @@ export function useAccountFlow({
       if (deletion.status === 'deleted') {
         let localWipeFailed = false;
         try {
-          await onAccountDeleted();
+          await onAccountDeleted(deletionOrganizationIds.current);
         } catch {
           localWipeFailed = true;
         }

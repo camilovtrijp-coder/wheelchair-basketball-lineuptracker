@@ -27,6 +27,7 @@ import {
   wipeLocalFirebaseData,
 } from '../infrastructure/firebase/firebaseClient';
 import { clearLocalDeviceData } from '../infrastructure/device/clearLocalDeviceData';
+import { clearDeletedAccountLocalData } from '../infrastructure/device/clearDeletedAccountLocalData';
 import { FirestoreOrganizationGateway } from '../infrastructure/organizations/FirestoreOrganizationGateway';
 import { selectRepositories } from '../infrastructure/repositories/selectRepositories';
 import { resolveAppRepositories } from '../infrastructure/repositories/resolveAppRepositories';
@@ -434,12 +435,17 @@ export function AuthGate({
    * Besluit B7 (docs/pr-8.3c-2b-plan.md §I): na `deleted` ALTIJD `wipeLocalFirebaseData()`
    * (Firestore-instantie beëindigen en haar IndexedDB-cache met organisatiedata en
    * e-mailadressen wissen) en NOOIT `clearLocalDeviceData()`, want die wist ook
-   * lokale-modusdata. Daarna Firestore opnieuw initialiseren zoals `handleSignOut()`, zodat
-   * een volgende login in deze sessie werkt, en de contextpointer wissen.
+   * lokale-modusdata. Besluit R7 (10 oktober 2026): wis daarnaast de `localStorage`-gegevens
+   * van de organisaties van dit account (en alleen die), plus het apparaat-ID en de vlaggen als
+   * er niets van andere organisaties meer staat (`clearDeletedAccountLocalData`), eerst, zodat
+   * dat ook gebeurt als het wissen van de
+   * Firestore-cache faalt. Daarna Firestore opnieuw initialiseren zoals `handleSignOut()`,
+   * zodat een volgende login in deze sessie werkt, en de contextpointer wissen.
    */
-  async function handleAccountDeleted() {
+  async function handleAccountDeleted(organizationIds: readonly string[]) {
     clearSelectedContext(browserStorage);
     setSelectedContext(null);
+    clearDeletedAccountLocalData(browserStorage, listBrowserStorageKeys(), organizationIds);
     await wipeLocalFirebaseData();
     initFirebase(readTrustedDevice(browserStorage) ?? false);
   }

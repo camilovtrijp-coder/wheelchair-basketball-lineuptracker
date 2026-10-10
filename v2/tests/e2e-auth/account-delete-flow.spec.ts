@@ -132,6 +132,26 @@ test.describe('8.3c-2d — account verwijderen: volledige stroom', () => {
     const localBefore = await readLocalStorage(page, LOCAL_MODE_KEYS);
     expect(localBefore['lineup-tracker-roster']).toContain('Lokale Speler');
     expect(await firestoreIndexedDbNames(page)).not.toEqual([]);
+    // Besluit R7: wat het account op dit apparaat achterliet (fictieve waarden). Geen actieve
+    // wedstrijd of afronding in de wachtrij: die blokkeren verwijderen (zie de blokkadetest).
+    const r7Keys = [
+      `lineup-tracker-v2-migration-run:${orgA.orgId}:${a1}`,
+      `lineup-tracker-v2-completed-games:${orgA.orgId}:${a1}`,
+      `lineup-tracker-v2-game-sync-checkpoint:game-r7`,
+      'lineup-tracker-v2-device-id',
+      'lineup-tracker-cloud-imported-settings',
+    ];
+    await page.evaluate(
+      ([keys, orgId]) => {
+        for (const key of keys ?? []) {
+          const value = key.includes('game-sync-checkpoint')
+            ? { gameId: 'game-r7', organizationId: orgId }
+            : { fictief: true };
+          window.localStorage.setItem(key, JSON.stringify(value));
+        }
+      },
+      [r7Keys, orgA.orgId] as const,
+    );
 
     await openDeletePlan(page);
     await expect(page.getByTestId(`account-delete-org-${orgA.orgId}`)).toContainText(
@@ -191,6 +211,8 @@ test.describe('8.3c-2d — account verwijderen: volledige stroom', () => {
     // B7: lokale-modusdata intact, Firestore-IndexedDB-cache gewist.
     expect(await readLocalStorage(page, LOCAL_MODE_KEYS)).toEqual(localBefore);
     expect(await firestoreIndexedDbNames(page)).toEqual([]);
+    // R7: de org-gescoopte gegevens, het apparaat-ID en de vlaggen zijn weg.
+    expect(Object.values(await readLocalStorage(page, r7Keys))).toEqual(r7Keys.map(() => null));
 
     // Sluiten → inlogscherm; inloggen met de oude gegevens faalt in de UI.
     await page.getByTestId('account-delete-close-btn').click();
