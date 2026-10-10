@@ -141,9 +141,17 @@ test.describe('8.3c-2d — account verwijderen: volledige stroom', () => {
       'lineup-tracker-v2-device-id',
       'lineup-tracker-cloud-imported-settings',
     ];
-    await page.evaluate((keys) => {
-      for (const key of keys) window.localStorage.setItem(key, JSON.stringify({ fictief: true }));
-    }, r7Keys);
+    await page.evaluate(
+      ([keys, orgId]) => {
+        for (const key of keys ?? []) {
+          const value = key.includes('game-sync-checkpoint')
+            ? { gameId: 'game-r7', organizationId: orgId }
+            : { fictief: true };
+          window.localStorage.setItem(key, JSON.stringify(value));
+        }
+      },
+      [r7Keys, orgA.orgId] as const,
+    );
 
     await openDeletePlan(page);
     await expect(page.getByTestId(`account-delete-org-${orgA.orgId}`)).toContainText(

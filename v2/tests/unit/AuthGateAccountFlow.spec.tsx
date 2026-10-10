@@ -115,11 +115,11 @@ import { translate } from '../../src/i18n/strings';
 const USER: AuthUser = { uid: 'uid-fictief', email: 'coach@example.test', emailVerified: true };
 /** Sleutels die besluit R7 na `deleted` wist (fictieve waarden). */
 const R7_KEYS = [
-  'lineup-tracker-v2-active-game:org-1:team-1',
-  'lineup-tracker-v2-completed-games:org-1:team-1',
-  'lineup-tracker-v2-pending-finalize:org-1:team-1',
+  'lineup-tracker-v2-active-game:org-a:team-a',
+  'lineup-tracker-v2-completed-games:org-a:team-a',
+  'lineup-tracker-v2-pending-finalize:org-a:team-a',
   'lineup-tracker-v2-game-sync-checkpoint:game-1',
-  'lineup-tracker-v2-migration-run:org-1:team-1',
+  'lineup-tracker-v2-migration-run:org-a:team-a',
   'lineup-tracker-v2-device-id',
   'lineup-tracker-bootstrap-org-id',
   'lineup-tracker-cloud-imported-settings',
@@ -211,6 +211,35 @@ async function toActive(membership: Membership = ORG_A) {
   return utils;
 }
 
+/** Het verwijderplan van dit account: alleen org-a. */
+function planForOrgA(c: ReturnType<typeof coordinators>) {
+  c.accountDeletionCoordinator.assess.mockResolvedValue({
+    status: 'ready-to-clear',
+    plan: {
+      organizations: [{ organizationId: 'org-a', class: 'leave' }],
+      invitationCount: 0,
+      canProceed: true,
+    },
+  });
+  c.accountDeletionCoordinator.clearFirestoreData.mockResolvedValue({
+    status: 'ready-for-auth-deletion',
+  });
+}
+
+/** Zet de sleutels met een leesbare inhoud (het synccheckpoint wordt op inhoud herkend). */
+function seedR7(keys: readonly string[], organizationId = 'org-a') {
+  for (const key of keys) {
+    localStorage.setItem(
+      key,
+      key.startsWith('lineup-tracker-v2-game-sync-checkpoint:')
+        ? JSON.stringify({ gameId: 'game-1', organizationId })
+        : key === 'lineup-tracker-bootstrap-org-id'
+          ? organizationId
+          : 'x',
+    );
+  }
+}
+
 describe('AuthGate — accountflow boven de unmount-grens', () => {
   it('een membership-snapshot die het geen-organisatiesscherm vervangt, breekt de beoordeling niet af en roept niets opnieuw aan', async () => {
     const { c, factory } = mount();
@@ -267,7 +296,7 @@ describe('AuthGate — accountflow boven de unmount-grens', () => {
     // Nog niets gewist zolang het resultaat open staat.
     expect(localStorage.getItem(SELECTED_CONTEXT_STORAGE_KEY)).not.toBeNull();
     const subscriptionsBefore = subscriptions.memberships.length;
-    for (const key of R7_KEYS) localStorage.setItem(key, 'x');
+    seedR7(R7_KEYS);
 
     fireEvent.click(screen.getByTestId('leave-org-close-btn'));
     expect(localStorage.getItem(SELECTED_CONTEXT_STORAGE_KEY)).toBeNull();
@@ -276,7 +305,7 @@ describe('AuthGate — accountflow boven de unmount-grens', () => {
     await screen.findByTestId('no-org-delete-account-btn');
     expect(firebase.wipeLocalFirebaseData).not.toHaveBeenCalled();
     // "Organisatie verlaten" wist de lokale gegevens niet (besluit R7): het account bestaat nog.
-    for (const key of R7_KEYS) expect(localStorage.getItem(key)).toBe('x');
+    for (const key of R7_KEYS) expect(localStorage.getItem(key)).not.toBeNull();
   });
 
   it('een geweigerd vertrek wist niets en start geen nieuw abonnement', async () => {
@@ -295,8 +324,8 @@ describe('AuthGate — accountflow boven de unmount-grens', () => {
   it('B7: na deleted wipeLocalFirebaseData() + herinitialisatie, nooit clearLocalDeviceData(); de bevestiging staat over het loginscherm', async () => {
     const { c, auth } = await toActive();
     localStorage.setItem('lineup-tracker-settings', '{"teamName":"Lokaal"}');
-    for (const key of R7_KEYS) localStorage.setItem(key, 'x');
-    c.accountDeletionCoordinator.assess.mockResolvedValue({ status: 'ready-for-auth-deletion' });
+    seedR7(R7_KEYS);
+    planForOrgA(c);
     c.accountDeletionCoordinator.deleteAuthAccount.mockImplementation(async () => {
       // `deleteUser` meldt de gebruiker af: AuthGate valt terug naar het loginscherm
       // terwijl de flow nog loopt.
@@ -330,9 +359,40 @@ describe('AuthGate — accountflow boven de unmount-grens', () => {
     expect(screen.queryByTestId('account-flow-dialog')).toBeNull();
   });
 
+  it('R7: onbevestigd werk van een ANDERE organisatie op het apparaat blijft staan, en dan ook het apparaat-ID en de vlaggen', async () => {
+    const { c, auth } = await toActive();
+    seedR7(R7_KEYS);
+    const foreign = [
+      'lineup-tracker-v2-pending-finalize:org-b:team-b',
+      'lineup-tracker-v2-active-game:org-b:team-b',
+      'lineup-tracker-v2-game-sync-checkpoint:game-b',
+    ];
+    seedR7(foreign, 'org-b');
+    planForOrgA(c);
+    c.accountDeletionCoordinator.deleteAuthAccount.mockImplementation(async () => {
+      auth.emit(null);
+      return { status: 'deleted' };
+    });
+    fireEvent.click(screen.getByTestId('stub-delete'));
+    fireEvent.click(await screen.findByTestId('account-delete-continue-btn'));
+    fireEvent.input(screen.getByTestId('account-delete-password-input'), {
+      target: { value: PASSWORD },
+    });
+    fireEvent.click(screen.getByTestId('account-delete-confirm-btn'));
+    await screen.findByTestId('account-delete-deleted');
+
+    const gone = R7_KEYS.filter(
+      (key) => key.includes(':org-a:') || key.includes('game-sync-checkpoint'),
+    );
+    for (const key of gone) expect(localStorage.getItem(key)).toBeNull();
+    for (const key of foreign) expect(localStorage.getItem(key)).not.toBeNull();
+    expect(localStorage.getItem('lineup-tracker-v2-device-id')).toBe('x');
+    expect(localStorage.getItem('lineup-tracker-cloud-imported-settings')).toBe('x');
+  });
+
   it('geen B7 bij firestore-cleared-auth-present', async () => {
     const { c } = await toActive();
-    for (const key of R7_KEYS) localStorage.setItem(key, 'x');
+    seedR7(R7_KEYS);
     c.accountDeletionCoordinator.assess.mockResolvedValue({ status: 'ready-for-auth-deletion' });
     c.accountDeletionCoordinator.deleteAuthAccount.mockResolvedValue({
       status: 'firestore-cleared-auth-present',
@@ -348,7 +408,7 @@ describe('AuthGate — accountflow boven de unmount-grens', () => {
     expect(firebase.wipeLocalFirebaseData).not.toHaveBeenCalled();
     expect(localStorage.getItem(SELECTED_CONTEXT_STORAGE_KEY)).not.toBeNull();
     // Het account bestaat nog: niets van R7 wordt gewist.
-    for (const key of R7_KEYS) expect(localStorage.getItem(key)).toBe('x');
+    for (const key of R7_KEYS) expect(localStorage.getItem(key)).not.toBeNull();
   });
 
   it('één poort: terwijl een vertrek loopt, geeft verwijderen geen tweede flow en geen aanroep', async () => {
