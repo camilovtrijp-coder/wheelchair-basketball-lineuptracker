@@ -52,6 +52,7 @@ function Harness({
 }) {
   const flow = useAccountFlow({
     gate: gate as unknown as AccountActionGate,
+    accountUid: 'uid-test',
     onLeft,
     onAccountDeleted: onDeleted,
   });
@@ -342,6 +343,7 @@ describe('dialooggedrag', () => {
     function DisablingHarness({ gate }: { gate: FakeGate }) {
       const flow = useAccountFlow({
         gate: gate as unknown as AccountActionGate,
+        accountUid: 'uid-test',
         onLeft: () => undefined,
         onAccountDeleted: async () => undefined,
       });

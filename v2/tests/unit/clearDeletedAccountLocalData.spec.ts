@@ -106,6 +106,20 @@ describe('infrastructure/device/clearDeletedAccountLocalData (besluit R7)', () =
     expect(storage.has(pendingFinalizeStorageKey('org-own', 'team-1'))).toBe(false);
   });
 
+  it('exacte prefixmatch op `{org}:`: org-ownX blijft staan, org-own wordt gewist', () => {
+    const storage = new FakeStorage();
+    const lookalike = `lineup-tracker-v2-pending-finalize:org-own:extra:team-1`;
+    // Hoort bij org "org-own" (voorvoegsel "org-own:") en wordt dus gewist; een sleutel van org
+    // "org-own:extra" zou botsen, maar org-ID's bevatten geen dubbele punt (Firestore-auto-ID's).
+    storage.setItem(lookalike, 'x');
+    storage.setItem(pendingFinalizeStorageKey('org-ownX', 'team-1'), 'x');
+
+    clearDeletedAccountLocalData(storage, storage.keys(), OWN);
+
+    expect(storage.has(lookalike)).toBe(false);
+    expect(storage.has(pendingFinalizeStorageKey('org-ownX', 'team-1'))).toBe(true);
+  });
+
   it('een checkpoint zonder leesbare inhoud wordt niet gewist en telt als van een ander', () => {
     const storage = new FakeStorage();
     storage.setItem(gameSyncCheckpointStorageKey('game-x'), 'geen json');

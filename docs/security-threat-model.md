@@ -337,6 +337,14 @@ onderstaande restrisico's blijven bewust staan.
   en zijn de lokale-modussleutels (instellingen, spelerslijst, v1-wedstrijden, taal)
   ongewijzigd; het open R7-besluit verandert daar niet door.
 
+  **Restrisico na Opruim-PR 3/4:** de wis kent alleen de organisaties uit het verwijderplan van
+  dit account (in het geheugen van de flow). Hervat de verwijdering zonder plan (de opruiming
+  was al klaar en `deleteUser` faalde, daarna sluiten en later opnieuw openen, of een herlaad),
+  dan wordt niets org-gescoopts gewist en blijven het apparaat-ID en de importvlaggen staan: een
+  privacyrest, geen dataverlies. Advies in dat geval: de browsergegevens wissen. Een flow die
+  open staat terwijl een ANDER account inlogt, wordt gesloten (Opruim-PR 4), zodat de lijst
+  van het vorige account nooit voor het nieuwe geldt.
+
 Accountverwijdering (2b-ii): geen enkele write vóór een groen plan (alles zelf op te
 lossen) en een geslaagde reauthenticatie (besluit B2); `deleteUser()` alleen direct na
 een lege eindpoort uit dezelfde aanroep; `deleted` alleen na een bevestigend antwoord,
