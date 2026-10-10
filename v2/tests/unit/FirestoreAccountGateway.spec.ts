@@ -264,7 +264,11 @@ describe('readIdentity', () => {
   it('de stappen NA de preflight gebruiken het gecachete (verse) token, zonder extra verversing', async () => {
     const getIdTokenResult = signIn();
     await gateway.readInventoryFromServer({ includeInvitations: true });
-    await gateway.deleteOwnInvitation({ organizationId: ORG_A, invitationId: 'inv-1' });
+    await gateway.deleteOwnInvitation({
+      organizationId: ORG_A,
+      invitationId: 'inv-1',
+      expectedUid: ME,
+    });
     expect(getIdTokenResult.mock.calls.every((call) => call[0] === false)).toBe(true);
   });
 });
@@ -448,7 +452,11 @@ describe('readOrganizationFacts', () => {
 describe('self-deletes: eigen pad, teruglezen vóór en na', () => {
   it('teamMembers: verwijdert exact organizations/{org}/teams/{team}/teamMembers/{EIGEN uid}', async () => {
     expect(
-      await gateway.deleteOwnTeamMembership({ organizationId: ORG_A, teamId: 'team-1' }),
+      await gateway.deleteOwnTeamMembership({
+        organizationId: ORG_A,
+        teamId: 'team-1',
+        expectedUid: ME,
+      }),
     ).toEqual({ ok: true, outcome: 'deleted' });
     expect((deleteDoc as Mock).mock.calls.map((call) => call[0].path)).toEqual([
       `organizations/${ORG_A}/teams/team-1/teamMembers/${ME}`,
@@ -459,7 +467,7 @@ describe('self-deletes: eigen pad, teruglezen vóór en na', () => {
   });
 
   it('organizationMembers: verwijdert exact het EIGEN membership', async () => {
-    expect(await gateway.deleteOwnOrganizationMembership(ORG_A)).toEqual({
+    expect(await gateway.deleteOwnOrganizationMembership(ORG_A, ME)).toEqual({
       ok: true,
       outcome: 'deleted',
     });
@@ -471,7 +479,11 @@ describe('self-deletes: eigen pad, teruglezen vóór en na', () => {
 
   it('uitnodiging: zoekt met de token-e-mail en verwijdert exact dat document', async () => {
     expect(
-      await gateway.deleteOwnInvitation({ organizationId: ORG_A, invitationId: 'inv-1' }),
+      await gateway.deleteOwnInvitation({
+        organizationId: ORG_A,
+        invitationId: 'inv-1',
+        expectedUid: ME,
+      }),
     ).toEqual({ ok: true, outcome: 'deleted' });
     expect((deleteDoc as Mock).mock.calls.map((call) => call[0].path)).toEqual([
       `organizations/${ORG_A}/invitations/inv-1`,
@@ -482,7 +494,11 @@ describe('self-deletes: eigen pad, teruglezen vóór en na', () => {
   it('uitnodiging zonder geverifieerde claim → rejected, geen read en geen delete', async () => {
     signIn({ email: MY_EMAIL, email_verified: false });
     expect(
-      await gateway.deleteOwnInvitation({ organizationId: ORG_A, invitationId: 'inv-1' }),
+      await gateway.deleteOwnInvitation({
+        organizationId: ORG_A,
+        invitationId: 'inv-1',
+        expectedUid: ME,
+      }),
     ).toEqual({ ok: false, error: { code: 'rejected' } });
     expect(deleteDoc).not.toHaveBeenCalled();
     expect(getDocsFromServer).not.toHaveBeenCalled();
@@ -490,7 +506,11 @@ describe('self-deletes: eigen pad, teruglezen vóór en na', () => {
 
   it('een andermans uitnodiging (niet in de eigen query) wordt nooit verwijderd', async () => {
     expect(
-      await gateway.deleteOwnInvitation({ organizationId: ORG_B, invitationId: 'inv-3' }),
+      await gateway.deleteOwnInvitation({
+        organizationId: ORG_B,
+        invitationId: 'inv-3',
+        expectedUid: ME,
+      }),
     ).toEqual({ ok: true, outcome: 'already-gone' });
     expect(deleteDoc).not.toHaveBeenCalled();
     expect(server.has(`organizations/${ORG_B}/invitations/inv-3`)).toBe(true);
@@ -498,7 +518,7 @@ describe('self-deletes: eigen pad, teruglezen vóór en na', () => {
 
   it('A1: membership is al weg → already-gone ZONDER delete-poging (geen permission-denied als fout)', async () => {
     server.delete(`organizations/${ORG_A}/organizationMembers/${ME}`);
-    expect(await gateway.deleteOwnOrganizationMembership(ORG_A)).toEqual({
+    expect(await gateway.deleteOwnOrganizationMembership(ORG_A, ME)).toEqual({
       ok: true,
       outcome: 'already-gone',
     });
@@ -510,7 +530,7 @@ describe('self-deletes: eigen pad, teruglezen vóór en na', () => {
       server.delete(ref.path); // een ander was ons net voor
       throw { code: 'permission-denied' };
     });
-    expect(await gateway.deleteOwnOrganizationMembership(ORG_A)).toEqual({
+    expect(await gateway.deleteOwnOrganizationMembership(ORG_A, ME)).toEqual({
       ok: true,
       outcome: 'already-gone',
     });
@@ -518,7 +538,7 @@ describe('self-deletes: eigen pad, teruglezen vóór en na', () => {
 
   it('permission-denied en het document staat er nog → rejected', async () => {
     (deleteDoc as Mock).mockRejectedValue({ code: 'permission-denied' });
-    expect(await gateway.deleteOwnOrganizationMembership(ORG_A)).toEqual({
+    expect(await gateway.deleteOwnOrganizationMembership(ORG_A, ME)).toEqual({
       ok: false,
       error: { code: 'rejected' },
     });
@@ -529,6 +549,7 @@ describe('self-deletes: eigen pad, teruglezen vóór en na', () => {
     const result = await gateway.deleteOwnTeamMembership({
       organizationId: ORG_A,
       teamId: 'team-1',
+      expectedUid: ME,
     });
     expect(!result.ok && result.error.code).toBe('failed');
   });
@@ -536,14 +557,18 @@ describe('self-deletes: eigen pad, teruglezen vóór en na', () => {
   it('geen serverbevestiging binnen 8 s (offline in de wachtrij) → timeout', async () => {
     vi.useFakeTimers();
     (deleteDoc as Mock).mockReturnValue(new Promise(() => {}));
-    const pending = gateway.deleteOwnTeamMembership({ organizationId: ORG_A, teamId: 'team-1' });
+    const pending = gateway.deleteOwnTeamMembership({
+      organizationId: ORG_A,
+      teamId: 'team-1',
+      expectedUid: ME,
+    });
     await vi.advanceTimersByTimeAsync(ACCOUNT_GATEWAY_TIMEOUT_MS);
     expect(await pending).toEqual({ ok: false, error: { code: 'timeout' } });
   });
 
   it('offline bij het teruglezen vooraf → offline, geen delete in de wachtrij', async () => {
     (getDocsFromServer as Mock).mockRejectedValue({ code: 'unavailable' });
-    expect(await gateway.deleteOwnOrganizationMembership(ORG_A)).toEqual({
+    expect(await gateway.deleteOwnOrganizationMembership(ORG_A, ME)).toEqual({
       ok: false,
       error: { code: 'offline' },
     });
@@ -552,28 +577,57 @@ describe('self-deletes: eigen pad, teruglezen vóór en na', () => {
 
   it('een andere SDK-fout op de delete → failed', async () => {
     (deleteDoc as Mock).mockRejectedValue({ code: 'internal' });
-    const result = await gateway.deleteOwnOrganizationMembership(ORG_A);
+    const result = await gateway.deleteOwnOrganizationMembership(ORG_A, ME);
     expect(!result.ok && result.error.code).toBe('failed');
   });
 
   it('niet ingelogd → not-signed-in, niets gelezen of verwijderd', async () => {
     (getAuth as Mock).mockReturnValue({ currentUser: null });
-    expect(await gateway.deleteOwnOrganizationMembership(ORG_A)).toEqual({
+    expect(await gateway.deleteOwnOrganizationMembership(ORG_A, ME)).toEqual({
       ok: false,
       error: { code: 'not-signed-in' },
     });
     expect(
-      await gateway.deleteOwnTeamMembership({ organizationId: ORG_A, teamId: 'team-1' }),
+      await gateway.deleteOwnTeamMembership({
+        organizationId: ORG_A,
+        teamId: 'team-1',
+        expectedUid: ME,
+      }),
     ).toEqual({ ok: false, error: { code: 'not-signed-in' } });
     expect(
-      await gateway.deleteOwnInvitation({ organizationId: ORG_A, invitationId: 'inv-1' }),
+      await gateway.deleteOwnInvitation({
+        organizationId: ORG_A,
+        invitationId: 'inv-1',
+        expectedUid: ME,
+      }),
     ).toEqual({ ok: false, error: { code: 'not-signed-in' } });
     expect(deleteDoc).not.toHaveBeenCalled();
   });
 
-  it('geen methode neemt een uid of e-mailadres aan (typetest)', () => {
-    // @ts-expect-error — de eigen uid komt uitsluitend uit de Auth-sessie.
-    void gateway.deleteOwnOrganizationMembership(ORG_A, OTHER);
+  it('sessiewissel tijdens de flow: een ander uid dan expectedUid → not-signed-in, niets gelezen of verwijderd', async () => {
+    // De huidige Auth-sessie is ME; de flow werd gestart voor een ander account.
+    expect(await gateway.deleteOwnOrganizationMembership(ORG_A, OTHER)).toEqual({
+      ok: false,
+      error: { code: 'not-signed-in' },
+    });
+    expect(
+      await gateway.deleteOwnTeamMembership({
+        organizationId: ORG_A,
+        teamId: 'team-1',
+        expectedUid: OTHER,
+      }),
+    ).toEqual({ ok: false, error: { code: 'not-signed-in' } });
+    expect(
+      await gateway.deleteOwnInvitation({
+        organizationId: ORG_A,
+        invitationId: 'inv-1',
+        expectedUid: OTHER,
+      }),
+    ).toEqual({ ok: false, error: { code: 'not-signed-in' } });
+    expect(deleteDoc).not.toHaveBeenCalled();
+  });
+
+  it('geen methode neemt een uid als identiteit aan (typetest; `expectedUid` is alleen een guard)', () => {
     // @ts-expect-error — idem voor teamMembers.
     void gateway.deleteOwnTeamMembership({ organizationId: ORG_A, teamId: 'team-1', uid: OTHER });
     // @ts-expect-error — en de inventaris heeft geen identiteitsparameter.

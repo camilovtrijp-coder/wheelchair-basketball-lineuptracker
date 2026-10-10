@@ -120,8 +120,11 @@ export class FakeAccountGateway implements AccountGateway {
   async deleteOwnTeamMembership(ref: {
     organizationId: string;
     teamId: string;
+    expectedUid: string;
   }): Promise<SelfDeleteResult> {
     const key = this.tick('deleteTeam');
+    if (this.identity?.uid !== ref.expectedUid)
+      return { ok: false, error: { code: 'not-signed-in' } };
     this.calls.push(`deleteTeam:${ref.organizationId}/${ref.teamId}`);
     const failed = this.failure<SelfDeleteResult>(key);
     if (failed) return failed;
@@ -136,8 +139,11 @@ export class FakeAccountGateway implements AccountGateway {
   async deleteOwnInvitation(ref: {
     organizationId: string;
     invitationId: string;
+    expectedUid: string;
   }): Promise<SelfDeleteResult> {
     const key = this.tick('deleteInvitation');
+    if (this.identity?.uid !== ref.expectedUid)
+      return { ok: false, error: { code: 'not-signed-in' } };
     this.calls.push(`deleteInvitation:${ref.organizationId}/${ref.invitationId}`);
     const failed = this.failure<SelfDeleteResult>(key);
     if (failed) return failed;
@@ -149,8 +155,12 @@ export class FakeAccountGateway implements AccountGateway {
     return { ok: true, outcome: 'deleted' };
   }
 
-  async deleteOwnOrganizationMembership(organizationId: string): Promise<SelfDeleteResult> {
+  async deleteOwnOrganizationMembership(
+    organizationId: string,
+    expectedUid: string,
+  ): Promise<SelfDeleteResult> {
     const key = this.tick('deleteMembership');
+    if (this.identity?.uid !== expectedUid) return { ok: false, error: { code: 'not-signed-in' } };
     this.calls.push(`deleteMembership:${organizationId}`);
     const failed = this.failure<SelfDeleteResult>(key);
     if (failed) return failed;
