@@ -297,6 +297,24 @@ describe('AccountDeletionCoordinator.clearFirestoreData()', () => {
     expect(state.memberships.size + state.teams.length + state.invitations.length).toBe(0);
   });
 
+  it('sessiewissel tijdens de opruiming: de volgende delete weigert (not-signed-in) en het account blijft staan', async () => {
+    const { gateway, coordinator, state } = setup();
+    const before = state.teams.length + state.invitations.length + state.memberships.size;
+    // Direct na de reauth logt iemand anders in; elke volgende self-delete weigert.
+    gateway.hooks.set('deleteTeam#1', () => {
+      gateway.identity = {
+        uid: 'uid-fictief-ander-account',
+        email: 'ander@example.test',
+        emailVerified: true,
+      };
+    });
+    const outcome = await coordinator.clearFirestoreData(PASSWORD);
+    expect(outcome.status).toBe('incomplete');
+    expect(gateway.writes()).toEqual([]);
+    expect(gateway.calls).not.toContain('deleteUser');
+    expect(state.teams.length + state.invitations.length + state.memberships.size).toBe(before);
+  });
+
   it.each([
     ['owner-sole', 'organizationOwner', facts({ ownerUids: [ME], createdBy: ME })],
     ['owner-awaiting-removal', 'organizationOwner', facts({ ownerUids: [ME, OTHER_OWNER] })],

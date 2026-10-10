@@ -379,6 +379,25 @@ describe('LeaveOrganizationCoordinator — stapfouten stoppen de flow', () => {
     ]);
   });
 
+  it('sessiewissel tijdens de flow (ander account logt in): de volgende delete weigert met not-signed-in, geen membership-delete', async () => {
+    const { gateway, coordinator, state } = setup();
+    // Na de eerste teamMembers-delete logt iemand anders in (andere tab, gedeelde persistentie).
+    gateway.hooks.set('deleteTeam#2', () => {
+      gateway.identity = {
+        uid: 'uid-fictief-ander-account',
+        email: 'ander@example.test',
+        emailVerified: true,
+      };
+    });
+    expect(await coordinator.leave(ORG_A)).toEqual({
+      status: 'incomplete',
+      stage: 'team-members',
+      error: { code: 'not-signed-in' },
+    });
+    expect(gateway.writes()).toEqual([`deleteTeam:${ORG_A}/team-a1`]);
+    expect(state.memberships.has(ORG_A)).toBe(true);
+  });
+
   it('uitnodigingsdelete timeout → incomplete(invitations), membership blijft', async () => {
     const { gateway, coordinator, state } = setup();
     gateway.failures.set('deleteInvitation#1', { ok: false, error: { code: 'timeout' } });

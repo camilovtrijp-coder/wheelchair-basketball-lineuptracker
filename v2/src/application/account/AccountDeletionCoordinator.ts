@@ -279,6 +279,7 @@ export class AccountDeletionCoordinator {
         organizationDeletionPending: isDeletionPending(
           factsByOrganization.get(entry.organizationId) ?? null,
         ),
+        expectedUid: uid,
       });
       if (left.status === 'incomplete') {
         return {
@@ -306,6 +307,7 @@ export class AccountDeletionCoordinator {
       const result = await this.gateway.deleteOwnInvitation({
         organizationId: invitation.organizationId,
         invitationId: invitation.invitationId,
+        expectedUid: uid,
       });
       if (!result.ok) {
         return {

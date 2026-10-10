@@ -5,9 +5,13 @@ import type { AccountInventory, OrganizationFacts } from '../../domain/account/t
  * lidmaatschaps- en uitnodigingsinventaris en de drie self-deletes. Geïmplementeerd
  * door `infrastructure/account/FirestoreAccountGateway.ts`.
  *
- * Geen enkele methode neemt een uid of e-mailadres aan: de identiteit is uitsluitend
- * de daadwerkelijk ingelogde Firebase Auth-sessie (dezelfde les als de
- * 8.3b-herreview over `callerUid`). Pad-onderdelen (`organizationId`, `teamId`,
+ * Geen enkele methode neemt een uid of e-mailadres als IDENTITEIT aan: de identiteit is
+ * uitsluitend de daadwerkelijk ingelogde Firebase Auth-sessie (dezelfde les als de
+ * 8.3b-herreview over `callerUid`). De drie self-deletes nemen wel een `expectedUid` aan, maar
+ * alleen als GUARD: het uid uit de preflight van de aanroepende flow. Wijkt de huidige
+ * Auth-sessie daarvan af (iemand anders logde in, bv. in een andere tab met gedeelde
+ * persistentie, terwijl de flow liep), dan weigert de gateway vóór elke write met
+ * `not-signed-in` (zoals `AccountAuthGateway` al doet voor reauth en `deleteUser`). Pad-onderdelen (`organizationId`, `teamId`,
  * `invitationId`) komen van de coördinator uit een VERSE server-inventaris, nooit
  * rechtstreeks uit de UI; Firestore Rules zijn de gezaghebbende grens.
  *
@@ -90,14 +94,19 @@ export interface AccountGateway {
   deleteOwnTeamMembership(ref: {
     organizationId: string;
     teamId: string;
+    expectedUid: string;
   }): Promise<SelfDeleteResult>;
 
   /** Verwijdert een eigen uitnodiging (token-e-mail == `email`, `email_verified`). */
   deleteOwnInvitation(ref: {
     organizationId: string;
     invitationId: string;
+    expectedUid: string;
   }): Promise<SelfDeleteResult>;
 
   /** Verwijdert `organizations/{orgId}/organizationMembers/{eigen uid}`. */
-  deleteOwnOrganizationMembership(organizationId: string): Promise<SelfDeleteResult>;
+  deleteOwnOrganizationMembership(
+    organizationId: string,
+    expectedUid: string,
+  ): Promise<SelfDeleteResult>;
 }

@@ -259,9 +259,12 @@ export class FirestoreAccountGateway implements AccountGateway {
   async deleteOwnTeamMembership(ref: {
     organizationId: string;
     teamId: string;
+    expectedUid: string;
   }): Promise<SelfDeleteResult> {
     const user = this.currentUser();
-    if (!user) return { ok: false, error: { code: 'not-signed-in' } };
+    if (!user || user.uid !== ref.expectedUid) {
+      return { ok: false, error: { code: 'not-signed-in' } };
+    }
     const target = ownTeamMemberRef(this.db, ref.organizationId, ref.teamId, user.uid);
     return this.selfDelete(target, ownTeamMembershipsQuery(this.db, user.uid));
   }
@@ -269,7 +272,11 @@ export class FirestoreAccountGateway implements AccountGateway {
   async deleteOwnInvitation(ref: {
     organizationId: string;
     invitationId: string;
+    expectedUid: string;
   }): Promise<SelfDeleteResult> {
+    if (this.currentUser()?.uid !== ref.expectedUid) {
+      return { ok: false, error: { code: 'not-signed-in' } };
+    }
     const read = await this.readTokenIdentity(false);
     if (!read.ok) return { ok: false, error: readErrorToDeleteError(read.error) };
     const identity = read.identity;
@@ -282,9 +289,14 @@ export class FirestoreAccountGateway implements AccountGateway {
     return this.selfDelete(target, ownInvitationsQuery(this.db, identity.email));
   }
 
-  async deleteOwnOrganizationMembership(organizationId: string): Promise<SelfDeleteResult> {
+  async deleteOwnOrganizationMembership(
+    organizationId: string,
+    expectedUid: string,
+  ): Promise<SelfDeleteResult> {
     const user = this.currentUser();
-    if (!user) return { ok: false, error: { code: 'not-signed-in' } };
+    if (!user || user.uid !== expectedUid) {
+      return { ok: false, error: { code: 'not-signed-in' } };
+    }
     const target = ownOrganizationMemberRef(this.db, organizationId, user.uid);
     return this.selfDelete(target, ownOrganizationMembershipsQuery(this.db, user.uid));
   }

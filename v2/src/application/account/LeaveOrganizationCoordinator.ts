@@ -105,15 +105,21 @@ export async function executeLeaveSteps(
     slice: OrganizationSlice;
     includeInvitations: boolean;
     organizationDeletionPending: boolean;
+    /** Het uid uit de preflight van deze flow: de gateway weigert bij een andere sessie. */
+    expectedUid: string;
   },
 ): Promise<LeaveIncompleteOutcome | LeaveOkOutcome> {
-  const { slice, includeInvitations } = input;
+  const { slice, includeInvitations, expectedUid } = input;
   const organizationId = slice.organizationId;
   const removed = { teamMembers: 0, invitations: 0, organizationMember: false };
 
   // 3 — teamMembers eerst, zolang de organisatietoegang er nog is.
   for (const team of slice.teamMemberships) {
-    const result = await gateway.deleteOwnTeamMembership({ organizationId, teamId: team.teamId });
+    const result = await gateway.deleteOwnTeamMembership({
+      organizationId,
+      teamId: team.teamId,
+      expectedUid,
+    });
     if (!result.ok) return { status: 'incomplete', stage: 'team-members', error: result.error };
     if (result.outcome === 'deleted') removed.teamMembers += 1;
   }
@@ -123,6 +129,7 @@ export async function executeLeaveSteps(
     const result = await gateway.deleteOwnInvitation({
       organizationId,
       invitationId: invitation.invitationId,
+      expectedUid,
     });
     if (!result.ok) return { status: 'incomplete', stage: 'invitations', error: result.error };
     if (result.outcome === 'deleted') removed.invitations += 1;
@@ -141,7 +148,7 @@ export async function executeLeaveSteps(
 
   // 6 — het eigen membership als LAATSTE write, alleen als de server het nog kent.
   if (remaining?.membership) {
-    const result = await gateway.deleteOwnOrganizationMembership(organizationId);
+    const result = await gateway.deleteOwnOrganizationMembership(organizationId, expectedUid);
     if (!result.ok) {
       return { status: 'incomplete', stage: 'organization-member', error: result.error };
     }
@@ -255,6 +262,7 @@ export class LeaveOrganizationCoordinator {
       slice,
       includeInvitations,
       organizationDeletionPending: isDeletionPending(facts),
+      expectedUid: identity.uid,
     });
   }
 }
