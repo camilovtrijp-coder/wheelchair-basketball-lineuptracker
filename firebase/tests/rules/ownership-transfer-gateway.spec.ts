@@ -393,7 +393,7 @@ describe('overdracht in twee stappen (echte Rules, echte Auth-tokens)', () => {
         acceptedAt: dagenGeleden(0),
       });
     });
-    const revoked = await candidateB.gateway.revokeOpenInvitationsForEmail(ORG_A, EMAILS.ownerA);
+    const revoked = await candidateB.gateway.revokeOpenInvitationsForEmail(ORG_A, EMAILS.ownerA, candidateB.uid);
     expect(revoked).toEqual({ ok: true, revoked: 1, alreadyClosed: 0, skippedMalformed: 0 });
     const batch = writeBatch(ownerA.db);
     batch.update(organizationInvitationRef(ownerA.db, ORG_A, 'inv-a-accepted-exact'), {
@@ -457,28 +457,28 @@ describe('geen enkele stap voor een niet-owner', () => {
 
     // Buiten de coördinator om, rechtstreeks via de gateway: de Rules houden het tegen.
     // Een admin kan niemand tot owner maken en geen owner verwijderen.
-    expect(await adminC.gateway.promoteToOwner(ORG_A, candidateB.uid, 'coach')).toEqual({
+    expect(await adminC.gateway.promoteToOwner(ORG_A, candidateB.uid, 'coach', adminC.uid)).toEqual({
       ok: false,
       error: { code: 'rejected' },
     });
     expect(
-      await adminC.gateway.removeOrganizationMember(ORG_A, ownerA.uid, 'organizationOwner'),
+      await adminC.gateway.removeOrganizationMember(ORG_A, ownerA.uid, 'organizationOwner', adminC.uid),
     ).toEqual({ ok: false, error: { code: 'rejected' } });
     // Een coach kan niets van een ander verwijderen, promoveren of intrekken.
-    expect(await candidateB.gateway.promoteToOwner(ORG_A, COACH_D.uid, 'coach')).toEqual({
+    expect(await candidateB.gateway.promoteToOwner(ORG_A, COACH_D.uid, 'coach', candidateB.uid)).toEqual({
       ok: false,
       error: { code: 'rejected' },
     });
     expect(
-      await candidateB.gateway.removeOrganizationMember(ORG_A, ownerA.uid, 'organizationOwner'),
+      await candidateB.gateway.removeOrganizationMember(ORG_A, ownerA.uid, 'organizationOwner', candidateB.uid),
     ).toEqual({ ok: false, error: { code: 'rejected' } });
-    expect(await candidateB.gateway.removeTeamMembershipsOf(ORG_A, ownerA.uid)).toEqual({
+    expect(await candidateB.gateway.removeTeamMembershipsOf(ORG_A, ownerA.uid, candidateB.uid)).toEqual({
       ok: false,
       error: { code: 'rejected' },
       removed: 0,
     });
     expect(
-      await candidateB.gateway.revokeOpenInvitationsForEmail(ORG_A, EMAILS.ownerA),
+      await candidateB.gateway.revokeOpenInvitationsForEmail(ORG_A, EMAILS.ownerA, candidateB.uid),
     ).toMatchObject({ ok: false, error: { code: 'failed' }, revoked: 0 });
 
     expect(await dumpAll()).toEqual(before);
@@ -514,7 +514,7 @@ describe('niemand maakt zichzelf owner of admin', () => {
   it('gateway weigert de eigen uid; de echte Rules weigeren dezelfde patch op het eigen document', async () => {
     const { candidateB, adminC } = sessions;
     await seed();
-    expect(await candidateB.gateway.promoteToOwner(ORG_A, candidateB.uid, 'coach')).toEqual({
+    expect(await candidateB.gateway.promoteToOwner(ORG_A, candidateB.uid, 'coach', candidateB.uid)).toEqual({
       ok: false,
       error: { code: 'self-target' },
     });
@@ -541,14 +541,44 @@ describe('niemand maakt zichzelf owner of admin', () => {
     const { ownerA } = sessions;
     await seed();
     expect(
-      await ownerA.gateway.removeOrganizationMember(ORG_A, ownerA.uid, 'organizationOwner'),
+      await ownerA.gateway.removeOrganizationMember(ORG_A, ownerA.uid, 'organizationOwner', ownerA.uid),
     ).toEqual({ ok: false, error: { code: 'self-target' } });
-    expect(await ownerA.gateway.removeTeamMembershipsOf(ORG_A, ownerA.uid)).toEqual({
+    expect(await ownerA.gateway.removeTeamMembershipsOf(ORG_A, ownerA.uid, ownerA.uid)).toEqual({
       ok: false,
       error: { code: 'self-target' },
       removed: 0,
     });
     expect(await adminGet(memberPath(ORG_A, ownerA.uid))).toBeDefined();
+  });
+});
+
+describe('sessiewissel tijdens de flow (expectedCallerUid)', () => {
+  it('de sessie is een ANDERE owner dan degene die de flow startte → not-signed-in voor alle vier, niets geschreven', async () => {
+    const { ownerA, candidateB } = sessions;
+    await seed();
+    // candidateB is hier een echte, ingelogde owner (na stap 1); de flow werd door A gestart.
+    await setRole(ORG_A, candidateB.uid, 'organizationOwner');
+    const before = await adminGet(memberPath(ORG_A, ownerA.uid));
+    const notSignedIn = { code: 'not-signed-in' };
+    expect(
+      await candidateB.gateway.promoteToOwner(ORG_A, COACH_D.uid, 'coach', ownerA.uid),
+    ).toEqual({ ok: false, error: notSignedIn });
+    expect(
+      await candidateB.gateway.revokeOpenInvitationsForEmail(ORG_A, EMAILS.ownerA, ownerA.uid),
+    ).toEqual({ ok: false, error: notSignedIn, revoked: 0 });
+    expect(await candidateB.gateway.removeTeamMembershipsOf(ORG_A, ownerA.uid, ownerA.uid)).toEqual(
+      { ok: false, error: notSignedIn, removed: 0 },
+    );
+    expect(
+      await candidateB.gateway.removeOrganizationMember(
+        ORG_A,
+        ownerA.uid,
+        'organizationOwner',
+        ownerA.uid,
+      ),
+    ).toEqual({ ok: false, error: notSignedIn });
+    expect(await adminGet(memberPath(ORG_A, ownerA.uid))).toEqual(before);
+    expect((await adminGet(memberPath(ORG_A, COACH_D.uid)))?.role).toBe('coach');
   });
 });
 
@@ -559,7 +589,7 @@ describe('rol verandert tijdens de flow (D.1 #3)', () => {
     expect(await ownerA.coordinator.listTransferCandidates(ORG_A)).toMatchObject({ status: 'ok' });
     // De admin-seed omzeilt Rules: zo verliest A zijn ownerrol "van buitenaf".
     await setRole(ORG_A, ownerA.uid, 'organizationAdmin');
-    expect(await ownerA.gateway.promoteToOwner(ORG_A, candidateB.uid, 'coach')).toEqual({
+    expect(await ownerA.gateway.promoteToOwner(ORG_A, candidateB.uid, 'coach', ownerA.uid)).toEqual({
       ok: false,
       error: { code: 'rejected' },
     });
@@ -574,7 +604,7 @@ describe('rol verandert tijdens de flow (D.1 #3)', () => {
     const { ownerA, candidateB } = sessions;
     await seed();
     await setRole(ORG_A, candidateB.uid, 'scorer');
-    expect(await ownerA.gateway.promoteToOwner(ORG_A, candidateB.uid, 'coach')).toEqual({
+    expect(await ownerA.gateway.promoteToOwner(ORG_A, candidateB.uid, 'coach', ownerA.uid)).toEqual({
       ok: false,
       error: { code: 'role-changed', actualRole: 'scorer' },
     });
@@ -592,7 +622,7 @@ describe('rol verandert tijdens de flow (D.1 #3)', () => {
       reason: 'not-owner',
     });
     expect(
-      await candidateB.gateway.removeOrganizationMember(ORG_A, ownerA.uid, 'organizationOwner'),
+      await candidateB.gateway.removeOrganizationMember(ORG_A, ownerA.uid, 'organizationOwner', candidateB.uid),
     ).toEqual({ ok: false, error: { code: 'rejected' } });
     expect(await dumpAll()).toEqual(before);
   });
@@ -603,7 +633,7 @@ describe('rol verandert tijdens de flow (D.1 #3)', () => {
     await ownerA.coordinator.promote(ORG_A, candidateB.uid);
     await setRole(ORG_A, ownerA.uid, 'organizationAdmin');
     expect(
-      await candidateB.gateway.removeOrganizationMember(ORG_A, ownerA.uid, 'organizationOwner'),
+      await candidateB.gateway.removeOrganizationMember(ORG_A, ownerA.uid, 'organizationOwner', candidateB.uid),
     ).toEqual({ ok: false, error: { code: 'role-changed', actualRole: 'organizationAdmin' } });
     expect(await candidateB.coordinator.completeTransfer(ORG_A, ownerA.uid)).toEqual({
       status: 'denied',
@@ -618,7 +648,7 @@ describe('revokeOpenInvitationsForEmail (herbruikbaar, R1)', () => {
     const { ownerA } = sessions;
     await seed();
     const before = await dumpAll();
-    expect(await ownerA.gateway.revokeOpenInvitationsForEmail(ORG_A, COACH_D.email)).toEqual({
+    expect(await ownerA.gateway.revokeOpenInvitationsForEmail(ORG_A, COACH_D.email, ownerA.uid)).toEqual({
       ok: true,
       revoked: 1,
       alreadyClosed: 0,
@@ -629,7 +659,7 @@ describe('revokeOpenInvitationsForEmail (herbruikbaar, R1)', () => {
       (path) => JSON.stringify(before[path]) !== JSON.stringify(after[path]),
     );
     expect(changed).toEqual([invitationPath(ORG_A, 'inv-d')]);
-    expect(await ownerA.gateway.revokeOpenInvitationsForEmail(ORG_A, COACH_D.email)).toEqual({
+    expect(await ownerA.gateway.revokeOpenInvitationsForEmail(ORG_A, COACH_D.email, ownerA.uid)).toEqual({
       ok: true,
       revoked: 0,
       alreadyClosed: 0,
@@ -640,14 +670,14 @@ describe('revokeOpenInvitationsForEmail (herbruikbaar, R1)', () => {
   it('ook een admin mag intrekken (bestaande Rules-bevoegdheid), een coach niet', async () => {
     const { adminC, candidateB } = sessions;
     await seed();
-    expect(await adminC.gateway.revokeOpenInvitationsForEmail(ORG_A, COACH_D.email)).toEqual({
+    expect(await adminC.gateway.revokeOpenInvitationsForEmail(ORG_A, COACH_D.email, adminC.uid)).toEqual({
       ok: true,
       revoked: 1,
       alreadyClosed: 0,
       skippedMalformed: 0,
     });
     expect(
-      await candidateB.gateway.revokeOpenInvitationsForEmail(ORG_A, EMAILS.ownerA),
+      await candidateB.gateway.revokeOpenInvitationsForEmail(ORG_A, EMAILS.ownerA, candidateB.uid),
     ).toMatchObject({ ok: false, error: { code: 'failed' } });
   });
 
@@ -688,7 +718,7 @@ describe('revokeOpenInvitationsForEmail (herbruikbaar, R1)', () => {
       });
     });
     const before = await dumpAll();
-    expect(await ownerA.gateway.revokeOpenInvitationsForEmail(ORG_A, COACH_D.email)).toEqual({
+    expect(await ownerA.gateway.revokeOpenInvitationsForEmail(ORG_A, COACH_D.email, ownerA.uid)).toEqual({
       ok: true,
       revoked: 1,
       alreadyClosed: 0,
@@ -749,7 +779,7 @@ describe('revokeOpenInvitationsForEmail (herbruikbaar, R1)', () => {
   it('org B blijft onaangeroerd: A’s uitnodiging daar staat nog open', async () => {
     const { ownerA } = sessions;
     await seed();
-    await ownerA.gateway.revokeOpenInvitationsForEmail(ORG_A, EMAILS.ownerA);
+    await ownerA.gateway.revokeOpenInvitationsForEmail(ORG_A, EMAILS.ownerA, ownerA.uid);
     expect((await adminGet(invitationPath(ORG_B, 'inv-b')))?.status).toBe('pending');
     expect(await adminGet(teamMemberPath(ORG_B, TEAM_B1, ownerA.uid))).toBeDefined();
   });
@@ -795,8 +825,8 @@ describe('gelijktijdige overdracht: twee owners verwijderen elkaar (reviewbevind
     for (let i = 0; i < ITERATIONS; i += 1) {
       await seedTwoOwners();
       const [byA, byB] = await Promise.all([
-        ownerA.gateway.removeOrganizationMember(ORG_A, candidateB.uid, 'organizationOwner'),
-        candidateB.gateway.removeOrganizationMember(ORG_A, ownerA.uid, 'organizationOwner'),
+        ownerA.gateway.removeOrganizationMember(ORG_A, candidateB.uid, 'organizationOwner', ownerA.uid),
+        candidateB.gateway.removeOrganizationMember(ORG_A, ownerA.uid, 'organizationOwner', candidateB.uid),
       ]);
       const owners = await ownersOfOrgA();
       const okCount = [byA, byB].filter((result) => result.ok).length;
@@ -810,8 +840,8 @@ describe('gelijktijdige overdracht: twee owners verwijderen elkaar (reviewbevind
     const { ownerA, candidateB } = sessions;
     await seedTwoOwners();
     const [byA, byB] = await Promise.all([
-      ownerA.gateway.removeOrganizationMember(ORG_A, candidateB.uid, 'organizationOwner'),
-      candidateB.gateway.removeOrganizationMember(ORG_A, ownerA.uid, 'organizationOwner'),
+      ownerA.gateway.removeOrganizationMember(ORG_A, candidateB.uid, 'organizationOwner', ownerA.uid),
+      candidateB.gateway.removeOrganizationMember(ORG_A, ownerA.uid, 'organizationOwner', candidateB.uid),
     ]);
     const [winner, loser] = byA.ok ? [ownerA, byB] : [candidateB, byA];
     expect(loser).toEqual({ ok: false, error: { code: 'rejected' } });
