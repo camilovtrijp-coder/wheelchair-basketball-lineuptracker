@@ -8,8 +8,8 @@ import type { KeyValueStorage } from '../i18n/persistence';
 
 export type CloudImportKind = 'settings' | 'roster';
 
-const SETTINGS_FLAG_KEY = 'lineup-tracker-cloud-imported-settings';
-const ROSTER_FLAG_KEY = 'lineup-tracker-cloud-imported-roster';
+export const SETTINGS_FLAG_KEY = 'lineup-tracker-cloud-imported-settings';
+export const ROSTER_FLAG_KEY = 'lineup-tracker-cloud-imported-roster';
 
 function keyFor(kind: CloudImportKind): string {
   return kind === 'settings' ? SETTINGS_FLAG_KEY : ROSTER_FLAG_KEY;

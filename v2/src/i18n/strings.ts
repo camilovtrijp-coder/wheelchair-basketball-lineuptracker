@@ -730,7 +730,7 @@ const nl = {
   accountDeleteReasonNetwork: 'De verbinding viel weg.',
   accountDeleteReasonOther: 'De server gaf een onverwachte fout.',
   accountDeleteDeleted:
-    'Je account is verwijderd. De clouddata in de cache van deze browser is gewist. Gegevens die alleen op dit apparaat stonden, zoals lokale wedstrijden en instellingen, zijn niet gewist.',
+    'Je account is verwijderd. De clouddata in de cache van deze browser en de lokale wedstrijdgegevens van je organisaties op dit apparaat zijn gewist. Gegevens uit de lokale modus, zoals je eigen instellingen, spelerslijst en wedstrijden, zijn niet gewist.',
   accountDeleteLocalWipeFailed:
     'De clouddata in de cache van deze browser kon niet volledig worden gewist. Wis de browsergegevens als je dit apparaat met anderen deelt.',
   onboardingResumeExpired:
@@ -1491,7 +1491,7 @@ const en = {
   accountDeleteReasonNetwork: 'The connection was lost.',
   accountDeleteReasonOther: 'The server returned an unexpected error.',
   accountDeleteDeleted:
-    'Your account has been deleted. The cloud data cached in this browser has been wiped. Data stored only on this device, such as local games and settings, has not been wiped.',
+    'Your account has been deleted. The cloud data cached in this browser and the local game data of your organizations on this device have been wiped. Local-mode data, such as your own settings, roster and games, has not been wiped.',
   accountDeleteLocalWipeFailed:
     'The cloud data cached in this browser could not be wiped completely. Clear the browser data if you share this device with others.',
   onboardingResumeExpired:

@@ -307,9 +307,11 @@ onderstaande restrisico's blijven bewust staan.
   blijft de sleutel staan en wordt de hervatting online afgerond. Een `unavailable`-weigering
   van de membership-write is in de browser niet te veroorzaken (de SDK houdt een offline
   write in de wachtrij); die tak blijft alleen in vitest gedekt.
-- **R7 — org-gescoopte `localStorage`-sleutels blijven na `deleted` op het apparaat (besluit
-  10 oktober 2026: wissen na `deleted`, uit te voeren in een aparte geteste code-PR; tot die PR
-  gemerged is, geldt onderstaande beschrijving).** B7 wist na een geslaagde accountverwijdering alleen de
+- **R7 — org-gescoopte `localStorage`-sleutels bleven na `deleted` op het apparaat (besluit
+  10 oktober 2026: wissen na `deleted`; uitgevoerd in Opruim-PR 3 met
+  `clearDeletedAccountLocalData`, aangeroepen in `AuthGate.handleAccountDeleted`, nooit bij
+  "organisatie verlaten"; onderstaande beschrijving is de situatie vóór die PR, de gewiste lijst
+  staat in de rij van Opruim-PR 3 in `docs/IMPLEMENTATION_PLAN.md`).** B7 wist na een geslaagde accountverwijdering alleen de
   Firestore-cache (IndexedDB) en de contextpointer, nooit `clearLocalDeviceData()`. Daardoor
   blijven op dat apparaat staan (ook na "organisatie verlaten"): `lineup-tracker-v2-active-game:{org}:{team}`
   (actieve wedstrijd met spelersnamen), `lineup-tracker-v2-completed-games:{org}:{team}`

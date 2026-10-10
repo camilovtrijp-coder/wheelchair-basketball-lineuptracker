@@ -1132,7 +1132,10 @@ De eigenaar heeft de aanbevelingen overgenomen:
 De eigenaar heeft de aanbevelingen overgenomen:
 
 1. **R7:** na een geslaagde accountverwijdering (`deleted`) worden de org-gescoopte
-   `localStorage`-gegevens van dit apparaat gewist, met een uitlegtekst in NL en EN; bij
+   `localStorage`-gegevens van dit apparaat gewist, samen met het apparaat-ID
+   (`lineup-tracker-v2-device-id`), de twee cloud-importvlaggen en de bootstrap-organisatie-ID
+   (`lineup-tracker-bootstrap-org-id`); de lokale-modusdata, de taalkeuze en de
+   vertrouwd-apparaatvlag blijven. Met een uitlegtekst in NL en EN; bij
    "organisatie verlaten" blijft alles staan (het account bestaat nog). Uitvoering in een aparte,
    geteste code-PR (lijst in `docs/security-threat-model.md` §7 R7).
 2. **R6-afwijking:** `bootstrapOrgId` wissen bij elke `permission-denied` is goedgekeurd (fail-closed).

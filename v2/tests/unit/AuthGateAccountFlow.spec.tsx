@@ -113,6 +113,19 @@ import { SELECTED_CONTEXT_STORAGE_KEY } from '../../src/infrastructure/context/s
 import { translate } from '../../src/i18n/strings';
 
 const USER: AuthUser = { uid: 'uid-fictief', email: 'coach@example.test', emailVerified: true };
+/** Sleutels die besluit R7 na `deleted` wist (fictieve waarden). */
+const R7_KEYS = [
+  'lineup-tracker-v2-active-game:org-1:team-1',
+  'lineup-tracker-v2-completed-games:org-1:team-1',
+  'lineup-tracker-v2-pending-finalize:org-1:team-1',
+  'lineup-tracker-v2-game-sync-checkpoint:game-1',
+  'lineup-tracker-v2-migration-run:org-1:team-1',
+  'lineup-tracker-v2-device-id',
+  'lineup-tracker-bootstrap-org-id',
+  'lineup-tracker-cloud-imported-settings',
+  'lineup-tracker-cloud-imported-roster',
+];
+
 const PASSWORD = 'fictief-wachtwoord-2';
 
 function deferred<T>() {
@@ -254,6 +267,7 @@ describe('AuthGate — accountflow boven de unmount-grens', () => {
     // Nog niets gewist zolang het resultaat open staat.
     expect(localStorage.getItem(SELECTED_CONTEXT_STORAGE_KEY)).not.toBeNull();
     const subscriptionsBefore = subscriptions.memberships.length;
+    for (const key of R7_KEYS) localStorage.setItem(key, 'x');
 
     fireEvent.click(screen.getByTestId('leave-org-close-btn'));
     expect(localStorage.getItem(SELECTED_CONTEXT_STORAGE_KEY)).toBeNull();
@@ -261,6 +275,8 @@ describe('AuthGate — accountflow boven de unmount-grens', () => {
     emitMemberships([]);
     await screen.findByTestId('no-org-delete-account-btn');
     expect(firebase.wipeLocalFirebaseData).not.toHaveBeenCalled();
+    // "Organisatie verlaten" wist de lokale gegevens niet (besluit R7): het account bestaat nog.
+    for (const key of R7_KEYS) expect(localStorage.getItem(key)).toBe('x');
   });
 
   it('een geweigerd vertrek wist niets en start geen nieuw abonnement', async () => {
@@ -279,6 +295,7 @@ describe('AuthGate — accountflow boven de unmount-grens', () => {
   it('B7: na deleted wipeLocalFirebaseData() + herinitialisatie, nooit clearLocalDeviceData(); de bevestiging staat over het loginscherm', async () => {
     const { c, auth } = await toActive();
     localStorage.setItem('lineup-tracker-settings', '{"teamName":"Lokaal"}');
+    for (const key of R7_KEYS) localStorage.setItem(key, 'x');
     c.accountDeletionCoordinator.assess.mockResolvedValue({ status: 'ready-for-auth-deletion' });
     c.accountDeletionCoordinator.deleteAuthAccount.mockImplementation(async () => {
       // `deleteUser` meldt de gebruiker af: AuthGate valt terug naar het loginscherm
@@ -305,6 +322,8 @@ describe('AuthGate — accountflow boven de unmount-grens', () => {
     expect(localStorage.getItem('lineup-tracker-settings')).toBe('{"teamName":"Lokaal"}');
     expect(localStorage.getItem(TRUSTED_DEVICE_STORAGE_KEY)).toBe('false');
     expect(localStorage.getItem(SELECTED_CONTEXT_STORAGE_KEY)).toBeNull();
+    // Besluit R7: de org-gescoopte gegevens, het apparaat-ID en de vlaggen van het account zijn weg.
+    for (const key of R7_KEYS) expect(localStorage.getItem(key)).toBeNull();
     expect(document.body.innerHTML).not.toContain(PASSWORD);
 
     fireEvent.click(screen.getByTestId('account-delete-close-btn'));
@@ -313,6 +332,7 @@ describe('AuthGate — accountflow boven de unmount-grens', () => {
 
   it('geen B7 bij firestore-cleared-auth-present', async () => {
     const { c } = await toActive();
+    for (const key of R7_KEYS) localStorage.setItem(key, 'x');
     c.accountDeletionCoordinator.assess.mockResolvedValue({ status: 'ready-for-auth-deletion' });
     c.accountDeletionCoordinator.deleteAuthAccount.mockResolvedValue({
       status: 'firestore-cleared-auth-present',
@@ -327,6 +347,8 @@ describe('AuthGate — accountflow boven de unmount-grens', () => {
     await screen.findByTestId('account-delete-result');
     expect(firebase.wipeLocalFirebaseData).not.toHaveBeenCalled();
     expect(localStorage.getItem(SELECTED_CONTEXT_STORAGE_KEY)).not.toBeNull();
+    // Het account bestaat nog: niets van R7 wordt gewist.
+    for (const key of R7_KEYS) expect(localStorage.getItem(key)).toBe('x');
   });
 
   it('één poort: terwijl een vertrek loopt, geeft verwijderen geen tweede flow en geen aanroep', async () => {
