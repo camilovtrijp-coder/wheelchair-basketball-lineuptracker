@@ -200,7 +200,12 @@ export class OwnershipTransferCoordinator {
     }
     if (check.alreadyOwner) return { status: 'ok', outcome: 'already-owner' };
 
-    const result = await this.gateway.promoteToOwner(organizationId, targetUid, check.target.role);
+    const result = await this.gateway.promoteToOwner(
+      organizationId,
+      targetUid,
+      check.target.role,
+      callerCheck.caller.uid,
+    );
     if (result.ok) return { status: 'ok', outcome: result.outcome };
     return promoteFailure(result.error);
   }
@@ -225,11 +230,19 @@ export class OwnershipTransferCoordinator {
     const { email } = check.target;
 
     // (a) Openstaande uitnodigingen op A's adres in deze organisatie intrekken (R1).
-    const revoked = await this.gateway.revokeOpenInvitationsForEmail(organizationId, email);
+    const revoked = await this.gateway.revokeOpenInvitationsForEmail(
+      organizationId,
+      email,
+      callerCheck.caller.uid,
+    );
     if (!revoked.ok) return stepFailure('invitations', revoked.error);
 
     // (b) A's teamMembers-documenten in alle teams van deze organisatie.
-    const teams = await this.gateway.removeTeamMembershipsOf(organizationId, previousOwnerUid);
+    const teams = await this.gateway.removeTeamMembershipsOf(
+      organizationId,
+      previousOwnerUid,
+      callerCheck.caller.uid,
+    );
     if (!teams.ok) return stepFailure('team-members', teams.error);
 
     // Controle van de server vóór de laatste write: niets open, geen teamMembers meer.
@@ -247,6 +260,7 @@ export class OwnershipTransferCoordinator {
         organizationId,
         previousOwnerUid,
         'organizationOwner',
+        callerCheck.caller.uid,
       );
       if (!removed.ok) return stepFailure('organization-member', removed.error);
       organizationMember = removed.outcome;

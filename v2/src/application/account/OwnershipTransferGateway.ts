@@ -8,7 +8,11 @@ import type { OrganizationRole } from '../../domain/organizations/types';
  *
  * Anders dan `AccountGateway` schrijft deze poort op ANDERMANS documenten. Daarom:
  * - de AANROEPER komt nooit uit een parameter: `readCaller()` leest uid uit de
- *   Auth-sessie en de rol uit het eigen `organizationMembers`-document, van de server;
+ *   Auth-sessie en de rol uit het eigen `organizationMembers`-document, van de server. De
+ *   vier schrijfmethoden nemen wel een `expectedCallerUid` aan, maar alleen als GUARD: het uid
+ *   dat `readCaller()` aan het begin van de flow teruggaf. Wijkt de huidige Auth-sessie
+ *   daarvan af (iemand anders, bv. een andere owner, logde in tijdens de flow), dan weigert de
+ *   gateway vóór elke write met `not-signed-in`;
  * - `targetUid`/`email` zijn noodzakelijk parameters (het gaat om een ánder), maar elke
  *   schrijfmethode weigert de eigen uid als doel (`self-target`, geen write), en de
  *   coördinator haalt doel en e-mailadres uit een verse server-lezing van de ledenlijst;
@@ -101,6 +105,7 @@ export interface OwnershipTransferGateway {
     organizationId: string,
     targetUid: string,
     expectedRole: OrganizationRole,
+    expectedCallerUid: string,
   ): Promise<PromoteResult>;
 
   /**
@@ -113,12 +118,14 @@ export interface OwnershipTransferGateway {
   revokeOpenInvitationsForEmail(
     organizationId: string,
     email: string,
+    expectedCallerUid: string,
   ): Promise<RevokeInvitationsResult>;
 
   /** Verwijdert `teams/{teamId}/teamMembers/{targetUid}` in elk team van deze organisatie. */
   removeTeamMembershipsOf(
     organizationId: string,
     targetUid: string,
+    expectedCallerUid: string,
   ): Promise<RemoveTeamMembershipsResult>;
 
   /**
@@ -129,6 +136,7 @@ export interface OwnershipTransferGateway {
     organizationId: string,
     targetUid: string,
     expectedRole: OrganizationRole,
+    expectedCallerUid: string,
   ): Promise<RemoveMemberResult>;
 
   /** Wat er van `targetUid`/`email` in deze organisatie nog op de server staat. */

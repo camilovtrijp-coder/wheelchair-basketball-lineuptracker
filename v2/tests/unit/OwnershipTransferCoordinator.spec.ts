@@ -314,6 +314,18 @@ describe('completeTransfer (stap 2, door owner B)', () => {
     expect([...(s.teams.get(ORG_OTHER)?.get('team-x') ?? [])]).toEqual([A]);
   });
 
+  it('sessiewissel tijdens de flow (een andere owner logt in): de volgende write weigert met not-signed-in, A’s membership blijft', async () => {
+    const { gateway, coordinator, state: s } = setupB();
+    // Na de uitnodigingsstap logt iemand anders in; de teamMembers-stap en alles erna weigert.
+    gateway.hooks.set('removeTeams#1', () => {
+      gateway.callerUid = 'uid-fictief-andere-owner';
+    });
+    const outcome = await coordinator.completeTransfer(ORG, A);
+    expect(outcome).toMatchObject({ status: 'incomplete', stage: 'team-members' });
+    expect(gateway.writes().some((w) => w.startsWith(`write:removeMember:`))).toBe(false);
+    expect(s.members.get(ORG)?.get(A)?.role).toBe('organizationOwner');
+  });
+
   it('het adres komt uit A’s membership (server), niet uit invoer', async () => {
     const { gateway, coordinator } = setupB();
     await coordinator.completeTransfer(ORG, A);
