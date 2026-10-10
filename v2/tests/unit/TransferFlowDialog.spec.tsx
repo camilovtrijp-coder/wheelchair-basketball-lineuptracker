@@ -61,6 +61,7 @@ let latestFlow: AccountFlowApi | null = null;
 function Harness({ gate, lang }: { gate: FakeGate; lang: Lang }) {
   const flow = useAccountFlow({
     gate: gate as unknown as AccountActionGate,
+    accountUid: 'uid-test',
     onLeft: () => undefined,
     onAccountDeleted: async () => undefined,
   });

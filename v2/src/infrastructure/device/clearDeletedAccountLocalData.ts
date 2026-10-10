@@ -51,8 +51,12 @@ const DEVICE_WIDE_KEYS: readonly string[] = [
   ROSTER_FLAG_KEY,
 ];
 
-function orgSegment(key: string, prefix: string): string {
-  return key.slice(prefix.length).split(':')[0] ?? '';
+/** Exact `{prefix}{orgId}:` voor een eigen organisatie, geen splitsing op `:` (reviewnit #115). */
+function isOwnFamilyKey(key: string, prefix: string, own: ReadonlySet<string>): boolean {
+  for (const orgId of own) {
+    if (key.startsWith(`${prefix}${orgId}:`)) return true;
+  }
+  return false;
 }
 
 function checkpointOrganizationId(storage: KeyValueStorage, key: string): string | null {
@@ -87,7 +91,7 @@ export function clearDeletedAccountLocalData(
   for (const key of allKeys) {
     const family = ORG_FAMILY_PREFIXES.find((prefix) => key.startsWith(prefix));
     if (family !== undefined) {
-      if (own.has(orgSegment(key, family))) safeRemove(storage, key);
+      if (isOwnFamilyKey(key, family, own)) safeRemove(storage, key);
       else foreignRemains = true;
     } else if (key.startsWith(GAME_SYNC_CHECKPOINT_STORAGE_PREFIX)) {
       const org = checkpointOrganizationId(storage, key);

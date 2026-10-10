@@ -127,6 +127,13 @@ export type AccountFlowState =
 export interface UseAccountFlowOptions {
   /** `null` zolang er geen accountdiensten zijn (niet ingelogd): dan opent er niets. */
   gate: AccountActionGate | null;
+  /**
+   * Het uid van de ingelogde gebruiker (`null` uitgelogd). Wisselt het naar een ANDER uid
+   * terwijl er een flow open staat, dan wordt die flow gesloten: een plan, organisatielijst of
+   * dialoog van het vorige account hoort niet bij het nieuwe (reviewpunt A op #115). Uitloggen
+   * zelf (`null`) sluit niets: de bevestiging na `deleted` staat juist over het loginscherm.
+   */
+  accountUid: string | null;
   /** Na "Sluiten" op een geslaagd vertrek. */
   onLeft: (organizationId: string) => void;
   /**
@@ -217,6 +224,7 @@ export function isAccountFlowRunning(state: AccountFlowState | null): boolean {
 
 export function useAccountFlow({
   gate,
+  accountUid,
   onLeft,
   onAccountDeleted,
 }: UseAccountFlowOptions): AccountFlowApi {
@@ -237,6 +245,17 @@ export function useAccountFlow({
     stateRef.current = next;
     setStateRaw(next);
   }, []);
+
+  const lastUid = useRef<string | null>(null);
+  useEffect(() => {
+    if (accountUid === null) return;
+    if (lastUid.current !== null && lastUid.current !== accountUid) {
+      flowId.current += 1;
+      deletionOrganizationIds.current = [];
+      if (stateRef.current !== null) setState(null);
+    }
+    lastUid.current = accountUid;
+  }, [accountUid, setState]);
 
   /** Alleen toepassen als het nog dezelfde flow is (na sluiten en heropenen niet meer). */
   const settle = useCallback(
@@ -282,7 +301,14 @@ export function useAccountFlow({
         outcome = { status: 'failed', reason: 'read-failed' };
       }
       if (outcome.status === 'needs-action' || outcome.status === 'ready-to-clear') {
-        deletionOrganizationIds.current = outcome.plan.organizations.map((o) => o.organizationId);
+        // Binnen één flow de vereniging: een herbeoordeling na een gedeeltelijke opruiming mag
+        // organisaties die al verlaten zijn niet uit de te wissen set halen.
+        deletionOrganizationIds.current = [
+          ...new Set([
+            ...deletionOrganizationIds.current,
+            ...outcome.plan.organizations.map((o) => o.organizationId),
+          ]),
+        ];
       }
       settle(
         id,

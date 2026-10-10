@@ -390,6 +390,78 @@ describe('AuthGate — accountflow boven de unmount-grens', () => {
     expect(localStorage.getItem('lineup-tracker-cloud-imported-settings')).toBe('x');
   });
 
+  it('reviewpunt A (#115): een open verwijderflow van account A sluit zodra account B inlogt, en B wist niets van A', async () => {
+    const { c, auth } = await toActive();
+    seedR7(R7_KEYS);
+    planForOrgA(c);
+    fireEvent.click(screen.getByTestId('stub-delete'));
+    await screen.findByTestId('account-delete-continue-btn');
+
+    // Account B logt in terwijl de dialoog van A nog openstaat.
+    auth.emit({ uid: 'uid-ander', email: 'ander@example.test', emailVerified: true });
+    await waitFor(() => expect(screen.queryByTestId('account-flow-dialog')).toBeNull());
+    expect(c.accountDeletionCoordinator.deleteAuthAccount).not.toHaveBeenCalled();
+    for (const key of R7_KEYS) expect(localStorage.getItem(key)).not.toBeNull();
+  });
+
+  it('binnen één flow telt de vereniging van alle plannen: een herbeoordeling haalt een al verlaten organisatie niet uit de wis-set', async () => {
+    const { c, auth } = await toActive();
+    localStorage.setItem('lineup-tracker-v2-completed-games:org-c:team-c', 'x');
+    c.accountDeletionCoordinator.assess
+      .mockResolvedValueOnce({
+        status: 'needs-action',
+        plan: {
+          organizations: [
+            { organizationId: 'org-a', class: 'leave' },
+            { organizationId: 'org-c', class: 'owner-sole', otherOwnerCount: 0 },
+          ],
+          invitationCount: 0,
+          canProceed: false,
+        },
+      })
+      .mockResolvedValueOnce({
+        status: 'ready-to-clear',
+        plan: {
+          organizations: [{ organizationId: 'org-a', class: 'leave' }],
+          invitationCount: 0,
+          canProceed: true,
+        },
+      });
+    c.accountDeletionCoordinator.clearFirestoreData.mockResolvedValue({
+      status: 'ready-for-auth-deletion',
+    });
+    c.accountDeletionCoordinator.deleteAuthAccount.mockImplementation(async () => {
+      auth.emit(null);
+      return { status: 'deleted' };
+    });
+    fireEvent.click(screen.getByTestId('stub-delete'));
+    fireEvent.click(await screen.findByTestId('account-delete-recheck-btn'));
+    fireEvent.click(await screen.findByTestId('account-delete-continue-btn'));
+    fireEvent.input(screen.getByTestId('account-delete-password-input'), {
+      target: { value: PASSWORD },
+    });
+    fireEvent.click(screen.getByTestId('account-delete-confirm-btn'));
+    await screen.findByTestId('account-delete-deleted');
+    expect(localStorage.getItem('lineup-tracker-v2-completed-games:org-c:team-c')).toBeNull();
+  });
+
+  it('uitloggen (uid null) sluit een lopende flow niet: de bevestiging na deleted blijft over het loginscherm', async () => {
+    const { c, auth } = await toActive();
+    planForOrgA(c);
+    c.accountDeletionCoordinator.deleteAuthAccount.mockImplementation(async () => {
+      auth.emit(null);
+      return { status: 'deleted' };
+    });
+    fireEvent.click(screen.getByTestId('stub-delete'));
+    fireEvent.click(await screen.findByTestId('account-delete-continue-btn'));
+    fireEvent.input(screen.getByTestId('account-delete-password-input'), {
+      target: { value: PASSWORD },
+    });
+    fireEvent.click(screen.getByTestId('account-delete-confirm-btn'));
+    await screen.findByTestId('account-delete-deleted');
+    expect(screen.getByTestId('auth-email')).toBeTruthy();
+  });
+
   it('geen B7 bij firestore-cleared-auth-present', async () => {
     const { c } = await toActive();
     seedR7(R7_KEYS);

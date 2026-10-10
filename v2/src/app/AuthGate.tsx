@@ -452,6 +452,7 @@ export function AuthGate({
 
   const accountFlow = useAccountFlow({
     gate: accountGate,
+    accountUid: authUser?.uid ?? null,
     onLeft: handleLeftOrganization,
     onAccountDeleted: handleAccountDeleted,
   });
