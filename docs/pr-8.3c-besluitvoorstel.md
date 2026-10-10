@@ -1127,6 +1127,18 @@ De eigenaar heeft de aanbevelingen overgenomen:
    bij de retry slaagt telt als bevinding, niet als groen zonder meer. Flake-beleid: één rerun met
    een PR-comment, daarna beslist de eigenaar; nooit mergen op rood.
 
+### 8.8 Besluiten van de eigenaar over R6, R7, de getypte bevestiging en B3/C2 (10 oktober 2026)
+
+De eigenaar heeft de aanbevelingen overgenomen:
+
+1. **R7:** na een geslaagde accountverwijdering (`deleted`) worden de org-gescoopte
+   `localStorage`-gegevens van dit apparaat gewist, met een uitlegtekst in NL en EN; bij
+   "organisatie verlaten" blijft alles staan (het account bestaat nog). Uitvoering in een aparte,
+   geteste code-PR (lijst in `docs/security-threat-model.md` §7 R7).
+2. **R6-afwijking:** `bootstrapOrgId` wissen bij elke `permission-denied` is goedgekeurd (fail-closed).
+3. **Getypte bevestiging bij overdracht:** blijft hoofdletterongevoelig (`isSameEmailAddress`).
+4. **B3 en C2:** geparkeerd tot na 8.3d. C2 heeft nog geen beschrijving en wordt dan eerst uitgezocht.
+
 ### De vier verfijningen, op één rij
 
 1. De wachttijd van 7 dagen staat in het runbook, niet in de Rules — anders is

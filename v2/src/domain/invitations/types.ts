@@ -1,6 +1,6 @@
 import type { OrganizationRole } from '../organizations/types';
 
-/** Moet gelijk blijven aan firebase/src/documents/invitation.ts' INVITATION_STATUSES — zie de toelichting in domain/organizations/types.ts over waarom domain/ geen packages importeert. */
+/** Moet gelijk blijven aan firebase/src/documents/invitation.ts' INVITATION_STATUSES en aan de statuswaarden die firebase/firestore.rules voor uitnodigingen toestaat (claim/intrekken/vertrek) — zie de toelichting in domain/organizations/types.ts over waarom domain/ geen packages importeert. */
 export const INVITATION_STATUSES = ['pending', 'accepted', 'claimed', 'revoked'] as const;
 export type InvitationStatus = (typeof INVITATION_STATUSES)[number];
 

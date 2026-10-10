@@ -1042,14 +1042,15 @@ geen nieuwe queryvorm (§B.3), aparte `AccountAuthGateway`, geen teksten in 2b.
   actieve-wedstrijdsleutel af te lezen is (§B.10).
 - **A3** — Firebase Auth levert het token-adres genormaliseerd in kleine letters (R5).
 - **A4** — `getDocsFromServer` op een collectionGroup-query gedraagt zich met
-  `persistentLocalCache` en de Auth-emulator zoals gedocumenteerd (faalt offline met
-  `unavailable`). Er is nog geen gebruik in `v2/src` om naar te verwijzen.
+  `persistentLocalCache` en de Auth-emulator zoals gedocumenteerd (faalt offline, met
+  `unavailable` of via de eigen verzoek-timeout, en geeft nooit een leeg cacheresultaat). Er is nog geen gebruik in `v2/src` om naar te verwijzen.
 - **A5** — Een mislukte `deleteUser()` is in de e2e-auth-suite te forceren door het
   `accounts:delete`-verzoek naar de Auth-emulator via Playwright-routering af te breken.
 - **Stand na 8.3c-2d (e2e-auth tegen de echte emulators):** **A3** bewezen voor de
   Auth-emulator (token-adres in kleine letters bij een account met hoofdletters), niet
-  voor productie-Auth; **A4** bewezen (offline, en met alleen Firestore onbereikbaar faalt
-  `getDocsFromServer` met `unavailable` → `offline`, nul writes); **A5** bewezen (afbreken
+  voor productie-Auth; **A4** bewezen in de zwakkere vorm (offline, en met alleen Firestore onbereikbaar faalt
+  de read met `unavailable` → `offline` óf via de verzoek-timeout → timeouttekst; nooit een
+  leeg cacheresultaat, nul writes; de strikte vorm "altijd `unavailable`" is niet bewezen); **A5** bewezen (afbreken
   van `accounts:delete` via Playwright-routering → "account bestaat nog", opnieuw slaagt).
   `requires-recent-login` produceert de Auth-emulator niet zelf; de e2e vervangt het
   antwoord door de echte REST-foutcode. Zie de rij 8.3c-2d in `docs/IMPLEMENTATION_PLAN.md`.
