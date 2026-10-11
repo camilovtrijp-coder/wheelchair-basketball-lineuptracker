@@ -195,10 +195,18 @@ workspaces. Er is geen copyleft- of onbekende licentie gevonden.
   tests in de `firebase`-workspace en in `firebase-spike` (die heeft een eigen `package-lock.json` met dezelfde
   `1.9.16`). De door `npm audit` voorgestelde "fix" (`firebase@9.14.0`, een
   neerwaartse major) is **niet toepasbaar**.
-- Aanbeveling (eigen kleine PR, buiten dit rapport): een `overrides`-regel voor `@grpc/grpc-js` naar
+- Aanbeveling (eigen kleine PR, buiten dit rapport; uitgevoerd, zie hieronder): een `overrides`-regel voor `@grpc/grpc-js` naar
   `>=1.13.6` in de **root-`package.json`** (npm leest `overrides` alleen daar; de repo gebruikt npm-workspaces
   met `v2` en `firebase`), plus een aparte regel in `firebase-spike/package.json`, gevolgd door de volledige
   Rules-, unit- en e2e-suites. Dit is een dependencywijziging en hoort niet in deze docs-only PR.
+
+**Status na PR #121:** de aanbeveling is uitgevoerd. De `overrides`-regel (`^1.14.4`) staat in de
+root-`package.json` en in `firebase-spike/package.json`; beide lockfiles gebruiken nu `@grpc/grpc-js@1.14.6`.
+`npm audit --omit=dev` meldt **0 kwetsbaarheden** (was 4 high). Gecontroleerd met `npm run verify` in
+`firebase` (type-check, unit, 557 Rules-/emulatortests, runbooktests) en de Rules-tests van `firebase-spike`
+(45); de browserbundel is ongewijzigd. De override zet het pakket buiten het bereik dat de Firestore-SDK zelf
+declareert (`~1.9.0`); dat risico is afgedekt door de genoemde suites, maar blijft een punt om bij een volgende
+`firebase`-upgrade te heroverwegen (de override dan weghalen als de SDK zelf een nieuwere versie vraagt).
 
 Dev-afhankelijkheden zijn in deze sessie niet beoordeeld.
 
