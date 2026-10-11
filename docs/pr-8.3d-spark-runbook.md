@@ -22,8 +22,10 @@ sectie "Free quota". Per project geldt er **één** database met gratis quotum.
 | Uitgaand dataverkeer | 10 GiB | per maand |
 
 - Quota zijn dagelijks en resetten "around midnight Pacific time" (zelfde bron). Dat is **09:00
-  Nederlandse tijd**, en **08:00** in de weken dat Europa al op wintertijd staat en de VS nog op
-  zomertijd.
+  Nederlandse tijd**, en **08:00** in de weken waarin de omschakeling naar zomer- of wintertijd in de VS en
+  in Europa niet gelijktijdig valt (in het voorjaar de VS op de tweede zondag van maart tegen Europa op de
+  laatste zondag; in het najaar Europa op de laatste zondag van oktober tegen de VS op de eerste zondag van
+  november).
 - Geen gratis gebruik, en dus alleen met billing beschikbaar: TTL-deletes, PITR-data, back-updata,
   restore- en clone-operaties (zelfde bron).
 - Wat telt als read, afgeleid uit dezelfde pagina:
@@ -80,8 +82,9 @@ niet de writes van de scorer. Volgorde bij "Actie":
 
 ## 5. Bij uitputting of kritiek niveau
 
-- **De scorer hoeft niet te stoppen.** De wedstrijd loopt lokaal door; synchronisatie volgt na de reset
-  (09:00 NL, zie §1) of na een besluit van de eigenaar.
+- **De scorer hoeft niet te stoppen.** De wedstrijd loopt lokaal door. Dat de synchronisatie daarna volgt
+  na de reset (09:00 NL, zie §1) of na een besluit van de eigenaar is een **verwachting op basis van de
+  architectuur, te bevestigen in G1** (§2): het quotumgedrag zelf is niet uit de bronnen vastgelegd.
 - **Geen automatische upgrade naar Blaze.** Opties voor de eigenaar: wachten op de reset, het gebruik
   verlagen (§4), of expliciet besluiten tot Blaze. Blaze vereist een eigen goedkeuring, budgetalerts met
   ontvangers en een testmelding (plan §E.6) en valt buiten dit runbook.
