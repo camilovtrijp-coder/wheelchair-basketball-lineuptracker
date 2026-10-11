@@ -172,7 +172,7 @@ Wat dit **niet** bewijst: dat de JSON-export compleet terugkomt. Het bewijs is d
 
 | Nr | Bevinding | Ernst | Wat het betekent |
 |---|---|---|---|
-| D1 | Authentication verwerkt e-mailadressen, wachtwoorden, user agents en IP-adressen **uitsluitend** in de VS, ook als Firestore in `eur3` staat. ADR-001 (5 augustus 2026) nam al aan dat auth-metadata "mogelijk" buiten de EU komt; de huidige bron is stelliger ("exclusively in the United States"). | **P1, privacy, tot de transparantietekst er is** | Besloten (§4.4): accepteren en transparant vermelden. De tekst moet er nog komen (G8). Een doorgiftemechanisme (SCC's) vervangt de transparantie niet. |
+| D1 | Authentication verwerkt e-mailadressen, wachtwoorden, user agents en IP-adressen **uitsluitend** in de VS, ook als Firestore in `eur3` staat. ADR-001 (5 augustus 2026) nam al aan dat auth-metadata "mogelijk" buiten de EU komt; de huidige bron is stelliger ("exclusively in the United States"). | **P1, privacy, vóór delen met anderen (tot de transparantietekst er is); bij eigen gebruik informatief (§4.5)** | Besloten (§4.4): accepteren en transparant vermelden. De tekst moet er nog komen (G8). Een doorgiftemechanisme (SCC's) vervangt de transparantie niet. |
 | D2 | Voor Firestore en Authentication gelden de Google Cloud Platform Terms en de CDPA, niet de Firebase Data Processing and Security Terms. De Firebase Terms zijn per Google-account geaccepteerd (wie een Firebase-project in de console aanmaakte, heeft dat gedaan). Resterend: welke partij de accounthouder ("Customer") is, of er geen offline contract geldt, en de verklaring dat het gebruik zakelijk of beroepsmatig is. | **P2, formeel** (in de eerste versie P1, op basis van een onjuiste indeling van diensten) | Drie bevestigingen van de eigenaar (G3; zie §4.5), geen codekwestie. De accounthouder bepaalt wie "klant" is, dus ook wie de verantwoordelijkheden uit §4.1 draagt. |
 | D3 | De subprocessorlijst is al sinds 2021 niet gewijzigd. | informatief | Kan kloppen, maar de datum is niet bruikbaar als bewijs van recente controle. Laat de eigenaar zich abonneren op wijzigingsberichten volgens de DPA (sectie 11.4). |
 | D4 | De DPA is van 2024, de privacypagina van september 2026. | informatief | De voorwaarden zelf lijken niet recent gewijzigd; de uitleg eromheen wel. Herverifieer bij elke grote stap (8.4, cutover). |
@@ -252,7 +252,7 @@ geteste RLS (AGENTS.md). Een exit is nog niet geoefend; dat is geen blokkade voo
 | **G2** | Echte restore: JSON-export van een fictieve organisatie importeren in een lege organisatie en vergelijken | nog nooit uitgevoerd; zonder dit bewijst de back-up niets | eigenaar of sessie met stagingtoegang |
 | **G3** (a en b beantwoord 11 oktober 2026, c uitgesteld tot delen met anderen; §4.5) | Drie bevestigingen: (a) welk Google-account is eigenaar van het project en is dat de juiste partij ("Customer"); (b) er is geen offline Google Cloud-contract; (c) de eigenaar herkent de verklaring dat het gebruik zakelijk of beroepsmatig is. De acceptatie van de Firebase Terms volgt uit het aanmaken van het project in de console (FAQ). | niet vanuit de repo te zien | eigenaar |
 | **G4** | Besluit over D1 (Authentication in de VS) | **gesloten, 11 oktober 2026**: accepteren en transparant vermelden (§4.4) | eigenaar |
-| **G8** | De transparantietekst over Authentication in de VS opnemen in de privacyverklaring en in de app (NL/EN), na controle door de eigenaar | concept staat in `docs/privacy-authenticatie-tekst-voorstel.md`; invulpunten en controle nodig | eigenaar levert invulpunten, sessie bouwt |
+| **G8** (uitgesteld tot delen met anderen; §4.5) | De transparantietekst over Authentication in de VS opnemen in de privacyverklaring en in de app (NL/EN), na controle door de eigenaar | concept staat in `docs/privacy-authenticatie-tekst-voorstel.md`; invulpunten en controle nodig | eigenaar levert invulpunten, sessie bouwt |
 | **G5** | Herverificatie van Blaze-prijzen en Cloud Billing (budgets, spend caps) | `docs.cloud.google.com` was geblokkeerd | sessie na het toevoegen van dat domein; **voorwaarde vóór elk Blaze-besluit** (plan 8.3d eist prijzen herverifieerd op de uitvoeringsdatum; op Spark is dat uitgesteld) |
 | **G6** | Invulling van het Spark-runbook (verantwoordelijke, tempo, ontvanger) | eigenaarsbesluit, zie runbook §7 | eigenaar |
 | **G7** | iOS-dekking van het handmatige protocol ontbreekt (5.5, eigenaarsbesluit) | eerder bewust open gelaten | eigenaar |
@@ -262,11 +262,11 @@ plaats van een alert zonder eigenaar of testbewijs.
 
 ## 7. Advies voor PR 8.4
 
-**Voorwaardelijk NO-GO** tot G1, G2, G3 en G8 zijn gesloten (G4 is besloten op 11 oktober 2026).
+**Voorwaardelijk NO-GO** tot G1 en G2 zijn gesloten. G3(a/b) is beantwoord en G4 is besloten (11 oktober 2026). G3(c) en G8 zijn aanvullend vereist zodra PR 8.4 andere gebruikers dan de eigenaar betrekt (bijvoorbeeld een coachtest door derden, §4.5); een coachtest door de eigenaar op eigen apparaten telt als eigen gebruik. Verandert dat, dan geldt de eerdere voorwaarde (G1, G2, G3, G8) weer.
 
 Redenen, zoals het plan ze eist:
 - Er is **geen open P0**.
-- Er is **één open P1-bevinding** (D1 privacy: besloten, maar de transparantietekst ontbreekt nog, G8). D2 is na correctie een P2 met drie bevestigingen van de eigenaar (G3).
+- Er is **één open P1-bevinding** (D1 privacy: besloten; de transparantietekst, G8, is vereist vóór delen met anderen en bij eigen gebruik informatief). D2 is na correctie een P2; G3(c) is uitgesteld tot delen (§4.5).
 - Er is **een onbeheerst herstelrisico**: een back-up zonder bewezen restore. Het plan laat PR 8.4 pas
   starten als dat niet meer geldt.
 - Het kostenrisico is **beheerst op papier** (§2: ruime marge bij gebruik door enkele teams), maar nog niet
