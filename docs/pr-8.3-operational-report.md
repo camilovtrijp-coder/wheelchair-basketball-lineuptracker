@@ -41,7 +41,7 @@ Het zijn **schattingen met een bandbreedte**, geen metingen.
 | Bewerking | Writes | Reads | Toelichting |
 |---|---|---|---|
 | Actie uploaden (geslaagd) | 1 | 2–3 | `setDoc` op `actions/{id}`; de Rules lezen het organisatielid, bij coach/scorer ook het teamlid, en het `games`-document (`canWriteGameData`, `gameData`). Een readback gebeurt alleen bij een mislukte create. |
-| Synccyclus (patch van de wedstrijd) | 1 | 3–5 | `updateDoc` plus readback (1 read) plus Rules-reads voor update en readback. |
+| Synccyclus (patch van de wedstrijd) | 1 | 4–8 | `sync()` begint met `ensureGame()` (server-`getDoc` plus Rules-reads), dan `updateDoc` plus readback (1 read) plus Rules-reads voor update en readback. In de eerste versie van dit rapport ontbrak de `ensureGame()`-read (reviewnit #119). |
 | Wedstrijd aanmaken, claimen, afronden | 4 | ongeveer 10 | create, claim, en de `WriteBatch` met `completedGames`-create en `games`-update; Rules-reads gebundeld geschat. |
 | Kijker, per nieuwe actie | 0 | 2–3 | listener: 1 read per toegevoegd document, plus Rules-evaluatie bij elke update. |
 | Kijker, per update van het wedstrijddocument | 0 | 2–3 | idem. |
@@ -57,20 +57,20 @@ zijn niet aangepast; deze correctie geldt vanaf hier.
 
 Aannames (niet gemeten): **A** = acties per wedstrijd, **C** = synccycli per wedstrijd, **V** = aantal
 kijkers met de wedstrijd open. Het meest onzeker zijn A en C. Rekenmodel, met middelpunten
-r_a = 2,5, r_c = 4, r_kijker = 3 en 10 vaste reads:
+r_a = 2,5, r_c = 6, r_kijker = 3 en 10 vaste reads:
 
 - writes = A + C + 4
-- schrijver-reads = 2,5 × A + 4 × C + 10
+- schrijver-reads = 2,5 × A + 6 × C + 10
 - kijker-reads (per kijker) = 3 × A + 3 × (C + 2)
 
 | Scenario | A | C | V | Writes/wedstrijd | Reads/wedstrijd |
 |---|---|---|---|---|---|
-| Laag | 150 | 20 | 0 | 150 + 20 + 4 = **174** | 2,5·150 + 4·20 + 10 = **465** |
-| Verwacht | 400 | 60 | 1 | 400 + 60 + 4 = **464** | 1250 + 1386 = **2636** |
-| Piek | 800 | 120 | 3 | 800 + 120 + 4 = **924** | 2490 + 3·2766 = **10788** |
+| Laag | 150 | 20 | 0 | 150 + 20 + 4 = **174** | 2,5·150 + 6·20 + 10 = **505** |
+| Verwacht | 400 | 60 | 1 | 400 + 60 + 4 = **464** | 1370 + 1386 = **2756** |
+| Piek | 800 | 120 | 3 | 800 + 120 + 4 = **924** | 2730 + 3·2766 = **11028** |
 
-Rekenwerk voor "Verwacht": schrijver 2,5·400 + 4·60 + 10 = 1250; kijker 3·400 + 3·(60+2) = 1386.
-Rekenwerk voor "Piek": schrijver 2,5·800 + 4·120 + 10 = 2490; per kijker 3·800 + 3·122 = 2766.
+Rekenwerk voor "Verwacht": schrijver 2,5·400 + 6·60 + 10 = 1370; kijker 3·400 + 3·(60+2) = 1386.
+Rekenwerk voor "Piek": schrijver 2,5·800 + 6·120 + 10 = 2730; per kijker 3·800 + 3·122 = 2766.
 
 ### 2.3 Hoeveel wedstrijden per dag past er in Spark (hele project)
 
@@ -78,12 +78,12 @@ Quota: 50.000 reads en 20.000 writes per dag (§1 van het runbook).
 
 | Scenario | Max. door writes (20.000 / writes) | Max. door reads (50.000 / reads) | Bindend |
 |---|---|---|---|
-| Laag | 20.000 / 174 = 114 | 50.000 / 465 = 107 | reads, 107 |
-| Verwacht | 20.000 / 464 = 43 | 50.000 / 2636 = 18 | reads, 18 |
-| Piek | 20.000 / 924 = 21 | 50.000 / 10788 = 4 | reads, 4 |
+| Laag | 20.000 / 174 = 114 | 50.000 / 505 = 99 | reads, 99 |
+| Verwacht | 20.000 / 464 = 43 | 50.000 / 2756 = 18 | reads, 18 |
+| Piek | 20.000 / 924 = 21 | 50.000 / 11028 = 4 | reads, 4 |
 
-**Lezing.** Eén team dat één wedstrijd per dag speelt, gebruikt in het verwachte scenario circa 5% van
-de dagelijkse reads (2636 van 50.000) en circa 2% van de writes. Het gratis quotum is dan ruim voldoende.
+**Lezing.** Eén team dat één wedstrijd per dag speelt, gebruikt in het verwachte scenario circa 5,5% van
+de dagelijkse reads (2756 van 50.000) en circa 2,3% van de writes. Het gratis quotum is dan ruim voldoende.
 De grens ligt bij ongeveer 18 wedstrijden per dag over het hele project met één kijker per wedstrijd, en
 bij 4 in het pessimistische geval met drie kijkers. **De bindende grens is dus reads, en de grootste
 kostendrijver zijn kijkers, niet de scorer.**
@@ -192,11 +192,13 @@ workspaces. Er is geen copyleft- of onbekende licentie gevonden.
   geen `grpc-js` (geen treffer op `getAuthContext` in `v2/dist`); de browser gebruikt de web-SDK zonder
   deze server-kant-code.
 - Beoordeling: **in de browser niet bereikbaar, praktisch laag risico**; relevant voor Node-scripts en
-  tests in de `firebase`-workspace. De door `npm audit` voorgestelde "fix" (`firebase@9.14.0`, een
+  tests in de `firebase`-workspace en in `firebase-spike` (die heeft een eigen `package-lock.json` met dezelfde
+  `1.9.16`). De door `npm audit` voorgestelde "fix" (`firebase@9.14.0`, een
   neerwaartse major) is **niet toepasbaar**.
 - Aanbeveling (eigen kleine PR, buiten dit rapport): een `overrides`-regel voor `@grpc/grpc-js` naar
-  `>=1.13.6` in de `firebase`-workspace, gevolgd door de volledige Rules-, unit- en e2e-suites. Dit is een
-  dependencywijziging en hoort niet in deze docs-only PR.
+  `>=1.13.6` in de **root-`package.json`** (npm leest `overrides` alleen daar; de repo gebruikt npm-workspaces
+  met `v2` en `firebase`), plus een aparte regel in `firebase-spike/package.json`, gevolgd door de volledige
+  Rules-, unit- en e2e-suites. Dit is een dependencywijziging en hoort niet in deze docs-only PR.
 
 Dev-afhankelijkheden zijn in deze sessie niet beoordeeld.
 
@@ -212,7 +214,7 @@ geteste RLS (AGENTS.md). Een exit is nog niet geoefend; dat is geen blokkade voo
 | **G2** | Echte restore: JSON-export van een fictieve organisatie importeren in een lege organisatie en vergelijken | nog nooit uitgevoerd; zonder dit bewijst de back-up niets | eigenaar of sessie met stagingtoegang |
 | **G3** | Controle in de console of de Data Processing and Security Terms zijn geaccepteerd, en onder welke overeenkomst Firestore en Authentication vallen | niet vanuit de repo te zien | eigenaar |
 | **G4** | Besluit over D1 (Authentication in de VS) en de tekst in de privacyverklaring | eigenaarsbesluit | eigenaar |
-| **G5** | Herverificatie van Blaze-prijzen en Cloud Billing (budgets, spend caps) | `docs.cloud.google.com` was geblokkeerd | sessie na het toevoegen van dat domein, alleen nodig als Blaze serieus wordt |
+| **G5** | Herverificatie van Blaze-prijzen en Cloud Billing (budgets, spend caps) | `docs.cloud.google.com` was geblokkeerd | sessie na het toevoegen van dat domein; **voorwaarde vóór elk Blaze-besluit** (plan 8.3d eist prijzen herverifieerd op de uitvoeringsdatum; op Spark is dat uitgesteld) |
 | **G6** | Invulling van het Spark-runbook (verantwoordelijke, tempo, ontvanger) | eigenaarsbesluit, zie runbook §7 | eigenaar |
 | **G7** | iOS-dekking van het handmatige protocol ontbreekt (5.5, eigenaarsbesluit) | eerder bewust open gelaten | eigenaar |
 
