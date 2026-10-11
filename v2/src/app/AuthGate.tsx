@@ -40,6 +40,7 @@ import { LoadingScreen } from '../ui/status/LoadingScreen';
 import { OfflineUncachedScreen } from '../ui/status/OfflineUncachedScreen';
 import { ContextRevokedScreen } from '../ui/status/ContextRevokedScreen';
 import { NoOrganizationsScreen } from '../ui/onboarding/NoOrganizationsScreen';
+import { readBootstrapOrgId } from '../infrastructure/onboarding/bootstrapProgress';
 import { ContextSwitcher } from '../ui/context/ContextSwitcher';
 import { SessionBar } from '../ui/context/SessionBar';
 import { ActionNeededPanel } from '../ui/sync/ActionNeededPanel';
@@ -135,6 +136,11 @@ export function AuthGate({
   // abonnement de afgeleide state al naar 'context-switcher' laat springen op basis van
   // alleen de (eerdere) membership-write.
   const [bootstrapInFlight, setBootstrapInFlight] = useState(false);
+  // Een onderbroken aanmaak vanuit de contextwisselaar opnieuw openen na reload,
+  // zodat de bestaande bootstrap-org-id veilig hervat wordt.
+  const [creatingOrganization, setCreatingOrganization] = useState(
+    () => readBootstrapOrgId(browserStorage) !== null,
+  );
   // PR 8.3c-2c-i: verhogen start het membership-abonnement opnieuw met verse maps (na een
   // geslaagd vertrek, want de maps hieronder vergeten een verdwenen membership nooit).
   const [membershipEpoch, setMembershipEpoch] = useState(0);
@@ -298,6 +304,7 @@ export function AuthGate({
   }
 
   async function handleSignOut() {
+    setCreatingOrganization(false);
     // Vertrouwd-apparaatkeuze is een apparaateigenschap, geen sessie-eigenschap
     // — die blijft bewust staan na uitloggen (zie infrastructure/device/trustedDevice.ts).
     const trusted = readTrustedDevice(browserStorage) ?? false;
@@ -512,6 +519,23 @@ export function AuthGate({
       hasEverHadMemberships: !justSignedUp,
     });
 
+    if (
+      creatingOrganization &&
+      (appState.kind === 'context-switcher' || bootstrapInFlight) &&
+      organizationGateway
+    ) {
+      return (
+        <NoOrganizationsScreen
+          lang={lang}
+          reason="add-organization"
+          organizationGateway={organizationGateway}
+          onBootstrapInFlightChange={setBootstrapInFlight}
+          onCompleted={() => setCreatingOrganization(false)}
+          onCancel={() => setCreatingOrganization(false)}
+        />
+      );
+    }
+
     // Zie de toelichting bij bootstrapInFlight hierboven: het live membership-abonnement mag de
     // org+team-aanmaakflow niet preemptief afbreken zodra alleen de membership-write lokaal
     // geëchood is — createTeam() kan op dat moment nog steeds bezig zijn, en zonder deze gate
@@ -585,6 +609,7 @@ export function AuthGate({
             teamOnlyContexts={teamOnlyContexts}
             organizationGateway={organizationGateway!}
             onSelect={handleSelectContext}
+            onCreateOrganization={() => setCreatingOrganization(true)}
           />
         );
 

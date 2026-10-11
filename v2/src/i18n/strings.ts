@@ -447,16 +447,21 @@ const nl = {
   onboardingFreshSignupTitle: 'Welkom! Maak je eerste organisatie aan',
   onboardingFreshSignupBody:
     'Je hebt nog geen organisatie. Maak er hieronder één aan om te beginnen — je wordt automatisch eigenaar.',
+  onboardingAddOrganizationTitle: 'Nieuwe organisatie en team',
+  onboardingAddOrganizationBody:
+    'Maak een nieuwe organisatie met een eerste team aan. Je bestaande organisaties en teams blijven behouden.',
   onboardingLostMembershipsTitle: 'Geen toegang tot een organisatie',
   onboardingLostMembershipsBody:
     'Je hebt momenteel geen toegang meer tot een organisatie. Vraag een beheerder om je opnieuw uit te nodigen, of maak hieronder een nieuwe organisatie aan.',
   onboardingOrgNameLabel: 'Naam organisatie',
   onboardingTeamNameLabel: 'Naam eerste team',
   onboardingCreateBtn: 'Organisatie aanmaken',
+  onboardingCancelBtn: 'Terug naar organisaties',
 
   contextSwitcherTitle: 'Kies een organisatie en team',
   contextSwitcherSwitchBtn: 'Wissel van organisatie/team',
   contextSwitcherTeamsLoading: 'Teams laden…',
+  contextSwitcherCreateOrganizationBtn: 'Nieuwe organisatie aanmaken',
   stateUncachedOfflineTitle: 'Geen verbinding',
   stateUncachedOfflineBody:
     'Er is nog geen lokale kopie van je organisaties op dit apparaat. Ga online om verder te gaan.',
@@ -1229,16 +1234,21 @@ const en = {
   onboardingFreshSignupTitle: 'Welcome! Create your first organization',
   onboardingFreshSignupBody:
     "You don't have an organization yet. Create one below to get started — you'll automatically become the owner.",
+  onboardingAddOrganizationTitle: 'New organization and team',
+  onboardingAddOrganizationBody:
+    'Create a new organization with a first team. Your existing organizations and teams will remain available.',
   onboardingLostMembershipsTitle: 'No access to an organization',
   onboardingLostMembershipsBody:
     "You currently don't have access to any organization. Ask an admin to invite you again, or create a new organization below.",
   onboardingOrgNameLabel: 'Organization name',
   onboardingTeamNameLabel: 'First team name',
   onboardingCreateBtn: 'Create organization',
+  onboardingCancelBtn: 'Back to organizations',
 
   contextSwitcherTitle: 'Choose an organization and team',
   contextSwitcherSwitchBtn: 'Switch organization/team',
   contextSwitcherTeamsLoading: 'Loading teams…',
+  contextSwitcherCreateOrganizationBtn: 'Create a new organization',
   stateUncachedOfflineTitle: 'No connection',
   stateUncachedOfflineBody:
     "There isn't a local copy of your organizations on this device yet. Go online to continue.",

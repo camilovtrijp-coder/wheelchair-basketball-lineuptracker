@@ -44,7 +44,7 @@ async function createTeamWithRetry(
 export interface NoOrganizationsScreenProps {
   lang: Lang;
   /** Waarom de gebruiker hier is: verse registratie zonder org, of alle memberships kwijt. */
-  reason: 'fresh-signup' | 'lost-all-memberships';
+  reason: 'fresh-signup' | 'lost-all-memberships' | 'add-organization';
   organizationGateway: OrganizationGateway;
   /**
    * Meldt AuthGate wanneer de org+team-aanmaakflow bezig is (`true`) resp. afgerond of gestopt
@@ -55,6 +55,9 @@ export interface NoOrganizationsScreenProps {
    * de afgeleide state intussen al 'context-switcher' zou zijn.
    */
   onBootstrapInFlightChange: (inFlight: boolean) => void;
+  /** Alleen bij aanmaak vanuit de contextwisselaar. */
+  onCompleted?: () => void;
+  onCancel?: () => void;
   /**
    * PR 8.3c-2c-i: opent "account verwijderen" in `AuthGate` (de hervatting "Firestore leeg,
    * Auth-account aanwezig", 2b-ontwerp §B.4). Ontbreekt → geen sectie.
@@ -73,6 +76,8 @@ export function NoOrganizationsScreen({
   reason,
   organizationGateway,
   onBootstrapInFlightChange,
+  onCompleted,
+  onCancel,
   onDeleteAccount,
   accountActionBusy = false,
 }: NoOrganizationsScreenProps) {
@@ -96,14 +101,22 @@ export function NoOrganizationsScreen({
   );
   const [orgReady, setOrgReady] = useState(false);
 
-  const title =
+  const title = t(
+    lang,
     reason === 'fresh-signup'
-      ? t(lang, 'onboardingFreshSignupTitle')
-      : t(lang, 'onboardingLostMembershipsTitle');
-  const body =
+      ? 'onboardingFreshSignupTitle'
+      : reason === 'add-organization'
+        ? 'onboardingAddOrganizationTitle'
+        : 'onboardingLostMembershipsTitle',
+  );
+  const body = t(
+    lang,
     reason === 'fresh-signup'
-      ? t(lang, 'onboardingFreshSignupBody')
-      : t(lang, 'onboardingLostMembershipsBody');
+      ? 'onboardingFreshSignupBody'
+      : reason === 'add-organization'
+        ? 'onboardingAddOrganizationBody'
+        : 'onboardingLostMembershipsBody',
+  );
 
   async function handleSubmit(event: JSX.TargetedEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -169,6 +182,7 @@ export function NoOrganizationsScreen({
     // subscribeMyMemberships()-abonnement (PR 5.5c-bugfixes bug 9) — nu het team ook
     // bestaat, mag AuthGate de contextwisselaar tonen.
     onBootstrapInFlightChange(false);
+    onCompleted?.();
   }
 
   return (
@@ -205,6 +219,16 @@ export function NoOrganizationsScreen({
           <button type="submit" data-testid="onboarding-submit" disabled={submitting}>
             {t(lang, 'onboardingCreateBtn')}
           </button>
+          {onCancel ? (
+            <button
+              type="button"
+              data-testid="onboarding-cancel"
+              disabled={submitting}
+              onClick={onCancel}
+            >
+              {t(lang, 'onboardingCancelBtn')}
+            </button>
+          ) : null}
         </form>
         {onDeleteAccount ? (
           <section className="settings-section" data-testid="no-org-account-section">
