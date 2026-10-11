@@ -143,7 +143,7 @@ Wat dit **niet** bewijst: dat de JSON-export compleet terugkomt. Het bewijs is d
   de Firebase-voorwaarden (laatst gewijzigd **24 september 2026**) plaatst **Cloud Firestore en Firebase
   Authentication onder de Google Cloud Platform Terms of Service**. Daarvoor geldt de **Cloud Data
   Processing Addendum (CDPA)**, die volgens zijn eigen tekst is "incorporated into the Agreement(s)"; de
-  ingangsdatum is de datum waarop de klant de overeenkomst accepteerde. De **Firebase Data Processing and
+  ingangsdatum is de datum waarop de klant **de addendum** accepteerde of de partijen anderszins overeenkwamen. De **Firebase Data Processing and
   Security Terms** (laatst gewijzigd 21 augustus 2024) gelden voor andere diensten (o.a. Hosting, Realtime
   Database, Cloud Messaging, Remote Config, Crashlytics), **niet** voor Firestore en Authentication. De
   eerste versie van dit rapport noemde die laatste voorwaarden ten onrechte voor Firestore en
@@ -173,7 +173,7 @@ Wat dit **niet** bewijst: dat de JSON-export compleet terugkomt. Het bewijs is d
 | Nr | Bevinding | Ernst | Wat het betekent |
 |---|---|---|---|
 | D1 | Authentication verwerkt e-mailadressen, wachtwoorden, user agents en IP-adressen **uitsluitend** in de VS, ook als Firestore in `eur3` staat. ADR-001 (5 augustus 2026) nam al aan dat auth-metadata "mogelijk" buiten de EU komt; de huidige bron is stelliger ("exclusively in the United States"). | **P1, privacy, tot de transparantietekst er is** | Besloten (§4.4): accepteren en transparant vermelden. De tekst moet er nog komen (G8). Een doorgiftemechanisme (SCC's) vervangt de transparantie niet. |
-| D2 | Voor Firestore en Authentication gelden de Google Cloud Platform Terms en de CDPA, niet de Firebase Data Processing and Security Terms. De Firebase Terms zijn per Google-account geaccepteerd (wie een Firebase-project in de console aanmaakte, heeft dat gedaan). Resterend: welke partij de accounthouder ("Customer") is, of er geen offline contract geldt, en de verklaring dat het gebruik zakelijk of beroepsmatig is. | **P2, formeel** (in de eerste versie P1, op basis van een onjuiste indeling van diensten) | Drie bevestigingen van de eigenaar (G3), geen codekwestie. De accounthouder bepaalt wie "klant" is, dus ook wie de verantwoordelijkheden uit §4.1 draagt. |
+| D2 | Voor Firestore en Authentication gelden de Google Cloud Platform Terms en de CDPA, niet de Firebase Data Processing and Security Terms. De Firebase Terms zijn per Google-account geaccepteerd (wie een Firebase-project in de console aanmaakte, heeft dat gedaan). Resterend: welke partij de accounthouder ("Customer") is, of er geen offline contract geldt, en de verklaring dat het gebruik zakelijk of beroepsmatig is. | **P2, formeel** (in de eerste versie P1, op basis van een onjuiste indeling van diensten) | Drie bevestigingen van de eigenaar (G3; zie §4.5), geen codekwestie. De accounthouder bepaalt wie "klant" is, dus ook wie de verantwoordelijkheden uit §4.1 draagt. |
 | D3 | De subprocessorlijst is al sinds 2021 niet gewijzigd. | informatief | Kan kloppen, maar de datum is niet bruikbaar als bewijs van recente controle. Laat de eigenaar zich abonneren op wijzigingsberichten volgens de DPA (sectie 11.4). |
 | D4 | De DPA is van 2024, de privacypagina van september 2026. | informatief | De voorwaarden zelf lijken niet recent gewijzigd; de uitleg eromheen wel. Herverifieer bij elke grote stap (8.4, cutover). |
 
@@ -194,6 +194,14 @@ Authentication niet "mogelijk" maar **uitsluitend** in de VS draait. Gevolg:
   en Engels. Het is een **concept** met open invulpunten, geen juridisch advies.
 - Het opnemen van die tekst in de app (nieuwe zichtbare tekst in NL en EN) is een eigen, kleine PR (G8).
 - Geen architectuurwijziging; Supabase blijft de terugvaloptie achter dezelfde repository-ports.
+
+### 4.5 Antwoorden van de eigenaar op G3 (11 oktober 2026)
+
+Zonder namen of e-mailadressen vastgelegd.
+- **(a) Accounthouder:** een **persoonlijk Google-account**. De "Customer" is dus een privépersoon, geen club of organisatie.
+- **(b) Offline contract:** er is **geen** offline Google Cloud-contract. Alleen de online voorwaarden gelden.
+- **(c) Zakelijk of beroepsmatig gebruik:** de eigenaar biedt de app **gratis** aan clubs en teams aan waarmee contact bestaat en gaat de app **niet verkopen**. Of dit onder de verklaring "trade, business, craft, or profession" valt is **niet door de repo te beslissen** en blijft een open besluit van de eigenaar. Gratis zijn sluit zakelijk gebruik niet vanzelf uit; het beslissende punt is dat de app aan derden beschikbaar wordt gesteld en dat hun spelersgegevens in dit project komen.
+- **Open gevolgvraag (voor G8):** wie is verwerkingsverantwoordelijke voor de spelersgegevens (de clubs, met de eigenaar als verwerker, of de eigenaar zelf)? Dat bepaalt de tekst, een eventuele verwerkersovereenkomst met clubs en het contactadres. Voor te leggen aan een jurist of de koepel (bond); de repo beslist dit niet.
 
 ## 5. Dependencies en licenties
 
@@ -242,7 +250,7 @@ geteste RLS (AGENTS.md). Een exit is nog niet geoefend; dat is geen blokkade voo
 |---|---|---|---|
 | **G1** | Meting op een stagingproject met fictieve data (scenario's runbook §6), inclusief de **uitputtingstest** | geen stagingtoegang in deze omgeving; de console toont alleen een rollend 24-uurs-totaal | eigenaar levert staging, daarna meting |
 | **G2** | Echte restore: JSON-export van een fictieve organisatie importeren in een lege organisatie en vergelijken | nog nooit uitgevoerd; zonder dit bewijst de back-up niets | eigenaar of sessie met stagingtoegang |
-| **G3** | Drie bevestigingen: (a) welk Google-account is eigenaar van het project en is dat de juiste partij ("Customer"); (b) er is geen offline Google Cloud-contract; (c) de eigenaar herkent de verklaring dat het gebruik zakelijk of beroepsmatig is. De acceptatie van de Firebase Terms volgt uit het aanmaken van het project in de console (FAQ). | niet vanuit de repo te zien | eigenaar |
+| **G3** (a en b beantwoord 11 oktober 2026, c open; §4.5) | Drie bevestigingen: (a) welk Google-account is eigenaar van het project en is dat de juiste partij ("Customer"); (b) er is geen offline Google Cloud-contract; (c) de eigenaar herkent de verklaring dat het gebruik zakelijk of beroepsmatig is. De acceptatie van de Firebase Terms volgt uit het aanmaken van het project in de console (FAQ). | niet vanuit de repo te zien | eigenaar |
 | **G4** | Besluit over D1 (Authentication in de VS) | **gesloten, 11 oktober 2026**: accepteren en transparant vermelden (§4.4) | eigenaar |
 | **G8** | De transparantietekst over Authentication in de VS opnemen in de privacyverklaring en in de app (NL/EN), na controle door de eigenaar | concept staat in `docs/privacy-authenticatie-tekst-voorstel.md`; invulpunten en controle nodig | eigenaar levert invulpunten, sessie bouwt |
 | **G5** | Herverificatie van Blaze-prijzen en Cloud Billing (budgets, spend caps) | `docs.cloud.google.com` was geblokkeerd | sessie na het toevoegen van dat domein; **voorwaarde vóór elk Blaze-besluit** (plan 8.3d eist prijzen herverifieerd op de uitvoeringsdatum; op Spark is dat uitgesteld) |
