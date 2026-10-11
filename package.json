@@ -12,5 +12,8 @@
   },
   "devDependencies": {
     "@playwright/test": "^1.40.0"
+  },
+  "overrides": {
+    "@grpc/grpc-js": "^1.14.4"
   }
 }
