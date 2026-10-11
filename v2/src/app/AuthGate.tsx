@@ -540,6 +540,7 @@ export function AuthGate({
             lang={lang}
             onSwitchLang={setLang}
             onSubmit={(email, password) => authGateway.signIn(email, password)}
+            onResetPassword={(email) => authGateway.sendPasswordReset(email)}
             onSwitchToSignup={() => setMode('signup')}
             banner={invitationBanner}
           />

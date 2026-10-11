@@ -12,6 +12,8 @@ export interface AuthGateway {
   subscribe(onChange: (user: AuthUser | null) => void): () => void;
   signUp(email: string, password: string): Promise<AuthResult>;
   signIn(email: string, password: string): Promise<AuthResult>;
+  /** Stuurt een herstelmail; een onbekend adres krijgt dezelfde bevestiging. */
+  sendPasswordReset(email: string): Promise<AuthResult>;
   signOut(): Promise<void>;
   /** `false` als er geen ingelogde gebruiker is of het verzenden mislukte. */
   sendVerificationEmail(): Promise<boolean>;

@@ -411,6 +411,11 @@ const nl = {
   authPasswordLabel: 'Wachtwoord',
   authLoginTitle: 'Inloggen',
   authLoginBtn: 'Inloggen',
+  authForgotPasswordBtn: 'Wachtwoord vergeten?',
+  authResetEmailSent:
+    'Als dit e-mailadres een account heeft, ontvang je een e-mail om je wachtwoord opnieuw in te stellen. Controleer ook je spammap.',
+  authResetFailed:
+    'De herstelmail kon niet worden verstuurd. Controleer je verbinding en probeer het opnieuw.',
   authSignupTitle: 'Account aanmaken',
   authSignupBtn: 'Account aanmaken',
   authSwitchToSignupPrompt: 'Nog geen account?',
@@ -1189,6 +1194,10 @@ const en = {
   authPasswordLabel: 'Password',
   authLoginTitle: 'Log in',
   authLoginBtn: 'Log in',
+  authForgotPasswordBtn: 'Forgot your password?',
+  authResetEmailSent:
+    'If this email address has an account, you will receive a password reset email. Check your spam folder too.',
+  authResetFailed: 'The reset email could not be sent. Check your connection and try again.',
   authSignupTitle: 'Create account',
   authSignupBtn: 'Create account',
   authSwitchToSignupPrompt: "Don't have an account yet?",
