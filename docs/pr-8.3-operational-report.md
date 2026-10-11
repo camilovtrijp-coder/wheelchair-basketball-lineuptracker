@@ -22,7 +22,10 @@ Opgehaald op 11 oktober 2026 met `curl` vanuit de omgeving. Alleen officiële Go
 | <https://firebase.google.com/docs/firestore/disaster-recovery> | herstelopties | Last updated 2026-10-08 UTC |
 | <https://firebase.google.com/docs/firestore/backups> | geplande back-ups | geen datum gelezen |
 | <https://firebase.google.com/docs/firestore/locations> | regio's, `eur3` | Last updated 2026-10-08 UTC |
-| <https://firebase.google.com/terms/data-processing-terms/> | DPA | Terms last modified August 21, 2024 |
+| <https://firebase.google.com/terms> | welke voorwaarden per Firebase-dienst gelden | Terms last modified: September 24, 2026 |
+| <https://firebase.google.com/support/faq> | acceptatie van de Firebase Terms | geen datum gelezen |
+| <https://cloud.google.com/terms/data-processing-addendum> | Cloud Data Processing Addendum (CDPA) | geen datum gelezen |
+| <https://firebase.google.com/terms/data-processing-terms/> | Firebase Data Processing and Security Terms (geldt niet voor Firestore en Authentication, zie §4.1) | Terms last modified August 21, 2024 |
 | <https://firebase.google.com/terms/subprocessors> | subprocessors | Last modified September 23, 2021 |
 | <https://firebase.google.com/support/privacy> | gegevensverwerking per dienst | Last modified September 15, 2026 |
 
@@ -136,18 +139,26 @@ Wat dit **niet** bewijst: dat de JSON-export compleet terugkomt. Het bewijs is d
 - **Rolverdeling** (privacypagina): de klant is doorgaans verwerkingsverantwoordelijke ("data
   controller"), Google doorgaans verwerker ("data processor"). De klant blijft zelf verantwoordelijk voor
   rechten van betrokkenen.
-- **Firebase Data Processing and Security Terms** (laatst gewijzigd **21 augustus 2024**): zijn onderdeel
-  van de overeenkomst voor Firebase-diensten die ernaar verwijzen. De ingangsdatum is de datum waarop de
-  klant ze accepteerde of waarop partijen anderszins overeenkwamen. Gegevens kunnen worden verwerkt in
-  elk land waar Google of subverwerkers faciliteiten hebben, **onder voorbehoud van de
-  datalocatieverbintenissen** (sectie 10.1). Voor Europese overdrachten gelden de SCC's (sectie 10.2).
-- **Subverwerkers:** specifiek toegestaan wat op de lijst staat; nieuwe subverwerkers worden minimaal
-  30 dagen vooraf aangekondigd, de klant kan binnen 90 dagen bezwaar maken door de overeenkomst te
-  beëindigen (sectie 11.4). De lijst staat op <https://firebase.google.com/terms/subprocessors>
-  (laatst gewijzigd **23 september 2021**).
-- **Bepaalde Firebase-diensten onder de Google Cloud-voorwaarden** vallen onder de Cloud Data Processing
-  Addendum (privacypagina). Welke diensten voor **dit** project onder welke voorwaarden vallen, is
-  **niet uit de repository te verifiëren**: zie gate G3.
+- **Welke voorwaarden gelden voor Firestore en Authentication (correctie, 11 oktober 2026):** de pagina met
+  de Firebase-voorwaarden (laatst gewijzigd **24 september 2026**) plaatst **Cloud Firestore en Firebase
+  Authentication onder de Google Cloud Platform Terms of Service**. Daarvoor geldt de **Cloud Data
+  Processing Addendum (CDPA)**, die volgens zijn eigen tekst is "incorporated into the Agreement(s)"; de
+  ingangsdatum is de datum waarop de klant de overeenkomst accepteerde. De **Firebase Data Processing and
+  Security Terms** (laatst gewijzigd 21 augustus 2024) gelden voor andere diensten (o.a. Hosting, Realtime
+  Database, Cloud Messaging, Remote Config, Crashlytics), **niet** voor Firestore en Authentication. De
+  eerste versie van dit rapport noemde die laatste voorwaarden ten onrechte voor Firestore en
+  Authentication; de clausules uit sectie 10 en 11 daarvan (datalocatie, SCC's, subverwerkers) zijn hier
+  dus alleen als achtergrond gelezen. De vergelijkbare clausules van de CDPA zijn **niet** in detail
+  gelezen.
+- **Acceptatie van de Firebase Terms** (FAQ): per **Google-account**, niet per project, en alleen via de
+  Firebase-console (niet via CLI, REST of Terraform). Wie in de console een Firebase-project aanmaakt of
+  opent en niet om acceptatie wordt gevraagd, heeft ze al geaccepteerd. Bij die acceptatie verklaart de
+  klant dat het gebruik "related to my trade, business, craft, or profession" is. Heeft het account een
+  offline variant van de Google Cloud Master Agreement getekend, dan gelden de offline voorwaarden.
+- **Subverwerkers:** de Firebase-voorwaarden verwijzen naar <https://firebase.google.com/terms/subprocessors>
+  (laatst gewijzigd **23 september 2021**; bij de Firebase Data Processing and Security Terms: aankondiging
+  minimaal 30 dagen vooraf en 90 dagen om bezwaar te maken, sectie 11.4). Voor diensten onder de
+  Google Cloud-voorwaarden geldt de subverwerkerslijst van de CDPA; die is **niet gelezen**.
 - **Firestore-regio:** `eur3` (Europa) bestaat als multiregio met lees-schrijfregio's `europe-west1`
   (België) en `europe-west4` (Nederland) en `europe-north1` (Finland) als witness. Multiregio's bieden
   99,999% beschikbaarheid (disaster-recoverypagina).
@@ -161,8 +172,8 @@ Wat dit **niet** bewijst: dat de JSON-export compleet terugkomt. Het bewijs is d
 
 | Nr | Bevinding | Ernst | Wat het betekent |
 |---|---|---|---|
-| D1 | Authentication verwerkt e-mailadressen en IP-adressen uitsluitend in de VS, ook als Firestore in `eur3` staat. | **P1, privacy** | De data van gebruikers staat niet volledig in de EU. Het is een eigenaarsbesluit of dat past bij de beoogde gebruikers. Het hoort expliciet in de privacyverklaring en in de gebruikersinformatie. De DPA regelt Europese overdrachten via SCC's, maar dat vervangt de transparantie niet. |
-| D2 | Het is niet te verifiëren of de Data Processing and Security Terms voor dit specifieke Firebase-project zijn geaccepteerd en onder welke overeenkomst. | **P1, formeel** | Moet de eigenaar controleren in de Firebase/Google Cloud-console (G3). Dit is geen codekwestie. |
+| D1 | Authentication verwerkt e-mailadressen, wachtwoorden, user agents en IP-adressen **uitsluitend** in de VS, ook als Firestore in `eur3` staat. ADR-001 (5 augustus 2026) nam al aan dat auth-metadata "mogelijk" buiten de EU komt; de huidige bron is stelliger ("exclusively in the United States"). | **P1, privacy, tot de transparantietekst er is** | Besloten (§4.4): accepteren en transparant vermelden. De tekst moet er nog komen (G8). Een doorgiftemechanisme (SCC's) vervangt de transparantie niet. |
+| D2 | Voor Firestore en Authentication gelden de Google Cloud Platform Terms en de CDPA, niet de Firebase Data Processing and Security Terms. De Firebase Terms zijn per Google-account geaccepteerd (wie een Firebase-project in de console aanmaakte, heeft dat gedaan). Resterend: welke partij de accounthouder ("Customer") is, of er geen offline contract geldt, en de verklaring dat het gebruik zakelijk of beroepsmatig is. | **P2, formeel** (in de eerste versie P1, op basis van een onjuiste indeling van diensten) | Drie bevestigingen van de eigenaar (G3), geen codekwestie. De accounthouder bepaalt wie "klant" is, dus ook wie de verantwoordelijkheden uit §4.1 draagt. |
 | D3 | De subprocessorlijst is al sinds 2021 niet gewijzigd. | informatief | Kan kloppen, maar de datum is niet bruikbaar als bewijs van recente controle. Laat de eigenaar zich abonneren op wijzigingsberichten volgens de DPA (sectie 11.4). |
 | D4 | De DPA is van 2024, de privacypagina van september 2026. | informatief | De voorwaarden zelf lijken niet recent gewijzigd; de uitleg eromheen wel. Herverifieer bij elke grote stap (8.4, cutover). |
 
@@ -172,6 +183,17 @@ Wat dit **niet** bewijst: dat de JSON-export compleet terugkomt. Het bewijs is d
 - Accountverwijdering wist alle eigen lidmaatschappen en uitnodigingen en, na `deleted`, de lokale
   gegevens van de eigen organisaties (8.3c, R7). Authentication-gegevens verdwijnen daarna volgens de
   bewaartermijn van §4.1 (180 dagen uit back-upsystemen).
+
+### 4.4 Besluit van de eigenaar (11 oktober 2026)
+
+**Accepteren en transparant vermelden.** Dit bevestigt en preciseert het besluit van 5 augustus 2026 in
+`docs/architecture/adr-001-cloud-data-platform.md` (accepteren, met documentatie) nu bekend is dat
+Authentication niet "mogelijk" maar **uitsluitend** in de VS draait. Gevolg:
+- Een concept voor de tekst in de privacyverklaring en bij het aanmaken van een account staat in
+  [`docs/privacy-authenticatie-tekst-voorstel.md`](privacy-authenticatie-tekst-voorstel.md), in Nederlands
+  en Engels. Het is een **concept** met open invulpunten, geen juridisch advies.
+- Het opnemen van die tekst in de app (nieuwe zichtbare tekst in NL en EN) is een eigen, kleine PR (G8).
+- Geen architectuurwijziging; Supabase blijft de terugvaloptie achter dezelfde repository-ports.
 
 ## 5. Dependencies en licenties
 
@@ -220,8 +242,9 @@ geteste RLS (AGENTS.md). Een exit is nog niet geoefend; dat is geen blokkade voo
 |---|---|---|---|
 | **G1** | Meting op een stagingproject met fictieve data (scenario's runbook §6), inclusief de **uitputtingstest** | geen stagingtoegang in deze omgeving; de console toont alleen een rollend 24-uurs-totaal | eigenaar levert staging, daarna meting |
 | **G2** | Echte restore: JSON-export van een fictieve organisatie importeren in een lege organisatie en vergelijken | nog nooit uitgevoerd; zonder dit bewijst de back-up niets | eigenaar of sessie met stagingtoegang |
-| **G3** | Controle in de console of de Data Processing and Security Terms zijn geaccepteerd, en onder welke overeenkomst Firestore en Authentication vallen | niet vanuit de repo te zien | eigenaar |
-| **G4** | Besluit over D1 (Authentication in de VS) en de tekst in de privacyverklaring | eigenaarsbesluit | eigenaar |
+| **G3** | Drie bevestigingen: (a) welk Google-account is eigenaar van het project en is dat de juiste partij ("Customer"); (b) er is geen offline Google Cloud-contract; (c) de eigenaar herkent de verklaring dat het gebruik zakelijk of beroepsmatig is. De acceptatie van de Firebase Terms volgt uit het aanmaken van het project in de console (FAQ). | niet vanuit de repo te zien | eigenaar |
+| **G4** | Besluit over D1 (Authentication in de VS) | **gesloten, 11 oktober 2026**: accepteren en transparant vermelden (§4.4) | eigenaar |
+| **G8** | De transparantietekst over Authentication in de VS opnemen in de privacyverklaring en in de app (NL/EN), na controle door de eigenaar | concept staat in `docs/privacy-authenticatie-tekst-voorstel.md`; invulpunten en controle nodig | eigenaar levert invulpunten, sessie bouwt |
 | **G5** | Herverificatie van Blaze-prijzen en Cloud Billing (budgets, spend caps) | `docs.cloud.google.com` was geblokkeerd | sessie na het toevoegen van dat domein; **voorwaarde vóór elk Blaze-besluit** (plan 8.3d eist prijzen herverifieerd op de uitvoeringsdatum; op Spark is dat uitgesteld) |
 | **G6** | Invulling van het Spark-runbook (verantwoordelijke, tempo, ontvanger) | eigenaarsbesluit, zie runbook §7 | eigenaar |
 | **G7** | iOS-dekking van het handmatige protocol ontbreekt (5.5, eigenaarsbesluit) | eerder bewust open gelaten | eigenaar |
@@ -231,11 +254,11 @@ plaats van een alert zonder eigenaar of testbewijs.
 
 ## 7. Advies voor PR 8.4
 
-**Voorwaardelijk NO-GO** tot G1, G2, G3 en G4 zijn gesloten.
+**Voorwaardelijk NO-GO** tot G1, G2, G3 en G8 zijn gesloten (G4 is besloten op 11 oktober 2026).
 
 Redenen, zoals het plan ze eist:
 - Er is **geen open P0**.
-- Er zijn **twee open P1-bevindingen** (D1 privacy, D2 formeel) die alleen de eigenaar kan afhandelen.
+- Er is **één open P1-bevinding** (D1 privacy: besloten, maar de transparantietekst ontbreekt nog, G8). D2 is na correctie een P2 met drie bevestigingen van de eigenaar (G3).
 - Er is **een onbeheerst herstelrisico**: een back-up zonder bewezen restore. Het plan laat PR 8.4 pas
   starten als dat niet meer geldt.
 - Het kostenrisico is **beheerst op papier** (§2: ruime marge bij gebruik door enkele teams), maar nog niet
