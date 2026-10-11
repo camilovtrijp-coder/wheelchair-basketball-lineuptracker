@@ -28,15 +28,23 @@ function gateway(overrides: Partial<Record<keyof OrganizationGateway, unknown>> 
 
 function mount(
   gw: OrganizationGateway,
-  extra: { onDeleteAccount?: () => void; busy?: boolean } = {},
+  extra: {
+    onDeleteAccount?: () => void;
+    busy?: boolean;
+    reason?: 'fresh-signup' | 'add-organization';
+    onCompleted?: () => void;
+    onCancel?: () => void;
+  } = {},
 ) {
   const onBootstrapInFlightChange = vi.fn();
   render(
     <NoOrganizationsScreen
       lang="nl"
-      reason="fresh-signup"
+      reason={extra.reason ?? 'fresh-signup'}
       organizationGateway={gw}
       onBootstrapInFlightChange={onBootstrapInFlightChange}
+      onCompleted={extra.onCompleted}
+      onCancel={extra.onCancel}
       onDeleteAccount={extra.onDeleteAccount}
       accountActionBusy={extra.busy}
     />,
@@ -51,6 +59,29 @@ function fillAndSubmit() {
 }
 
 describe('NoOrganizationsScreen — R6', () => {
+  it('bestaand account hervat na een mislukte teamaanmaak dezelfde organisatie na reload', async () => {
+    const gw = gateway();
+    gw.createOrganizationWithOwner.mockResolvedValue({ ok: true, value: { orgId: 'org-half' } });
+    gw.createTeam
+      .mockResolvedValueOnce({ ok: false, errorCode: 'unavailable' })
+      .mockResolvedValueOnce({ ok: true, value: { teamId: 'team-nieuw' } });
+    const onCompleted = vi.fn();
+    mount(gw, { reason: 'add-organization', onCompleted });
+    fillAndSubmit();
+    await screen.findByTestId('onboarding-error');
+    expect(localStorage.getItem(BOOTSTRAP_ORG_ID_STORAGE_KEY)).toBe('org-half');
+    expect(onCompleted).not.toHaveBeenCalled();
+
+    cleanup();
+    mount(gw, { reason: 'add-organization', onCompleted });
+    fillAndSubmit();
+    await waitFor(() => expect(onCompleted).toHaveBeenCalledTimes(1));
+    expect(gw.createOrganizationWithOwner).toHaveBeenNthCalledWith(1, 'Fictief Org', undefined);
+    expect(gw.createOrganizationWithOwner).toHaveBeenNthCalledWith(2, 'Fictief Org', 'org-half');
+    expect(gw.createTeam).toHaveBeenCalledTimes(2);
+    expect(localStorage.getItem(BOOTSTRAP_ORG_ID_STORAGE_KEY)).toBeNull();
+  });
+
   it('permission-denied op de HERVATTING wist bootstrapOrgId; de volgende klik maakt een nieuwe organisatie', async () => {
     localStorage.setItem(BOOTSTRAP_ORG_ID_STORAGE_KEY, 'org-dood');
     const gw = gateway();
