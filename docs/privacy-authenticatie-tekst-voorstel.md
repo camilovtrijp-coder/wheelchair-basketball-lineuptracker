@@ -18,7 +18,7 @@ Alleen bronnen die op 11 oktober 2026 zijn gelezen (rapport §1 en §4.1):
 - Firestore (teamgegevens) staat in `eur3`: `europe-west1` (België), `europe-west4` (Nederland) en
   `europe-north1` (Finland) als witness.
 - Authentication en Firestore vallen onder de Google Cloud Platform Terms en de Cloud Data Processing
-  Addendum van Google. Die addendum noemt standaardcontractbepalingen (SCC's) voor overdrachten.
+  Addendum van Google. Die addendum noemt eerst een "Alternative Transfer Solution" (indien door Google gekozen) en daarna standaardcontractbepalingen (SCC's) als terugvaloptie (CDPA §4.1).
 
 Niet gelezen en dus niet in de tekst beloofd: de details van de overdrachtsclausules in de addendum, en de
 subverwerkerslijst die daarbij hoort.
@@ -32,10 +32,10 @@ Google je e-mailadres, je wachtwoord, gegevens over je browser en je IP-adres.
 
 **Waar die gegevens staan.** Firebase Authentication draait uitsluitend vanuit datacenters in de Verenigde
 Staten. Je inloggegevens worden dus buiten de Europese Unie verwerkt. De overige gegevens van je team
-(zoals spelers, wedstrijden en instellingen) staan in Europa (België en Nederland).
+(zoals spelers, wedstrijden en instellingen) staan in de EU [regio te bevestigen: België en Nederland, met reserveregio in Finland] en daarnaast als kopie op je eigen apparaat.
 
-**Waarom dit kan.** Voor deze doorgifte gelden de afspraken in de Cloud Data Processing Addendum van
-Google, waaronder standaardcontractbepalingen. [Toevoegen na controle door de eigenaar of een jurist: de
+**Waarom dit kan.** Voor deze doorgifte gelden de afspraken over internationale doorgifte in de Cloud Data
+Processing Addendum van Google [mechanisme te bevestigen]. [Toevoegen na controle door de eigenaar of een jurist: de
 rechtsgrond, en wie de verwerkingsverantwoordelijke is.]
 
 **Hoe lang.** Firebase bewaart IP-adressen enkele weken. Je overige inloggegevens blijven bewaard tot je
@@ -53,10 +53,10 @@ your email address, your password, information about your browser and your IP ad
 
 **Where this data is processed.** Firebase Authentication runs only from data centers in the United States.
 Your sign-in data is therefore processed outside the European Union. The rest of your team's data (such as
-players, games and settings) is stored in Europe (Belgium and the Netherlands).
+players, games and settings) is stored in the EU [region to be confirmed: Belgium and the Netherlands, with a backup region in Finland] and as a copy on your own device.
 
-**Why this is possible.** Google's Cloud Data Processing Addendum, including standard contractual clauses,
-applies to this transfer. [To add after review by the owner or a lawyer: the legal basis, and who the data
+**Why this is possible.** The international-transfer terms in Google's Cloud Data Processing Addendum apply to this
+transfer [mechanism to be confirmed]. [To add after review by the owner or a lawyer: the legal basis, and who the data
 controller is.]
 
 **How long.** Firebase keeps IP addresses for a few weeks. Your other sign-in data is kept until you delete
@@ -73,4 +73,7 @@ about your data to [contact address].
 | Rechtsgrond en grondslag voor de doorgifte | te bevestigen door de eigenaar of een jurist; de tekst belooft hier niets |
 | Contactadres voor vragen en verzoeken | [contactadres] |
 | Waar de tekst komt | privacyverklaring en een korte melding bij het aanmaken van een account; de plaatsing in de UI wordt bij de PR besloten |
+| Databaselocatie | bevestigen in de Firebase-console (Firestore, databaselocatie) dat de database in `eur3` staat |
+| Andere Firebase-diensten | als er meer diensten in gebruik zijn (bijv. App Check, dat attestatiegegevens verwerkt), die toevoegen |
+| Rol van de eigenaar | verwerkingsverantwoordelijke of verwerker ten opzichte van clubs (rapport §4.5) |
 | Leeftijd van gebruikers | als er minderjarigen gebruiker kunnen zijn, de toestemming en de formulering laten beoordelen |
