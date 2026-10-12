@@ -137,7 +137,9 @@ export function AuthGate({
   // alleen de (eerdere) membership-write.
   const [bootstrapInFlight, setBootstrapInFlight] = useState(false);
   // Een onderbroken aanmaak vanuit de contextwisselaar opnieuw openen na reload,
-  // zodat de bestaande bootstrap-org-id veilig hervat wordt.
+  // zodat de bestaande bootstrap-org-id veilig hervat wordt. Iedere NoOrganizationsScreen-weergave
+  // krijgt `onCompleted`: de aanmaak rondt af met de props van de render waarin de gebruiker
+  // klikte, en de eerste render na een reload is het scherm "geen organisaties".
   const [creatingOrganization, setCreatingOrganization] = useState(
     () => readBootstrapOrgId(browserStorage) !== null,
   );
@@ -548,6 +550,7 @@ export function AuthGate({
           reason={lastNoOrganizationsReason.current}
           organizationGateway={organizationGateway!}
           onBootstrapInFlightChange={setBootstrapInFlight}
+          onCompleted={() => setCreatingOrganization(false)}
           onDeleteAccount={accountGate ? accountFlow.openDelete : undefined}
           accountActionBusy={accountFlowBusy}
         />
@@ -596,6 +599,7 @@ export function AuthGate({
             reason={appState.reason}
             organizationGateway={organizationGateway!}
             onBootstrapInFlightChange={setBootstrapInFlight}
+            onCompleted={() => setCreatingOrganization(false)}
             onDeleteAccount={accountGate ? accountFlow.openDelete : undefined}
             accountActionBusy={accountFlowBusy}
           />
