@@ -22,7 +22,9 @@ async function startGame(page: Page): Promise<void> {
 }
 
 test.describe('v2 live wedstrijd: gekleurde scoreknoppen (stap 2)', () => {
-  test('eigen-team-scoreknop rendert de teamkleur, de tegenstanderknop oranje', async ({ page }) => {
+  test('eigen-team-scoreknop rendert de teamkleur, de tegenstanderknop oranje', async ({
+    page,
+  }) => {
     await startGame(page);
 
     // DEFAULT_SETTINGS.primaryColor = #2563eb; afgeleide voorgrond = wit.
