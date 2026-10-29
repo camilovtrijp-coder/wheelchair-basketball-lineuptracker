@@ -31,6 +31,8 @@ test.describe('v2 accountmenu in de header (stap 3/5)', () => {
     await page.keyboard.press('Tab');
     await expect(page.getByTestId('trusted-device-setting-toggle')).toBeFocused();
     await page.keyboard.press('Tab');
+    await expect(page.getByTestId('theme-toggle')).toBeFocused();
+    await page.keyboard.press('Tab');
     await expect(page.getByTestId('sign-out')).toBeFocused();
 
     await page.keyboard.press('Escape');

@@ -3,6 +3,12 @@ import { translate, type Lang } from '../../i18n/strings';
 import type { SyncStatus } from '../../domain/syncState';
 import { SyncStatusIndicator } from '../sync/SyncStatusIndicator';
 import { useFocusTrap } from '../../application/a11y/useFocusTrap';
+import {
+  applyTheme,
+  readStoredTheme,
+  storeTheme,
+  type Theme,
+} from '../../infrastructure/theme/theme';
 
 export interface SessionBarProps {
   lang: Lang;
@@ -53,6 +59,7 @@ export function SessionBar({
 }: SessionBarProps) {
   const [confirmingRevoke, setConfirmingRevoke] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
+  const [theme, setTheme] = useState<Theme>(() => readStoredTheme());
   const wrapperRef = useRef<HTMLDivElement>(null);
   const triggerRef = useRef<HTMLButtonElement>(null);
 
@@ -100,6 +107,13 @@ export function SessionBar({
     // Uitzetten wist meteen lokale data (zie clearLocalDeviceData()) — eerst
     // bevestigen i.p.v. dat direct bij een onbedoelde klik te laten gebeuren.
     setConfirmingRevoke(true);
+  }
+
+  function handleThemeToggle(event: Event) {
+    const next: Theme = (event.target as HTMLInputElement).checked ? 'dark' : 'light';
+    setTheme(next);
+    applyTheme(next);
+    storeTheme(next);
   }
 
   const initial = email ? email.trim().charAt(0).toUpperCase() : '•';
@@ -166,6 +180,15 @@ export function SessionBar({
               onChange={handleTrustedDeviceToggle}
             />
             {translate(lang, 'trustedDeviceSettingLabel')}
+          </label>
+          <label className="session-bar__trusted-device">
+            <input
+              type="checkbox"
+              data-testid="theme-toggle"
+              checked={theme === 'dark'}
+              onChange={handleThemeToggle}
+            />
+            {translate(lang, 'themeDarkLabel')}
           </label>
           <button
             type="button"

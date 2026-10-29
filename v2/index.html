@@ -8,6 +8,17 @@
     <link rel="icon" type="image/png" sizes="192x192" href="/icons/icon-192.png" />
     <link rel="apple-touch-icon" href="/icons/icon-192.png" />
     <title>Lineup Tracker v2</title>
+    <script>
+      // Voorkomt een flits van het verkeerde thema: zet data-theme vóór de eerste
+      // render (zelfde key en logica als src/infrastructure/theme/theme.ts).
+      (function () {
+        var theme = 'dark';
+        try {
+          if (window.localStorage.getItem('lineup-tracker-v2-theme') === 'light') theme = 'light';
+        } catch (e) {}
+        document.documentElement.setAttribute('data-theme', theme);
+      })();
+    </script>
   </head>
   <body>
     <div id="app"></div>

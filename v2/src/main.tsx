@@ -5,6 +5,7 @@ import { browserStorage } from './i18n/browserStorage';
 import { initFirebase } from './infrastructure/firebase/firebaseClient';
 import { FirebaseAuthGateway } from './infrastructure/auth/FirebaseAuthGateway';
 import { pwaUpdateAdapter } from './infrastructure/pwa/PwaUpdateAdapter';
+import { applyTheme, readStoredTheme } from './infrastructure/theme/theme';
 import './index.css';
 
 const root = document.getElementById('app');
@@ -15,6 +16,8 @@ if (!root) {
 // Stap 5 voegt de vertrouwd-apparaatprompt toe; tot die tijd starten we
 // onvertrouwd (memory-only cache), zodat er zonder expliciete toestemming
 // geen Firestore-data lokaal blijft hangen.
+applyTheme(readStoredTheme());
+
 const trustedDevice = readTrustedDevice(browserStorage) ?? false;
 const { auth } = initFirebase(trustedDevice);
 const authGateway = new FirebaseAuthGateway(auth);
