@@ -9,6 +9,8 @@
   --lt-color-accent-fg: #0b1220;
   --lt-color-primary: #2563eb;
   --lt-color-primary-fg: #ffffff;
+  --lt-color-opponent: #f97316;
+  --lt-color-opponent-fg: #000000;
   --lt-color-border: #273244;
   --lt-color-surface: #121827;
   --lt-color-surface-alt: #1e293b;
@@ -54,6 +56,8 @@
   --lt-color-accent-fg: #ffffff;
   --lt-color-primary: #2563eb;
   --lt-color-primary-fg: #ffffff;
+  --lt-color-opponent: #f97316;
+  --lt-color-opponent-fg: #000000;
   --lt-color-border: #cbd5e1;
   --lt-color-surface: #ffffff;
   --lt-color-surface-alt: #e2e8f0;

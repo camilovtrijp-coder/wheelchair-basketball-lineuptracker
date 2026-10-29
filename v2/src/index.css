@@ -646,6 +646,49 @@ button:focus-visible {
 
 .score-btn {
   padding: var(--lt-space-2);
+  min-height: 3rem;
+  border-radius: var(--lt-radius-lg);
+}
+
+/* Stap 2: eigen team = teamkleur, tegenstander = vast oranje (v1-look).
+   De tekst van de naam blijft --lt-color-fg (contrast); de kleur zit in de
+   rand, het scorevak en de knoppen. Knoptekst is de afgeleide, leesbare
+   voorgrond (deriveButtonForeground) resp. --lt-color-opponent-fg. */
+.score-row--for {
+  --score-color: var(--team-primary, var(--lt-color-primary));
+  --score-fg: var(--team-primary-fg, var(--lt-color-primary-fg));
+}
+
+.score-row--against {
+  --score-color: var(--lt-color-opponent);
+  --score-fg: var(--lt-color-opponent-fg);
+}
+
+.score-row--for .score-row__name,
+.score-row--against .score-row__name {
+  border-left: 4px solid var(--score-color);
+  padding-left: var(--lt-space-2);
+}
+
+.score-row--for .score-select,
+.score-row--against .score-select {
+  width: 5.5rem;
+  font-size: 2rem;
+  line-height: 1;
+  text-align: center;
+  border: 2px solid var(--score-color);
+  border-radius: var(--lt-radius-lg);
+  background: color-mix(in srgb, var(--score-color) 22%, var(--lt-color-bg));
+}
+
+.score-btn--for,
+.score-btn--against {
+  background: var(--score-color);
+  color: var(--score-fg);
+  font-size: var(--lt-font-size-lg);
+  font-weight: 700;
+  border-color: transparent;
+  box-shadow: 0 0 14px -3px var(--score-color);
 }
 
 .score-btn--wide {
@@ -708,9 +751,9 @@ button:focus-visible {
   flex-direction: column;
   align-items: center;
   gap: 0.1rem;
-  padding: var(--lt-space-2);
+  padding: var(--lt-space-3) var(--lt-space-2);
   border: var(--lt-border-thin);
-  border-radius: var(--lt-radius-md);
+  border-radius: var(--lt-radius-lg);
   background: var(--lt-color-surface);
   color: var(--lt-color-fg);
   min-width: 0;
@@ -720,15 +763,17 @@ button:focus-visible {
   border-color: var(--lt-color-accent);
   outline: var(--lt-focus-ring);
   outline-offset: 1px;
+  box-shadow: 0 0 14px -2px var(--lt-color-accent);
 }
 
 .chip__nr {
   font-weight: 700;
-  font-size: var(--lt-font-size-sm);
+  font-size: var(--lt-font-size-xl);
+  line-height: var(--lt-line-height-tight);
 }
 
 .chip__name {
-  font-size: var(--lt-font-size-xs);
+  font-size: var(--lt-font-size-sm);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -755,6 +800,14 @@ button:focus-visible {
   color: var(--lt-color-fg);
   border: var(--lt-border-thin);
   border-color: var(--lt-color-accent);
+  background: color-mix(in srgb, var(--lt-color-accent) 14%, var(--lt-color-surface));
+  box-shadow: 0 0 14px -4px var(--lt-color-accent);
+}
+
+.oncourt-section__title,
+.bench-section__title {
+  font-size: var(--lt-font-size-lg);
+  font-weight: 700;
 }
 
 .swap-pending-actions {

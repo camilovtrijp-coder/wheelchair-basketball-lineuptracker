@@ -351,7 +351,7 @@ export function LiveTrackingPanel({
     const name =
       team === 'for' ? teamName || t(lang, 'teamFallbackLabel') : t(lang, 'teamOpponent');
     return (
-      <div className="score-row" data-testid={`score-row-${team}`}>
+      <div className={`score-row score-row--${team}`} data-testid={`score-row-${team}`}>
         <div className="score-row__header">
           <span className="score-row__name">{name}</span>
           <span className="score-row__delta">
@@ -387,7 +387,7 @@ export function LiveTrackingPanel({
               <button
                 key={n}
                 type="button"
-                className="score-btn"
+                className={`score-btn score-btn--${team}`}
                 disabled={!canWrite}
                 data-testid={`score-plus${n}-${team}`}
                 onClick={() =>
