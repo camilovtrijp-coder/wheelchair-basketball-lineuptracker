@@ -11,6 +11,7 @@ const nl = {
 
   appNameFallback: 'Lineup Tracker',
   settingsTitle: 'Instellingen',
+  navMainLabel: 'Hoofdnavigatie',
   settingsOpen: '⚙ Instellingen',
   settingsSectionClub: 'Club',
   settingsSectionMatch: 'Wedstrijd',
@@ -824,6 +825,7 @@ const en = {
 
   appNameFallback: 'Lineup Tracker',
   settingsTitle: 'Settings',
+  navMainLabel: 'Main navigation',
   settingsOpen: '⚙ Settings',
   settingsSectionClub: 'Club',
   settingsSectionMatch: 'Match',

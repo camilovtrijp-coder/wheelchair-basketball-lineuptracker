@@ -72,7 +72,8 @@ main {
 
 .app-main {
   flex: 1;
-  padding: var(--lt-space-4);
+  /* ruimte onder de inhoud voor de vaste onderbalk (3.5rem + safe-area) */
+  padding: var(--lt-space-4) var(--lt-space-4) calc(4.5rem + env(safe-area-inset-bottom));
   max-width: 48rem;
   width: 100%;
   margin: 0 auto;
@@ -284,28 +285,80 @@ button:focus-visible {
   color: var(--lt-color-danger);
 }
 
+/* Onderbalk (v1-look): vast onderin, icoon boven label, actieve tab in de
+   primaire kleur. z-index 40 ligt onder .modal-overlay (50), dus dialogen
+   dekken de balk af. De banners erboven staan in de normale flow. */
 .app-nav {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 40;
   display: flex;
-  gap: var(--lt-space-2);
-  padding: var(--lt-space-2) var(--lt-space-4);
-  border-bottom: var(--lt-border-thin);
-  background: var(--lt-color-surface);
-  flex-wrap: wrap;
+  max-width: 48rem;
+  margin: 0 auto;
+  background: color-mix(in srgb, var(--lt-color-surface) 92%, transparent);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border-top: var(--lt-border-thin);
+  box-shadow: 0 -4px 20px rgba(0, 0, 0, 0.25);
 }
 
 .app-nav__tab {
+  flex: 1;
+  min-width: 0;
+  min-height: 3.5rem;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.2rem;
+  padding: var(--lt-space-2) 0 calc(var(--lt-space-2) + env(safe-area-inset-bottom));
   background: transparent;
   color: var(--lt-color-muted);
   border: none;
-  border-radius: var(--lt-radius-sm);
-  padding: var(--lt-space-2) var(--lt-space-3);
+  border-radius: 0;
+  font-size: 0.7rem;
+  font-weight: 600;
   white-space: nowrap;
 }
 
+.app-nav__label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 100%;
+}
+
 .app-nav__tab--active {
-  background: var(--lt-color-bg);
+  background: transparent;
+  /* tekstkleur = contrastveilige --lt-color-accent; teamkleur alleen als gloed */
+  color: var(--lt-color-accent);
+  font-weight: 700;
+}
+
+.app-nav__tab--active .app-nav__icon {
+  filter: drop-shadow(
+    0 2px 6px color-mix(in srgb, var(--team-primary, var(--lt-color-accent)) 60%, transparent)
+  );
+}
+
+.app-header__settings {
+  min-width: 2.75rem;
+  min-height: 2.75rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  background: transparent;
   color: var(--lt-color-fg);
-  font-weight: 600;
+  border: var(--lt-border-thin);
+  border-radius: 999px;
+  font-size: 1.1rem;
+}
+
+.app-header__settings--active {
+  color: var(--lt-color-accent);
+  border-color: var(--lt-color-accent);
 }
 
 .roster-list {
