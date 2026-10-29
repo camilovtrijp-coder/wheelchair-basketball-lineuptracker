@@ -237,6 +237,20 @@
   font-weight: 700;
 }
 
+/* Startknop en 'Opnieuw proberen' (cloudclaim geblokkeerd) staan onder elkaar,
+   zodat de lange melding op de startknop niet in een smalle kolom afbreekt. */
+.app .settings-actions:has(.game-start-btn) {
+  flex-wrap: wrap;
+}
+
+.app .settings-actions:has(.game-start-btn) > * {
+  flex: 1 1 100%;
+}
+
+.app .settings-actions:has(.game-start-btn) > .btn-outline {
+  min-height: 2.75rem;
+}
+
 /* ---- Live: segment vastleggen ---- */
 .app .segment-card {
   gap: var(--lt-space-4);
