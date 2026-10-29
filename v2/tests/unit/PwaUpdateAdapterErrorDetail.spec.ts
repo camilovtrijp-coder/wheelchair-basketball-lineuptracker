@@ -13,6 +13,7 @@ import {
 import {
   formatPwaErrorDetail,
   PWA_ERROR_TEXT_MAX,
+  PWA_SW_SNIPPET_CHARS,
   truncateDiagnosticText,
 } from '../../src/domain/pwa/pwaErrorDetail';
 
@@ -41,8 +42,10 @@ function fakeResponse(init: {
   type: string;
   contentType: string | null;
   redirected?: boolean;
+  body?: string;
 }): Response {
   return {
+    ...(init.body !== undefined ? { text: async () => init.body } : {}),
     status: init.status,
     type: init.type,
     redirected: init.redirected ?? false,
@@ -125,7 +128,7 @@ describe('PwaUpdateAdapter errorDetail', () => {
     expect(truncateDiagnosticText('kort')).toBe('kort');
   });
 
-  it('probe: legt status, type en content-type van het eigen sw-bestand vast, en leest nooit de body', async () => {
+  it('probe: legt status, type en content-type van het eigen sw-bestand vast; zonder body-lezer komen er geen snippets bij', async () => {
     const container = stubContainer();
     container.register.mockRejectedValue(new Error('boom'));
     const response = fakeResponse({
@@ -159,6 +162,36 @@ describe('PwaUpdateAdapter errorDetail', () => {
       redirected: false,
     });
     expect(adapter.getState().status).toBe('error');
+  });
+
+  it('probe: bij een gewoon 200-antwoord komen omvang en begin/einde van het eigen sw-bestand erbij', async () => {
+    const container = stubContainer();
+    container.register.mockRejectedValue(new Error('boom'));
+    const body = `START ${'x'.repeat(500)} END`;
+    const fetchFn = vi
+      .fn()
+      .mockResolvedValue(
+        fakeResponse({ status: 200, type: 'basic', contentType: 'application/javascript', body }),
+      );
+
+    const adapter = new PwaUpdateAdapter(
+      '/sw.js',
+      () => undefined,
+      '/sw-classic.js',
+      () => true,
+      fetchFn,
+    );
+    adapter.init();
+    await vi.waitFor(() => expect(adapter.getState().errorDetail?.probe).toBeDefined());
+
+    const probe = adapter.getState().errorDetail?.probe;
+    expect(probe).toMatchObject({ ok: true, bytes: body.length });
+    expect(probe && probe.ok && probe.head).toBe(body.slice(0, PWA_SW_SNIPPET_CHARS));
+    expect(probe && probe.ok && probe.tail).toBe(body.slice(-PWA_SW_SNIPPET_CHARS));
+    const text = formatPwaErrorDetail(adapter.getState().errorDetail!);
+    expect(text).toContain(`bytes: ${body.length}`);
+    expect(text).toContain('head: START ');
+    expect(text).toContain(' END');
   });
 
   it('probe: een redirect (opaqueredirect) wordt als zodanig vastgelegd', async () => {

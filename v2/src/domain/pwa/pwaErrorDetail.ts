@@ -14,6 +14,14 @@ export interface PwaSwProbeOk {
   responseType: string;
   contentType: string | null;
   redirected: boolean;
+  /**
+   * Alleen bij een gewoon antwoord (200, same-origin): omvang en de eerste/laatste
+   * tekens van het EIGEN, publieke service-workerbestand. Laat zien of er iets
+   * is ingevoegd of afgekapt (bijv. door een proxy of de hostingomgeving).
+   */
+  bytes?: number;
+  head?: string;
+  tail?: string;
 }
 
 export interface PwaSwProbeFailed {
@@ -33,7 +41,10 @@ export interface PwaErrorDetail {
   probe?: PwaSwProbe;
 }
 
-export const PWA_ERROR_TEXT_MAX = 200;
+/** Ruim genoeg voor de volledige browsermelding; de reden staat vaak ná de URL's. */
+export const PWA_ERROR_TEXT_MAX = 600;
+/** Aantal tekens van het begin en einde van het sw-bestand in de diagnose. */
+export const PWA_SW_SNIPPET_CHARS = 80;
 
 export function truncateDiagnosticText(text: string, max: number = PWA_ERROR_TEXT_MAX): string {
   return text.length > max ? `${text.slice(0, max - 1)}…` : text;
@@ -51,6 +62,9 @@ export function formatPwaErrorDetail(detail: PwaErrorDetail): string {
       lines.push(
         `probe: status ${p.status}, type ${p.responseType}, content-type ${p.contentType ?? '-'}, redirected ${p.redirected ? 'yes' : 'no'}`,
       );
+      if (p.bytes !== undefined) lines.push(`bytes: ${p.bytes}`);
+      if (p.head !== undefined) lines.push(`head: ${p.head}`);
+      if (p.tail !== undefined) lines.push(`tail: ${p.tail}`);
     } else {
       lines.push(`probe: failed (${detail.probe.errorName})`);
     }

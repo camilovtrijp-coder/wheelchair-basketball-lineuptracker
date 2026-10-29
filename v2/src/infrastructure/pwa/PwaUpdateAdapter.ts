@@ -19,6 +19,7 @@
 // aangeroepen door `usePwaUpdate()`'s mount-effect, ná de eerste render.
 import {
   PWA_ERROR_TEXT_MAX,
+  PWA_SW_SNIPPET_CHARS,
   truncateDiagnosticText,
   type PwaErrorDetail,
   type PwaSwProbe,
@@ -260,8 +261,8 @@ export class PwaUpdateAdapter {
   /**
    * Best-effort diagnose na een mislukte registratie: één same-origin fetch
    * van het eigen service-workerbestand om te zien of de server een redirect,
-   * inlogpagina of foutstatus teruggeeft. Leest nooit de body, gooit nooit en
-   * raakt geen andere host.
+   * inlogpagina of foutstatus teruggeeft. Leest alleen bij een gewoon 200-antwoord het begin/einde
+   * van dat eigen publieke bestand, gooit nooit en raakt geen andere host.
    */
   private async probeServiceWorkerFile(swUrl: string): Promise<PwaSwProbe> {
     try {
@@ -270,13 +271,31 @@ export class PwaUpdateAdapter {
         credentials: 'same-origin',
         redirect: 'manual',
       });
-      return {
+      const probe: PwaSwProbe = {
         ok: true,
         status: response.status,
         responseType: response.type,
         contentType: response.headers.get('content-type'),
         redirected: response.redirected,
       };
+      // Bij een gewoon antwoord ook omvang en begin/einde van het EIGEN, publieke
+      // sw-bestand: laat zien of er iets is ingevoegd of afgekapt. Best effort.
+      if (
+        response.status === 200 &&
+        response.type === 'basic' &&
+        typeof response.text === 'function'
+      ) {
+        try {
+          const body = await response.text();
+          const flat = (text: string) => text.replace(/\s+/g, ' ');
+          probe.bytes = body.length;
+          probe.head = flat(body.slice(0, PWA_SW_SNIPPET_CHARS));
+          probe.tail = flat(body.slice(-PWA_SW_SNIPPET_CHARS));
+        } catch {
+          // Body niet leesbaar: de statusregels zijn al voldoende.
+        }
+      }
+      return probe;
     } catch (err) {
       return { ok: false, errorName: truncateDiagnosticText(nameOf(err), 60) };
     }
