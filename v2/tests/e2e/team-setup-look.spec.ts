@@ -46,6 +46,9 @@ test.describe('v2 team, opzet en segmentkaart in v1-look', () => {
   test('opzet: de klokoptie blijft een bedienbare checkbox, gestyled als schakelaar', async ({
     page,
   }) => {
+    // De startknop moet op een telefoon bijna de volle breedte beslaan; op het
+    // desktopprofiel begrenst `main` de breedte, dus meet op een telefoonviewport.
+    await page.setViewportSize({ width: 390, height: 844 });
     await fillRoster(page, 5);
     await page.getByTestId('nav-game').click();
 

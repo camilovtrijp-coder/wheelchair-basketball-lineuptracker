@@ -115,7 +115,7 @@ test.describe('v2 Stats en Trends in v1-look', () => {
 
     // 8-6 plus 5-4 = +3: groen, met teken (kleur is nooit het enige signaal).
     await expect(pills.nth(0)).toHaveClass(/live-pm--pos/);
-    await expect(pills.nth(0)).toHaveText('+3');
+    await expect(pills.nth(0)).toHaveText('+3.0');
     await expect(pills.nth(0)).toHaveCSS('color', 'rgb(52, 211, 153)');
     await expect(pills.nth(1)).toHaveClass(/live-pm--flat/);
 
