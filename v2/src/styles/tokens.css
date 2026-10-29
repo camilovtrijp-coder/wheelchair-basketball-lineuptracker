@@ -1,13 +1,24 @@
+/* Donker is de standaard (v1-look, besluit eigenaar). Licht is een kiesbare
+   modus via `data-theme="light"` op <html>; de schakelaar zelf volgt in een
+   latere stap. Alle UI-kleuren komen uit deze tokens, niet uit losse hex-waarden. */
 :root {
-  --lt-color-bg: #ffffff;
-  --lt-color-fg: #111827;
-  --lt-color-muted: #6b7280;
-  --lt-color-accent: #2563eb;
-  --lt-color-accent-fg: #ffffff;
-  --lt-color-border: #e5e7eb;
-  --lt-color-surface: #f9fafb;
-  --lt-color-focus: #2563eb;
-  --lt-color-danger: #b91c1c;
+  --lt-color-bg: #090d16;
+  --lt-color-fg: #f8fafc;
+  --lt-color-muted: #94a3b8;
+  --lt-color-accent: #60a5fa;
+  --lt-color-accent-fg: #0b1220;
+  --lt-color-primary: #2563eb;
+  --lt-color-primary-fg: #ffffff;
+  --lt-color-border: #273244;
+  --lt-color-surface: #121827;
+  --lt-color-surface-alt: #1e293b;
+  --lt-color-focus: #60a5fa;
+  --lt-color-danger: #fb7185;
+  --lt-color-success: #34d399;
+  --lt-shadow-sm: 0 2px 8px -1px rgba(0, 0, 0, 0.4);
+  --lt-shadow-md: 0 8px 24px -4px rgba(0, 0, 0, 0.5);
+  --lt-glow: 0 0 16px -2px rgba(37, 99, 235, 0.45);
+  color-scheme: dark;
 
   --lt-font-sans: system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
   --lt-font-size-xs: 0.75rem;
@@ -25,9 +36,9 @@
   --lt-space-5: 1.5rem;
   --lt-space-6: 2rem;
 
-  --lt-radius-sm: 4px;
-  --lt-radius-md: 8px;
-  --lt-radius-lg: 12px;
+  --lt-radius-sm: 6px;
+  --lt-radius-md: 12px;
+  --lt-radius-lg: 16px;
 
   --lt-border-thin: 1px solid var(--lt-color-border);
 
@@ -35,15 +46,22 @@
   --lt-focus-offset: 2px;
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --lt-color-bg: #0b1220;
-    --lt-color-fg: #f3f4f6;
-    --lt-color-muted: #9ca3af;
-    --lt-color-accent: #60a5fa;
-    --lt-color-accent-fg: #0b1220;
-    --lt-color-border: #1f2937;
-    --lt-color-surface: #111827;
-    --lt-color-danger: #f87171;
-  }
+:root[data-theme='light'] {
+  --lt-color-bg: #f1f5f9;
+  --lt-color-fg: #111827;
+  --lt-color-muted: #475569;
+  --lt-color-accent: #2563eb;
+  --lt-color-accent-fg: #ffffff;
+  --lt-color-primary: #2563eb;
+  --lt-color-primary-fg: #ffffff;
+  --lt-color-border: #cbd5e1;
+  --lt-color-surface: #ffffff;
+  --lt-color-surface-alt: #e2e8f0;
+  --lt-color-focus: #2563eb;
+  --lt-color-danger: #b91c1c;
+  --lt-color-success: #166534;
+  --lt-shadow-sm: 0 2px 8px -1px rgba(15, 23, 42, 0.12);
+  --lt-shadow-md: 0 8px 24px -4px rgba(15, 23, 42, 0.18);
+  --lt-glow: 0 0 12px -2px rgba(37, 99, 235, 0.3);
+  color-scheme: light;
 }

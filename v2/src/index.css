@@ -11,7 +11,6 @@
 
 :root {
   font-family: var(--lt-font-sans);
-  color-scheme: light dark;
   font-size: var(--lt-font-size-md);
   line-height: var(--lt-line-height-normal);
 }
@@ -81,8 +80,8 @@ main {
 
 button {
   font: inherit;
-  background: var(--lt-color-accent);
-  color: var(--lt-color-accent-fg);
+  background: var(--lt-color-primary);
+  color: var(--lt-color-primary-fg);
   border: var(--lt-border-thin);
   border-radius: var(--lt-radius-md);
   padding: var(--lt-space-2) var(--lt-space-4);
@@ -103,8 +102,9 @@ button:focus-visible {
      `--lt-color-accent-fg`-token die van kleurenschema wisselt terwijl de
      knopachtergrond dat niet doet. Geen aparte donkere-modus-override
      nodig: de afgeleide voorgrond is al schema-onafhankelijk correct. */
-  background: var(--team-primary, var(--lt-color-accent));
-  color: var(--team-primary-fg, var(--lt-color-accent-fg));
+  background: var(--team-primary, var(--lt-color-primary));
+  color: var(--team-primary-fg, var(--lt-color-primary-fg));
+  box-shadow: var(--lt-glow);
 }
 
 .btn-outline {
@@ -232,7 +232,7 @@ button:focus-visible {
   width: 1.75rem;
   height: 1.75rem;
   border-radius: 50%;
-  border: 1px solid rgba(0, 0, 0, 0.15);
+  border: 1px solid var(--lt-color-border);
   cursor: pointer;
   padding: 0;
   background-clip: padding-box;
@@ -252,7 +252,7 @@ button:focus-visible {
 .settings-success {
   margin: 0;
   font-size: var(--lt-font-size-sm);
-  color: var(--lt-color-success, #166534);
+  color: var(--lt-color-success);
 }
 
 .cloud-import-banner {
@@ -263,7 +263,7 @@ button:focus-visible {
   margin: 0 0 var(--lt-space-3) 0;
   border: var(--lt-border-thin);
   border-radius: var(--lt-radius-md);
-  background: var(--lt-color-surface-alt, rgba(0, 0, 0, 0.03));
+  background: var(--lt-color-surface-alt);
 }
 
 .cloud-import-banner__prompt {
@@ -275,7 +275,7 @@ button:focus-visible {
 .cloud-import-banner__done {
   margin: 0;
   font-size: var(--lt-font-size-sm);
-  color: var(--lt-color-success, #166534);
+  color: var(--lt-color-success);
 }
 
 .cloud-import-banner__error {
@@ -575,7 +575,7 @@ button:focus-visible {
 }
 
 .live-pm--pos {
-  color: var(--lt-color-success, #166534);
+  color: var(--lt-color-success);
   font-weight: 700;
 }
 
@@ -674,7 +674,7 @@ button:focus-visible {
 .class-badge {
   font-size: var(--lt-font-size-xs);
   font-weight: 700;
-  color: var(--lt-color-success, #166534);
+  color: var(--lt-color-success);
 }
 
 .class-badge--over {
@@ -690,7 +690,7 @@ button:focus-visible {
 
 .class-bar__fill {
   height: 100%;
-  background: var(--lt-color-success, #166534);
+  background: var(--lt-color-success);
 }
 
 .class-bar__fill--over {
@@ -998,7 +998,7 @@ button:focus-visible {
 }
 
 .stats-stat__v--pos {
-  color: var(--lt-color-success, #166534);
+  color: var(--lt-color-success);
 }
 
 .stats-stat__v--neg {
@@ -1019,9 +1019,9 @@ button:focus-visible {
 }
 
 .badge-pm.live-pm--pos {
-  color: var(--lt-color-success, #166534);
-  background: color-mix(in srgb, var(--lt-color-success, #166534) 12%, transparent);
-  border-color: color-mix(in srgb, var(--lt-color-success, #166534) 30%, transparent);
+  color: var(--lt-color-success);
+  background: color-mix(in srgb, var(--lt-color-success) 12%, transparent);
+  border-color: color-mix(in srgb, var(--lt-color-success) 30%, transparent);
 }
 
 .badge-pm.live-pm--neg {
@@ -1055,9 +1055,9 @@ button:focus-visible {
 }
 
 .stats-toggle--on-st {
-  background: var(--lt-color-success, #166534);
+  background: var(--lt-color-success);
   color: white;
-  border-color: var(--lt-color-success, #166534);
+  border-color: var(--lt-color-success);
 }
 
 .stats-toggle--on-v {
@@ -1121,7 +1121,7 @@ button:focus-visible {
 }
 
 .trends-avg-pm--pos {
-  color: var(--lt-color-success, #166534);
+  color: var(--lt-color-success);
 }
 
 .trends-avg-pm--neg {
