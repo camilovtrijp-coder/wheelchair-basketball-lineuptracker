@@ -20,9 +20,12 @@
 // servicewerkers ondersteunt.
 import { useEffect, useRef, useState } from 'preact/hooks';
 import { pwaUpdateAdapter, type PwaUpdateStatus } from '../../infrastructure/pwa/PwaUpdateAdapter';
+import type { PwaErrorDetail } from '../../domain/pwa/pwaErrorDetail';
 
 export interface PwaUpdateHookState {
   status: PwaUpdateStatus;
+  /** Technische details bij `status === 'error'` (voor een screenshot-diagnose). */
+  errorDetail?: PwaErrorDetail;
   /** Werk 3/4: bevestigt de update — verstuurt SKIP_WAITING en herlaadt pas
    * ná de daaropvolgende `controllerchange`. */
   confirmUpdate: () => void;
@@ -57,7 +60,18 @@ export function usePwaUpdate(
 
   const [status, setStatus] = useState<PwaUpdateStatus>(() => adapter.getState().status);
 
-  useEffect(() => adapter.subscribe((state) => setStatus(state.status)), [adapter]);
+  const [errorDetail, setErrorDetail] = useState<PwaErrorDetail | undefined>(
+    () => adapter.getState().errorDetail,
+  );
+
+  useEffect(
+    () =>
+      adapter.subscribe((state) => {
+        setStatus(state.status);
+        setErrorDetail(state.errorDetail);
+      }),
+    [adapter],
+  );
 
   useEffect(() => {
     if (!import.meta.env.PROD) return;
@@ -82,6 +96,7 @@ export function usePwaUpdate(
 
   return {
     status,
+    errorDetail,
     confirmUpdate: () => adapter.confirmUpdate(),
     retry: () => adapter.retry(),
     dismissError: () => adapter.dismissError(),

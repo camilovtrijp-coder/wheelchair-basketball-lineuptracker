@@ -1515,6 +1515,7 @@ export function App({
       <PwaActionNeededPanel
         lang={lang}
         visible={pwaUpdate.status === 'error'}
+        details={pwaUpdate.errorDetail}
         onRetry={pwaUpdate.retry}
         onDismiss={pwaUpdate.dismissError}
       />

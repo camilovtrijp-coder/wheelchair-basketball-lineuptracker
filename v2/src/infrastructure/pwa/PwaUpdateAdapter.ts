@@ -17,6 +17,13 @@
 // ongemerkte regressie op die tests zodra jsdom ooit een gedeeltelijke
 // `serviceWorker`-global zou krijgen. `init()` wordt in de praktijk pas
 // aangeroepen door `usePwaUpdate()`'s mount-effect, ná de eerste render.
+import {
+  PWA_ERROR_TEXT_MAX,
+  truncateDiagnosticText,
+  type PwaErrorDetail,
+  type PwaSwProbe,
+} from '../../domain/pwa/pwaErrorDetail';
+
 /**
  * 8.1c (docs/pr-8.1-plan.md §C 8.1c werk 1): korte runtime-capability-check
  * voor module-service-worker-ondersteuning — GEEN user-agent-sniffing (§B
@@ -61,6 +68,27 @@ export function detectModuleServiceWorkerSupport(): boolean {
   return supportsModule;
 }
 
+function nameOf(err: unknown): string {
+  if (err instanceof Error && err.name) return err.name;
+  if (typeof err === 'object' && err !== null && 'name' in err) {
+    return String((err as { name: unknown }).name);
+  }
+  return 'Error';
+}
+
+function describeError(err: unknown): { errorName: string; errorMessage?: string } {
+  const message =
+    err instanceof Error
+      ? err.message
+      : typeof err === 'object' && err !== null && 'message' in err
+        ? String((err as { message: unknown }).message)
+        : undefined;
+  return {
+    errorName: truncateDiagnosticText(nameOf(err), 60),
+    ...(message ? { errorMessage: truncateDiagnosticText(message, PWA_ERROR_TEXT_MAX) } : {}),
+  };
+}
+
 export type PwaUpdateStatus = 'idle' | 'update-available' | 'reloading' | 'error';
 
 export interface PwaUpdateAdapterState {
@@ -76,6 +104,12 @@ export interface PwaUpdateAdapterState {
    * als `status: 'idle'`.
    */
   registered: boolean;
+  /**
+   * Technische details bij `status: 'error'` (mislukte registratie of
+   * uitblijvende `controllerchange`), zodat de foutmelding op een telefoon
+   * als screenshot gedeeld kan worden. Afwezig in alle andere statussen.
+   */
+  errorDetail?: PwaErrorDetail;
 }
 
 export type PwaUpdateListener = (state: PwaUpdateAdapterState) => void;
@@ -103,6 +137,7 @@ export class PwaUpdateAdapter {
   private confirmedSkipWaiting = false;
   private reloadRequested = false;
   private controllerChangeTimer: ReturnType<typeof setTimeout> | null = null;
+  private activeSw: { swUrl: string; swType: 'module' | 'classic' } | null = null;
   private readonly boundHandleControllerChange = () => this.handleControllerChange();
 
   constructor(
@@ -118,6 +153,9 @@ export class PwaUpdateAdapter {
     // capability-check hierboven — geen gedragswijziging voor bestaande
     // aanroepers.
     private readonly supportsModuleServiceWorker: () => boolean = detectModuleServiceWorkerSupport,
+    // Injecteerbaar voor testbaarheid: de diagnose-probe van het eigen
+    // service-workerbestand bij een mislukte registratie.
+    private readonly fetchFn: typeof fetch = (input, init) => fetch(input, init),
   ) {}
 
   getState(): PwaUpdateAdapterState {
@@ -173,6 +211,7 @@ export class PwaUpdateAdapter {
     const useModule = this.supportsModuleServiceWorker();
     const swUrl = useModule ? this.swUrl : this.classicSwUrl;
     const swType: 'module' | 'classic' = useModule ? 'module' : 'classic';
+    this.activeSw = { swUrl, swType };
 
     navigator.serviceWorker
       .register(swUrl, { scope: '/', type: swType })
@@ -199,8 +238,48 @@ export class PwaUpdateAdapter {
       })
       .catch((err) => {
         console.error(`Service worker registratie mislukt (${swType})`, err);
-        this.setState(this.buildState('error'));
+        const detail: PwaErrorDetail = {
+          phase: 'register',
+          swUrl,
+          swType,
+          ...describeError(err),
+        };
+        const errorState: PwaUpdateAdapterState = {
+          ...this.buildState('error'),
+          errorDetail: detail,
+        };
+        this.setState(errorState);
+        void this.probeServiceWorkerFile(swUrl).then((probe) => {
+          // Alleen bijwerken als de foutstaat nog actueel is (niet na retry/negeren).
+          if (this.state !== errorState) return;
+          this.setState({ ...errorState, errorDetail: { ...detail, probe } });
+        });
       });
+  }
+
+  /**
+   * Best-effort diagnose na een mislukte registratie: één same-origin fetch
+   * van het eigen service-workerbestand om te zien of de server een redirect,
+   * inlogpagina of foutstatus teruggeeft. Leest nooit de body, gooit nooit en
+   * raakt geen andere host.
+   */
+  private async probeServiceWorkerFile(swUrl: string): Promise<PwaSwProbe> {
+    try {
+      const response = await this.fetchFn(swUrl, {
+        cache: 'no-store',
+        credentials: 'same-origin',
+        redirect: 'manual',
+      });
+      return {
+        ok: true,
+        status: response.status,
+        responseType: response.type,
+        contentType: response.headers.get('content-type'),
+        redirected: response.redirected,
+      };
+    } catch (err) {
+      return { ok: false, errorName: truncateDiagnosticText(nameOf(err), 60) };
+    }
   }
 
   private handleControllerChange(): void {
@@ -238,7 +317,16 @@ export class PwaUpdateAdapter {
     this.controllerChangeTimer = setTimeout(() => {
       this.controllerChangeTimer = null;
       this.confirmedSkipWaiting = false;
-      this.setState(this.buildState('error'));
+      this.setState({
+        ...this.buildState('error'),
+        errorDetail: {
+          phase: 'controllerchange',
+          swUrl: this.activeSw?.swUrl ?? this.swUrl,
+          swType: this.activeSw?.swType ?? 'module',
+          errorName: 'Timeout',
+          errorMessage: `geen controllerchange binnen ${CONTROLLERCHANGE_TIMEOUT_MS} ms na SKIP_WAITING`,
+        },
+      });
     }, CONTROLLERCHANGE_TIMEOUT_MS);
   }
 

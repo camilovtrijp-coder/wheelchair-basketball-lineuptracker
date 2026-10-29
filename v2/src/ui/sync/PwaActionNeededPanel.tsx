@@ -14,12 +14,15 @@
 // ongerelateerd foutkanaal — en niet vermengd met de update-beschikbaar-
 // banner (`ui/pwa/PwaUpdateBanner.tsx`), die een heel ander scenario dekt.
 import { translate, type Lang } from '../../i18n/strings';
+import { formatPwaErrorDetail, type PwaErrorDetail } from '../../domain/pwa/pwaErrorDetail';
 
 export interface PwaActionNeededPanelProps {
   lang: Lang;
   visible: boolean;
   onRetry: () => void;
   onDismiss: () => void;
+  /** Technische details; het uitklapbare blok verschijnt alleen als ze er zijn. */
+  details?: PwaErrorDetail;
 }
 
 export function PwaActionNeededPanel({
@@ -27,6 +30,7 @@ export function PwaActionNeededPanel({
   visible,
   onRetry,
   onDismiss,
+  details,
 }: PwaActionNeededPanelProps) {
   if (!visible) return null;
 
@@ -40,6 +44,13 @@ export function PwaActionNeededPanel({
     >
       <h2>{title}</h2>
       <p>{translate(lang, 'pwaActionNeededMessage')}</p>
+      {details ? (
+        <details className="action-needed-details" data-testid="pwa-action-needed-details">
+          <summary>{translate(lang, 'pwaErrorDetailsSummary')}</summary>
+          <p className="action-needed-details__hint">{translate(lang, 'pwaErrorDetailsHint')}</p>
+          <pre data-testid="pwa-action-needed-details-text">{formatPwaErrorDetail(details)}</pre>
+        </details>
+      ) : null}
       <div className="action-needed-item__actions">
         <button
           type="button"

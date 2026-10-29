@@ -524,6 +524,8 @@ const nl = {
   pwaActionNeededTitle: 'Update mislukt',
   pwaActionNeededMessage:
     'Bijwerken van de app is niet gelukt. Je kunt gewoon doorgaan met de huidige versie.',
+  pwaErrorDetailsSummary: 'Technische details',
+  pwaErrorDetailsHint: 'Maak een screenshot hiervan en deel die met de beheerder.',
 
   // PR 8.3c-1c: owner-only verwijderverzoek, opruimoverzicht en melding voor alle leden (NL).
   deletionTitle: 'Organisatie verwijderen',
@@ -1291,6 +1293,8 @@ const en = {
   pwaUpdateConfirmBtn: 'Update now',
   pwaActionNeededTitle: 'Update failed',
   pwaActionNeededMessage: 'Updating the app failed. You can keep using the current version.',
+  pwaErrorDetailsSummary: 'Technical details',
+  pwaErrorDetailsHint: 'Take a screenshot of this and share it with the administrator.',
 
   // PR 8.3c-1c: owner-only deletion request, cleanup overview and notice for all members (EN, mirrors NL key-for-key).
   deletionTitle: 'Delete organization',

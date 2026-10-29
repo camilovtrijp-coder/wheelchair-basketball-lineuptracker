@@ -629,6 +629,35 @@ button:focus-visible {
   flex-wrap: wrap;
 }
 
+.action-needed-details {
+  margin: 0 0 var(--lt-space-3);
+  font-size: var(--lt-font-size-sm);
+}
+
+.action-needed-details summary {
+  cursor: pointer;
+  color: var(--lt-color-muted);
+}
+
+.action-needed-details__hint {
+  margin: var(--lt-space-2) 0;
+  color: var(--lt-color-muted);
+}
+
+.action-needed-details pre {
+  margin: 0;
+  padding: var(--lt-space-2) var(--lt-space-3);
+  border: var(--lt-border-thin);
+  border-radius: var(--lt-radius-sm);
+  background: var(--lt-color-surface-alt);
+  color: var(--lt-color-fg);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: var(--lt-font-size-xs);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  user-select: all;
+}
+
 .pwa-update-banner {
   display: flex;
   align-items: center;
