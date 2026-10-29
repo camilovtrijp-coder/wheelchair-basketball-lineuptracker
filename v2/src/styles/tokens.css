@@ -24,6 +24,9 @@
   --lt-color-on-success: #052e1b;
   --lt-color-on-danger: #4c0519;
   --lt-color-teal: #2dd4bf;
+  --lt-color-success-fg: #052e16;
+  --lt-color-tag1: #f0abfc;
+  --lt-color-tag2: #5eead4;
   --lt-shadow-sm: 0 2px 8px -1px rgba(0, 0, 0, 0.4);
   --lt-shadow-md: 0 8px 24px -4px rgba(0, 0, 0, 0.5);
   --lt-glow: 0 0 16px -2px rgba(37, 99, 235, 0.45);
@@ -78,6 +81,9 @@
   --lt-color-on-success: #ffffff;
   --lt-color-on-danger: #ffffff;
   --lt-color-teal: #0f766e;
+  --lt-color-success-fg: #ffffff;
+  --lt-color-tag1: #86198f;
+  --lt-color-tag2: #115e59;
   --lt-shadow-sm: 0 2px 8px -1px rgba(15, 23, 42, 0.12);
   --lt-shadow-md: 0 8px 24px -4px rgba(15, 23, 42, 0.18);
   --lt-glow: 0 0 12px -2px rgba(37, 99, 235, 0.3);
