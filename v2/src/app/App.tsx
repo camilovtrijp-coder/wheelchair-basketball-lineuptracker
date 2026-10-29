@@ -1,3 +1,4 @@
+import type { ComponentChildren } from 'preact';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'preact/hooks';
 import { browserStorage, strictReadBrowserStorage } from '../i18n/browserStorage';
 import { readLang, writeLang } from '../i18n/persistence';
@@ -67,8 +68,14 @@ import { PwaUpdateBanner } from '../ui/pwa/PwaUpdateBanner';
 import { PwaActionNeededPanel } from '../ui/sync/PwaActionNeededPanel';
 import { DiagnosticsPanel } from '../ui/diagnostics/DiagnosticsPanel';
 import { diagnostics } from '../infrastructure/diagnostics/diagnostics';
+import { NavIcon, type NavIconName } from '../ui/shared/NavIcons';
 
 export interface AppProps {
+  /**
+   * Optioneel element rechts in de app-header, naast de taalknop (stap 3/5:
+   * AuthGate plaatst hier de compacte accountchip). Zonder sessie leeg.
+   */
+  headerSlot?: ComponentChildren;
   repositories: ResolvedAppRepositories;
   /**
    * Sync-status/opslaan-laag (PR 5.3c-2), door AuthGate berekend en
@@ -166,6 +173,20 @@ export interface AppProps {
 
 type Tab = 'settings' | 'roster' | 'game' | 'history' | 'stats' | 'trends';
 
+// Volgorde van de onderbalk (v1): Team, Wedstrijd, Stats, Trends, Historie.
+// Instellingen staat als ⚙ in de header (data-testid blijft "nav-settings").
+const NAV_TABS: ReadonlyArray<{
+  id: Exclude<Tab, 'settings'>;
+  icon: NavIconName;
+  labelKey: 'rosterTitle' | 'gameTitle' | 'statsTitle' | 'trendsTitle' | 'historyTitle';
+}> = [
+  { id: 'roster', icon: 'roster', labelKey: 'rosterTitle' },
+  { id: 'game', icon: 'game', labelKey: 'gameTitle' },
+  { id: 'stats', icon: 'stats', labelKey: 'statsTitle' },
+  { id: 'trends', icon: 'trends', labelKey: 'trendsTitle' },
+  { id: 'history', icon: 'history', labelKey: 'historyTitle' },
+];
+
 function initialLang(): Lang {
   const stored = readLang(browserStorage);
   return resolveInitialLang(
@@ -213,6 +234,7 @@ export function App({
   organizationRole = null,
   accountActions,
   onLangChange,
+  headerSlot,
 }: AppProps) {
   const [lang, setLang] = useState<Lang>(initialLang);
   useEffect(() => {
@@ -1449,9 +1471,18 @@ export function App({
       }}
     >
       <header className="app-header">
-        <h1 className="app-title">
-          {(settings.teamName as string) || translate(lang, 'appNameFallback')}
-        </h1>
+        <div className="app-brand">
+          <img
+            className="app-logo"
+            src={(settings.logoUri as string) || '/icons/icon-192.png'}
+            alt=""
+            width={36}
+            height={36}
+          />
+          <h1 className="app-title">
+            {(settings.teamName as string) || translate(lang, 'appNameFallback')}
+          </h1>
+        </div>
         <div className="app-header__actions">
           <button
             type="button"
@@ -1461,6 +1492,17 @@ export function App({
           >
             {other.toUpperCase()}
           </button>
+          <button
+            type="button"
+            className={`app-header__settings${tab === 'settings' ? ' app-header__settings--active' : ''}`}
+            aria-label={t('settingsTitle')}
+            aria-current={tab === 'settings' ? 'page' : undefined}
+            data-testid="nav-settings"
+            onClick={() => setTab('settings')}
+          >
+            <span aria-hidden="true">⚙</span>
+          </button>
+          {headerSlot}
         </div>
       </header>
 
@@ -1473,6 +1515,7 @@ export function App({
       <PwaActionNeededPanel
         lang={lang}
         visible={pwaUpdate.status === 'error'}
+        details={pwaUpdate.errorDetail}
         onRetry={pwaUpdate.retry}
         onDismiss={pwaUpdate.dismissError}
       />
@@ -1481,61 +1524,20 @@ export function App({
         <DeletionRequestBanner lang={lang} request={deletionRequest} />
       ) : null}
 
-      <nav className="app-nav" aria-label={t('settingsTitle')}>
-        <button
-          type="button"
-          className={`app-nav__tab${tab === 'settings' ? ' app-nav__tab--active' : ''}`}
-          aria-current={tab === 'settings' ? 'page' : undefined}
-          data-testid="nav-settings"
-          onClick={() => setTab('settings')}
-        >
-          {t('settingsTitle')}
-        </button>
-        <button
-          type="button"
-          className={`app-nav__tab${tab === 'roster' ? ' app-nav__tab--active' : ''}`}
-          aria-current={tab === 'roster' ? 'page' : undefined}
-          data-testid="nav-roster"
-          onClick={() => setTab('roster')}
-        >
-          {t('rosterTitle')}
-        </button>
-        <button
-          type="button"
-          className={`app-nav__tab${tab === 'game' ? ' app-nav__tab--active' : ''}`}
-          aria-current={tab === 'game' ? 'page' : undefined}
-          data-testid="nav-game"
-          onClick={() => setTab('game')}
-        >
-          {t('gameTitle')}
-        </button>
-        <button
-          type="button"
-          className={`app-nav__tab${tab === 'history' ? ' app-nav__tab--active' : ''}`}
-          aria-current={tab === 'history' ? 'page' : undefined}
-          data-testid="nav-history"
-          onClick={() => setTab('history')}
-        >
-          {t('historyTitle')}
-        </button>
-        <button
-          type="button"
-          className={`app-nav__tab${tab === 'stats' ? ' app-nav__tab--active' : ''}`}
-          aria-current={tab === 'stats' ? 'page' : undefined}
-          data-testid="nav-stats"
-          onClick={() => setTab('stats')}
-        >
-          {t('statsTitle')}
-        </button>
-        <button
-          type="button"
-          className={`app-nav__tab${tab === 'trends' ? ' app-nav__tab--active' : ''}`}
-          aria-current={tab === 'trends' ? 'page' : undefined}
-          data-testid="nav-trends"
-          onClick={() => setTab('trends')}
-        >
-          {t('trendsTitle')}
-        </button>
+      <nav className="app-nav" aria-label={t('navMainLabel')}>
+        {NAV_TABS.map(({ id, icon, labelKey }) => (
+          <button
+            key={id}
+            type="button"
+            className={`app-nav__tab${tab === id ? ' app-nav__tab--active' : ''}`}
+            aria-current={tab === id ? 'page' : undefined}
+            data-testid={`nav-${id}`}
+            onClick={() => setTab(id)}
+          >
+            <NavIcon name={icon} />
+            <span className="app-nav__label">{t(labelKey)}</span>
+          </button>
+        ))}
       </nav>
 
       <main className="app-main">

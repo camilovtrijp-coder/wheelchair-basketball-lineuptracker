@@ -1,5 +1,6 @@
 import { test, expect } from '@playwright/test';
 import { signIn, signUp, uniqueTestEmail } from './helpers';
+import { openAccountMenu } from '../e2e/accountMenu';
 
 test.describe('niet-ingelogd (standaardstatus)', () => {
   test('toont het login-scherm zonder enige actie', async ({ page }) => {
@@ -44,6 +45,8 @@ test.describe('vertrouwd-apparaatkeuze en wissen bij uitloggen', () => {
     await page.waitForSelector('[data-testid^="context-team-"]', { timeout: 10_000 });
     await page.locator('[data-testid^="context-team-"]').first().click();
     await expect(page.getByTestId('nav-settings')).toBeVisible({ timeout: 10_000 });
+
+    await openAccountMenu(page);
 
     await page.getByTestId('sign-out').click();
     await page.waitForSelector('[data-testid="auth-email"]', { timeout: 10_000 });

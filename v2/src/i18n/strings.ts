@@ -11,6 +11,7 @@ const nl = {
 
   appNameFallback: 'Lineup Tracker',
   settingsTitle: 'Instellingen',
+  navMainLabel: 'Hoofdnavigatie',
   settingsOpen: '⚙ Instellingen',
   settingsSectionClub: 'Club',
   settingsSectionMatch: 'Wedstrijd',
@@ -418,6 +419,9 @@ const nl = {
   authSwitchToLoginPrompt: 'Al een account?',
   authSwitchToLoginBtn: 'Inloggen',
   authSignOutBtn: 'Uitloggen',
+  accountMenuTriggerLabel: 'Accountmenu',
+  accountMenuSignedInAs: 'Ingelogd als',
+  themeDarkLabel: 'Donker thema',
   authInvalidCredentialError: 'Onjuist e-mailadres of wachtwoord.',
   authEmailInUseError: 'Er bestaat al een account voor dit e-mailadres.',
   authWeakPasswordError: 'Kies een wachtwoord van minstens 6 tekens.',
@@ -520,6 +524,8 @@ const nl = {
   pwaActionNeededTitle: 'Update mislukt',
   pwaActionNeededMessage:
     'Bijwerken van de app is niet gelukt. Je kunt gewoon doorgaan met de huidige versie.',
+  pwaErrorDetailsSummary: 'Technische details',
+  pwaErrorDetailsHint: 'Maak een screenshot hiervan en deel die met de beheerder.',
 
   // PR 8.3c-1c: owner-only verwijderverzoek, opruimoverzicht en melding voor alle leden (NL).
   deletionTitle: 'Organisatie verwijderen',
@@ -824,6 +830,7 @@ const en = {
 
   appNameFallback: 'Lineup Tracker',
   settingsTitle: 'Settings',
+  navMainLabel: 'Main navigation',
   settingsOpen: '⚙ Settings',
   settingsSectionClub: 'Club',
   settingsSectionMatch: 'Match',
@@ -1196,6 +1203,9 @@ const en = {
   authSwitchToLoginPrompt: 'Already have an account?',
   authSwitchToLoginBtn: 'Log in',
   authSignOutBtn: 'Log out',
+  accountMenuTriggerLabel: 'Account menu',
+  accountMenuSignedInAs: 'Signed in as',
+  themeDarkLabel: 'Dark theme',
   authInvalidCredentialError: 'Incorrect email address or password.',
   authEmailInUseError: 'An account already exists for this email address.',
   authWeakPasswordError: 'Choose a password of at least 6 characters.',
@@ -1283,6 +1293,8 @@ const en = {
   pwaUpdateConfirmBtn: 'Update now',
   pwaActionNeededTitle: 'Update failed',
   pwaActionNeededMessage: 'Updating the app failed. You can keep using the current version.',
+  pwaErrorDetailsSummary: 'Technical details',
+  pwaErrorDetailsHint: 'Take a screenshot of this and share it with the administrator.',
 
   // PR 8.3c-1c: owner-only deletion request, cleanup overview and notice for all members (EN, mirrors NL key-for-key).
   deletionTitle: 'Delete organization',

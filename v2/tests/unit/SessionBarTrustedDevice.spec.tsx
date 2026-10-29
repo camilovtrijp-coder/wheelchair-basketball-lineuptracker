@@ -13,6 +13,10 @@ import { describe, it, expect, afterEach, vi } from 'vitest';
 import { render, fireEvent, cleanup, screen } from '@testing-library/preact';
 import { SessionBar } from '../../src/ui/context/SessionBar';
 
+function openMenu() {
+  fireEvent.click(screen.getByTestId('account-menu-trigger'));
+}
+
 describe('ui/context/SessionBar — herroepbare vertrouwd-apparaat-instelling (PR 8.2c)', () => {
   afterEach(() => {
     cleanup();
@@ -28,6 +32,7 @@ describe('ui/context/SessionBar — herroepbare vertrouwd-apparaat-instelling (P
         onChangeTrustedDevice={() => {}}
       />,
     );
+    openMenu();
     const toggle = screen.getByTestId('trusted-device-setting-toggle') as HTMLInputElement;
     expect(toggle.checked).toBe(true);
   });
@@ -43,6 +48,7 @@ describe('ui/context/SessionBar — herroepbare vertrouwd-apparaat-instelling (P
         onChangeTrustedDevice={onChange}
       />,
     );
+    openMenu();
     fireEvent.click(screen.getByTestId('trusted-device-setting-toggle'));
     expect(onChange).toHaveBeenCalledWith(true);
     expect(screen.queryByTestId('trusted-device-revoke-confirm')).toBeNull();
@@ -59,6 +65,7 @@ describe('ui/context/SessionBar — herroepbare vertrouwd-apparaat-instelling (P
         onChangeTrustedDevice={onChange}
       />,
     );
+    openMenu();
     fireEvent.click(screen.getByTestId('trusted-device-setting-toggle'));
     expect(onChange).not.toHaveBeenCalled();
     expect(screen.getByTestId('trusted-device-revoke-confirm')).not.toBeNull();
@@ -75,6 +82,7 @@ describe('ui/context/SessionBar — herroepbare vertrouwd-apparaat-instelling (P
         onChangeTrustedDevice={onChange}
       />,
     );
+    openMenu();
     fireEvent.click(screen.getByTestId('trusted-device-setting-toggle'));
     fireEvent.click(screen.getByTestId('trusted-device-revoke-confirm-btn'));
     expect(onChange).toHaveBeenCalledWith(false);
@@ -92,6 +100,7 @@ describe('ui/context/SessionBar — herroepbare vertrouwd-apparaat-instelling (P
         onChangeTrustedDevice={onChange}
       />,
     );
+    openMenu();
     fireEvent.click(screen.getByTestId('trusted-device-setting-toggle'));
     fireEvent.click(screen.getByTestId('trusted-device-revoke-cancel-btn'));
     expect(onChange).not.toHaveBeenCalled();

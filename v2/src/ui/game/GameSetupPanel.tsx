@@ -169,9 +169,12 @@ export function GameSetupPanel({
 
       <ul className="roster-list">
         {vp.map((p) => (
-          <li key={p.id} className="roster-player-card">
+          <li key={p.id} className="roster-player-card game-setup-card">
             <div className="roster-player-row">
-              <span className="settings-field__label" style={{ opacity: p.participate ? 1 : 0.5 }}>
+              <span
+                className="settings-field__label game-setup-card__name"
+                style={{ opacity: p.participate ? 1 : 0.5 }}
+              >
                 #{p.nr} {p.naam}
               </span>
               <div className="settings-actions">
@@ -215,7 +218,7 @@ export function GameSetupPanel({
         </p>
       )}
 
-      <label className="settings-field">
+      <label className="settings-field game-field-card">
         <span className="settings-field__label">{t(lang, 'teamOpponent')}</span>
         <input
           type="text"
@@ -227,7 +230,7 @@ export function GameSetupPanel({
         />
       </label>
 
-      <label className="settings-field">
+      <label className="settings-field game-field-card">
         <span className="settings-field__label">{t(lang, 'competitionLabel')}</span>
         <input
           type="text"
@@ -255,7 +258,7 @@ export function GameSetupPanel({
         </label>
       ) : null}
 
-      <label className="settings-field settings-field--row">
+      <label className="settings-field settings-field--row switch-field game-field-card">
         <input
           type="checkbox"
           checked={game.clockDown}
@@ -293,7 +296,7 @@ export function GameSetupPanel({
       <div className="settings-actions">
         <button
           type="button"
-          className="btn-primary"
+          className="btn-primary game-start-btn"
           data-testid="game-start-btn"
           disabled={!canWrite || !canStartNow}
           onClick={() => {

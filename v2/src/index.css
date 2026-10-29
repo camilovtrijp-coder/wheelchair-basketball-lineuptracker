@@ -1,4 +1,7 @@
 @import './styles/tokens.css';
+@import './styles/history-settings.css';
+@import './styles/stats-trends.css';
+@import './styles/team-setup.css';
 
 /* Zonder deze reset telt content-box de padding bovenop een expliciete
    width op (bijv. .app-main), wat op smalle viewports horizontale
@@ -11,7 +14,6 @@
 
 :root {
   font-family: var(--lt-font-sans);
-  color-scheme: light dark;
   font-size: var(--lt-font-size-md);
   line-height: var(--lt-line-height-normal);
 }
@@ -44,6 +46,21 @@ main {
   background: var(--lt-color-surface);
 }
 
+.app-brand {
+  display: flex;
+  align-items: center;
+  gap: var(--lt-space-3);
+  min-width: 0;
+}
+
+.app-logo {
+  flex: none;
+  width: 2.25rem;
+  height: 2.25rem;
+  object-fit: contain;
+  border-radius: var(--lt-radius-sm);
+}
+
 .app-title {
   margin: 0;
   font-size: var(--lt-font-size-lg);
@@ -64,6 +81,10 @@ main {
   color: var(--lt-color-fg);
   border-left: 4px solid var(--team-accent, transparent);
   padding-left: var(--lt-space-2);
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .app-header__actions {
@@ -73,7 +94,8 @@ main {
 
 .app-main {
   flex: 1;
-  padding: var(--lt-space-4);
+  /* ruimte onder de inhoud voor de vaste onderbalk (3.5rem + safe-area) */
+  padding: var(--lt-space-4) var(--lt-space-4) calc(4.5rem + env(safe-area-inset-bottom));
   max-width: 48rem;
   width: 100%;
   margin: 0 auto;
@@ -81,8 +103,8 @@ main {
 
 button {
   font: inherit;
-  background: var(--lt-color-accent);
-  color: var(--lt-color-accent-fg);
+  background: var(--lt-color-primary);
+  color: var(--lt-color-primary-fg);
   border: var(--lt-border-thin);
   border-radius: var(--lt-radius-md);
   padding: var(--lt-space-2) var(--lt-space-4);
@@ -103,8 +125,9 @@ button:focus-visible {
      `--lt-color-accent-fg`-token die van kleurenschema wisselt terwijl de
      knopachtergrond dat niet doet. Geen aparte donkere-modus-override
      nodig: de afgeleide voorgrond is al schema-onafhankelijk correct. */
-  background: var(--team-primary, var(--lt-color-accent));
-  color: var(--team-primary-fg, var(--lt-color-accent-fg));
+  background: var(--team-primary, var(--lt-color-primary));
+  color: var(--team-primary-fg, var(--lt-color-primary-fg));
+  box-shadow: var(--lt-glow);
 }
 
 .btn-outline {
@@ -232,7 +255,7 @@ button:focus-visible {
   width: 1.75rem;
   height: 1.75rem;
   border-radius: 50%;
-  border: 1px solid rgba(0, 0, 0, 0.15);
+  border: 1px solid var(--lt-color-border);
   cursor: pointer;
   padding: 0;
   background-clip: padding-box;
@@ -252,7 +275,7 @@ button:focus-visible {
 .settings-success {
   margin: 0;
   font-size: var(--lt-font-size-sm);
-  color: var(--lt-color-success, #166534);
+  color: var(--lt-color-success);
 }
 
 .cloud-import-banner {
@@ -263,7 +286,7 @@ button:focus-visible {
   margin: 0 0 var(--lt-space-3) 0;
   border: var(--lt-border-thin);
   border-radius: var(--lt-radius-md);
-  background: var(--lt-color-surface-alt, rgba(0, 0, 0, 0.03));
+  background: var(--lt-color-surface-alt);
 }
 
 .cloud-import-banner__prompt {
@@ -275,7 +298,7 @@ button:focus-visible {
 .cloud-import-banner__done {
   margin: 0;
   font-size: var(--lt-font-size-sm);
-  color: var(--lt-color-success, #166534);
+  color: var(--lt-color-success);
 }
 
 .cloud-import-banner__error {
@@ -284,28 +307,80 @@ button:focus-visible {
   color: var(--lt-color-danger);
 }
 
+/* Onderbalk (v1-look): vast onderin, icoon boven label, actieve tab in de
+   primaire kleur. z-index 40 ligt onder .modal-overlay (50), dus dialogen
+   dekken de balk af. De banners erboven staan in de normale flow. */
 .app-nav {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 40;
   display: flex;
-  gap: var(--lt-space-2);
-  padding: var(--lt-space-2) var(--lt-space-4);
-  border-bottom: var(--lt-border-thin);
-  background: var(--lt-color-surface);
-  flex-wrap: wrap;
+  max-width: 48rem;
+  margin: 0 auto;
+  background: color-mix(in srgb, var(--lt-color-surface) 92%, transparent);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border-top: var(--lt-border-thin);
+  box-shadow: 0 -4px 20px rgba(0, 0, 0, 0.25);
 }
 
 .app-nav__tab {
+  flex: 1;
+  min-width: 0;
+  min-height: 3.5rem;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.2rem;
+  padding: var(--lt-space-2) 0 calc(var(--lt-space-2) + env(safe-area-inset-bottom));
   background: transparent;
   color: var(--lt-color-muted);
   border: none;
-  border-radius: var(--lt-radius-sm);
-  padding: var(--lt-space-2) var(--lt-space-3);
+  border-radius: 0;
+  font-size: 0.7rem;
+  font-weight: 600;
   white-space: nowrap;
 }
 
+.app-nav__label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 100%;
+}
+
 .app-nav__tab--active {
-  background: var(--lt-color-bg);
+  background: transparent;
+  /* tekstkleur = contrastveilige --lt-color-accent; teamkleur alleen als gloed */
+  color: var(--lt-color-accent);
+  font-weight: 700;
+}
+
+.app-nav__tab--active .app-nav__icon {
+  filter: drop-shadow(
+    0 2px 6px color-mix(in srgb, var(--team-primary, var(--lt-color-accent)) 60%, transparent)
+  );
+}
+
+.app-header__settings {
+  min-width: 2.75rem;
+  min-height: 2.75rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  background: transparent;
   color: var(--lt-color-fg);
-  font-weight: 600;
+  border: var(--lt-border-thin);
+  border-radius: 999px;
+  font-size: 1.1rem;
+}
+
+.app-header__settings--active {
+  color: var(--lt-color-accent);
+  border-color: var(--lt-color-accent);
 }
 
 .roster-list {
@@ -437,35 +512,74 @@ button:focus-visible {
 }
 
 .session-bar {
+  position: relative;
   display: flex;
-  flex-wrap: wrap;
-  justify-content: flex-end;
-  gap: var(--lt-space-2);
-  padding: var(--lt-space-2) var(--lt-space-4);
-  border-bottom: var(--lt-border-thin);
-  background: var(--lt-color-surface);
-}
-
-.session-bar__left {
-  display: flex;
-  flex-wrap: wrap;
   align-items: center;
   gap: var(--lt-space-2);
-  margin-right: auto;
-  min-width: 0;
+}
+
+.session-bar__trigger {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--lt-space-1);
+  padding: var(--lt-space-1) var(--lt-space-3);
+  border-radius: 999px;
+  font-weight: 600;
+}
+
+.session-bar__caret {
+  font-size: 0.7rem;
+}
+
+.session-bar__menu {
+  position: absolute;
+  top: calc(100% + var(--lt-space-2));
+  right: 0;
+  z-index: 40;
+  display: flex;
+  flex-direction: column;
+  gap: var(--lt-space-2);
+  width: min(18rem, calc(100vw - 2 * var(--lt-space-4)));
+  padding: var(--lt-space-3);
+  border: var(--lt-border-thin);
+  border-radius: var(--lt-radius-lg);
+  background: var(--lt-color-surface);
+  box-shadow: var(--lt-shadow-md);
+}
+
+.session-bar__menu-account {
+  display: flex;
+  flex-direction: column;
+  margin: 0;
+  padding-bottom: var(--lt-space-2);
+  border-bottom: var(--lt-border-thin);
+}
+
+.session-bar__menu-caption {
+  font-size: var(--lt-font-size-xs);
+  color: var(--lt-color-muted);
 }
 
 .session-bar__account {
-  font-size: 0.85rem;
-  color: var(--lt-color-muted);
+  font-weight: 600;
   overflow-wrap: anywhere;
+}
+
+.session-bar__menu-item {
+  width: 100%;
+  text-align: left;
+}
+
+.session-bar__sign-out {
+  color: var(--lt-color-danger);
 }
 
 .session-bar__trusted-device {
   display: flex;
   align-items: center;
-  gap: var(--lt-space-1);
-  font-size: 0.85rem;
+  gap: var(--lt-space-2);
+  padding: var(--lt-space-1) 0;
+  font-size: var(--lt-font-size-sm);
   color: var(--lt-color-muted);
 }
 
@@ -513,6 +627,35 @@ button:focus-visible {
   display: flex;
   gap: var(--lt-space-2);
   flex-wrap: wrap;
+}
+
+.action-needed-details {
+  margin: 0 0 var(--lt-space-3);
+  font-size: var(--lt-font-size-sm);
+}
+
+.action-needed-details summary {
+  cursor: pointer;
+  color: var(--lt-color-muted);
+}
+
+.action-needed-details__hint {
+  margin: var(--lt-space-2) 0;
+  color: var(--lt-color-muted);
+}
+
+.action-needed-details pre {
+  margin: 0;
+  padding: var(--lt-space-2) var(--lt-space-3);
+  border: var(--lt-border-thin);
+  border-radius: var(--lt-radius-sm);
+  background: var(--lt-color-surface-alt);
+  color: var(--lt-color-fg);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: var(--lt-font-size-xs);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  user-select: all;
 }
 
 .pwa-update-banner {
@@ -575,7 +718,7 @@ button:focus-visible {
 }
 
 .live-pm--pos {
-  color: var(--lt-color-success, #166534);
+  color: var(--lt-color-success);
   font-weight: 700;
 }
 
@@ -646,6 +789,49 @@ button:focus-visible {
 
 .score-btn {
   padding: var(--lt-space-2);
+  min-height: 3rem;
+  border-radius: var(--lt-radius-lg);
+}
+
+/* Stap 2: eigen team = teamkleur, tegenstander = vast oranje (v1-look).
+   De tekst van de naam blijft --lt-color-fg (contrast); de kleur zit in de
+   rand, het scorevak en de knoppen. Knoptekst is de afgeleide, leesbare
+   voorgrond (deriveButtonForeground) resp. --lt-color-opponent-fg. */
+.score-row--for {
+  --score-color: var(--team-primary, var(--lt-color-primary));
+  --score-fg: var(--team-primary-fg, var(--lt-color-primary-fg));
+}
+
+.score-row--against {
+  --score-color: var(--lt-color-opponent);
+  --score-fg: var(--lt-color-opponent-fg);
+}
+
+.score-row--for .score-row__name,
+.score-row--against .score-row__name {
+  border-left: 4px solid var(--score-color);
+  padding-left: var(--lt-space-2);
+}
+
+.score-row--for .score-select,
+.score-row--against .score-select {
+  width: 5.5rem;
+  font-size: 2rem;
+  line-height: 1;
+  text-align: center;
+  border: 2px solid var(--score-color);
+  border-radius: var(--lt-radius-lg);
+  background: color-mix(in srgb, var(--score-color) 22%, var(--lt-color-bg));
+}
+
+.score-btn--for,
+.score-btn--against {
+  background: var(--score-color);
+  color: var(--score-fg);
+  font-size: var(--lt-font-size-lg);
+  font-weight: 700;
+  border-color: transparent;
+  box-shadow: 0 0 14px -3px var(--score-color);
 }
 
 .score-btn--wide {
@@ -674,7 +860,7 @@ button:focus-visible {
 .class-badge {
   font-size: var(--lt-font-size-xs);
   font-weight: 700;
-  color: var(--lt-color-success, #166534);
+  color: var(--lt-color-success);
 }
 
 .class-badge--over {
@@ -690,7 +876,7 @@ button:focus-visible {
 
 .class-bar__fill {
   height: 100%;
-  background: var(--lt-color-success, #166534);
+  background: var(--lt-color-success);
 }
 
 .class-bar__fill--over {
@@ -708,9 +894,9 @@ button:focus-visible {
   flex-direction: column;
   align-items: center;
   gap: 0.1rem;
-  padding: var(--lt-space-2);
+  padding: var(--lt-space-3) var(--lt-space-2);
   border: var(--lt-border-thin);
-  border-radius: var(--lt-radius-md);
+  border-radius: var(--lt-radius-lg);
   background: var(--lt-color-surface);
   color: var(--lt-color-fg);
   min-width: 0;
@@ -720,15 +906,17 @@ button:focus-visible {
   border-color: var(--lt-color-accent);
   outline: var(--lt-focus-ring);
   outline-offset: 1px;
+  box-shadow: 0 0 14px -2px var(--lt-color-accent);
 }
 
 .chip__nr {
   font-weight: 700;
-  font-size: var(--lt-font-size-sm);
+  font-size: var(--lt-font-size-xl);
+  line-height: var(--lt-line-height-tight);
 }
 
 .chip__name {
-  font-size: var(--lt-font-size-xs);
+  font-size: var(--lt-font-size-sm);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -755,6 +943,14 @@ button:focus-visible {
   color: var(--lt-color-fg);
   border: var(--lt-border-thin);
   border-color: var(--lt-color-accent);
+  background: color-mix(in srgb, var(--lt-color-accent) 14%, var(--lt-color-surface));
+  box-shadow: 0 0 14px -4px var(--lt-color-accent);
+}
+
+.oncourt-section__title,
+.bench-section__title {
+  font-size: var(--lt-font-size-lg);
+  font-weight: 700;
 }
 
 .swap-pending-actions {
@@ -998,7 +1194,7 @@ button:focus-visible {
 }
 
 .stats-stat__v--pos {
-  color: var(--lt-color-success, #166534);
+  color: var(--lt-color-success);
 }
 
 .stats-stat__v--neg {
@@ -1019,9 +1215,9 @@ button:focus-visible {
 }
 
 .badge-pm.live-pm--pos {
-  color: var(--lt-color-success, #166534);
-  background: color-mix(in srgb, var(--lt-color-success, #166534) 12%, transparent);
-  border-color: color-mix(in srgb, var(--lt-color-success, #166534) 30%, transparent);
+  color: var(--lt-color-success);
+  background: color-mix(in srgb, var(--lt-color-success) 12%, transparent);
+  border-color: color-mix(in srgb, var(--lt-color-success) 30%, transparent);
 }
 
 .badge-pm.live-pm--neg {
@@ -1055,9 +1251,9 @@ button:focus-visible {
 }
 
 .stats-toggle--on-st {
-  background: var(--lt-color-success, #166534);
+  background: var(--lt-color-success);
   color: white;
-  border-color: var(--lt-color-success, #166534);
+  border-color: var(--lt-color-success);
 }
 
 .stats-toggle--on-v {
@@ -1121,7 +1317,7 @@ button:focus-visible {
 }
 
 .trends-avg-pm--pos {
-  color: var(--lt-color-success, #166534);
+  color: var(--lt-color-success);
 }
 
 .trends-avg-pm--neg {

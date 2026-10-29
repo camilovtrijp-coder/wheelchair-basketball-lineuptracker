@@ -31,7 +31,6 @@ test.describe('v2 a11y — dark-mode-contrast (PR 8.2b, P1-regressies PR #83)', 
   test('instellingen met DEFAULT_SETTINGS in donkere modus: geen axe-core color-contrast-schendingen', async ({
     page,
   }) => {
-    await page.emulateMedia({ colorScheme: 'dark' });
     await page.goto('/');
     await expect(page.getByTestId('settings-teamName')).toBeVisible();
 
@@ -43,7 +42,6 @@ test.describe('v2 a11y — dark-mode-contrast (PR 8.2b, P1-regressies PR #83)', 
   test('DEFAULT_SETTINGS in donkere modus: .btn-primary rendert met een berekend leesbare voorgrond, .app-title met de vaste tekstkleur', async ({
     page,
   }) => {
-    await page.emulateMedia({ colorScheme: 'dark' });
     await page.goto('/');
 
     // Achtergrond van .btn-primary blijft de rauwe primaryColor (#2563eb) —
@@ -59,13 +57,13 @@ test.describe('v2 a11y — dark-mode-contrast (PR 8.2b, P1-regressies PR #83)', 
     await expect(page.getByTestId('settings-save')).toHaveCSS('color', 'rgb(255, 255, 255)');
 
     // .app-title: tekst blijft de vaste donkere-modus-`--lt-color-fg`
-    // (#f3f4f6, tokens.css) — geen teamkleur, dus geen contrastrisico.
+    // (#f8fafc, tokens.css) — geen teamkleur, dus geen contrastrisico.
     // Het accent (DEFAULT_SETTINGS.accentColor, #f97316) blijft zichtbaar
     // via de decoratieve rand — geen WCAG-tekstcontrasteis, dus geen
     // reden meer om de default af te wijken van #f97316 (derde
     // P2-review-ronde PR #83: de eerdere `#c2410c`-defaultwijziging is
     // teruggedraaid nu accentColor geen tekstkleur meer is).
-    await expect(page.locator('.app-title')).toHaveCSS('color', 'rgb(243, 244, 246)');
+    await expect(page.locator('.app-title')).toHaveCSS('color', 'rgb(248, 250, 252)');
     await expect(page.locator('.app-title')).toHaveCSS('border-left-color', 'rgb(249, 115, 22)');
   });
 
@@ -77,16 +75,15 @@ test.describe('v2 a11y — dark-mode-contrast (PR 8.2b, P1-regressies PR #83)', 
   test('twee verschillende accentkleur-presets renderen als twee verschillende decoratieve accentranden (donkere modus)', async ({
     page,
   }) => {
-    await page.emulateMedia({ colorScheme: 'dark' });
     await page.goto('/');
     const appTitle = page.locator('.app-title');
 
     await page.getByTestId('accentColor-3b82f6').click();
     await expect(appTitle).toHaveCSS('border-left-color', 'rgb(59, 130, 246)');
-    await expect(appTitle).toHaveCSS('color', 'rgb(243, 244, 246)');
+    await expect(appTitle).toHaveCSS('color', 'rgb(248, 250, 252)');
 
     await page.getByTestId('accentColor-14b8a6').click();
     await expect(appTitle).toHaveCSS('border-left-color', 'rgb(20, 184, 166)');
-    await expect(appTitle).toHaveCSS('color', 'rgb(243, 244, 246)');
+    await expect(appTitle).toHaveCSS('color', 'rgb(248, 250, 252)');
   });
 });

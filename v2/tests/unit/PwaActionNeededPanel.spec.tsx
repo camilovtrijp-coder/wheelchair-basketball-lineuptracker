@@ -33,4 +33,63 @@ describe('PwaActionNeededPanel', () => {
     expect(onRetry).toHaveBeenCalledTimes(1);
     expect(onDismiss).toHaveBeenCalledTimes(1);
   });
+
+  it('toont geen technische details zonder details-prop', () => {
+    const { queryByTestId } = render(
+      <PwaActionNeededPanel
+        lang="nl"
+        visible={true}
+        onRetry={() => undefined}
+        onDismiss={() => undefined}
+      />,
+    );
+    expect(queryByTestId('pwa-action-needed-details')).toBeNull();
+  });
+
+  it.each([
+    ['nl', 'Technische details', 'Maak een screenshot hiervan'],
+    ['en', 'Technical details', 'Take a screenshot of this'],
+  ] as const)(
+    'toont een dichtgeklapt, uitklapbaar blok met de details als platte tekst (%s)',
+    (lang, summary, hint) => {
+      const { getByTestId } = render(
+        <PwaActionNeededPanel
+          lang={lang}
+          visible={true}
+          onRetry={() => undefined}
+          onDismiss={() => undefined}
+          details={{
+            phase: 'register',
+            swUrl: '/sw.js',
+            swType: 'module',
+            errorName: 'SecurityError',
+            errorMessage: 'redirect niet toegestaan',
+            probe: {
+              ok: true,
+              status: 0,
+              responseType: 'opaqueredirect',
+              contentType: null,
+              redirected: false,
+            },
+          }}
+        />,
+      );
+      const block = getByTestId('pwa-action-needed-details') as HTMLDetailsElement;
+      expect(block.tagName).toBe('DETAILS');
+      expect(block.open).toBe(false);
+      expect(block.querySelector('summary')?.textContent).toBe(summary);
+      expect(block.textContent).toContain(hint);
+      expect(getByTestId('pwa-action-needed-details-text').textContent).toBe(
+        [
+          'phase: register',
+          'script: /sw.js (module)',
+          'error: SecurityError: redirect niet toegestaan',
+          'probe: status 0, type opaqueredirect, content-type -, redirected no',
+        ].join('\n'),
+      );
+      // Bestaande knoppen blijven onveranderd aanwezig.
+      expect(getByTestId('pwa-action-needed-retry')).toBeTruthy();
+      expect(getByTestId('pwa-action-needed-dismiss')).toBeTruthy();
+    },
+  );
 });

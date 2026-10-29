@@ -1,8 +1,14 @@
-import { useState } from 'preact/hooks';
+import { useEffect, useRef, useState } from 'preact/hooks';
 import { translate, type Lang } from '../../i18n/strings';
 import type { SyncStatus } from '../../domain/syncState';
 import { SyncStatusIndicator } from '../sync/SyncStatusIndicator';
 import { useFocusTrap } from '../../application/a11y/useFocusTrap';
+import {
+  applyTheme,
+  readStoredTheme,
+  storeTheme,
+  type Theme,
+} from '../../infrastructure/theme/theme';
 
 export interface SessionBarProps {
   lang: Lang;
@@ -34,10 +40,12 @@ export interface SessionBarProps {
 }
 
 /**
- * Dunne balk náást (niet in) `App` — zo blijft `App.tsx` zelf ongewijzigd
- * terwijl er toch een uitlog- en contextwisselknop beschikbaar zijn zodra
- * er een actieve sessie is. Vervangt ui/auth/SignOutBar.tsx uit stap 5: die
- * had alleen uitloggen, dit is dezelfde balk met de wisselknop erbij.
+ * Compacte accountchip met uitklapmenu (v1-look, stap 3/5). Wordt door
+ * AuthGate als `headerSlot` in de app-header van `App` geplaatst, naast de
+ * taalknop; het menu bevat e-mailadres, wissel van organisatie/team,
+ * vertrouwd-apparaat-schakelaar en uitloggen. De sync-indicator blijft
+ * zichtbaar naast de chip. Alleen presentatie: de handlers en de
+ * bevestiging voor het intrekken van "vertrouwd apparaat" zijn ongewijzigd.
  */
 export function SessionBar({
   lang,
@@ -50,6 +58,40 @@ export function SessionBar({
   onChangeTrustedDevice,
 }: SessionBarProps) {
   const [confirmingRevoke, setConfirmingRevoke] = useState(false);
+  const [menuOpen, setMenuOpen] = useState(false);
+  const [theme, setTheme] = useState<Theme>(() => readStoredTheme());
+  const wrapperRef = useRef<HTMLDivElement>(null);
+  const triggerRef = useRef<HTMLButtonElement>(null);
+
+  // Sluit bij Escape (focus terug naar de chip) en bij een klik buiten het
+  // menu. Tijdens de bevestiging van het intrekken beheert de focus-trap het
+  // toetsenbord, dus dan doet het menu niets.
+  useEffect(() => {
+    if (!menuOpen) return undefined;
+    function handleKeyDown(event: KeyboardEvent) {
+      if (event.key !== 'Escape' || confirmingRevoke) return;
+      setMenuOpen(false);
+      triggerRef.current?.focus();
+    }
+    function handlePointerDown(event: Event) {
+      if (confirmingRevoke) return;
+      if (wrapperRef.current && !wrapperRef.current.contains(event.target as Node)) {
+        setMenuOpen(false);
+      }
+    }
+    document.addEventListener('keydown', handleKeyDown);
+    document.addEventListener('pointerdown', handlePointerDown);
+    return () => {
+      document.removeEventListener('keydown', handleKeyDown);
+      document.removeEventListener('pointerdown', handlePointerDown);
+    };
+  }, [menuOpen, confirmingRevoke]);
+
+  function handleFocusOut(event: FocusEvent) {
+    if (confirmingRevoke) return;
+    const next = event.relatedTarget as Node | null;
+    if (next && wrapperRef.current && !wrapperRef.current.contains(next)) setMenuOpen(false);
+  }
   // PR 8.2a-patroon (zie ModalDialog.tsx/TakeoverConfirmDialog.tsx): vangt
   // focus zodra de bevestiging opent, laat Tab binnen het dialoog cyclen en
   // geeft focus terug (aan de checkbox, want die had focus vóór het openen)
@@ -67,33 +109,100 @@ export function SessionBar({
     setConfirmingRevoke(true);
   }
 
+  function handleThemeToggle(event: Event) {
+    const next: Theme = (event.target as HTMLInputElement).checked ? 'dark' : 'light';
+    setTheme(next);
+    applyTheme(next);
+    storeTheme(next);
+  }
+
+  const initial = email ? email.trim().charAt(0).toUpperCase() : '•';
+
   return (
-    <div className="session-bar">
-      <div className="session-bar__left">
-        {email ? (
-          <span className="session-bar__account" data-testid="session-account-email">
-            {email}
-          </span>
-        ) : null}
-        {syncStatus ? (
-          <SyncStatusIndicator lang={lang} status={syncStatus} fromCache={syncFromCache} />
-        ) : null}
-      </div>
-      <label className="session-bar__trusted-device">
-        <input
-          type="checkbox"
-          data-testid="trusted-device-setting-toggle"
-          checked={trustedDevice}
-          onChange={handleTrustedDeviceToggle}
-        />
-        {translate(lang, 'trustedDeviceSettingLabel')}
-      </label>
-      <button type="button" data-testid="switch-context" onClick={onSwitchContext}>
-        {translate(lang, 'contextSwitcherSwitchBtn')}
+    <div className="session-bar" ref={wrapperRef} onFocusOut={handleFocusOut}>
+      {syncStatus ? (
+        <SyncStatusIndicator lang={lang} status={syncStatus} fromCache={syncFromCache} />
+      ) : null}
+      <button
+        type="button"
+        ref={triggerRef}
+        className="btn-outline session-bar__trigger"
+        data-testid="account-menu-trigger"
+        aria-haspopup="true"
+        aria-expanded={menuOpen}
+        aria-controls="account-menu"
+        aria-label={translate(lang, 'accountMenuTriggerLabel')}
+        onClick={() => setMenuOpen((open) => !open)}
+      >
+        <span aria-hidden="true">{initial}</span>
+        <span aria-hidden="true" className="session-bar__caret">
+          {menuOpen ? '▴' : '▾'}
+        </span>
       </button>
-      <button type="button" data-testid="sign-out" onClick={onSignOut}>
-        {translate(lang, 'authSignOutBtn')}
-      </button>
+      {menuOpen ? (
+        <div
+          id="account-menu"
+          className="session-bar__menu"
+          role="group"
+          aria-label={translate(lang, 'accountMenuTriggerLabel')}
+          data-testid="account-menu"
+        >
+          {email ? (
+            <p className="session-bar__menu-account">
+              <span className="session-bar__menu-caption">
+                {translate(lang, 'accountMenuSignedInAs')}
+              </span>
+              <span
+                className="session-bar__account"
+                data-testid="session-account-email"
+                title={email}
+              >
+                {email}
+              </span>
+            </p>
+          ) : null}
+          <button
+            type="button"
+            className="btn-outline session-bar__menu-item"
+            data-testid="switch-context"
+            onClick={() => {
+              setMenuOpen(false);
+              onSwitchContext();
+            }}
+          >
+            {translate(lang, 'contextSwitcherSwitchBtn')}
+          </button>
+          <label className="session-bar__trusted-device">
+            <input
+              type="checkbox"
+              data-testid="trusted-device-setting-toggle"
+              checked={trustedDevice}
+              onChange={handleTrustedDeviceToggle}
+            />
+            {translate(lang, 'trustedDeviceSettingLabel')}
+          </label>
+          <label className="session-bar__trusted-device">
+            <input
+              type="checkbox"
+              data-testid="theme-toggle"
+              checked={theme === 'dark'}
+              onChange={handleThemeToggle}
+            />
+            {translate(lang, 'themeDarkLabel')}
+          </label>
+          <button
+            type="button"
+            className="btn-outline session-bar__menu-item session-bar__sign-out"
+            data-testid="sign-out"
+            onClick={() => {
+              setMenuOpen(false);
+              onSignOut();
+            }}
+          >
+            {translate(lang, 'authSignOutBtn')}
+          </button>
+        </div>
+      ) : null}
       {confirmingRevoke ? (
         // eslint-disable-next-line jsx-a11y/no-noninteractive-element-interactions
         <div

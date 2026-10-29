@@ -1,0 +1,257 @@
+/* v1-look voor Historie (lijst + detail) en Instellingen. Alleen presentatie:
+   alle kleuren komen uit styles/tokens.css (donker standaard, licht via
+   :root[data-theme='light']). Selectors zijn bewust gescoped op
+   .history-panel / .settings-panel zodat andere schermen (bijv. de
+   .segment-item-rijen in de live wedstrijd) niet veranderen. */
+
+/* ---------- gedeelde knopvarianten (v1: btn-emerald / btn-rose) ---------- */
+
+.btn-success,
+.btn-danger {
+  font-weight: 700;
+  border: none;
+  border-radius: var(--lt-radius-md);
+  padding: var(--lt-space-2) var(--lt-space-4);
+  min-height: 2.75rem;
+}
+
+.btn-success {
+  background: var(--lt-color-positive);
+  color: var(--lt-color-positive-fg);
+  box-shadow: 0 4px 14px -2px color-mix(in srgb, var(--lt-color-positive) 45%, transparent);
+}
+
+.btn-danger {
+  background: var(--lt-color-negative);
+  color: var(--lt-color-negative-fg);
+  box-shadow: 0 4px 14px -2px color-mix(in srgb, var(--lt-color-negative) 45%, transparent);
+}
+
+.btn-success:disabled,
+.btn-danger:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+  box-shadow: none;
+}
+
+/* ---------- Historie: lijst ---------- */
+
+.history-panel .history-list {
+  gap: var(--lt-space-2);
+}
+
+.history-panel .history-item {
+  border-radius: var(--lt-radius-lg);
+  padding: var(--lt-space-3) var(--lt-space-4);
+  background: var(--lt-color-surface);
+  box-shadow: var(--lt-shadow-sm);
+  min-height: 3.5rem;
+}
+
+.history-panel .history-item:hover {
+  border-color: var(--lt-color-focus);
+}
+
+.history-panel .history-item__opponent {
+  font-size: var(--lt-font-size-md);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.history-panel .history-item__score {
+  font-variant-numeric: tabular-nums;
+  color: var(--lt-color-fg);
+}
+
+.history-item__end {
+  display: flex;
+  align-items: center;
+  gap: var(--lt-space-2);
+  flex: none;
+}
+
+/* Decoratief: de uitslag staat altijd ook als cijfers (en als +/- in het
+   detail), dus de kleur is nooit het enige signaal. */
+.history-item__dot {
+  width: 0.5rem;
+  height: 0.5rem;
+  border-radius: 50%;
+  flex: none;
+  background: var(--lt-color-muted);
+}
+
+.history-item__dot--pos {
+  background: var(--lt-color-positive);
+}
+
+.history-item__dot--neg {
+  background: var(--lt-color-negative);
+}
+
+.history-item__chevron {
+  width: 1rem;
+  height: 1rem;
+  flex: none;
+  color: var(--lt-color-muted);
+}
+
+/* ---------- Historie: detail ---------- */
+
+.history-panel .history-detail__actions {
+  align-items: center;
+  gap: var(--lt-space-2);
+}
+
+.history-panel .history-detail__actions .btn-outline,
+.history-panel .history-detail__actions .btn-danger {
+  min-height: 2.5rem;
+  padding: var(--lt-space-1) var(--lt-space-3);
+}
+
+.history-panel h2 {
+  margin: 0;
+  font-size: var(--lt-font-size-xl);
+  font-weight: 700;
+}
+
+.history-panel .segment-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--lt-space-1);
+}
+
+.history-panel .segment-item {
+  border-radius: var(--lt-radius-md);
+  padding: var(--lt-space-2) var(--lt-space-3);
+  background: var(--lt-color-surface);
+  cursor: default;
+  font-variant-numeric: tabular-nums;
+}
+
+.history-panel .segment-item__lineup {
+  color: var(--lt-color-fg);
+}
+
+.history-panel .segment-item__quarter {
+  color: var(--lt-color-muted);
+  font-weight: 600;
+}
+
+.history-panel .segment-item__stats {
+  gap: var(--lt-space-3);
+  color: var(--lt-color-muted);
+}
+
+.history-panel .history-detail__export {
+  width: 100%;
+  min-height: 3rem;
+  font-size: var(--lt-font-size-md);
+}
+
+/* ---------- Instellingen ---------- */
+
+.settings-panel .settings-section {
+  border-radius: var(--lt-radius-lg);
+  padding: var(--lt-space-4);
+  gap: var(--lt-space-4);
+  background: var(--lt-color-surface);
+  box-shadow: var(--lt-shadow-sm);
+}
+
+.settings-panel .settings-section legend {
+  font-size: var(--lt-font-size-lg);
+  font-weight: 700;
+  padding: 0 var(--lt-space-2);
+}
+
+.settings-panel .settings-field__label {
+  font-size: var(--lt-font-size-sm);
+  font-weight: 600;
+  color: var(--lt-color-muted);
+}
+
+.settings-panel .settings-field input[type='text'],
+.settings-panel .settings-field input[type='number'] {
+  background: var(--lt-color-surface-alt);
+  border-radius: var(--lt-radius-md);
+  padding: var(--lt-space-2) var(--lt-space-3);
+  min-height: 2.75rem;
+}
+
+.settings-panel .settings-field input[type='text']:focus-visible,
+.settings-panel .settings-field input[type='number']:focus-visible {
+  outline: none;
+  border-color: var(--lt-color-focus);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--lt-color-focus) 35%, transparent);
+}
+
+.settings-panel .settings-logo-preview {
+  height: 3.5rem;
+  border-radius: var(--lt-radius-md);
+  background: var(--lt-color-surface-alt);
+  padding: var(--lt-space-1);
+  align-self: flex-start;
+}
+
+/* Logo kiezen/verwijderen als gelijkwaardig knoppenpaar. */
+.settings-panel .settings-logo-actions {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(8rem, 1fr));
+  gap: var(--lt-space-2);
+}
+
+.settings-panel .settings-logo-actions .btn-outline,
+.settings-panel .color-picker-row .btn-outline {
+  min-height: 2.75rem;
+  border-radius: var(--lt-radius-md);
+  font-weight: 600;
+}
+
+.settings-panel .color-picker-row {
+  gap: var(--lt-space-3);
+  align-items: center;
+}
+
+.settings-panel .swatch {
+  width: 2.25rem;
+  height: 2.25rem;
+  border: 2px solid var(--lt-color-border);
+  box-shadow: var(--lt-shadow-sm);
+}
+
+/* Geselecteerd: dubbele ring (vorm, niet alleen kleur) plus een vinkje. */
+.settings-panel .swatch--selected {
+  position: relative;
+  outline: 3px solid var(--lt-color-fg);
+  outline-offset: 2px;
+  border-color: var(--lt-color-bg);
+}
+
+.settings-panel .swatch--selected::after {
+  content: '✓';
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1rem;
+  font-weight: 800;
+  color: #ffffff;
+  text-shadow: 0 0 3px rgba(0, 0, 0, 0.85);
+}
+
+.settings-panel .settings-actions {
+  gap: var(--lt-space-2);
+}
+
+.settings-panel .settings-actions .btn-primary {
+  flex: 1 1 8rem;
+  min-height: 3rem;
+  font-weight: 700;
+}
+
+.settings-panel .settings-actions .btn-outline {
+  min-height: 3rem;
+  border-radius: var(--lt-radius-md);
+}

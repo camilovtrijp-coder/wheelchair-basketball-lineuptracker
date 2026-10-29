@@ -8,8 +8,10 @@ import {
   seedPilotTeam,
   type PilotTeam,
 } from './twoDeviceFixtures';
+import { openAccountMenu } from '../e2e/accountMenu';
 
 async function switchTo(page: Page, team: PilotTeam): Promise<void> {
+  await openAccountMenu(page);
   await page.getByTestId('switch-context').click();
   await selectContext(page, team.orgId, team.teamId);
   await page.getByTestId('nav-settings').click();

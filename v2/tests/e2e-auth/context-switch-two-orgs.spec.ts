@@ -1,5 +1,6 @@
 import { test, expect } from '@playwright/test';
 import { signIn, answerTrustedDevice, selectContext } from './helpers';
+import { openAccountMenu } from '../e2e/accountMenu';
 
 // De letterlijke PR-acceptatiecriteria uit docs/IMPLEMENTATION_PLAN.md §10:
 // "één account wisselt tussen Rotterdam Basketball en de Nederlandse Basketball
@@ -27,6 +28,7 @@ test.describe('contextwisselaar met twee organisaties', () => {
     await expect(page.getByTestId('nav-settings')).toBeVisible();
 
     // Wissel — via de sessiebalk, zonder uit te loggen — naar org-nbb.
+    await openAccountMenu(page);
     await page.getByTestId('switch-context').click();
     await page.waitForSelector('[data-testid="context-org-org-nbb"]', { timeout: 10_000 });
     await page.getByTestId('context-org-org-nbb').click();
@@ -36,6 +38,7 @@ test.describe('contextwisselaar met twee organisaties', () => {
     await expect(page.getByTestId('nav-settings')).toBeVisible();
 
     // En weer terug naar org-rotterdam — nog altijd zonder re-authenticatie.
+    await openAccountMenu(page);
     await page.getByTestId('switch-context').click();
     await selectContext(page, 'org-rotterdam', 'team-u23');
     await expect(page.getByTestId('nav-settings')).toBeVisible();

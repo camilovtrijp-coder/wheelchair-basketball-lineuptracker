@@ -19,6 +19,7 @@
 // dus is er ook geen op-context-gebaseerde blinde vlek meer mogelijk.
 import { test, expect } from '@playwright/test';
 import { signUp, uniqueTestEmail } from './helpers';
+import { openAccountMenu } from '../e2e/accountMenu';
 
 test('gedeeld apparaat: uitloggen wist wedstrijddata van ALLE eerder gebruikte org/team-contexten op dit apparaat, niet alleen de huidige', async ({
   page,
@@ -68,6 +69,7 @@ test('gedeeld apparaat: uitloggen wist wedstrijddata van ALLE eerder gebruikte o
 
   // Uitloggen gebeurt vanuit de HUIDIGE context (Team A) — de bovenstaande
   // sleutels horen bij een andere context en mogen toch verdwijnen.
+  await openAccountMenu(page);
   await page.getByTestId('sign-out').click();
   await page.waitForSelector('[data-testid="auth-email"]', { timeout: 10_000 });
 

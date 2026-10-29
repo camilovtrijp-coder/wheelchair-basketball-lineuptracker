@@ -19,6 +19,7 @@ import {
   readCompletedGameId,
   startTrackedGame,
 } from './gameSyncFixtures';
+import { openAccountMenu } from '../e2e/accountMenu';
 
 const SHARED_TEAM_NAME = 'U23 (fictief)';
 const PASSWORD = 'SameNamedTeams123!';
@@ -63,6 +64,7 @@ async function seedNamedTeam(uid: string, email: string, teamName: string): Prom
 }
 
 async function switchTo(page: Page, team: SeededTeam): Promise<void> {
+  await openAccountMenu(page);
   await page.getByTestId('switch-context').click();
   await selectContext(page, team.orgId, team.teamId);
   await expect(page.getByTestId('nav-settings')).toBeVisible();

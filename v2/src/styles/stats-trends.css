@@ -1,0 +1,227 @@
+/* Stats en Trends in v1-look (donker standaard, licht via data-theme="light").
+   Alleen tokens uit tokens.css. Dit bestand wordt vóór de rest van index.css
+   geladen; daarom zijn alle regels onder .stats-panel / .trends-panel gescoped
+   (hogere specificiteit dan de bestaande, ongescopede regels). De v1-
+   hulpklassen (.row, .between, .xs, .sm, .mut, .mut2, .tab) bestaan in v2
+   niet globaal en worden hier alleen binnen deze twee panelen gedefinieerd. */
+
+.stats-panel,
+.trends-panel {
+  /* De grafiekmarkup verwijst naar v1-variabelen; hier gekoppeld aan v2-tokens
+     zodat de lijn, de punten en de nulstreep eindelijk een kleur hebben. */
+  --line-bright: var(--lt-color-border);
+  --primary: var(--lt-color-success);
+  --emerald: var(--lt-color-success);
+  --rose: var(--lt-color-danger);
+  --card: var(--lt-color-surface);
+}
+
+.stats-panel .row,
+.trends-panel .row {
+  display: flex;
+  align-items: center;
+}
+
+.stats-panel .between,
+.trends-panel .between {
+  justify-content: space-between;
+}
+
+.stats-panel .xs,
+.trends-panel .xs {
+  font-size: var(--lt-font-size-xs);
+}
+
+.stats-panel .sm,
+.trends-panel .sm {
+  font-size: var(--lt-font-size-sm);
+}
+
+.stats-panel .mut,
+.trends-panel .mut,
+.stats-panel .mut2,
+.trends-panel .mut2 {
+  color: var(--lt-color-muted);
+}
+
+.stats-panel .tab,
+.trends-panel .tab {
+  font-variant-numeric: tabular-nums;
+}
+
+/* ---------- filter-/sorteerbalk als knoppenrij ---------- */
+
+.stats-panel .stats-controls__row--wrap,
+.trends-panel .stats-controls__row--wrap {
+  flex-wrap: nowrap;
+  overflow-x: auto;
+  padding-bottom: var(--lt-space-1);
+  scrollbar-width: thin;
+}
+
+.stats-panel .stats-controls__row--wrap > button,
+.trends-panel .stats-controls__row--wrap > button {
+  flex: none;
+  white-space: nowrap;
+  border-radius: 999px;
+  padding: var(--lt-space-2) var(--lt-space-3);
+  font-size: var(--lt-font-size-sm);
+  background: var(--lt-color-surface-alt);
+  border-color: var(--lt-color-border);
+}
+
+.stats-panel .quarter-btn[aria-pressed='true'] {
+  box-shadow: var(--lt-glow);
+}
+
+.stats-panel .stats-controls__row--wrap > button.stats-toggle--active,
+.trends-panel .stats-controls__row--wrap > button.stats-toggle--active {
+  background: color-mix(in srgb, var(--lt-color-accent) 18%, var(--lt-color-surface));
+  color: var(--lt-color-fg);
+  border-color: var(--lt-color-accent);
+  box-shadow: var(--lt-glow);
+}
+
+/* ---------- Stats: combinatiekaarten ---------- */
+
+.stats-panel .stats-card,
+.trends-panel .trends-card {
+  background: var(--lt-color-surface);
+  border: 1px solid var(--lt-color-border);
+  border-radius: var(--lt-radius-lg);
+  box-shadow: var(--lt-shadow-sm);
+}
+
+.stats-panel .stats-card__lineup {
+  font-weight: 700;
+  font-size: var(--lt-font-size-md);
+  line-height: var(--lt-line-height-tight);
+  gap: var(--lt-space-1);
+}
+
+/* Tijd/Pnt/Teg als kleine kolommen op de eerste rij, 'Met hen'/'Zonder hen'
+   als grote pillen op de tweede rij. De volgorde in de markup blijft gelijk. */
+.stats-panel .statsgrid {
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  row-gap: var(--lt-space-3);
+}
+
+.stats-panel .statsgrid > div:nth-child(-n + 3) {
+  grid-column: span 2;
+}
+
+.stats-panel .statsgrid > div:nth-child(n + 4) {
+  grid-column: span 3;
+}
+
+.stats-panel .statsgrid .mut2 {
+  font-size: var(--lt-font-size-xs);
+  margin-bottom: 0.15rem;
+}
+
+.stats-panel .statsgrid .v {
+  font-size: var(--lt-font-size-md);
+}
+
+.stats-panel .badge-pm {
+  display: block;
+  padding: var(--lt-space-2) var(--lt-space-3);
+  border-radius: 999px;
+  font-size: var(--lt-font-size-lg);
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+}
+
+.stats-panel .badge-pm.live-pm--pos {
+  color: var(--lt-color-success);
+  background: color-mix(in srgb, var(--lt-color-success) 14%, var(--lt-color-surface));
+  border-color: color-mix(in srgb, var(--lt-color-success) 45%, transparent);
+}
+
+.stats-panel .badge-pm.live-pm--neg {
+  color: var(--lt-color-danger);
+  background: color-mix(in srgb, var(--lt-color-danger) 14%, var(--lt-color-surface));
+  border-color: color-mix(in srgb, var(--lt-color-danger) 45%, transparent);
+}
+
+.stats-panel .badge-pm.live-pm--flat {
+  color: var(--lt-color-muted);
+  background: var(--lt-color-surface-alt);
+  border-color: var(--lt-color-border);
+}
+
+/* Gevulde aan/uit-knoppen in de spelersfilter: donkere tekst op de lichte
+   donkere-modus-kleuren (wit haalt daar geen 4.5:1), wit in de lichte modus. */
+.stats-modal-row .stats-toggle--on-st {
+  background: var(--lt-color-success);
+  color: var(--lt-color-on-success);
+  border-color: var(--lt-color-success);
+}
+
+.stats-modal-row .stats-toggle--on-v {
+  background: var(--lt-color-danger);
+  color: var(--lt-color-on-danger);
+  border-color: var(--lt-color-danger);
+}
+
+/* ---------- Trends: spelerkaarten en grafieken ---------- */
+
+.trends-panel .trends-card {
+  gap: var(--lt-space-2);
+}
+
+.trends-panel .trends-card__name {
+  font-size: var(--lt-font-size-md);
+  font-weight: 800;
+}
+
+.trends-panel .trends-card__avg {
+  font-size: var(--lt-font-size-sm);
+}
+
+.trends-panel .trends-card__avg b {
+  font-variant-numeric: tabular-nums;
+}
+
+.trends-panel .trends-card > .xs.mut2 {
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
+
+/* Minuten per wedstrijd: teal staafgrafiek (v1). */
+.trends-panel .trends-bar-chart__bar {
+  background: linear-gradient(
+    to top,
+    var(--lt-color-teal),
+    color-mix(in srgb, var(--lt-color-teal) 65%, var(--lt-color-fg))
+  );
+}
+
+.trends-panel .trends-bar-chart__bar--provisional {
+  outline-color: var(--lt-color-teal);
+}
+
+.trends-panel .trends-bar-chart__value {
+  font-size: var(--lt-font-size-xs);
+  color: var(--lt-color-muted);
+}
+
+.trends-panel .trends-card__toggle {
+  border-radius: 999px;
+  background: var(--lt-color-surface-alt);
+  border-color: var(--lt-color-border);
+  color: var(--lt-color-fg);
+}
+
+.trends-panel .trends-card__games {
+  border-top-color: var(--lt-color-border);
+}
+
+.trends-panel .trends-card__game-row {
+  padding: var(--lt-space-1) 0;
+  border-bottom: 1px solid color-mix(in srgb, var(--lt-color-border) 60%, transparent);
+}
+
+.trends-panel .trends-card__game-row:last-child {
+  border-bottom: 0;
+}

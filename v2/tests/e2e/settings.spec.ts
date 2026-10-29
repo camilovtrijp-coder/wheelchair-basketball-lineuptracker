@@ -246,6 +246,8 @@ test.describe('v2 settings', () => {
     page,
   }) => {
     await page.goto('/');
+    // Donker is de standaard; deze test bewaakt het lichte pad (data-theme="light").
+    await page.evaluate(() => document.documentElement.setAttribute('data-theme', 'light'));
     const appRoot = page.locator('.app');
 
     await expect(appRoot).toHaveCSS('--team-primary', '#2563eb');

@@ -119,6 +119,7 @@ export function RosterPanel({
                     inputMode="numeric"
                     className={dup ? 'roster-nr-input roster-nr-input--dup' : 'roster-nr-input'}
                     value={p.nr}
+                    placeholder={t(lang, 'playerNrLabel')}
                     readOnly={!canWrite}
                     data-testid={`roster-nr-${p.id}`}
                     onChange={(e) => handleField(p.id, 'nr', (e.target as HTMLInputElement).value)}
@@ -129,6 +130,7 @@ export function RosterPanel({
                   <input
                     type="text"
                     value={p.naam}
+                    placeholder={t(lang, 'playerNameLabel')}
                     readOnly={!canWrite}
                     data-testid={`roster-naam-${p.id}`}
                     onChange={(e) =>
@@ -144,7 +146,20 @@ export function RosterPanel({
                   disabled={!canWrite}
                   onClick={() => handleRemove(p.id)}
                 >
-                  ✕
+                  <svg
+                    aria-hidden="true"
+                    focusable="false"
+                    viewBox="0 0 24 24"
+                    width="20"
+                    height="20"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="2"
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                  >
+                    <path d="M3 6h18M8 6V4h8v2M6 6l1 14h10l1-14M10 11v6M14 11v6" />
+                  </svg>
                 </button>
               </div>
 
@@ -166,7 +181,7 @@ export function RosterPanel({
                   </label>
                   <button
                     type="button"
-                    className={`toggle-btn${p.vrouw ? ' toggle-btn--on' : ''}`}
+                    className={`toggle-btn toggle-btn--tag1${p.vrouw ? ' toggle-btn--on' : ''}`}
                     aria-pressed={p.vrouw}
                     data-testid={`roster-vrouw-${p.id}`}
                     disabled={!canWrite}
@@ -176,7 +191,7 @@ export function RosterPanel({
                   </button>
                   <button
                     type="button"
-                    className={`toggle-btn${p.jeugd ? ' toggle-btn--on' : ''}`}
+                    className={`toggle-btn toggle-btn--tag2${p.jeugd ? ' toggle-btn--on' : ''}`}
                     aria-pressed={p.jeugd}
                     data-testid={`roster-jeugd-${p.id}`}
                     disabled={!canWrite}
