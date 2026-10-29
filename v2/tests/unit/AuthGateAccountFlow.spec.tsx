@@ -67,8 +67,10 @@ vi.mock('../../src/app/App', () => ({
       onRemoveOtherOwner?: () => void;
     };
     onLangChange?: (lang: 'nl' | 'en') => void;
+    headerSlot?: unknown;
   }) => (
     <div data-testid="app-stub">
+      {props.headerSlot as never}
       <span data-testid="stub-account-org-name">{props.accountActions?.organizationName}</span>
       <button
         type="button"
@@ -526,6 +528,7 @@ describe('AuthGate — overdracht', () => {
     expect(c.ownershipTransferCoordinator.listTransferCandidates).toHaveBeenCalledWith('org-a');
 
     // Terug naar de wisselaar: App unmount, het dialoog en de lopende aanroep niet.
+    fireEvent.click(screen.getByTestId('account-menu-trigger'));
     fireEvent.click(screen.getByTestId('switch-context'));
     await screen.findByTestId('context-org-org-a');
     expect(screen.queryByTestId('app-stub')).toBeNull();

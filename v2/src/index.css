@@ -43,6 +43,21 @@ main {
   background: var(--lt-color-surface);
 }
 
+.app-brand {
+  display: flex;
+  align-items: center;
+  gap: var(--lt-space-3);
+  min-width: 0;
+}
+
+.app-logo {
+  flex: none;
+  width: 2.25rem;
+  height: 2.25rem;
+  object-fit: contain;
+  border-radius: var(--lt-radius-sm);
+}
+
 .app-title {
   margin: 0;
   font-size: var(--lt-font-size-lg);
@@ -63,6 +78,10 @@ main {
   color: var(--lt-color-fg);
   border-left: 4px solid var(--team-accent, transparent);
   padding-left: var(--lt-space-2);
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .app-header__actions {
@@ -490,35 +509,74 @@ button:focus-visible {
 }
 
 .session-bar {
+  position: relative;
   display: flex;
-  flex-wrap: wrap;
-  justify-content: flex-end;
-  gap: var(--lt-space-2);
-  padding: var(--lt-space-2) var(--lt-space-4);
-  border-bottom: var(--lt-border-thin);
-  background: var(--lt-color-surface);
-}
-
-.session-bar__left {
-  display: flex;
-  flex-wrap: wrap;
   align-items: center;
   gap: var(--lt-space-2);
-  margin-right: auto;
-  min-width: 0;
+}
+
+.session-bar__trigger {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--lt-space-1);
+  padding: var(--lt-space-1) var(--lt-space-3);
+  border-radius: 999px;
+  font-weight: 600;
+}
+
+.session-bar__caret {
+  font-size: 0.7rem;
+}
+
+.session-bar__menu {
+  position: absolute;
+  top: calc(100% + var(--lt-space-2));
+  right: 0;
+  z-index: 40;
+  display: flex;
+  flex-direction: column;
+  gap: var(--lt-space-2);
+  width: min(18rem, calc(100vw - 2 * var(--lt-space-4)));
+  padding: var(--lt-space-3);
+  border: var(--lt-border-thin);
+  border-radius: var(--lt-radius-lg);
+  background: var(--lt-color-surface);
+  box-shadow: var(--lt-shadow-md);
+}
+
+.session-bar__menu-account {
+  display: flex;
+  flex-direction: column;
+  margin: 0;
+  padding-bottom: var(--lt-space-2);
+  border-bottom: var(--lt-border-thin);
+}
+
+.session-bar__menu-caption {
+  font-size: var(--lt-font-size-xs);
+  color: var(--lt-color-muted);
 }
 
 .session-bar__account {
-  font-size: 0.85rem;
-  color: var(--lt-color-muted);
+  font-weight: 600;
   overflow-wrap: anywhere;
+}
+
+.session-bar__menu-item {
+  width: 100%;
+  text-align: left;
+}
+
+.session-bar__sign-out {
+  color: var(--lt-color-danger);
 }
 
 .session-bar__trusted-device {
   display: flex;
   align-items: center;
-  gap: var(--lt-space-1);
-  font-size: 0.85rem;
+  gap: var(--lt-space-2);
+  padding: var(--lt-space-1) 0;
+  font-size: var(--lt-font-size-sm);
   color: var(--lt-color-muted);
 }
 

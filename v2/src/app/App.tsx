@@ -1,3 +1,4 @@
+import type { ComponentChildren } from 'preact';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'preact/hooks';
 import { browserStorage, strictReadBrowserStorage } from '../i18n/browserStorage';
 import { readLang, writeLang } from '../i18n/persistence';
@@ -70,6 +71,11 @@ import { diagnostics } from '../infrastructure/diagnostics/diagnostics';
 import { NavIcon, type NavIconName } from '../ui/shared/NavIcons';
 
 export interface AppProps {
+  /**
+   * Optioneel element rechts in de app-header, naast de taalknop (stap 3/5:
+   * AuthGate plaatst hier de compacte accountchip). Zonder sessie leeg.
+   */
+  headerSlot?: ComponentChildren;
   repositories: ResolvedAppRepositories;
   /**
    * Sync-status/opslaan-laag (PR 5.3c-2), door AuthGate berekend en
@@ -228,6 +234,7 @@ export function App({
   organizationRole = null,
   accountActions,
   onLangChange,
+  headerSlot,
 }: AppProps) {
   const [lang, setLang] = useState<Lang>(initialLang);
   useEffect(() => {
@@ -1464,9 +1471,18 @@ export function App({
       }}
     >
       <header className="app-header">
-        <h1 className="app-title">
-          {(settings.teamName as string) || translate(lang, 'appNameFallback')}
-        </h1>
+        <div className="app-brand">
+          <img
+            className="app-logo"
+            src={(settings.logoUri as string) || '/icons/icon-192.png'}
+            alt=""
+            width={36}
+            height={36}
+          />
+          <h1 className="app-title">
+            {(settings.teamName as string) || translate(lang, 'appNameFallback')}
+          </h1>
+        </div>
         <div className="app-header__actions">
           <button
             type="button"
@@ -1486,6 +1502,7 @@ export function App({
           >
             <span aria-hidden="true">⚙</span>
           </button>
+          {headerSlot}
         </div>
       </header>
 

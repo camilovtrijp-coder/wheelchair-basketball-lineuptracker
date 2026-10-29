@@ -34,6 +34,7 @@ import {
 import { dialog, openAccountPanel, signInAndSelect, signInUser, text } from './accountFlowPage';
 import { fivePlayerRoster, startTrackedGame, waitForGameSyncStatus } from './gameSyncFixtures';
 import { selectContext } from './helpers';
+import { openAccountMenu } from '../e2e/accountMenu';
 
 const DAY = 24 * 60 * 60 * 1000;
 const BOOTSTRAP_KEY = 'lineup-tracker-bootstrap-org-id';
@@ -64,6 +65,7 @@ test.describe('8.3c-2d — A3/R5: e-mailadres met hoofdletters', () => {
 
     // Inloggen met het adres zoals het getypt is (hoofdletters).
     await signInAndSelect(page, user, org.orgId, org.teamIds[0] ?? '');
+    await openAccountMenu(page);
     await expect(page.getByTestId('session-account-email')).toHaveText(user.email);
     await openAccountPanel(page);
     await page.getByTestId('leave-org-start-btn').click();

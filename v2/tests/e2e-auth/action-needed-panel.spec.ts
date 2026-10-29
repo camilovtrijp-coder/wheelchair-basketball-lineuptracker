@@ -10,6 +10,7 @@
 import { test, expect } from '@playwright/test';
 import { adminDb, lookupUidByEmail } from './adminFixtures';
 import { signUp, answerTrustedDevice, uniqueTestEmail } from './helpers';
+import { openAccountMenu } from '../e2e/accountMenu';
 
 const MOBILE_VIEWPORT = { width: 390, height: 844 };
 
@@ -44,6 +45,7 @@ test.describe('PR 5.3c-2: syncstatus-indicator en Actie-nodig-paneel', () => {
     await expect(page.getByTestId('action-needed-panel')).toHaveCount(0);
 
     // PR 5.5c-bugfixes bug 7: het ingelogde account moet zichtbaar zijn.
+    await openAccountMenu(page);
     await expect(page.getByTestId('session-account-email')).toHaveText(email);
 
     // PR 5.5c-bugfixes bug 8: de syncstatus-badge mag niet worden afgesneden/overlapt

@@ -593,16 +593,6 @@ export function AuthGate({
       case 'active':
         return (
           <>
-            <SessionBar
-              lang={lang}
-              onSignOut={handleSignOut}
-              onSwitchContext={handleBackToSwitcher}
-              syncStatus={repositories.mode === 'cloud' ? syncStatus.status : undefined}
-              syncFromCache={repositories.mode === 'cloud' ? syncStatus.fromCache : undefined}
-              email={authUser?.email}
-              trustedDevice={readTrustedDevice(browserStorage) ?? false}
-              onChangeTrustedDevice={handleChangeTrustedDevice}
-            />
             {switchBlockedNotice ? (
               <p className="settings-error" role="alert" data-testid="context-switch-locked-notice">
                 {translate(lang, 'contextSwitchLockedWhileTracking')}{' '}
@@ -628,6 +618,18 @@ export function AuthGate({
               />
             ) : null}
             <App
+              headerSlot={
+                <SessionBar
+                  lang={lang}
+                  onSignOut={handleSignOut}
+                  onSwitchContext={handleBackToSwitcher}
+                  syncStatus={repositories.mode === 'cloud' ? syncStatus.status : undefined}
+                  syncFromCache={repositories.mode === 'cloud' ? syncStatus.fromCache : undefined}
+                  email={authUser?.email}
+                  trustedDevice={readTrustedDevice(browserStorage) ?? false}
+                  onChangeTrustedDevice={handleChangeTrustedDevice}
+                />
+              }
               repositories={repositories}
               syncStatus={syncStatus}
               canWrite={selectedContextCanWrite ?? false}

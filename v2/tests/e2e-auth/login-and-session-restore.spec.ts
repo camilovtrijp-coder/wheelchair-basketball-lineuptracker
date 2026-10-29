@@ -1,5 +1,6 @@
 import { test, expect } from '@playwright/test';
 import { signIn, answerTrustedDevice, selectContext } from './helpers';
+import { openAccountMenu } from '../e2e/accountMenu';
 
 // Gebruikt bob (organizationAdmin, uitsluitend org-rotterdam) uit firebase/scripts/seed.ts —
 // bewust een gebruiker met precies één organisatie, om deze test onafhankelijk te houden
@@ -10,6 +11,7 @@ test.describe('inloggen en sessieherstel', () => {
     await answerTrustedDevice(page, true);
     await selectContext(page, 'org-rotterdam', 'team-u23');
     await expect(page.getByTestId('nav-settings')).toBeVisible();
+    await openAccountMenu(page);
     await expect(page.getByTestId('sign-out')).toBeVisible();
 
     await page.reload();

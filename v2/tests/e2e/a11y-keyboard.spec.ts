@@ -9,6 +9,7 @@
 // volwaardige focusbare/toetsenbord-activeerbare elementen.
 import { expect, type Page } from '@playwright/test';
 import { test } from './fixtures';
+import { openAccountMenu } from './accountMenu';
 
 /** Verzamelt de `data-testid` van elk element dat op zijn beurt focus krijgt
  * terwijl er herhaaldelijk Tab gedrukt wordt — voor het aantonen dat de
@@ -297,6 +298,10 @@ test.describe('v2 a11y — keyboard-only contextwissel (PR 8.2b)', () => {
     await page.goto('/');
     await expect(page.getByTestId('nav-game')).toBeVisible();
 
+    // Het wisselen zit in het accountmenu (stap 3/5): open dat eerst met het toetsenbord.
+    const trigger = page.getByTestId('account-menu-trigger');
+    await trigger.focus();
+    await page.keyboard.press('Enter');
     const switchBtn = page.getByTestId('switch-context');
     await switchBtn.focus();
     await expect(switchBtn).toBeFocused();
@@ -347,11 +352,14 @@ test.describe('v2 a11y — herroepbare vertrouwd-apparaat-instelling (PR 8.2c)',
     // tests/e2e/fixtures.ts) — eerst aanzetten via toetsenbord (geen
     // bevestiging nodig voor die richting), wat een paginareload triggert
     // (AuthGate.tsx's handleChangeTrustedDevice()).
+    await openAccountMenu(page);
     const toggle = page.getByTestId('trusted-device-setting-toggle');
     await expect(toggle).not.toBeChecked();
     await toggle.focus();
     await page.keyboard.press('Space');
     await page.waitForSelector('[data-testid="nav-settings"]', { timeout: 15_000 });
+    // De reload sluit het menu: opnieuw openen.
+    await openAccountMenu(page);
     await expect(page.getByTestId('trusted-device-setting-toggle')).toBeChecked();
 
     // Uitzetten via toetsenbord opent de bevestigingsdialoog (geen reload nog).
