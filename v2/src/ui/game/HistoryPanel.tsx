@@ -203,7 +203,7 @@ export function HistoryPanel({
           </button>
           <button
             type="button"
-            className="btn-outline"
+            className="btn-danger"
             disabled={!canWrite}
             data-testid="history-delete-btn"
             onClick={() => {
@@ -248,7 +248,7 @@ export function HistoryPanel({
         </div>
         <button
           type="button"
-          className="btn-primary history-detail__export"
+          className="btn-success history-detail__export"
           data-testid="history-export-btn"
           onClick={() =>
             shareOrDownloadCsv(
@@ -297,16 +297,35 @@ export function HistoryPanel({
                     {g.competition ? ` · ${g.competition}` : ''}
                   </span>
                 </span>
-                <span className={`history-item__score ${pmColor(pm)}`}>
-                  {g.scoreFor} - {g.scoreAgainst}
-                </span>
-                {syncStatuses ? (
-                  <SyncStatusIndicator
-                    lang={lang}
-                    status={syncStatuses[g.id] ?? 'lokaal-beschikbaar'}
-                    testId={`history-sync-status-${g.id}`}
+                <span className="history-item__end">
+                  <span
+                    className={`history-item__dot history-item__dot--${pm > 0 ? 'pos' : pm < 0 ? 'neg' : 'flat'}`}
+                    aria-hidden="true"
                   />
-                ) : null}
+                  <span className={`history-item__score ${pmColor(pm)}`}>
+                    {g.scoreFor} - {g.scoreAgainst}
+                  </span>
+                  {syncStatuses ? (
+                    <SyncStatusIndicator
+                      lang={lang}
+                      status={syncStatuses[g.id] ?? 'lokaal-beschikbaar'}
+                      testId={`history-sync-status-${g.id}`}
+                    />
+                  ) : null}
+                  <svg
+                    className="history-item__chevron"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="2"
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    aria-hidden="true"
+                    focusable="false"
+                  >
+                    <path d="M9 6l6 6-6 6" />
+                  </svg>
+                </span>
               </button>
             );
           })}
