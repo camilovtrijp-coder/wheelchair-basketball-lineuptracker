@@ -248,3 +248,4 @@ Oorspronkelijke vraagstelling:
   uitgerold.
 - Een correctie wijzigt historische stats achteraf; dat is bedoeld, maar wordt
   zichtbaar gemaakt via de "Gecorrigeerd"-badge.
+- Gecorrigeerde wedstrijden worden bij cloudmigratie voorlopig geblokkeerd; meenemen van het log vraagt een create-Rules-wijziging en een eigen sub-PR.

@@ -67,13 +67,17 @@ export type MigrationItemKind = 'settings' | 'roster' | 'activeGame' | 'complete
  * bulkmigreerbaar (§B), zie `trackingGame` op `CloudMigrationPreview`.
  * `'needsSeparateDecision'`: een `setup`-fase actieve wedstrijd — mag alleen
  * mee na een aparte previewbeslissing (§B).
+ * `'correctedBlocked'` (PR 7.5a): lokale wedstrijd met correctielog
+ * (`corrections`) — het log past nog niet in het cloudcontract, dus nooit
+ * naar de cloud geschreven (ook niet bij hervatten); lokaal ongemoeid.
  */
 export type MigrationItemAction =
   | 'create'
   | 'alreadyPresentIdentical'
   | 'conflict'
   | 'excludedTrackingGame'
-  | 'needsSeparateDecision';
+  | 'needsSeparateDecision'
+  | 'correctedBlocked';
 
 export interface CloudMigrationItem {
   kind: MigrationItemKind;
@@ -102,6 +106,7 @@ export interface CloudMigrationWarning {
     | 'settingsEmpty'
     | 'rosterEmpty'
     | 'itemConflict'
+    | 'completedGameCorrectedBlocked'
     | 'duplicateTeamNameAcrossOrganizations';
   detail?: string;
 }
