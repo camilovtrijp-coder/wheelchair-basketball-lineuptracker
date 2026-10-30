@@ -9,7 +9,10 @@ import { describe, it, expect, afterEach, vi } from 'vitest';
 import { render, cleanup, fireEvent, within } from '@testing-library/preact';
 import { HistoryPanel } from '../../src/ui/game/HistoryPanel';
 import { LocalStorageCompletedGameRepository } from '../../src/infrastructure/game/LocalStorageCompletedGameRepository';
-import { CORRECT_ERROR_KEYS } from '../../src/ui/game/CorrectSegmentDialog';
+import {
+  CORRECT_ERROR_KEYS,
+  describeCorrectableFields,
+} from '../../src/ui/game/CorrectSegmentDialog';
 import { STRINGS, translate, type Lang } from '../../src/i18n/strings';
 import type { CorrectSegmentError } from '../../src/domain/game/correction';
 import type { KeyValueStorage } from '../../src/i18n/persistence';
@@ -261,6 +264,8 @@ describe.each([
     );
     expect(q.getByTestId('correct-segment-modal')).toBeTruthy();
     expect(q.queryByTestId('history-correction-saved')).toBeNull();
+    // Eén foutplek: de dialoog; de Historie-banner (saveError) blijft uit.
+    expect(q.queryByTestId('history-save-error')).toBeNull();
     const stored = q.repo.list()[0] as CompletedGame;
     expect(stored.scoreFor).toBe(14);
     expect(stored.corrections).toBeUndefined();
@@ -281,6 +286,28 @@ describe('HistoryPanel — correctie: toegankelijkheid en teksten', () => {
     expect(within(dialog).getByLabelText('Eind seconden')).toBeTruthy();
     // Geen lineup-selectie.
     expect(dialog.querySelector('[data-testid^="edit-lineup-"]')).toBeNull();
+  });
+
+  it('focus blijft in de dialoog: titel bij Controleren, terug naar de titel bij Terug', () => {
+    const q = setup();
+    applyFixtureCorrection(q);
+    const dialog = q.getByTestId('correct-segment-modal');
+    const heading = dialog.querySelector('h2') as HTMLElement;
+    expect(heading.textContent).toBe(translate('nl', 'correctSummaryTitle'));
+    expect(document.activeElement).toBe(heading);
+    expect(dialog.contains(document.activeElement)).toBe(true);
+    fireEvent.click(q.getByTestId('correct-segment-back'));
+    const heading2 = dialog.querySelector('h2') as HTMLElement;
+    expect(heading2.textContent).toBe(translate('nl', 'correctSegmentTitle'));
+    expect(document.activeElement).toBe(heading2);
+    expect(dialog.contains(document.activeElement)).toBe(true);
+  });
+
+  it('correctielog gebruikt de vertaalde turnover-afkorting in NL en EN', () => {
+    for (const l of ['nl', 'en'] as const) {
+      const f = { quarter: 1, beginSec: 600, endSec: 300, pf: 1, pa: 2, tov: 3 };
+      expect(describeCorrectableFields(f, l)).toContain(`${translate(l, 'turnoverPillPrefix')} 3`);
+    }
   });
 
   it('elke CorrectSegmentError heeft een eigen NL- en EN-sleutel', () => {

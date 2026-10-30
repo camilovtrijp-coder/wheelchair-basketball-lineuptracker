@@ -351,10 +351,10 @@ export function HistoryPanel({
                     )}
                   </span>
                   <span className="correction-log__before">
-                    {t(lang, 'correctBeforeLabel')}: {describeCorrectableFields(c.before)}
+                    {t(lang, 'correctBeforeLabel')}: {describeCorrectableFields(c.before, lang)}
                   </span>
                   <span className="correction-log__after">
-                    {t(lang, 'correctAfterLabel')}: {describeCorrectableFields(c.after)}
+                    {t(lang, 'correctAfterLabel')}: {describeCorrectableFields(c.after, lang)}
                   </span>
                 </li>
               ))}

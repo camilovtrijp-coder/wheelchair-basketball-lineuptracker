@@ -1,4 +1,4 @@
-import { useState } from 'preact/hooks';
+import { useEffect, useRef, useState } from 'preact/hooks';
 import { useFocusTrap } from '../../application/a11y/useFocusTrap';
 import {
   correctableFieldsOf,
@@ -38,8 +38,8 @@ export const CORRECT_ERROR_KEYS: Record<CorrectSegmentError, StringKey> = {
 };
 
 /** Compacte, taalonafhankelijke weergave van de zes bewerkbare velden. */
-export function describeCorrectableFields(f: CorrectableSegmentFields): string {
-  return `Q${f.quarter} · ${fmtSec(f.beginSec)} → ${fmtSec(f.endSec)} · ${f.pf}-${f.pa} · TO ${f.tov}`;
+export function describeCorrectableFields(f: CorrectableSegmentFields, lang: Lang): string {
+  return `Q${f.quarter} · ${fmtSec(f.beginSec)} → ${fmtSec(f.endSec)} · ${f.pf}-${f.pa} · ${translate(lang, 'turnoverPillPrefix')} ${f.tov}`;
 }
 
 interface Draft {
@@ -128,6 +128,18 @@ export function CorrectSegmentDialog({
   }
 
   const title = t('correctSegmentTitle');
+  // Focusbeheer: bij de overgang bewerken <-> samenvatting verdwijnt de
+  // gefocuste knop; zet de focus dan op de titel (binnen de focus trap).
+  const headingRef = useRef<HTMLHeadingElement | null>(null);
+  const reviewing = review != null;
+  const firstRender = useRef(true);
+  useEffect(() => {
+    if (firstRender.current) {
+      firstRender.current = false;
+      return;
+    }
+    headingRef.current?.focus();
+  }, [reviewing]);
   const reviewOk = review != null && review.ok ? review : null;
 
   return (
@@ -147,7 +159,9 @@ export function CorrectSegmentDialog({
         ref={trapRef}
       >
         <div className="modal__title-row">
-          <h2>{reviewOk ? t('correctSummaryTitle') : title}</h2>
+          <h2 ref={headingRef} tabIndex={-1}>
+            {reviewOk ? t('correctSummaryTitle') : title}
+          </h2>
           <button
             type="button"
             className="modal__close"

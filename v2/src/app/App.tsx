@@ -1266,13 +1266,15 @@ export function App({
   /**
    * PR 7.5b: slaat een gecorrigeerde afgeronde wedstrijd lokaal op via
    * `repository.update()`; bij `false` (opslag/validatie geweigerd) blijft de
-   * lijst ongewijzigd en toont de Historie-UI een foutmelding. Cloudmodus
-   * krijgt dit pad niet (PR 7.5c).
+   * lijst ongewijzigd en toont uitsluitend de correctiedialoog de fout (de
+   * globale `gameSaveError`-banner wordt hier bewust niet gezet, zodat dezelfde
+   * fout niet dubbel verschijnt). Een geslaagde opslag wist een eerdere banner.
+   * Cloudmodus krijgt dit pad niet (PR 7.5c).
    */
   function handleCorrectCompletedGame(corrected: CompletedGame): boolean {
     const ok = completedGameRepo.update(corrected);
-    setGameSaveError(!ok);
     if (!ok) return false;
+    setGameSaveError(false);
     setCompletedGames(completedGameRepo.list());
     return true;
   }
