@@ -831,6 +831,18 @@ const nl = {
   transferStepErrorRoleChanged: 'De rol was intussen gewijzigd.',
   transferStepErrorNotFound: 'Het lid werd niet (meer) gevonden.',
   transferStepErrorSelf: 'Het doel was je eigen account.',
+
+  // Turnovers in Statistieken en Trends (eigen team; alleen weergave).
+  statsTovWith: 'TO met hen',
+  statsTovWithout: 'TO zonder hen',
+  trendsTovLabel: 'TURNOVERS',
+  trendsAvgShort: 'gem.',
+  trendsTovTotalLabel: 'Totaal turnovers',
+  trendsTovGamesOne: 'in 1 wedstrijd',
+  trendsTovGamesMany: 'in {n} wedstrijden',
+  trendsTovLineupsTitle: 'Lineups: turnovers per 10 min',
+  trendsTovLineupsHint: 'Laagste is het beste',
+  trendsTovLineupsEmpty: 'Nog geen opstellingen om te vergelijken.',
 } as const;
 
 const en = {
@@ -1601,6 +1613,18 @@ const en = {
   transferStepErrorRoleChanged: 'The role had changed in the meantime.',
   transferStepErrorNotFound: 'The member was not found (anymore).',
   transferStepErrorSelf: 'The target was your own account.',
+
+  // Turnovers in Statistieken en Trends (eigen team; alleen weergave).
+  statsTovWith: 'TO with them',
+  statsTovWithout: 'TO without them',
+  trendsTovLabel: 'TURNOVERS',
+  trendsAvgShort: 'avg.',
+  trendsTovTotalLabel: 'Total turnovers',
+  trendsTovGamesOne: 'in 1 game',
+  trendsTovGamesMany: 'in {n} games',
+  trendsTovLineupsTitle: 'Lineups: turnovers per 10 min',
+  trendsTovLineupsHint: 'Lowest is best',
+  trendsTovLineupsEmpty: 'No lineups to compare yet.',
 } as const;
 
 export const STRINGS = { nl, en } as const;

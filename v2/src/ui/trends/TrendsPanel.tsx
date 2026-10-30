@@ -8,6 +8,8 @@ import {
 import type { ActiveGame } from '../../domain/game/types';
 import type { RosterPlayer } from '../../domain/roster/types';
 import type { TrendsFilter, TrendsSortBy } from '../../domain/trends/types';
+import type { LineupTurnoverRanking, TurnoverSummary } from '../../domain/trends/turnoverSummary';
+import type { AnalysisGame } from '../../domain/stats/types';
 import { fmtSeconds } from '../../domain/stats/format';
 import { translate, type Lang, type StringKey } from '../../i18n/strings';
 import { GamesFilterModal, toggleGameIdInSet } from '../shared/GamesFilterModal';
@@ -42,6 +44,27 @@ function fmtPM(n: number): string {
   const rounded = Math.round(n * 10) / 10;
   const sign = rounded > 0 ? '+' : '';
   return `${sign}${rounded.toFixed(1)}`;
+}
+
+/** Geheel getal met expliciet teken, zoals de +/--tegel ("+7", "0", "-3"). */
+function fmtSignedInt(n: number): string {
+  const rounded = Math.round(n);
+  return rounded > 0 ? `+${rounded}` : String(rounded);
+}
+
+function fmtOne(n: number): string {
+  return (Math.round(n * 10) / 10).toFixed(1);
+}
+
+/** Rugnummer van een speler: actuele roster eerst, anders de nieuwste spelerssnapshot, anders '?'. */
+function nrFor(rosterId: number, games: AnalysisGame[], roster: RosterPlayer[]): string {
+  const fromRoster = roster.find((p) => p.id === rosterId);
+  if (fromRoster) return String(fromRoster.nr);
+  for (const g of games) {
+    const p = g.players.find((pl) => pl.rosterId === rosterId);
+    if (p) return String(p.nr);
+  }
+  return '?';
 }
 
 function nextSortBy(current: TrendsSortBy): TrendsSortBy {
@@ -131,6 +154,18 @@ export function TrendsPanel({
         </div>
       </div>
 
+      {!showNoData && !showError && viewModel.turnoverSummary.tracked ? (
+        <>
+          <TurnoverSummaryBanner summary={viewModel.turnoverSummary} lang={lang} />
+          <LineupTurnoverCard
+            ranking={viewModel.lineupRanking}
+            games={scope.games}
+            roster={roster}
+            lang={lang}
+          />
+        </>
+      ) : null}
+
       {showNoData ? (
         <p className="stats-empty" data-testid="trends-no-data">
           {t(lang, 'trendsNoData')}
@@ -142,6 +177,8 @@ export function TrendsPanel({
               key={p.rosterId}
               player={p}
               lang={lang}
+              per10={per10}
+              showTurnovers={viewModel.turnoverSummary.tracked}
               expanded={expanded}
               setExpanded={setExpanded}
             />
@@ -177,11 +214,15 @@ export function TrendsPanel({
 function PlayerTrendCard({
   player,
   lang,
+  per10,
+  showTurnovers,
   expanded,
   setExpanded,
 }: {
   player: TrendPlayerViewModel;
   lang: Lang;
+  per10: boolean;
+  showTurnovers: boolean;
   expanded: Set<number>;
   setExpanded: (updater: (prev: Set<number>) => Set<number>) => void;
 }) {
@@ -193,17 +234,47 @@ function PlayerTrendCard({
         <span className="sm trends-card__name">
           #{player.nr} {player.naam}
         </span>
-        <span className="xs mut2 trends-card__avg">
-          {t(lang, 'trendsMinLabel')}{' '}
-          <b data-testid={`trends-avgmin-${player.rosterId}`}>{player.avgMinutes.toFixed(1)}</b>
-          &nbsp;{t(lang, 'trendsPmLabel')}{' '}
-          <b
-            className={`trends-avg-pm trends-avg-pm--${pmClassOf(player.avgPlusMinus)}`}
-            data-testid={`trends-avgpm-${player.rosterId}`}
+      </div>
+
+      <div className="trends-tiles" data-testid={`trends-tiles-${player.rosterId}`}>
+        <div className="trends-tile">
+          <div className="trends-tile__k">{t(lang, 'trendsPmLabel')}</div>
+          <div
+            className={`trends-tile__n trends-avg-pm trends-avg-pm--${pmClassOf(player.totalPlusMinus)}`}
+            data-testid={`trends-totalpm-${player.rosterId}`}
           >
-            {fmtPM(player.avgPlusMinus)}
-          </b>
-        </span>
+            {fmtSignedInt(player.totalPlusMinus)}
+          </div>
+          <div className="trends-tile__sub">
+            {t(lang, 'trendsAvgShort')}{' '}
+            <b
+              className={`trends-avg-pm trends-avg-pm--${pmClassOf(player.avgPlusMinus)}`}
+              data-testid={`trends-avgpm-${player.rosterId}`}
+            >
+              {fmtPM(player.avgPlusMinus)}
+            </b>
+            {per10 ? '/10′' : ''}
+          </div>
+        </div>
+        {showTurnovers ? (
+          <div className="trends-tile trends-tile--tov">
+            <div className="trends-tile__k">{t(lang, 'trendsTovLabel')}</div>
+            <div className="trends-tile__n" data-testid={`trends-tov-${player.rosterId}`}>
+              {player.totalTurnovers}
+            </div>
+            <div className="trends-tile__sub">
+              {t(lang, 'trendsAvgShort')}{' '}
+              <b data-testid={`trends-avgtov-${player.rosterId}`}>{fmtOne(player.avgTurnovers)}</b>
+              {per10 ? '/10′' : ''}
+            </div>
+          </div>
+        ) : null}
+        <div className="trends-tile">
+          <div className="trends-tile__k">{t(lang, 'trendsMinLabel')}</div>
+          <div className="trends-tile__n" data-testid={`trends-avgmin-${player.rosterId}`}>
+            {player.avgMinutes.toFixed(1)}
+          </div>
+        </div>
       </div>
 
       <div className="xs mut2" style={{ marginBottom: '0.2rem' }}>
@@ -269,6 +340,86 @@ function PlayerTrendCard({
             ))}
         </ul>
       ) : null}
+    </div>
+  );
+}
+
+function TurnoverSummaryBanner({ summary, lang }: { summary: TurnoverSummary; lang: Lang }) {
+  const gamesText =
+    summary.games === 1
+      ? t(lang, 'trendsTovGamesOne')
+      : t(lang, 'trendsTovGamesMany').replace('{n}', String(summary.games));
+  return (
+    <div className="trends-tov-summary" data-testid="trends-tov-summary" role="status">
+      <span>
+        {t(lang, 'trendsTovTotalLabel')}
+        <br />
+        <b data-testid="trends-tov-total">{summary.turnovers}</b> {gamesText}
+      </span>
+      <span className="trends-tov-summary__right">
+        {t(lang, 'statsPer10')}
+        <br />
+        <b data-testid="trends-tov-per10">{summary.per10 === null ? '–' : fmtOne(summary.per10)}</b>
+      </span>
+    </div>
+  );
+}
+
+function LineupTurnoverCard({
+  ranking,
+  games,
+  roster,
+  lang,
+}: {
+  ranking: LineupTurnoverRanking;
+  games: AnalysisGame[];
+  roster: RosterPlayer[];
+  lang: Lang;
+}) {
+  const maxPer10 = Math.max(0.1, ...ranking.rows.map((r) => r.per10));
+  return (
+    <div className="card trends-tov-lineups" data-testid="trends-tov-lineups">
+      <div className="sm trends-tov-lineups__title">{t(lang, 'trendsTovLineupsTitle')}</div>
+      <div className="xs mut2">{t(lang, 'trendsTovLineupsHint')}</div>
+      {ranking.rows.length === 0 ? (
+        <p className="xs mut2" data-testid="trends-tov-lineups-empty">
+          {t(lang, 'trendsTovLineupsEmpty')}
+        </p>
+      ) : (
+        ranking.rows.map((row) => {
+          const nrs = row.rosterIds
+            .map((id) => nrFor(id, games, roster))
+            .sort((a, b) => (parseInt(a, 10) || 0) - (parseInt(b, 10) || 0))
+            .join('-');
+          const key = row.rosterIds.join('-');
+          return (
+            <div
+              key={key}
+              className="trends-tov-row"
+              data-testid={`trends-tov-lineup-${key}`}
+              data-tone={row.tone}
+            >
+              <div className="trends-tov-row__top">
+                <span>
+                  {nrs} <span className="mut2">· {fmtSeconds(row.seconds)}</span>
+                </span>
+                <b
+                  className={`trends-tov-row__v trends-tov-row__v--${row.tone}`}
+                  data-testid={`trends-tov-lineup-value-${key}`}
+                >
+                  {fmtOne(row.per10)}
+                </b>
+              </div>
+              <div className="trends-tov-bar" aria-hidden="true">
+                <div
+                  className={`trends-tov-bar__fill trends-tov-bar__fill--${row.tone}`}
+                  style={{ width: `${Math.max(4, (row.per10 / maxPer10) * 100)}%` }}
+                />
+              </div>
+            </div>
+          );
+        })
+      )}
     </div>
   );
 }

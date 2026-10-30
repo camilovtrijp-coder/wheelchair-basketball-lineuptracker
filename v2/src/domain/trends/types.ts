@@ -33,6 +33,12 @@ export interface TrendPoint {
   pm: number;
   /** De actuele, nog niet afgeronde wedstrijd (plan §C.2: altijd als laatste punt). */
   provisional: boolean;
+  /**
+   * Som van de eigen turnovers (`Segment.tov`, ontbrekend = 0) over de
+   * segmenten waarin de speler op het veld stond. Het zijn turnovers van het
+   * TEAM terwijl deze speler speelde, geen aan de speler toegeschreven acties.
+   */
+  tov: number;
 }
 
 export interface PlayerTrend {
@@ -49,6 +55,15 @@ export interface PlayerTrend {
    * het kale gemiddelde van `pm`.
    */
   avgPlusMinus: number;
+  /** Ruwe som van `pm` over alle gespeelde wedstrijden (nooit per-10). */
+  totalPlusMinus: number;
+  /** Som van `tov` over alle gespeelde wedstrijden (nooit per-10). */
+  totalTurnovers: number;
+  /**
+   * Gemiddelde turnovers per gespeelde wedstrijd. Bij `per10`: gemiddelde van
+   * per punt genormaliseerde `tov * 600 / sec` (zelfde regel als `avgPlusMinus`).
+   */
+  avgTurnovers: number;
 }
 
 /**

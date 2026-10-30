@@ -387,7 +387,7 @@ describe('domain/trends/computePlayerTrends — pointPlusMinusValue', () => {
   it('valt terug op raw pm wanneer sec <= 0, ook bij per10', () => {
     expect(
       pointPlusMinusValue(
-        { gameId: 'x', opponent: '', date: '', sec: 0, pm: 5, provisional: false },
+        { gameId: 'x', opponent: '', date: '', sec: 0, pm: 5, provisional: false, tov: 0 },
         true,
       ),
     ).toBe(5);

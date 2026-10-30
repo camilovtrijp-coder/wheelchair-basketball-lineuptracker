@@ -1,3 +1,4 @@
+import { segmentTurnovers } from '../game/tracking';
 import type {
   AnalysisGame,
   LineupCombinationStats,
@@ -118,6 +119,8 @@ export function computeLineupStats(games: AnalysisGame[], filter: StatsFilter): 
         offSec: 0,
         offPF: 0,
         offPA: 0,
+        onTov: 0,
+        offTov: 0,
       });
     }
   }
@@ -138,10 +141,12 @@ export function computeLineupStats(games: AnalysisGame[], filter: StatsFilter): 
         combo.onSec += entry.segment.durSec;
         combo.onPF += entry.segment.pf;
         combo.onPA += entry.segment.pa;
+        combo.onTov += segmentTurnovers(entry.segment);
       } else {
         combo.offSec += entry.segment.durSec;
         combo.offPF += entry.segment.pf;
         combo.offPA += entry.segment.pa;
+        combo.offTov += segmentTurnovers(entry.segment);
       }
     }
   }
@@ -301,6 +306,48 @@ export function offShownValue(combo: LineupCombinationStats, per10: boolean): nu
   const pm = combo.offPF - combo.offPA;
   if (per10 && combo.offSec > 0) return (pm * 600) / combo.offSec;
   return pm;
+}
+
+/**
+ * Turnovers per 10 minuten (`tov * 600 / sec`); `null` zonder speeltijd (er is
+ * dan niets om te normaliseren). Zelfde normalisatie als bij plus/min.
+ */
+export function turnoverRatePer10(tov: number, sec: number): number | null {
+  return sec > 0 ? (tov * 600) / sec : null;
+}
+
+/** Getoonde turnovers ON: bij `per10` genormaliseerd (en `0` zonder speeltijd), anders het totaal. */
+export function onTurnoverShownValue(combo: LineupCombinationStats, per10: boolean): number {
+  if (!per10) return combo.onTov;
+  return turnoverRatePer10(combo.onTov, combo.onSec) ?? 0;
+}
+
+/** Idem voor OFF; bij `per10` zonder OFF-speeltijd is er geen waarde (`null`). */
+export function offTurnoverShownValue(
+  combo: LineupCombinationStats,
+  per10: boolean,
+): number | null {
+  if (!per10) return combo.offSec > 0 ? combo.offTov : null;
+  return turnoverRatePer10(combo.offTov, combo.offSec);
+}
+
+/**
+ * Vergelijking van de turnover-snelheid MET en ZONDER de combinatie, altijd op
+ * basis van de genormaliseerde waarden (de speeltijden verschillen, dus totalen
+ * zijn niet vergelijkbaar). Minder turnovers is beter.
+ * - `'with-better'`: met de combinatie minder turnovers per 10 min;
+ * - `'without-better'`: zonder de combinatie minder;
+ * - `'equal'`: gelijk; `'unknown'`: een van beide kanten heeft geen speeltijd.
+ */
+export type TurnoverComparison = 'with-better' | 'without-better' | 'equal' | 'unknown';
+
+export function compareTurnoverRates(combo: LineupCombinationStats): TurnoverComparison {
+  const on = turnoverRatePer10(combo.onTov, combo.onSec);
+  const off = turnoverRatePer10(combo.offTov, combo.offSec);
+  if (on === null || off === null) return 'unknown';
+  if (on < off) return 'with-better';
+  if (on > off) return 'without-better';
+  return 'equal';
 }
 
 /** Hulpfunctie: lege spelerfilters (geen on, geen off). */
