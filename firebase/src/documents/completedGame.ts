@@ -10,6 +10,7 @@ import {
   assertNullableString,
   assertNullableTimestamp,
   assertPathContextField,
+  isPlainObject,
   assertString,
   assertTimestamp,
   pathSegments,
@@ -22,6 +23,84 @@ function assertSegments(field: string, value: unknown): SegmentDocument[] {
     throw new DocumentValidationError(TYPE, field, 'moet een array zijn');
   }
   return value.map((segment, index) => assertSegment(`${field}[${index}]`, segment));
+}
+
+/**
+ * PR 7.5c (docs/pr-7.5-plan.md §D.2/§D.3): de zes bewerkbare segmentvelden in
+ * een correctie-logitem — spiegelt `CorrectableSegmentFields`
+ * (`v2/src/domain/game/types.ts`).
+ */
+export interface CompletedGameCorrectionFieldsDocument {
+  quarter: number;
+  beginSec: number;
+  endSec: number;
+  pf: number;
+  pa: number;
+  tov: number;
+}
+
+/**
+ * PR 7.5c: één item in het append-only correctielog. Spiegelt
+ * `CompletedGameCorrection` plus het CLOUD-ONLY veld `segmentIndex`: de
+ * positie van het segment in `segments`. Firestore Rules kunnen geen lus
+ * over een lijst schrijven; met de index kunnen ze het gecorrigeerde segment
+ * aanwijzen, controleren dat het `segmentId` klopt en dat alle andere
+ * segmenten byte-gelijk blijven (firestore.rules punt 21). Segmenten worden
+ * nooit toegevoegd, verwijderd of herordend, dus de index is stabiel. Het
+ * domein kent dit veld niet: `completedGameFromDocument()` laat het weg.
+ */
+export interface CompletedGameCorrectionDocument {
+  id: string;
+  segmentId: string;
+  segmentIndex: number;
+  at: string;
+  by: string | null;
+  before: CompletedGameCorrectionFieldsDocument;
+  after: CompletedGameCorrectionFieldsDocument;
+}
+
+function assertCorrectionFields(
+  field: string,
+  value: unknown,
+): CompletedGameCorrectionFieldsDocument {
+  if (!isPlainObject(value)) {
+    throw new DocumentValidationError(TYPE, field, 'moet een object zijn');
+  }
+  const tov = assertInteger(TYPE, `${field}.tov`, value.tov);
+  if (tov < 0) throw new DocumentValidationError(TYPE, `${field}.tov`, 'moet ≥ 0 zijn');
+  return {
+    quarter: assertInteger(TYPE, `${field}.quarter`, value.quarter),
+    beginSec: assertInteger(TYPE, `${field}.beginSec`, value.beginSec),
+    endSec: assertInteger(TYPE, `${field}.endSec`, value.endSec),
+    pf: assertInteger(TYPE, `${field}.pf`, value.pf),
+    pa: assertInteger(TYPE, `${field}.pa`, value.pa),
+    tov,
+  };
+}
+
+function assertCorrections(field: string, value: unknown): CompletedGameCorrectionDocument[] {
+  if (!Array.isArray(value)) {
+    throw new DocumentValidationError(TYPE, field, 'moet een array zijn');
+  }
+  return value.map((item: unknown, index) => {
+    const f = `${field}[${index}]`;
+    if (!isPlainObject(item)) {
+      throw new DocumentValidationError(TYPE, f, 'moet een object zijn');
+    }
+    const segmentIndex = assertInteger(TYPE, `${f}.segmentIndex`, item.segmentIndex);
+    if (segmentIndex < 0) {
+      throw new DocumentValidationError(TYPE, `${f}.segmentIndex`, 'moet ≥ 0 zijn');
+    }
+    return {
+      id: assertNonEmptyString(TYPE, `${f}.id`, item.id),
+      segmentId: assertNonEmptyString(TYPE, `${f}.segmentId`, item.segmentId),
+      segmentIndex,
+      at: assertIsoTimestampString(TYPE, `${f}.at`, item.at),
+      by: assertNullableString(TYPE, `${f}.by`, item.by),
+      before: assertCorrectionFields(`${f}.before`, item.before),
+      after: assertCorrectionFields(`${f}.after`, item.after),
+    };
+  });
 }
 
 /**
@@ -62,6 +141,12 @@ function assertSegments(field: string, value: unknown): SegmentDocument[] {
  * `firestore.rules`' tombstone-`allow update` past dezelfde
  * `('revision' in resource.data) ? ... : 0`-defaulting toe (zie daar), zodat
  * ook een legacy-document zonder migratiestap getombstoned kan worden.
+ *
+ * PR 7.5c: `corrections`/`correctedAt` zijn OPTIONEEL — ze ontbreken op elk
+ * document dat nooit gecorrigeerd is (en dus op alle documenten van vóór 7.5c)
+ * en staan bewust niet in de create-payload. Een correctie
+ * (`allow update`, firestore.rules punt 21) verhoogt `revision` met 1,
+ * vervangt `segments`/`scoreFor`/`scoreAgainst` en voegt één logitem toe.
  */
 export interface CompletedGameDocument {
   organizationId: string;
@@ -84,6 +169,10 @@ export interface CompletedGameDocument {
   deletedAt: Timestamp | null;
   /** PR 7.2c: uid van de gebruiker die de tombstone-patch zette; `null` tot dan. */
   deletedBy: string | null;
+  /** PR 7.5c: append-only correctielog (max. 50); afwezig tot de eerste correctie. */
+  corrections?: CompletedGameCorrectionDocument[];
+  /** PR 7.5c: serverTijd van de laatste correctie; afwezig tot de eerste correctie. */
+  correctedAt?: Timestamp;
 }
 
 export const completedGameConverter: FirestoreDataConverter<CompletedGameDocument> = {
@@ -125,6 +214,17 @@ export const completedGameConverter: FirestoreDataConverter<CompletedGameDocumen
         data.deletedBy === undefined
           ? null
           : assertNullableString(TYPE, 'deletedBy', data.deletedBy),
+      // PR 7.5c: afwezig (oud/ongecorrigeerd document) → sleutel weglaten.
+      // Een AANWEZIG-maar-fout-getypeerd `corrections` blijft fail-closed.
+      // `correctedAt === null` is de nog-niet-bevestigde `serverTimestamp()`
+      // van een eigen, lokaal toegepaste write (latency compensation) en telt
+      // als afwezig tot de serverbevestiging binnenkomt.
+      ...(data.corrections === undefined
+        ? {}
+        : { corrections: assertCorrections('corrections', data.corrections) }),
+      ...(data.correctedAt === undefined || data.correctedAt === null
+        ? {}
+        : { correctedAt: assertTimestamp(TYPE, 'correctedAt', data.correctedAt) }),
     };
   },
 };

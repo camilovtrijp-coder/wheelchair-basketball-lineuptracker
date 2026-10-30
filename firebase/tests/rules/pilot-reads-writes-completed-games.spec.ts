@@ -12,6 +12,7 @@
 
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import {
+  arrayUnion,
   doc,
   getDocs,
   collection,
@@ -33,10 +34,12 @@ const counts: {
   upload: Count;
   historyQueryTwoDevices: Count;
   tombstoneDelete: Count;
+  correction: Count;
 } = {
   upload: { reads: 0, writes: 0 },
   historyQueryTwoDevices: { reads: 0, writes: 0 },
   tombstoneDelete: { reads: 0, writes: 0 },
+  correction: { reads: 0, writes: 0 },
 };
 
 beforeAll(async () => {
@@ -50,9 +53,9 @@ afterAll(async () => {
   );
   console.log('\n=== PR 7.2c pilot client-call-telling (completedGames) ===');
   for (const [flow, count] of Object.entries(counts)) console.log(flow, JSON.stringify(count));
-  console.log('Totaal drie scenario’s:', JSON.stringify(total));
+  console.log('Totaal vier scenario’s:', JSON.stringify(total));
   console.log(
-    '100 volledige pilot-runs (1 afronding + 1 tweede-apparaat-historiebezoek + 1 delete elk):',
+    '100 volledige pilot-runs (1 afronding + 1 tweede-apparaat-historiebezoek + 1 delete + 1 correctie elk):',
     JSON.stringify({ reads: total.reads * 100, writes: total.writes * 100 }),
   );
   console.log('Rules-interne reads en listener-reconnects zijn niet inbegrepen.\n');
@@ -162,5 +165,43 @@ describe('PR 7.2c pilot client-call-telling (completedGames)', () => {
     counts.tombstoneDelete.writes += 1;
 
     expect(counts.tombstoneDelete).toEqual({ reads: 0, writes: 1 });
+  });
+  // PR 7.5c: een correctie is op het succespad EEN `updateDoc` (de gateway doet
+  // bewust geen pre-read, zie `FirestoreGameCloudGateway.correctCompletedGame()`)
+  // en dus een billable write, nul reads. Een mislukte write kost daarbij
+  // eenmalig een readback (1 read) voor idempotentie/conflictclassificatie —
+  // dat zit niet in dit succespadscenario.
+  it('telt een correctie (een update-patch, geen pre-read)', async () => {
+    await withAdmin(env, async (db) => {
+      await db
+        .collection('organizations')
+        .doc(ORG_A)
+        .collection('teams')
+        .doc(TEAM_A1)
+        .collection('completedGames')
+        .doc('completed-1')
+        .set(sampleCompletedGame());
+    });
+    const deviceA = authCtx(env, USERS.alice.uid, { email: USERS.alice.email });
+    const original = sampleCompletedGame().segments[0]!;
+    await updateDoc(completedGameRef(deviceA, 'completed-1'), {
+      segments: [{ ...original, endSec: 420, durSec: 180, pf: 7, tov: 2 }],
+      scoreFor: 43,
+      scoreAgainst: 32,
+      corrections: arrayUnion({
+        id: 'corr-1',
+        segmentId: original.id,
+        segmentIndex: 0,
+        at: '2026-02-01T10:00:00.000Z',
+        by: USERS.alice.uid,
+        before: { quarter: 1, beginSec: 600, endSec: 480, pf: 4, pa: 2, tov: 0 },
+        after: { quarter: 1, beginSec: 600, endSec: 420, pf: 7, pa: 2, tov: 2 },
+      }),
+      correctedAt: serverTimestamp(),
+      revision: 1,
+    });
+    counts.correction.writes += 1;
+
+    expect(counts.correction).toEqual({ reads: 0, writes: 1 });
   });
 });

@@ -1464,6 +1464,69 @@ describe('documentcontracten: weigeren malformed serverdata', () => {
     syncedAt: Timestamp.now(),
   };
 
+  // PR 7.5c: optionele correctievelden.
+  const validCorrection = {
+    id: 'corr-1',
+    segmentId: 'seg-1',
+    segmentIndex: 0,
+    at: '2026-02-01T10:00:00.000Z',
+    by: 'uid-alice',
+    before: { quarter: 1, beginSec: 600, endSec: 480, pf: 4, pa: 2, tov: 0 },
+    after: { quarter: 1, beginSec: 600, endSec: 420, pf: 7, pa: 2, tov: 2 },
+  };
+
+  it('completedGame: zonder corrections/correctedAt blijven de sleutels afwezig (PR 7.5c, oud/ongecorrigeerd document)', () => {
+    const out = completedGameConverter.fromFirestore!(
+      mockSnapshot(validCompletedGame, COMPLETED_GAME_PATH),
+      {},
+    );
+    expect(out).not.toHaveProperty('corrections');
+    expect(out).not.toHaveProperty('correctedAt');
+  });
+
+  it('completedGame: leest corrections en correctedAt (PR 7.5c)', () => {
+    const correctedAt = Timestamp.fromMillis(1_770_000_000_000);
+    const out = completedGameConverter.fromFirestore!(
+      mockSnapshot(
+        { ...validCompletedGame, corrections: [validCorrection], correctedAt, revision: 1 },
+        COMPLETED_GAME_PATH,
+      ),
+      {},
+    );
+    expect(out.corrections).toEqual([validCorrection]);
+    expect(out.correctedAt).toEqual(correctedAt);
+  });
+
+  it('completedGame: een nog-niet-bevestigde (null) correctedAt telt als afwezig (PR 7.5c, latency compensation)', () => {
+    const out = completedGameConverter.fromFirestore!(
+      mockSnapshot(
+        { ...validCompletedGame, corrections: [validCorrection], correctedAt: null, revision: 1 },
+        COMPLETED_GAME_PATH,
+      ),
+      {},
+    );
+    expect(out).not.toHaveProperty('correctedAt');
+    expect(out.corrections).toHaveLength(1);
+  });
+
+  it('completedGame: malformed corrections worden geweigerd (PR 7.5c, fail-closed)', () => {
+    for (const bad of [
+      'geen-array',
+      [{ ...validCorrection, segmentIndex: -1 }],
+      [{ ...validCorrection, id: '' }],
+      [{ ...validCorrection, at: 'gisteren' }],
+      [{ ...validCorrection, before: { ...validCorrection.before, tov: -1 } }],
+      [{ ...validCorrection, after: { quarter: 1 } }],
+    ]) {
+      expect(() =>
+        completedGameConverter.fromFirestore!(
+          mockSnapshot({ ...validCompletedGame, corrections: bad }, COMPLETED_GAME_PATH),
+          {},
+        ),
+      ).toThrow(DocumentValidationError);
+    }
+  });
+
   it('completedGame: ontbrekende sourceGameId wordt geweigerd', () => {
     const { sourceGameId: _sourceGameId, ...withoutSourceGameId } = validCompletedGame;
     expect(() =>

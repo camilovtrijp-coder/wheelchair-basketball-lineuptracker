@@ -1,5 +1,8 @@
-import type { CompletedGame } from '../../domain/game/types';
-import type { CompletedGameSnapshotProjection } from './GameCloudGateway';
+import type { CompletedGame, CompletedGameCorrection } from '../../domain/game/types';
+import type {
+  CompletedGameCorrectionPayload,
+  CompletedGameSnapshotProjection,
+} from './GameCloudGateway';
 import { projectGamePlayer, projectSegment } from './projectGameForCloud';
 
 /**
@@ -39,5 +42,37 @@ export function projectCompletedGameSnapshot(
     revision: 0,
     deletedAt: null,
     deletedBy: null,
+  };
+}
+
+/**
+ * PR 7.5c (docs/pr-7.5-plan.md §D.3): projecteert de uitkomst van EEN
+ * correctie (`game` = de wedstrijd NA `correction`, zoals `correctSegment()`
+ * die teruggeeft) naar de cloud-payload van `GameCloudGateway
+ * .correctCompletedGame()`. Puur en deterministisch; hergebruikt
+ * `projectSegment()` (dus `tov` alleen bij >= 1, zoals bij finalize). Voegt het
+ * cloud-only `segmentIndex` toe (positie van het segment in `segments`, zie
+ * firestore.rules punt 21). `null` als `correction.segmentId` niet in `game`
+ * voorkomt — dan is er niets veilig te versturen.
+ */
+export function projectCompletedGameCorrection(
+  game: CompletedGame,
+  correction: CompletedGameCorrection,
+): CompletedGameCorrectionPayload | null {
+  const segmentIndex = game.segments.findIndex((s) => s.id === correction.segmentId);
+  if (segmentIndex < 0) return null;
+  return {
+    segments: game.segments.map(projectSegment),
+    scoreFor: game.scoreFor,
+    scoreAgainst: game.scoreAgainst,
+    correction: {
+      id: correction.id,
+      segmentId: correction.segmentId,
+      segmentIndex,
+      at: correction.at,
+      by: correction.by,
+      before: { ...correction.before },
+      after: { ...correction.after },
+    },
   };
 }

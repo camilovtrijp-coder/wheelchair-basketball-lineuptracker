@@ -94,6 +94,24 @@ export function completedGameFromDocument(id: string, doc: CompletedGameDocument
     // toont "verwijderd" zichtbaar op basis hiervan (PR 7.2c).
     deletedAt: doc.deletedAt ? doc.deletedAt.toDate().toISOString() : null,
     deletedBy: doc.deletedBy,
+    // PR 7.5c: optionele correctievelden (afwezig op ongecorrigeerde/oude
+    // documenten → sleutel weglaten, zodat de domeinvorm byte-gelijk blijft).
+    // `segmentIndex` is cloud-only (Rules-aanwijzer) en vervalt hier.
+    ...(doc.corrections === undefined
+      ? {}
+      : {
+          corrections: doc.corrections.map((c) => ({
+            id: c.id,
+            segmentId: c.segmentId,
+            at: c.at,
+            by: c.by,
+            before: { ...c.before },
+            after: { ...c.after },
+          })),
+        }),
+    ...(doc.correctedAt === undefined
+      ? {}
+      : { correctedAt: doc.correctedAt.toDate().toISOString() }),
   };
 }
 

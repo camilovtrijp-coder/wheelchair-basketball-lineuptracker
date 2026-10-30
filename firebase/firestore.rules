@@ -236,6 +236,37 @@ rules_version = '2';
 //      het turnovertotaal wordt uit het actielogboek afgeleid, net als de score.
 //      Een Rules-update is nodig zodra de app turnovers schrijft — zie
 //      docs/turnovers-rules-update.md voor de publicatiestappen.
+//
+// Nieuw in PR 7.5c — correctie van een afgeronde wedstrijd
+// (docs/pr-7.5-plan.md §D.3/§F):
+//  21. `completedGames/{id}` krijgt een TWEEDE, smalle `allow update`-tak naast
+//      de tombstone- en redactietak: één segment corrigeren (tijd/score/
+//      turnovers). Alleen owner/admin/coach (`canManageTeamData`), niet
+//      getombstoned, `diff().affectedKeys()` beperkt tot `segments`,
+//      `scoreFor`, `scoreAgainst`, `corrections`, `correctedAt`, `revision`;
+//      `revision` exact +1; `correctedAt == request.time`; `corrections` groeit
+//      met EXACT één item (bestaande items byte-gelijk, max. 50). De optionele
+//      velden `corrections`/`correctedAt` bestaan niet op oudere documenten en
+//      niet in de create-payload (`completedGameKeys()` blijft ongewijzigd);
+//      alle toegangen gebruiken de `('veld' in resource.data)`-defaulting.
+//      Het logitem draagt een cloud-only `segmentIndex` waarmee Rules het
+//      gecorrigeerde segment kunnen aanwijzen zonder lus: segment `[index]`
+//      moet het `segmentId` dragen, alle andere segmenten blijven byte-gelijk
+//      (list-slices), en het gewijzigde segment mag alleen quarter/beginSec/
+//      endSec/durSec/pf/pa/tov wijzigen (`Map.diff`) — `id`/`lineup`/
+//      `classSum`/`allowed`/`over` blijven dus onaangeroerd. Het item
+//      `before` moet gelijk zijn aan het oude en `after` aan het nieuwe segment;
+//      `scoreFor`/`scoreAgainst` wijzigen exact met `after - before` van pf/pa.
+//      EERLIJKE BEPERKINGEN: Rules kunnen niet narekenen dat `durSec` bij een
+//      willekeurige klokrichting klopt anders dan `durSec == |begin - eind| > 0`,
+//      niet of `before.tov` een niet-bestaande sleutel was buiten de
+//      default-0-regel, niet of `corrections[].id` uniek is binnen het log
+//      (geen lus; `revision` +1 voorkomt herhaling van dezelfde write) en niet
+//      of `at` dicht bij `request.time` ligt (`at` is client-tijd, alleen de
+//      ISO-vorm wordt gecontroleerd; het bewijsmoment is `correctedAt`).
+//      Een bevoegde coach kan dus nog steeds een onjuiste maar intern
+//      consistente tijd/score invoeren — dat is het doel van de functie;
+//      Rules bewaken wie, welk segment, welke velden en dat het logboek klopt.
 
 service cloud.firestore {
   match /databases/{database}/documents {
@@ -470,7 +501,11 @@ service cloud.firestore {
 
     // Exacte sleutelset van CompletedGameDocument (firebase/src/documents/completedGame.ts).
     // PR 7.2c: `revision`/`deletedAt`/`deletedBy` toegevoegd voor de
-    // tombstone-fieldpatch (punt 18 hieronder).
+    // tombstone-fieldpatch (punt 18 hieronder). PR 7.5c: de OPTIONELE velden
+    // `corrections`/`correctedAt` staan hier bewust NIET in — de create-payload
+    // blijft exact deze sleutelset (een nieuwe snapshot heeft geen correcties) en
+    // oudere documenten zonder die velden blijven geldig; ze verschijnen pas via
+    // de correctietak (punt 21).
     function completedGameKeys() {
       return [
         'organizationId', 'teamId', 'sourceGameId', 'opponent', 'competition', 'date',
@@ -505,6 +540,89 @@ service cloud.firestore {
         data.revision == 0 &&
         data.deletedAt == null &&
         data.deletedBy == null;
+    }
+
+    // PR 7.5c, punt 21: validatie van de bewerkbare velden in `before`/`after`
+    // van een correctie-logitem. Zelfde zes velden als `CorrectableSegmentFields`
+    // (v2/src/domain/game/types.ts). De bereikcontroles gelden alleen voor
+    // velden die WIJZIGEN (spiegelt `correctSegment()`: een ongewijzigd, ouder
+    // veld mag buiten het huidige bereik liggen en blokkeert een correctie van
+    // een ander veld niet).
+    //
+    // Let op: Firestore Rules staan max. 1000 expressie-evaluaties per request
+    // toe. Daarom gebruiken de functies hieronder `let`-bindings (elke
+    // deelexpressie eenmaal evalueren) en zijn de controles bewust compact.
+    function correctionFieldsShape(f) {
+      return f is map &&
+        f.keys().hasOnly(['quarter', 'beginSec', 'endSec', 'pf', 'pa', 'tov']) &&
+        f.keys().hasAll(['quarter', 'beginSec', 'endSec', 'pf', 'pa', 'tov']) &&
+        f.quarter is int && f.beginSec is int && f.endSec is int &&
+        f.pf is int && f.pa is int && f.tov is int && f.tov >= 0;
+    }
+
+    function correctionAfterInRange(b, a, quarterCount) {
+      return (a.quarter == b.quarter || (a.quarter >= 1 && a.quarter <= quarterCount)) &&
+        (a.beginSec == b.beginSec || (a.beginSec >= 0 && a.beginSec <= 600)) &&
+        (a.endSec == b.endSec || (a.endSec >= 0 && a.endSec <= 600)) &&
+        (a.pf == b.pf || (a.pf >= 0 && a.pf <= 150)) &&
+        (a.pa == b.pa || (a.pa >= 0 && a.pa <= 150));
+    }
+
+    // Het segment `s` heeft precies de bewerkbare waarden `f` (`tov` ontbreekt = 0).
+    function segmentMatchesCorrectionFields(s, f) {
+      return s.quarter == f.quarter && s.beginSec == f.beginSec && s.endSec == f.endSec &&
+        s.pf == f.pf && s.pa == f.pa && (('tov' in s) ? s.tov : 0) == f.tov;
+    }
+
+    // `o`/`s` = het aangewezen segment vóór/na, `c` = het nieuwe logitem.
+    function isValidCorrectedSegment(o, s, c, oldTotals, nextTotals) {
+      return o is map && s is map &&
+        o.id == c.segmentId &&
+        s.diff(o).affectedKeys().hasOnly(['quarter', 'beginSec', 'endSec', 'durSec', 'pf', 'pa', 'tov']) &&
+        segmentMatchesCorrectionFields(o, c.before) &&
+        segmentMatchesCorrectionFields(s, c.after) &&
+        s.durSec is int && s.durSec > 0 &&
+        (s.durSec == c.after.beginSec - c.after.endSec || s.durSec == c.after.endSec - c.after.beginSec) &&
+        nextTotals.scoreFor == oldTotals.scoreFor + (c.after.pf - c.before.pf) &&
+        nextTotals.scoreAgainst == oldTotals.scoreAgainst + (c.after.pa - c.before.pa);
+    }
+
+    // `c` is het ene nieuwe logitem; `old`/`next` zijn het document vóór/na.
+    function isValidCorrectionEntry(old, next, c) {
+      return c is map &&
+        c.keys().hasOnly(['id', 'segmentId', 'segmentIndex', 'at', 'by', 'before', 'after']) &&
+        c.keys().hasAll(['id', 'segmentId', 'segmentIndex', 'at', 'by', 'before', 'after']) &&
+        c.id is string && c.id.size() > 0 && c.id.size() <= 100 &&
+        c.segmentId is string && c.segmentId.size() > 0 &&
+        c.segmentIndex is int && c.segmentIndex >= 0 && c.segmentIndex < old.segments.size() &&
+        c.at is string && isIsoTimestampShape(c.at) &&
+        (c.by == null || c.by == request.auth.uid) &&
+        correctionFieldsShape(c.before) && correctionFieldsShape(c.after) &&
+        correctionAfterInRange(c.before, c.after, old.quarterCount) &&
+        next.scoreFor is int && next.scoreAgainst is int &&
+        next.scoreFor >= 0 && next.scoreAgainst >= 0 &&
+        isValidCorrectedSegment(old.segments[c.segmentIndex], next.segments[c.segmentIndex], c, old, next);
+    }
+
+    // Alle ANDERE segmenten blijven byte-gelijk: de lijst is even lang en de
+    // slices vóór en na de index zijn gelijk. Een LEGE slice (`list[0:0]`) geeft
+    // in Rules een "index out of bound"-fout, vandaar de expliciete guards.
+    function otherSegmentsUnchanged(oldSegs, nextSegs, i) {
+      return nextSegs.size() == oldSegs.size() &&
+        (i == 0 || nextSegs[0:i] == oldSegs[0:i]) &&
+        (i + 1 >= oldSegs.size() || nextSegs[(i + 1):oldSegs.size()] == oldSegs[(i + 1):oldSegs.size()]);
+    }
+
+    // PR 7.5c, punt 21: het correctielog groeit met EXACT één item, bestaande
+    // items blijven ongewijzigd, maximaal 50 (MAX_CORRECTIONS).
+    function isValidCompletedGameCorrection(old, next) {
+      let oldLog = ('corrections' in old) ? old.corrections : [];
+      let n = oldLog.size();
+      return next.corrections is list && n < 50 &&
+        next.corrections.size() == n + 1 &&
+        (n == 0 || next.corrections[0:n] == oldLog) &&
+        isValidCorrectionEntry(old, next, next.corrections[n]) &&
+        otherSegmentsUnchanged(old.segments, next.segments, next.corrections[n].segmentIndex);
     }
 
     function invRef(orgId, invId) {
@@ -1200,6 +1318,23 @@ service cloud.firestore {
             request.resource.data.deletedBy == request.auth.uid &&
             request.resource.data.revision ==
               (('revision' in resource.data) ? resource.data.revision : 0) + 1;
+
+          // PR 7.5c, punt 21 (docs/pr-7.5-plan.md §D.3): CORRECTIE van één segment
+          // van een niet-getombstoned wedstrijd. Zelfde bevoegdheid als de
+          // tombstone (`canManageTeamData`: owner/admin/coach; scorer en viewer
+          // niet) en dezelfde optimistische concurrency (`revision` exact +1,
+          // met defaulting voor documenten zonder `revision`). Zie het
+          // headercommentaar bij punt 21 voor de volledige invarianten en de
+          // eerlijke beperkingen; de diff-allowlist hieronder sluit elk ander
+          // veld (players/date/sourceGameId/organizationId/teamId/...) uit.
+          allow update: if canManageTeamData(orgId, teamId) &&
+            (!('deletedAt' in resource.data) || resource.data.deletedAt == null) &&
+            request.resource.data.diff(resource.data).affectedKeys()
+              .hasOnly(['segments', 'scoreFor', 'scoreAgainst', 'corrections', 'correctedAt', 'revision']) &&
+            request.resource.data.correctedAt == request.time &&
+            request.resource.data.revision ==
+              (('revision' in resource.data) ? resource.data.revision : 0) + 1 &&
+            isValidCompletedGameCorrection(resource.data, request.resource.data);
 
           // PR 8.3c-1, §3.3 — REDACTIE van een verlopen tombstone. Bewust geen hard
           // delete: de tombstone is ook het signaal waarop de resurrectiepreventie uit

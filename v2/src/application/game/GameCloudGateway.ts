@@ -1,4 +1,5 @@
 import type {
+  CompletedGameCorrectionDocument,
   CompletedGameDocument,
   GameActionEnvelopeDocument,
   GameDocument,
@@ -121,6 +122,39 @@ export interface CompletedGameTombstoneResult {
   /** Aanwezig bij `ok: true`: de nieuwe serverrevisie na deze patch. */
   revision?: number;
   error?: unknown;
+}
+
+/**
+ * PR 7.5c (docs/pr-7.5-plan.md §D.3): de gecorrigeerde inhoud die
+ * `correctCompletedGame()` naar de cloud schrijft. `segments`/`scoreFor`/
+ * `scoreAgainst` zijn de volledige uitkomst van `correctSegment()` (Rules
+ * controleren dat precies één segment wijzigt); `correction` is het ENE
+ * nieuwe logitem, dat de gateway aan het bestaande log toevoegt (append-only;
+ * `arrayUnion`) — het bestaande log wordt dus nooit opnieuw verstuurd.
+ */
+export interface CompletedGameCorrectionPayload {
+  segments: CompletedGameSnapshotProjection['segments'];
+  scoreFor: number;
+  scoreAgainst: number;
+  correction: CompletedGameCorrectionDocument;
+}
+
+/**
+ * PR 7.5c: resultaat van `correctCompletedGame()`. `ok: true` betekent
+ * UITSLUITEND server-bevestigd (nooit optimistisch). `conflict: true`
+ * betekent dat de server inmiddels een andere revisie heeft zonder dit
+ * logitem (een ander apparaat was eerder): er wordt niets samengevoegd en
+ * niets overschreven. `alreadyApplied: true` betekent dat een eerdere poging
+ * (waarvan het antwoord verloren ging) deze correctie al had toegepast —
+ * `ok: true`, zonder dubbele logregel.
+ */
+export interface CompletedGameCorrectionResult {
+  ok: boolean;
+  /** Aanwezig bij `ok: true` en bij `conflict: true`: de bekende serverrevisie. */
+  revision?: number;
+  error?: unknown;
+  conflict?: boolean;
+  alreadyApplied?: boolean;
 }
 
 /**
@@ -297,6 +331,30 @@ export interface GameCloudGateway {
     deletedBy: string,
     expectedRevision: number,
   ): Promise<CompletedGameTombstoneResult>;
+  /**
+   * PR 7.5c (docs/pr-7.5-plan.md §D.3): schrijft één correctie van één segment
+   * van een afgeronde wedstrijd met een enkele, atomische `updateDoc` —
+   * `segments`/`scoreFor`/`scoreAgainst` vervangen, `corrections` met EXACT
+   * `payload.correction` aangevuld, `revision` = `expectedRevision + 1` en
+   * `correctedAt` = serverTimestamp. Firestore Rules (punt 21) dwingen af dat
+   * alleen owner/admin/coach dit mogen, het document niet getombstoned is,
+   * `revision` exact +1 gaat en alleen het aangewezen segment wijzigt.
+   *
+   * Idempotent: een herhaalde aanroep met hetzelfde `payload.correction.id`
+   * (retry na een verloren antwoord, of na een eerder getimede-outte write
+   * die later alsnog door de server werd toegepast) levert nooit een tweede
+   * logregel op. Na een mislukte write bepaalt een readback of de correctie al
+   * server-bevestigd aanwezig is (`ok: true, alreadyApplied: true`), nog als
+   * lokale wachtende write in de SDK-wachtrij staat (`ok: false`, geen vals
+   * succes), of dat de serverrevisie afwijkt (`ok: false, conflict: true`).
+   */
+  correctCompletedGame(
+    organizationId: string,
+    teamId: string,
+    completedGameId: string,
+    expectedRevision: number,
+    payload: CompletedGameCorrectionPayload,
+  ): Promise<CompletedGameCorrectionResult>;
   /**
    * PR 7.3b (docs/pr-7.3-plan.md §C 7.3b werk 2): live abonnement op parent +
    * `actions`-subcollectie voor een read-only viewer — de writer blijft altijd
