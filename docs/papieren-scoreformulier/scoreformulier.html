@@ -22,7 +22,8 @@
   th, td { border: 1px solid #111; padding: 0 1mm; text-align: center; }
   th { background: #eee; font-size: 9px; font-weight: 600; line-height: 1.15; padding: 1mm; }
   td.box { width: 10mm; }
-  .log td { height: 9.2mm; }
+  .log td { height: 8.6mm; }
+  .log td.stand { color: #aaa; font-size: 15px; }
   .log tr.tot td { height: 8mm; background: #f4f4f4; font-weight: 600; }
   .log td.n { width: 8mm; font-weight: 600; color: #555; }
   .log td.tally { text-align: left; }
@@ -83,9 +84,8 @@
           <li><b>Eén regel = één segment</b> = een periode waarin dezelfde vijf spelers op het veld staan.</li>
           <li><b>Bij elke wissel</b> (of einde periode) sluit je de regel af: noteer de <b>klok bij het einde</b>. De regel hoort bij de opstelling <i>vóór</i> de wissel.</li>
           <li>De <b>volgende regel</b> begint op diezelfde kloktijd, met de nieuwe vijf. Meerdere wissels op hetzelfde moment = één nieuwe regel.</li>
-          <li><b>Punten:</b> schrijf elke score op in "Wij" / "Zij" (bijv. 2 3 2 1). Tel aan het eind van de regel op naar <b>Voor</b> en <b>Tegen</b>.</li>
-          <li><b>Eindstand</b> = cumulatieve stand (wij – zij). Dit is je controle: Voor/Tegen van alle regels moet optellen tot de eindstand.</li>
-          <li><b>Turnovers (TO):</b> zet een streepje per eigen balverlies in het segment en tel ze aan het eind.</li>
+          <li><b>Stand:</b> schrijf bij het begin van de regel de <b>begin stand</b> (wij – zij) en bij het einde de <b>eind stand</b>. De begin stand is gelijk aan de eind stand van de regel erboven (eerste regel: 0 – 0).</li>
+          <li><b>Turnovers (TO):</b> zet een streepje per eigen balverlies in het grote TO-vak en tel ze aan het eind.</li>
           <li>Nieuwe periode: begin altijd een nieuwe regel en vul het <b>Kwart</b>-nummer in.</li>
         </ol>
       </div>
@@ -93,16 +93,16 @@
       <h2>Later invoeren in de app <span class="en">/ Entering it later</span></h2>
       <ul>
         <li>Start op tabblad <b>Wedstrijd</b> en kies dezelfde spelers en starters.</li>
-        <li>Neem per regel over: <b>opstelling</b>, <b>Begin</b>/<b>Eind</b>-klok, <b>punten voor/tegen</b> → <b>Segment opslaan</b>.</li>
+        <li>Neem per regel over: <b>opstelling</b>, <b>Begin</b>/<b>Eind</b>-klok en <b>punten voor/tegen</b> (eind stand min begin stand) → <b>Segment opslaan</b>.</li>
         <li>Een fout? Tik het segment aan → <b>Segment bewerken</b> (kwart, tijden, opstelling, punten).</li>
-        <li>Controleer daarna of de eindstand in de app gelijk is aan je papieren eindstand. Rond dan af.</li>
+        <li>Controleer daarna of de stand in de app gelijk is aan je laatste papieren eind stand. Rond dan af.</li>
       </ul>
 
       <h2>Aantekeningen <span class="en">/ Notes</span></h2>
       <div class="big"></div>
     </div>
   </div>
-  <div class="foot"><span>Lineup Tracker – papieren back-up</span><span>Vervolg: volgende pagina's = segmentregels</span></div>
+  <div class="foot"><span>Lineup Tracker – papieren back-up</span><span>Vervolg: volgende pagina = segmentregels</span></div>
 </section>
 
 <!-- PAGINA 2-4: segmentregels -->
@@ -121,18 +121,15 @@
           <th rowspan="2" style="width:15mm">Begin<br><span class="en">klok</span></th>
           <th rowspan="2" style="width:15mm">Eind<br><span class="en">klok</span></th>
           <th colspan="5">Opstelling – rugnummers <span class="en">/ Lineup – numbers</span></th>
-          <th rowspan="2">Wij scoren<br><span class="en">We score (2 3 1 …)</span></th>
-          <th rowspan="2">Zij scoren<br><span class="en">They score</span></th>
-          <th rowspan="2" style="width:11mm">Voor<br><span class="en">For</span></th>
-          <th rowspan="2" style="width:11mm">Tegen<br><span class="en">Against</span></th>
-          <th rowspan="2" style="width:20mm">Eindstand<br><span class="en">Score (we – they)</span></th>
-          <th rowspan="2" style="width:16mm">TO<br><span class="en">turnovers</span></th>
+          <th rowspan="2" style="width:27mm">Begin stand<br><span class="en">Start score (we – they)</span></th>
+          <th rowspan="2" style="width:27mm">Eind stand<br><span class="en">End score (we – they)</span></th>
+          <th rowspan="2">TO – turf hier<br><span class="en">turnovers – tally here</span></th>
         </tr>
         <tr><th>1</th><th>2</th><th>3</th><th>4</th><th>5</th></tr>
       </thead>
       <tbody class="rows"></tbody>
     </table>
-    <div class="foot"><span>Rij compleet = 5 rugnummers, begin- en eindtijd, Voor en Tegen. Eindstand moet gelijk zijn aan som(Voor) – som(Tegen).</span><span class="pageno"></span></div>
+    <div class="foot"><span>Rij compleet = 5 rugnummers, begin-/eindklok, begin-/eindstand. De begin stand van een regel is de eind stand van de vorige.</span><span class="pageno"></span></div>
   </section>
 </template>
 
@@ -148,7 +145,7 @@
 
   // Logbladen: 3 pagina's met 16 regels
   var tpl = document.getElementById('logpage');
-  var ROWS = 16, PAGES = 3;
+  var ROWS = 18, PAGES = 1;
   for (var p = 0; p < PAGES; p++) {
     var node = tpl.content.cloneNode(true);
     node.querySelector('.sheetno').textContent = (p + 1) + ' / ' + PAGES;
@@ -159,11 +156,8 @@
       tb.insertAdjacentHTML('beforeend',
         '<tr><td class="n">' + n + '</td><td></td><td></td><td></td>' +
         '<td class="box"></td><td class="box"></td><td class="box"></td><td class="box"></td><td class="box"></td>' +
-        '<td class="tally"></td><td class="tally"></td><td></td><td></td><td></td><td></td></tr>');
+        '<td class="stand">–</td><td class="stand">–</td><td class="tally"></td></tr>');
     }
-    tb.insertAdjacentHTML('beforeend',
-      '<tr class="tot"><td colspan="11" style="text-align:right">Totaal dit blad <span class="en">/ Sheet total</span></td>' +
-      '<td></td><td></td><td></td><td></td></tr>');
     document.body.appendChild(node);
   }
 })();
