@@ -165,6 +165,17 @@ export class CompositeCompletedGameRepository implements CompletedGameRepository
     return ok;
   }
 
+  /**
+   * PR 7.5a: alleen het lokale pad (docs/pr-7.5-plan.md §E). Cloudgedrag
+   * (Rules-tak, gateway, revisiegestuurde merge) hoort bij PR 7.5c; tot dan
+   * wint bij een ID-botsing nog steeds de lokale versie.
+   */
+  update(game: CompletedGame): boolean {
+    const ok = this.local.update(game);
+    if (ok) this.notify();
+    return ok;
+  }
+
   replaceAll(games: CompletedGame[]): boolean {
     const ok = this.local.replaceAll(games);
     if (ok) this.notify();

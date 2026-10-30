@@ -86,6 +86,10 @@ class FakeLocalRepo implements CompletedGameRepository {
     return true;
   }
 
+  update(): boolean {
+    return false;
+  }
+
   replaceAll(games: CompletedGame[]): boolean {
     this.games = games;
     return true;

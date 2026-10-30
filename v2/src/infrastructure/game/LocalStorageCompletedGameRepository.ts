@@ -1,4 +1,4 @@
-import type { CompletedGame } from '../../domain/game/types';
+import { MAX_CORRECTIONS, type CompletedGame } from '../../domain/game/types';
 import type { KeyValueStorage } from '../../i18n/persistence';
 import type {
   CompletedGameRepository,
@@ -40,6 +40,43 @@ function matchesContext(
   teamId: string,
 ): boolean {
   return value.organizationId === organizationId && value.teamId === teamId;
+}
+
+/**
+ * PR 7.5a: bewaakt dat `update()` alleen een echte correctie opslaat — zelfde
+ * segmenten in dezelfde volgorde met dezelfde opstelling/classificatie,
+ * hogere revisie, een correctielog dat alleen kan groeien (max.
+ * `MAX_CORRECTIONS`) en een consistente `durSec`.
+ */
+function isValidCorrectionUpdate(existing: CompletedGame, incoming: CompletedGame): boolean {
+  if (!Array.isArray(incoming.segments) || incoming.segments.length !== existing.segments.length) {
+    return false;
+  }
+  const sameStructure = existing.segments.every((segment, i) => {
+    const other = incoming.segments[i];
+    return (
+      typeof other === 'object' &&
+      other !== null &&
+      other.id === segment.id &&
+      other.classSum === segment.classSum &&
+      other.allowed === segment.allowed &&
+      other.over === segment.over &&
+      Array.isArray(other.lineup) &&
+      other.lineup.length === segment.lineup.length &&
+      other.lineup.every((id, k) => id === segment.lineup[k]) &&
+      Number.isFinite(other.beginSec) &&
+      Number.isFinite(other.endSec) &&
+      other.durSec === Math.abs(other.endSec - other.beginSec) &&
+      other.durSec > 0
+    );
+  });
+  if (!sameStructure) return false;
+  const existingRevision = Number.isInteger(existing.revision) ? existing.revision : 0;
+  if (!Number.isInteger(incoming.revision) || incoming.revision <= existingRevision) return false;
+  const log = incoming.corrections;
+  if (!Array.isArray(log) || log.length > MAX_CORRECTIONS) return false;
+  if (log.length < (existing.corrections?.length ?? 0)) return false;
+  return typeof incoming.correctedAt === 'string';
 }
 
 export class LocalStorageCompletedGameRepository implements CompletedGameRepository {
@@ -139,6 +176,43 @@ export class LocalStorageCompletedGameRepository implements CompletedGameReposit
     const current = this.readAll();
     if (!current.ok) return false;
     return this.writeAll(current.games.filter((g) => g.id !== id));
+  }
+
+  /** Zie de interface-docstring: alleen correctievelden worden overgenomen. */
+  update(game: CompletedGame): boolean {
+    if (game.organizationId !== this.organizationId || game.teamId !== this.teamId) return false;
+    const current = this.readAll();
+    if (!current.ok) return false;
+    const index = current.games.findIndex((g) => g.id === game.id);
+    if (index < 0) return false;
+    const existing = current.games[index];
+    if (existing === undefined || existing.deletedAt != null) return false;
+    if (!isValidCorrectionUpdate(existing, game)) return false;
+    const next: CompletedGame = {
+      ...existing,
+      segments: existing.segments.map((segment, i) => {
+        const incoming = game.segments[i];
+        if (incoming === undefined) return segment;
+        return {
+          ...segment,
+          quarter: incoming.quarter,
+          beginSec: incoming.beginSec,
+          endSec: incoming.endSec,
+          durSec: incoming.durSec,
+          pf: incoming.pf,
+          pa: incoming.pa,
+          tov: incoming.tov ?? 0,
+        };
+      }),
+      scoreFor: game.scoreFor,
+      scoreAgainst: game.scoreAgainst,
+      revision: game.revision,
+      corrections: game.corrections,
+      correctedAt: game.correctedAt,
+    };
+    const games = current.games.slice();
+    games[index] = next;
+    return this.writeAll(games);
   }
 
   replaceAll(games: CompletedGame[]): boolean {

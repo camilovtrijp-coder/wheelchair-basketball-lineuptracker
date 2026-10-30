@@ -2,6 +2,7 @@ import type { Settings, SettingsKey } from '../settings/types';
 import { SETTINGS_BOOLEAN_KEYS, SETTINGS_KEYS, SETTINGS_NUMBER_KEYS } from '../settings/types';
 import type { RosterPlayer } from '../roster/types';
 import { PLAYER_KEYS } from '../roster/types';
+import { MAX_CORRECTIONS } from '../game/types';
 import type { ActiveGame, CompletedGame, GamePlayer, Segment } from '../game/types';
 import { isValidLang } from '../../i18n/strings';
 import {
@@ -310,6 +311,61 @@ function validateCompletedGameFields(
     errors.push({ code: 'gameInvalid', detail: `field:useClassLimit:${label}` });
   }
   errors.push(...validateCompletedGameTombstoneFields(game, label));
+  errors.push(...validateCompletedGameCorrectionFields(game, label));
+  return errors;
+}
+
+const CORRECTION_FIELD_KEYS = ['quarter', 'beginSec', 'endSec', 'pf', 'pa', 'tov'] as const;
+
+function isCorrectionFieldsShape(value: unknown): boolean {
+  return (
+    isPlainObject(value) &&
+    CORRECTION_FIELD_KEYS.every((key) => {
+      const v = value[key];
+      return typeof v === 'number' && Number.isInteger(v) && v >= 0;
+    })
+  );
+}
+
+/**
+ * PR 7.5a (docs/pr-7.5-plan.md §D.2): `corrections`/`correctedAt` zijn
+ * optioneel — een back-up van vóór PR 7.5a heeft ze niet en blijft laden.
+ * Aanwezig maar fout-getypeerd wordt, net als bij de tombstonevelden,
+ * fail-closed geweigerd. `null` telt bewust als fout-getypeerd: het veld is
+ * optioneel (afwezig), niet nullable.
+ */
+function validateCompletedGameCorrectionFields(
+  game: Record<string, unknown>,
+  label: string,
+): BackupValidationError[] {
+  const errors: BackupValidationError[] = [];
+  if ('correctedAt' in game) {
+    if (typeof game.correctedAt !== 'string' || !isIsoTimestampString(game.correctedAt)) {
+      errors.push({ code: 'gameInvalid', detail: `field:correctedAt:${label}` });
+    }
+  }
+  if ('corrections' in game) {
+    const log = game.corrections;
+    if (!Array.isArray(log) || log.length > MAX_CORRECTIONS) {
+      errors.push({ code: 'gameInvalid', detail: `field:corrections:${label}` });
+      return errors;
+    }
+    log.forEach((entry, index) => {
+      const valid =
+        isPlainObject(entry) &&
+        typeof entry.id === 'string' &&
+        entry.id.length > 0 &&
+        typeof entry.segmentId === 'string' &&
+        typeof entry.at === 'string' &&
+        isIsoTimestampString(entry.at) &&
+        (entry.by === null || (typeof entry.by === 'string' && entry.by.length > 0)) &&
+        isCorrectionFieldsShape(entry.before) &&
+        isCorrectionFieldsShape(entry.after);
+      if (!valid) {
+        errors.push({ code: 'gameInvalid', detail: `field:corrections:${label}:${index}` });
+      }
+    });
+  }
   return errors;
 }
 

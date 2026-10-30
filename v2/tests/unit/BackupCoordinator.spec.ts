@@ -162,6 +162,7 @@ function fakeCompletedGameRepo(initial: CompletedGame[]): CompletedGameRepositor
       current = current.filter((g) => g.id !== id);
       return true;
     },
+    update: () => false,
     replaceAll: (games) => {
       current = games;
       return true;

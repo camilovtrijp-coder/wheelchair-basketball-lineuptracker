@@ -135,6 +135,41 @@ export interface ActiveGame {
 }
 
 /**
+ * PR 7.5a (docs/pr-7.5-plan.md §D.1): de zes velden van een afgeronde
+ * segment die gecorrigeerd mogen worden. `durSec` wordt afgeleid en `lineup`/
+ * `classSum`/`allowed`/`over` blijven buiten scope.
+ */
+export interface CorrectableSegmentFields {
+  quarter: number;
+  beginSec: number;
+  endSec: number;
+  pf: number;
+  pa: number;
+  /** Altijd een geheel getal >= 0 (een ontbrekende `Segment.tov` telt als 0). */
+  tov: number;
+}
+
+/**
+ * PR 7.5a: één item in het append-only correctielog van een `CompletedGame`
+ * (docs/pr-7.5-plan.md §D.2). Bevat bewust alleen segment-ID en getallen,
+ * geen spelersnamen (§H.6).
+ */
+export interface CompletedGameCorrection {
+  /** UUID van deze correctie; maakt een herhaalde upload idempotent. */
+  id: string;
+  segmentId: string;
+  /** ISO-tijdstip van de correctie. */
+  at: string;
+  /** uid van de corrector; `null` bij een lokale correctie zonder account. */
+  by: string | null;
+  before: CorrectableSegmentFields;
+  after: CorrectableSegmentFields;
+}
+
+/** Maximum aantal correctie-items per wedstrijd (docs/pr-7.5-plan.md §D.2). */
+export const MAX_CORRECTIONS = 50;
+
+/**
  * Afgeronde, standaard onveranderlijke wedstrijd (v1: een entry in `games`,
  * index.html `finishGame()`). PR 6.3 kiest bewust de v2-natuurlijke vorm
  * (UUID, organisatie/teamcontext, volledige `GamePlayer`-snapshot) in plaats
@@ -195,4 +230,14 @@ export interface CompletedGame {
   deletedAt: string | null;
   /** PR 7.2c: uid van de gebruiker die de tombstone-patch zette; `null` tot dan. */
   deletedBy: string | null;
+  /**
+   * PR 7.5a (docs/pr-7.5-plan.md §D.2): optioneel, append-only log van
+   * correcties op segmenten (tijd/score/turnovers). Ontbreekt bij een
+   * wedstrijd die nooit gecorrigeerd is, en bij alle data van vóór PR 7.5a.
+   * Maximaal `MAX_CORRECTIONS` items. Een correctie verhoogt ook `revision`
+   * met exact 1.
+   */
+  corrections?: CompletedGameCorrection[];
+  /** PR 7.5a: ISO-tijdstip van de laatste correctie; ontbreekt zonder correcties. */
+  correctedAt?: string;
 }

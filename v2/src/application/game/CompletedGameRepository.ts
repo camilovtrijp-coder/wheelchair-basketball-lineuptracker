@@ -59,6 +59,20 @@ export interface CompletedGameRepository {
    */
   remove(id: string): boolean;
   /**
+   * PR 7.5a (docs/pr-7.5-plan.md §D.3): slaat een gecorrigeerde versie van een
+   * bestaande wedstrijd op (resultaat van `correctSegment()`). GEEN algemene
+   * edit-API: alleen `segments` (uitsluitend quarter/beginSec/endSec/durSec/
+   * pf/pa/tov), `scoreFor`, `scoreAgainst`, `corrections`, `correctedAt` en
+   * `revision` worden overgenomen; `id`, `sourceGameId`, organisatie/team,
+   * spelers en alle overige velden blijven die van de opgeslagen wedstrijd.
+   * `false` (en de bestaande data blijft ongemoeid) als het ID onbekend is,
+   * `game` bij een ander organisatie/team hoort, de opgeslagen wedstrijd
+   * getombstoned is, de segmentstructuur/lineup afwijkt, `revision` niet
+   * hoger is dan de opgeslagen revisie, het correctielog verkleint of
+   * `MAX_CORRECTIONS` overschrijdt, of de opslag faalde.
+   */
+  update(game: CompletedGame): boolean;
+  /**
    * PR 6.6 §F 6.6b: vervangt de VOLLEDIGE historie voor deze organisatie/
    * team in één keer — nodig voor het replace-per-onderdeel-importcontract
    * (plan §D/§E.2). Een herhaalde import van dezelfde back-up levert zo

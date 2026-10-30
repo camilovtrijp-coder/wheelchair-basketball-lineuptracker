@@ -63,6 +63,7 @@ function fakeCompletedGameRepo(): CompletedGameRepository {
     safeList: () => ({ status: 'ok', games }),
     add: () => true,
     remove: () => true,
+    update: () => false,
     replaceAll: () => true,
   };
 }
