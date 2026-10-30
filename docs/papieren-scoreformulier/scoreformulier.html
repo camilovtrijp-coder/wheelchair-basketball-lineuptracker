@@ -22,7 +22,7 @@
   th, td { border: 1px solid #111; padding: 0 1mm; text-align: center; }
   th { background: #eee; font-size: 9px; font-weight: 600; line-height: 1.15; padding: 1mm; }
   td.box { width: 10mm; }
-  .log td { height: 8.6mm; }
+  .log td { height: 10.4mm; }
   .log td.stand { color: #aaa; font-size: 15px; }
   .log tr.tot td { height: 8mm; background: #f4f4f4; font-weight: 600; }
   .log td.n { width: 8mm; font-weight: 600; color: #555; }
@@ -118,12 +118,12 @@
         <tr>
           <th rowspan="2" style="width:8mm">#</th>
           <th rowspan="2" style="width:11mm">Kwart<br><span class="en">Period</span></th>
-          <th rowspan="2" style="width:15mm">Begin<br><span class="en">klok</span></th>
-          <th rowspan="2" style="width:15mm">Eind<br><span class="en">klok</span></th>
+          <th rowspan="2" style="width:24mm">Begin<br><span class="en">klok</span></th>
+          <th rowspan="2" style="width:24mm">Eind<br><span class="en">klok</span></th>
           <th colspan="5">Opstelling – rugnummers <span class="en">/ Lineup – numbers</span></th>
           <th rowspan="2" style="width:27mm">Begin stand<br><span class="en">Start score (we – they)</span></th>
           <th rowspan="2" style="width:27mm">Eind stand<br><span class="en">End score (we – they)</span></th>
-          <th rowspan="2">TO – turf hier<br><span class="en">turnovers – tally here</span></th>
+          <th rowspan="2" style="width:62mm">TO – turf hier<br><span class="en">turnovers – tally here</span></th>
         </tr>
         <tr><th>1</th><th>2</th><th>3</th><th>4</th><th>5</th></tr>
       </thead>
@@ -145,7 +145,7 @@
 
   // Logbladen: 3 pagina's met 16 regels
   var tpl = document.getElementById('logpage');
-  var ROWS = 18, PAGES = 1;
+  var ROWS = 15, PAGES = 1;
   for (var p = 0; p < PAGES; p++) {
     var node = tpl.content.cloneNode(true);
     node.querySelector('.sheetno').textContent = (p + 1) + ' / ' + PAGES;

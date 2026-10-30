@@ -4,7 +4,7 @@ Een afdrukbaar A4-formulier (liggend) om een wedstrijd op papier bij te houden, 
 je het achteraf in de app kunt invoeren. Het formulier volgt het segmentmodel van de app:
 één regel = één segment (vijf spelers, begin- en eindklok, begin- en eindstand, turnovers).
 
-- `scoreformulier.pdf` — direct afdrukbaar: 1 voorblad + 1 logblad (18 segmenten).
+- `scoreformulier.pdf` — direct afdrukbaar: 1 voorblad + 1 logblad (15 segmenten).
 - `scoreformulier.html` — bron; open in een browser en print (liggend, A4, schaal 100%).
   Meer segmenten nodig? Print het logblad opnieuw of pas `PAGES`/`ROWS` in het script aan.
 
