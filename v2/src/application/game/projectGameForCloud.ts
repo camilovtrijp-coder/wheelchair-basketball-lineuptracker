@@ -53,6 +53,7 @@ export function projectSegment(segment: Segment) {
     classSum: segment.classSum,
     allowed: segment.allowed,
     over: segment.over,
+    ...(segment.tov === undefined ? {} : { tov: segment.tov }),
   };
 }
 
@@ -188,6 +189,8 @@ function projectActionPayload(action: GameAction): GameActionPayloadDocument {
       };
     case 'segment-deleted':
       return { type: 'segment-deleted', segmentId: action.segmentId };
+    case 'turnover-delta':
+      return { type: 'turnover-delta', delta: action.delta };
   }
 }
 

@@ -32,6 +32,7 @@ const ACTION_TYPES = [
   'segment-saved',
   'segment-edited',
   'segment-deleted',
+  'turnover-delta',
 ] as const;
 export type GameActionTypeDocument = (typeof ACTION_TYPES)[number];
 
@@ -48,6 +49,8 @@ export interface SegmentDocument {
   classSum: number;
   allowed: number;
   over: boolean;
+  /** Eigen turnovers in dit segment; ontbreekt bij oudere segmenten (telt als 0). */
+  tov?: number;
 }
 
 /** Geëxporteerd voor hergebruik door `completedGame.ts` (PR 7.2a) — dezelfde
@@ -68,7 +71,15 @@ export function assertSegment(field: string, value: unknown): SegmentDocument {
     classSum: assertNumber(TYPE, `${field}.classSum`, value.classSum),
     allowed: assertNumber(TYPE, `${field}.allowed`, value.allowed),
     over: assertBoolean(TYPE, `${field}.over`, value.over),
+    ...(value.tov === undefined ? {} : { tov: assertTurnovers(`${field}.tov`, value.tov) }),
   };
+}
+
+/** Niet-negatief geheel getal (aantal eigen turnovers). */
+function assertTurnovers(field: string, value: unknown): number {
+  const n = assertInteger(TYPE, field, value);
+  if (n < 0) throw new DocumentValidationError(TYPE, field, 'moet ≥ 0 zijn');
+  return n;
 }
 
 /**
@@ -82,7 +93,8 @@ export type GameActionPayloadDocument =
   | { type: 'score-set'; team: ScoreTeamDocument; value: number }
   | { type: 'segment-saved'; segment: SegmentDocument }
   | { type: 'segment-edited'; segmentId: string; segment: SegmentDocument }
-  | { type: 'segment-deleted'; segmentId: string };
+  | { type: 'segment-deleted'; segmentId: string }
+  | { type: 'turnover-delta'; delta: number };
 
 function assertActionPayload(field: string, value: unknown): GameActionPayloadDocument {
   if (!isPlainObject(value)) {
@@ -117,6 +129,11 @@ function assertActionPayload(field: string, value: unknown): GameActionPayloadDo
       return {
         type: actionType,
         segmentId: assertNonEmptyString(TYPE, `${field}.segmentId`, value.segmentId),
+      };
+    case 'turnover-delta':
+      return {
+        type: actionType,
+        delta: assertInteger(TYPE, `${field}.delta`, value.delta),
       };
   }
 }

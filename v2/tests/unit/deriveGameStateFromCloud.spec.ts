@@ -75,6 +75,13 @@ function envelope(action: GameAction, sequence: number): CloudGameActionEnvelope
         occurredAt,
         action: { type: 'segment-deleted', segmentId: action.segmentId },
       };
+    case 'turnover-delta':
+      return {
+        actionId,
+        sequence,
+        occurredAt,
+        action: { type: 'turnover-delta', delta: action.delta },
+      };
   }
 }
 

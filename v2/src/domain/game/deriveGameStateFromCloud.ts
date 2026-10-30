@@ -29,7 +29,8 @@ export type CloudGameActionPayload =
   | { type: 'score-set'; team: 'for' | 'against'; value: number }
   | { type: 'segment-saved'; segment: Segment }
   | { type: 'segment-edited'; segmentId: string; segment: Segment }
-  | { type: 'segment-deleted'; segmentId: string };
+  | { type: 'segment-deleted'; segmentId: string }
+  | { type: 'turnover-delta'; delta: number };
 
 export interface CloudGameActionEnvelope {
   actionId: string;
@@ -57,6 +58,8 @@ function toGameAction(envelope: CloudGameActionEnvelope): GameAction {
       };
     case 'segment-deleted':
       return { type: 'segment-deleted', id, segmentId: action.segmentId, at };
+    case 'turnover-delta':
+      return { type: 'turnover-delta', id, delta: action.delta, at };
   }
 }
 
