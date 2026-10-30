@@ -113,14 +113,17 @@ test.describe('Turnovers in Statistieken en Trends', () => {
     await expect(page.getByTestId('trends-avgmin-1')).toHaveText('7.5');
   });
 
-  test('oude wedstrijden zonder turnovers: geen turnover-onderdelen', async ({ page }) => {
+  test('oude wedstrijden zonder turnovers: totaalregel op 0, geen lineup- of spelerdetails', async ({
+    page,
+  }) => {
     await seed(page, false);
     await page.getByTestId('nav-stats').click();
     await expect(page.getByTestId('stats-combo-1-2-3-4-5')).toBeVisible();
     await expect(page.getByTestId('stats-tov-1-2-3-4-5')).toHaveCount(0);
     await page.getByTestId('nav-trends').click();
     await expect(page.getByTestId('trends-card-1')).toBeVisible();
-    await expect(page.getByTestId('trends-tov-summary')).toHaveCount(0);
+    await expect(page.getByTestId('trends-tov-total')).toHaveText('0');
+    await expect(page.getByTestId('trends-tov-per10')).toHaveText('0.0');
     await expect(page.getByTestId('trends-tov-lineups')).toHaveCount(0);
     await expect(page.getByTestId('trends-tov-1')).toHaveCount(0);
   });
