@@ -1,7 +1,8 @@
 # Voorbereidingsplan PR 7.5 — correctie van een afgeronde wedstrijd
 
-Status: **voorstel — wacht op goedkeuring van de eigenaar**. Er is nog geen
-code gewijzigd. Dit plan wijkt bewust af van "afgeronde wedstrijd standaard
+Status: **goedgekeurd door de eigenaar op 2026-10-30 (alle aanbevelingen uit §H
+zijn overgenomen, zie §H)**. Implementatie loopt per sub-PR op een eigen
+branch. Dit plan wijkt bewust af van "afgeronde wedstrijd standaard
 onveranderlijk" (`docs/IMPLEMENTATION_PLAN.md` §11 PR 6.3, §12 PR 7.1/7.2) en
 vraagt daarom een expliciet besluit (zie §H) voordat 7.5a start.
 
@@ -200,7 +201,14 @@ Verwacht: S1 duur 300 s; eindscore 17 – 10 (+3 voor); turnovers totaal 4
 berekeningen zelf (`computeLineupStats` e.d.) worden niet gewijzigd, alleen
 de invoer.
 
-## H. Besluiten die de eigenaar moet nemen vóór 7.5a
+## H. Besluiten (genomen door de eigenaar, 2026-10-30)
+
+Alle aanbevelingen hieronder zijn goedgekeurd: (1) uitzondering akkoord;
+(2) owner/admin/coach; (3) in-place + begrensd correctielog;
+(4) `clockDown` afleiden uit het bestaand segment; (5) lineup buiten scope;
+(6) bewaarbeleid naar PR 8.3.
+
+Oorspronkelijke vraagstelling:
 
 1. **Beleidswijziging:** akkoord dat "afgeronde wedstrijd onveranderlijk" een
    gecontroleerde uitzondering krijgt (alleen tijd/score/turnovers, met

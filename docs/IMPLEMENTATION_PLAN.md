@@ -763,11 +763,11 @@ sandbox worden uitgevoerd en staat expliciet open voor fase-7-acceptatie.
 - rollback en lokale back-up blijven beschikbaar;
 - cloudmigratie is opt-in en wist de bron niet automatisch.
 
-### PR 7.5 — correctie van een afgeronde wedstrijd (voorstel)
+### PR 7.5 — correctie van een afgeronde wedstrijd
 
 Voorbereidingsplan: [`docs/pr-7.5-plan.md`](pr-7.5-plan.md). **Status:
-voorstel, wacht op eigenaarsbesluit** (uitzondering op "afgeronde wedstrijd
-standaard onveranderlijk"); nog geen implementatie.
+goedgekeurd (2026-10-30)** als uitzondering op "afgeronde wedstrijd standaard
+onveranderlijk"; implementatie per sub-PR op eigen branch.
 
 - één segment corrigeren in Historie: tijd, score en turnovers;
 - bewerken in-place met begrensd, append-only correctielog en revisiecontrole;
