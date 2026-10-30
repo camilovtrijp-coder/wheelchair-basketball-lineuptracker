@@ -4,6 +4,12 @@ import { buildMinutesBarChart, buildPlusMinusLineChart } from '../../domain/tren
 import type { BarChartModel, LineChartModel } from '../../domain/trends/chartModels';
 import type { RosterPlayer } from '../../domain/roster/types';
 import type { PlayerTrend, TrendsDataOrigin, TrendsFilter } from '../../domain/trends/types';
+import {
+  computeLineupTurnoverRanking,
+  computeTurnoverSummary,
+  type LineupTurnoverRanking,
+  type TurnoverSummary,
+} from '../../domain/trends/turnoverSummary';
 
 /**
  * PR 6.5 §D 6.5b — kleine usecase die de trendviewmodels bouwt uit de
@@ -19,6 +25,10 @@ export interface TrendsViewModel {
   players: TrendPlayerViewModel[];
   dataOrigin: TrendsDataOrigin;
   partialSegments: number;
+  /** Teamtotaal aan turnovers over de gefilterde wedstrijden (zelfde filter als de spelers). */
+  turnoverSummary: TurnoverSummary;
+  /** Opstellingen van vijf, laagste turnover-snelheid eerst. */
+  lineupRanking: LineupTurnoverRanking;
 }
 
 export function buildTrendViewModels(
@@ -40,5 +50,11 @@ export function buildTrendViewModels(
       result.sharedMaxMinutes,
     ),
   }));
-  return { players, dataOrigin: result.dataOrigin, partialSegments: result.partialSegments };
+  return {
+    players,
+    dataOrigin: result.dataOrigin,
+    partialSegments: result.partialSegments,
+    turnoverSummary: computeTurnoverSummary(scope.games, filter.gameIds),
+    lineupRanking: computeLineupTurnoverRanking(scope.games, filter.gameIds),
+  };
 }

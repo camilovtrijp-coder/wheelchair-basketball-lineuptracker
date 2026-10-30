@@ -911,6 +911,8 @@ describe('domain/stats — type-niveau sanity (compileert alleen al als de types
       offSec: 0,
       offPF: 0,
       offPA: 0,
+      onTov: 0,
+      offTov: 0,
     };
     expect(c.rosterIds).toEqual([1, 2]);
   });

@@ -53,6 +53,10 @@ export function projectSegment(segment: Segment) {
     classSum: segment.classSum,
     allowed: segment.allowed,
     over: segment.over,
+    // Alleen meesturen bij echte turnovers (≥ 1): een segment zonder turnovers ziet er
+    // voor de cloud exact zo uit als vóór deze wijziging, zodat het ook werkt met
+    // Firestore-regels die `tov` nog niet kennen (zie docs/turnovers-rules-update.md).
+    ...(segment.tov !== undefined && segment.tov > 0 ? { tov: segment.tov } : {}),
   };
 }
 
@@ -188,6 +192,8 @@ function projectActionPayload(action: GameAction): GameActionPayloadDocument {
       };
     case 'segment-deleted':
       return { type: 'segment-deleted', segmentId: action.segmentId };
+    case 'turnover-delta':
+      return { type: 'turnover-delta', delta: action.delta };
   }
 }
 

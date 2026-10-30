@@ -101,6 +101,13 @@ export interface LineupCombinationStats {
   offSec: number;
   offPF: number;
   offPA: number;
+  /**
+   * Eigen turnovers in de segmenten waarin de combinatie op (`onTov`) of niet
+   * op (`offTov`) het veld stond — dezelfde ON/OFF-indeling als de punten.
+   * Segmenten zonder `tov` (oude data) tellen als 0.
+   */
+  onTov: number;
+  offTov: number;
 }
 
 export interface LineupStatsResult {

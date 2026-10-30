@@ -108,6 +108,9 @@ export interface DerivedGameHistory {
   scoreAgainst: number;
   segStartFor: number;
   segStartAgainst: number;
+  /** Lopend totaal aan eigen turnovers; `turnovers - segStartTurnovers` is het open segment. */
+  turnovers: number;
+  segStartTurnovers: number;
   segments: Segment[];
 }
 
@@ -119,8 +122,15 @@ export const EMPTY_HISTORY: DerivedGameHistory = {
   scoreAgainst: 0,
   segStartFor: 0,
   segStartAgainst: 0,
+  turnovers: 0,
+  segStartTurnovers: 0,
   segments: [],
 };
+
+/** Turnovers van een segment; ontbrekend veld (oude data) telt als 0. */
+export function segmentTurnovers(segment: Pick<Segment, 'tov'>): number {
+  return typeof segment.tov === 'number' && segment.tov > 0 ? Math.floor(segment.tov) : 0;
+}
 
 /**
  * v1: `recalcRunningScore()`. Herberekent de lopende score na een
@@ -131,14 +141,18 @@ export const EMPTY_HISTORY: DerivedGameHistory = {
 function recalcRunningScore(state: DerivedGameHistory): DerivedGameHistory {
   const liveFor = state.scoreFor - state.segStartFor;
   const liveAgainst = state.scoreAgainst - state.segStartAgainst;
+  const liveTurnovers = state.turnovers - state.segStartTurnovers;
   const sumFor = state.segments.reduce((a, s) => a + s.pf, 0);
   const sumAgainst = state.segments.reduce((a, s) => a + s.pa, 0);
+  const sumTurnovers = state.segments.reduce((a, s) => a + segmentTurnovers(s), 0);
   return {
     ...state,
     segStartFor: sumFor,
     segStartAgainst: sumAgainst,
+    segStartTurnovers: sumTurnovers,
     scoreFor: sumFor + liveFor,
     scoreAgainst: sumAgainst + liveAgainst,
+    turnovers: sumTurnovers + liveTurnovers,
   };
 }
 
@@ -164,6 +178,13 @@ export function applyAction(state: DerivedGameHistory, action: GameAction): Deri
         segments: [...state.segments, action.segment],
         segStartFor: state.scoreFor,
         segStartAgainst: state.scoreAgainst,
+        segStartTurnovers: state.turnovers,
+      };
+    case 'turnover-delta':
+      return {
+        ...state,
+        // Het open segment kan niet onder 0 komen (net als de segmentscore).
+        turnovers: Math.max(state.segStartTurnovers, state.turnovers + action.delta),
       };
     case 'segment-edited':
       return recalcRunningScore({
@@ -199,6 +220,10 @@ export function scoreDeltaAction(team: 'for' | 'against', delta: number): GameAc
   return { type: 'score-delta', id: newId(), team, delta, at: nowIso() };
 }
 
+export function turnoverDeltaAction(delta: number): GameAction {
+  return { type: 'turnover-delta', id: newId(), delta, at: nowIso() };
+}
+
 export function scoreSetAction(team: 'for' | 'against', value: number): GameAction {
   return { type: 'score-set', id: newId(), team, value: clampScore(value), at: nowIso() };
 }
@@ -218,6 +243,7 @@ export function buildSegment(
   pf: number,
   pa: number,
   config: ClassificationConfig,
+  tov = 0,
 ): Segment {
   const { sum, allowed, over } = isOverLimit(game, lineup, config);
   return {
@@ -232,6 +258,7 @@ export function buildSegment(
     classSum: sum,
     allowed,
     over,
+    tov: Math.max(0, Math.floor(tov)),
   };
 }
 

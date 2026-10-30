@@ -604,6 +604,63 @@ describe('documentcontracten: round-trip via toFirestore/fromFirestore', () => {
     ).toEqual(doc);
   });
 
+  const turnoverEnvelope = (action: GameActionEnvelopeDocument['action']): GameActionEnvelopeDocument => ({
+    organizationId: 'org-1',
+    teamId: 'team-1',
+    gameId: 'game-1',
+    actionId: 'action-t',
+    authorUid: 'uid-alice',
+    deviceId: 'device-1',
+    writerEpoch: 1,
+    sequence: 3,
+    occurredAt: '2026-01-01T00:14:00.000Z',
+    schemaVersion: 1,
+    action,
+  });
+  const roundTrip = (doc: GameActionEnvelopeDocument) =>
+    gameActionConverter.fromFirestore!(
+      mockSnapshot(
+        gameActionConverter.toFirestore(doc) as Record<string, unknown>,
+        gameActionPath('action-t'),
+      ),
+      {},
+    );
+  const segmentWith = (extra: Record<string, unknown>) => ({
+    id: 'seg-1',
+    quarter: 1,
+    beginSec: 600,
+    endSec: 480,
+    durSec: 120,
+    lineup: ['gp-1', 'gp-2', 'gp-3', 'gp-4', 'gp-5'],
+    pf: 4,
+    pa: 2,
+    classSum: 14.0,
+    allowed: 14.5,
+    over: false,
+    ...extra,
+  });
+
+  it('gameAction: turnover-delta (+1 en −1) doet een round-trip', () => {
+    const plus = turnoverEnvelope({ type: 'turnover-delta', delta: 1 });
+    const minus = turnoverEnvelope({ type: 'turnover-delta', delta: -1 });
+    expect(roundTrip(plus)).toEqual(plus);
+    expect(roundTrip(minus)).toEqual(minus);
+  });
+
+  it('gameAction: segment-saved MET tov doet een round-trip en behoudt tov', () => {
+    const doc = turnoverEnvelope({ type: 'segment-saved', segment: segmentWith({ tov: 3 }) });
+    const out = roundTrip(doc);
+    expect(out).toEqual(doc);
+    expect(out.action.type === 'segment-saved' && out.action.segment.tov).toBe(3);
+  });
+
+  it('gameAction: segment-saved ZONDER tov (oud segment) blijft leesbaar en krijgt geen tov-sleutel', () => {
+    const doc = turnoverEnvelope({ type: 'segment-saved', segment: segmentWith({}) });
+    const out = roundTrip(doc);
+    expect(out).toEqual(doc);
+    expect(out.action.type === 'segment-saved' && 'tov' in out.action.segment).toBe(false);
+  });
+
   it('gameAction: segment-deleted (PR 7.1a)', () => {
     const doc: GameActionEnvelopeDocument = {
       organizationId: 'org-1',
@@ -1226,6 +1283,39 @@ describe('documentcontracten: weigeren malformed serverdata', () => {
           },
           gameActionPath('action-1'),
         ),
+        {},
+      ),
+    ).toThrow(DocumentValidationError);
+  });
+
+  it.each([
+    ['negatief', -1],
+    ['niet-geheel', 1.5],
+    ['string', '3'],
+    ['null', null],
+  ])('gameAction: segment-saved met tov %s wordt geweigerd', (_label, tov) => {
+    expect(() =>
+      gameActionConverter.fromFirestore!(
+        mockSnapshot(
+          {
+            ...validGameAction,
+            action: { type: 'segment-saved', segment: { ...validSegment, tov } },
+          },
+          gameActionPath('action-1'),
+        ),
+        {},
+      ),
+    ).toThrow(DocumentValidationError);
+  });
+
+  it.each([
+    ['ontbrekend', { type: 'turnover-delta' }],
+    ['niet-geheel', { type: 'turnover-delta', delta: 0.5 }],
+    ['string', { type: 'turnover-delta', delta: '1' }],
+  ])('gameAction: turnover-delta met delta %s wordt geweigerd', (_label, action) => {
+    expect(() =>
+      gameActionConverter.fromFirestore!(
+        mockSnapshot({ ...validGameAction, action }, gameActionPath('action-1')),
         {},
       ),
     ).toThrow(DocumentValidationError);

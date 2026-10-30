@@ -47,6 +47,12 @@ export interface Segment {
   classSum: number;
   allowed: number;
   over: boolean;
+  /**
+   * Turnovers van het EIGEN team tijdens dit segment. Optioneel: oudere
+   * segmenten, back-ups en cloudwedstrijden hebben dit veld niet en tellen als
+   * 0 (gebruik `segmentTurnovers()`). Altijd een niet-negatief geheel getal.
+   */
+  tov?: number;
 }
 
 /**
@@ -80,7 +86,9 @@ export type GameAction =
   | { type: 'score-set'; id: string; team: 'for' | 'against'; value: number; at: string }
   | { type: 'segment-saved'; id: string; segment: Segment; at: string }
   | { type: 'segment-edited'; id: string; segmentId: string; segment: Segment; at: string }
-  | { type: 'segment-deleted'; id: string; segmentId: string; at: string };
+  | { type: 'segment-deleted'; id: string; segmentId: string; at: string }
+  /** Turnover(s) van het eigen team (+1 tikken, −1 corrigeren); lopend segmenttotaal blijft ≥ 0. */
+  | { type: 'turnover-delta'; id: string; delta: number; at: string };
 
 /**
  * Actieve (nog niet afgeronde) wedstrijd. `phase: 'setup'` is PR 6.1-scope;

@@ -11,6 +11,8 @@
   --lt-color-primary-fg: #ffffff;
   --lt-color-opponent: #f97316;
   --lt-color-opponent-fg: #000000;
+  --lt-color-turnover: #fb7185;
+  --lt-color-turnover-fg: #2a050c;
   --lt-color-border: #273244;
   --lt-color-surface: #121827;
   --lt-color-surface-alt: #1e293b;
@@ -68,6 +70,8 @@
   --lt-color-primary-fg: #ffffff;
   --lt-color-opponent: #f97316;
   --lt-color-opponent-fg: #000000;
+  --lt-color-turnover: #be123c;
+  --lt-color-turnover-fg: #ffffff;
   --lt-color-border: #cbd5e1;
   --lt-color-surface: #ffffff;
   --lt-color-surface-alt: #e2e8f0;

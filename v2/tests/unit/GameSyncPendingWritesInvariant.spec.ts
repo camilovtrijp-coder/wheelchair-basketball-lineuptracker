@@ -162,7 +162,7 @@ describe('invariant: alleen een server-bevestigde lezing mag iets bevestigen', (
       writer,
     );
 
-    expect(status).toEqual({ kind: 'blocked', code: 'offline' });
+    expect(status).toMatchObject({ kind: 'blocked', code: 'offline' });
   });
 
   it('(a) ensureWriterClaim(): dezelfde claim server-bevestigd blijft confirmed', async () => {

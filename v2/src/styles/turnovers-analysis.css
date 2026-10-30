@@ -1,0 +1,147 @@
+/* Turnovers in Statistieken (pillen) en Trends (tegels, totaalregel, lineup-kaart).
+   Alleen tokens uit tokens.css; "goed" = minder turnovers (success), "slecht" =
+   meer (danger). De getallen staan altijd zichtbaar: kleur is nooit het enige signaal. */
+
+/* ---- Statistieken: TO met/zonder hen ---- */
+.stats-tov {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--lt-space-2);
+  margin-top: var(--lt-space-3);
+  text-align: center;
+}
+
+.tov-pill {
+  display: block;
+  margin-top: var(--lt-space-1);
+  padding: 0.55rem 0.5rem;
+  border-radius: 999px;
+  border: 1px solid currentColor;
+  font-weight: 800;
+}
+
+.tov-pill--good {
+  color: var(--lt-color-success);
+  background: color-mix(in srgb, var(--lt-color-success) 14%, var(--lt-color-surface));
+}
+
+.tov-pill--bad {
+  color: var(--lt-color-danger);
+  background: color-mix(in srgb, var(--lt-color-danger) 14%, var(--lt-color-surface));
+}
+
+.tov-pill--flat {
+  color: var(--lt-color-muted);
+  background: var(--lt-color-surface-alt);
+  border-color: var(--lt-color-border);
+}
+
+/* ---- Trends: tegels per speler ---- */
+.trends-tiles {
+  display: flex;
+  gap: var(--lt-space-2);
+  margin: var(--lt-space-2) 0 var(--lt-space-3);
+}
+
+.trends-tile {
+  flex: 1;
+  min-width: 0;
+  padding: 0.5rem 0.25rem;
+  text-align: center;
+  border-radius: var(--lt-radius-md);
+  border: 1px solid var(--lt-color-border);
+  background: var(--lt-color-bg);
+}
+
+.trends-tile__k {
+  font-size: 0.7rem;
+  letter-spacing: 0.04em;
+  color: var(--lt-color-muted);
+}
+
+.trends-tile__n {
+  font-size: 1.5rem;
+  font-weight: 800;
+  line-height: 1.2;
+}
+
+.trends-tile__sub {
+  font-size: 0.7rem;
+  color: var(--lt-color-muted);
+}
+
+.trends-tile--tov .trends-tile__n {
+  color: var(--lt-color-danger);
+}
+
+/* ---- Trends: totaalregel ---- */
+.trends-tov-summary {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--lt-space-2);
+  margin: var(--lt-space-3) 0;
+  padding: 0.7rem 0.9rem;
+  border-radius: var(--lt-radius-md);
+  border: 1px solid color-mix(in srgb, var(--lt-color-danger) 45%, var(--lt-color-surface));
+  background: color-mix(in srgb, var(--lt-color-danger) 12%, var(--lt-color-surface));
+  color: var(--lt-color-fg);
+  font-size: var(--lt-font-size-sm);
+}
+
+.trends-tov-summary b {
+  color: var(--lt-color-danger);
+  font-size: var(--lt-font-size-lg);
+}
+
+.trends-tov-summary__right {
+  text-align: right;
+}
+
+/* ---- Trends: lineup-ranglijst ---- */
+.trends-tov-lineups {
+  padding: var(--lt-space-4);
+  margin-bottom: var(--lt-space-3);
+}
+
+.trends-tov-lineups__title {
+  font-weight: 800;
+}
+
+.trends-tov-row {
+  margin: 0.6rem 0;
+}
+
+.trends-tov-row__top {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--lt-space-2);
+  font-size: var(--lt-font-size-sm);
+}
+
+.trends-tov-row__v--good {
+  color: var(--lt-color-success);
+}
+
+.trends-tov-row__v--bad {
+  color: var(--lt-color-danger);
+}
+
+.trends-tov-bar {
+  height: 0.55rem;
+  margin-top: 0.25rem;
+  border-radius: 999px;
+  background: var(--lt-color-surface-alt);
+}
+
+.trends-tov-bar__fill {
+  height: 100%;
+  border-radius: 999px;
+}
+
+.trends-tov-bar__fill--good {
+  background: var(--lt-color-success);
+}
+
+.trends-tov-bar__fill--bad {
+  background: var(--lt-color-danger);
+}

@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 import type { ActiveGame, GameAction, GamePlayer, Segment } from '../../src/domain/game/types';
 import { MAX_CLOCK_SECONDS } from '../../src/domain/game/types';
 import {
+  projectSegment,
   projectGameActions,
   projectGameSnapshot,
   projectGameSnapshotPatch,
@@ -319,5 +320,30 @@ describe('documentgrootte- en read/write-budget (PR 7.1a)', () => {
     // want elk action-document wordt precies één keer gelezen.
     const expectedMaxReadsOnSecondDevice = 1 + actionCount;
     expect(expectedMaxReadsOnSecondDevice).toBe(13);
+  });
+});
+
+describe('projectSegment — turnovers (tov) naar de cloud', () => {
+  const base: Segment = {
+    id: 'seg-1',
+    quarter: 1,
+    beginSec: 600,
+    endSec: 300,
+    durSec: 300,
+    lineup: ['a', 'b', 'c', 'd', 'e'],
+    pf: 4,
+    pa: 2,
+    classSum: 0,
+    allowed: 0,
+    over: false,
+  };
+
+  it('zonder turnovers (ontbrekend of 0) staat er GEEN tov in de cloudvorm — compatibel met oudere regels', () => {
+    expect('tov' in projectSegment(base)).toBe(false);
+    expect('tov' in projectSegment({ ...base, tov: 0 })).toBe(false);
+  });
+
+  it('met turnovers (≥ 1) gaat tov mee', () => {
+    expect(projectSegment({ ...base, tov: 3 }).tov).toBe(3);
   });
 });

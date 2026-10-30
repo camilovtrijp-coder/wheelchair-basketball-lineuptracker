@@ -1,7 +1,13 @@
 import { useMemo, useState } from 'preact/hooks';
 import type { CompletedGameRepository } from '../../application/game/CompletedGameRepository';
 import { buildAnalysisScope } from '../../application/stats/buildAnalysisScope';
-import { computeLineupStats } from '../../domain/stats/computeLineupStats';
+import {
+  compareTurnoverRates,
+  computeLineupStats,
+  offTurnoverShownValue,
+  onTurnoverShownValue,
+  type TurnoverComparison,
+} from '../../domain/stats/computeLineupStats';
 import { fmtSeconds, fmtPlusMinus, pmClass } from '../../domain/stats/format';
 import type { ActiveGame } from '../../domain/game/types';
 import type { RosterPlayer } from '../../domain/roster/types';
@@ -79,6 +85,12 @@ export function StatsPanel({
   );
 
   const result = useMemo(() => computeLineupStats(scope.games, filter), [scope.games, filter]);
+  // Turnover-pillen alleen tonen als er turnovers zijn bijgehouden (een segment
+  // met het veld `tov`); wedstrijden van vóór de teller tonen geen misleidende nullen.
+  const showTurnovers = useMemo(
+    () => scope.games.some((g) => g.segments.some((sg) => typeof sg.tov === 'number')),
+    [scope.games],
+  );
 
   const { status } = scope.historyRead;
   const showError = status === 'error';
@@ -182,6 +194,7 @@ export function StatsPanel({
               games={scope.games}
               currentRoster={roster}
               lang={lang}
+              showTurnovers={showTurnovers}
             />
           ))}
         </div>
@@ -244,12 +257,14 @@ function ComboCard({
   games,
   currentRoster,
   lang,
+  showTurnovers,
 }: {
   combo: LineupCombinationStats;
   per10: boolean;
   games: AnalysisGame[];
   currentRoster: RosterPlayer[];
   lang: Lang;
+  showTurnovers: boolean;
 }) {
   const onPMRaw = combo.onPF - combo.onPA;
   const offPMRaw = combo.offPF - combo.offPA;
@@ -279,6 +294,60 @@ function ComboCard({
           tone={pmClass(offShown)}
           badge
         />
+      </div>
+      {showTurnovers ? <TurnoverPills combo={combo} per10={per10} lang={lang} /> : null}
+    </div>
+  );
+}
+
+function fmtTurnovers(value: number | null, per10: boolean): string {
+  if (value === null) return '–';
+  return per10 ? `${(Math.round(value * 10) / 10).toFixed(1)}/10′` : String(value);
+}
+
+/**
+ * "TO met hen" / "TO zonder hen": eigen turnovers terwijl de combinatie wel/niet
+ * op het veld stond. Met de schakelaar "Per 10 min" aan staat het genormaliseerde
+ * getal, anders het totaal. De kleur (minder is beter) volgt altijd uit de
+ * genormaliseerde vergelijking, want de speeltijden verschillen; het getal blijft
+ * altijd zichtbaar, dus kleur is nooit het enige signaal.
+ */
+function TurnoverPills({
+  combo,
+  per10,
+  lang,
+}: {
+  combo: LineupCombinationStats;
+  per10: boolean;
+  lang: Lang;
+}) {
+  const key = combo.rosterIds.join('-');
+  const comparison: TurnoverComparison = compareTurnoverRates(combo);
+  const onTone =
+    comparison === 'with-better' ? 'good' : comparison === 'without-better' ? 'bad' : 'flat';
+  const offTone =
+    comparison === 'without-better' ? 'good' : comparison === 'with-better' ? 'bad' : 'flat';
+  return (
+    <div className="stats-tov" data-testid={`stats-tov-${key}`}>
+      <div>
+        <div className="mut2">{t(lang, 'statsTovWith')}</div>
+        <span
+          className={`tov-pill tov-pill--${onTone}`}
+          data-testid={`stats-tov-on-${key}`}
+          data-tone={onTone}
+        >
+          {fmtTurnovers(onTurnoverShownValue(combo, per10), per10)}
+        </span>
+      </div>
+      <div>
+        <div className="mut2">{t(lang, 'statsTovWithout')}</div>
+        <span
+          className={`tov-pill tov-pill--${offTone}`}
+          data-testid={`stats-tov-off-${key}`}
+          data-tone={offTone}
+        >
+          {fmtTurnovers(offTurnoverShownValue(combo, per10), per10)}
+        </span>
       </div>
     </div>
   );

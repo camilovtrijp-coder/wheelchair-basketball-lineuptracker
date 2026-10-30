@@ -1,3 +1,4 @@
+import { segmentTurnovers } from '../game/tracking';
 import type { AnalysisGame } from '../stats/types';
 import type { CompletedGamesReadStatus } from '../stats/types';
 import type { RosterPlayer } from '../roster/types';
@@ -32,12 +33,18 @@ export function computePlayerTrends(
   let partialSegments = 0;
   const normalizedByGame = new Map<
     string,
-    { rosterIds: Set<number>; sec: Map<number, number>; pm: Map<number, number> }
+    {
+      rosterIds: Set<number>;
+      sec: Map<number, number>;
+      pm: Map<number, number>;
+      tov: Map<number, number>;
+    }
   >();
   for (const game of allowedGames) {
     const playersById = new Map(game.players.map((p) => [p.id, p]));
     const sec = new Map<number, number>();
     const pm = new Map<number, number>();
+    const tov = new Map<number, number>();
     const onCourtRosterIds = new Set<number>();
     for (const segment of game.segments) {
       let hasUnknown = false;
@@ -58,9 +65,10 @@ export function computePlayerTrends(
         onCourtRosterIds.add(rosterId);
         sec.set(rosterId, (sec.get(rosterId) ?? 0) + segment.durSec);
         pm.set(rosterId, (pm.get(rosterId) ?? 0) + (segment.pf - segment.pa));
+        tov.set(rosterId, (tov.get(rosterId) ?? 0) + segmentTurnovers(segment));
       }
     }
-    normalizedByGame.set(game.id, { rosterIds: onCourtRosterIds, sec, pm });
+    normalizedByGame.set(game.id, { rosterIds: onCourtRosterIds, sec, pm, tov });
   }
 
   // Chronologisch oud -> nieuw voor afgeronde wedstrijden, actuele wedstrijd
@@ -84,6 +92,7 @@ export function computePlayerTrends(
         sec: normalized.sec.get(rosterId) ?? 0,
         pm: normalized.pm.get(rosterId) ?? 0,
         provisional: game.isCurrent,
+        tov: normalized.tov.get(rosterId) ?? 0,
       });
     }
     if (points.length === 0) continue;
@@ -93,6 +102,11 @@ export function computePlayerTrends(
     const avgPlusMinus =
       points.reduce((a, pt) => a + pointPlusMinusValue(pt, filter.per10), 0) / points.length;
 
+    const totalPlusMinus = points.reduce((a, pt) => a + pt.pm, 0);
+    const totalTurnovers = points.reduce((a, pt) => a + pt.tov, 0);
+    const avgTurnovers =
+      points.reduce((a, pt) => a + pointTurnoversValue(pt, filter.per10), 0) / points.length;
+
     players.push({
       rosterId,
       nr: rosterPlayer.nr,
@@ -100,6 +114,9 @@ export function computePlayerTrends(
       points,
       avgMinutes,
       avgPlusMinus,
+      totalPlusMinus,
+      totalTurnovers,
+      avgTurnovers,
     });
   }
 
@@ -127,6 +144,12 @@ export function computePlayerTrends(
 export function pointPlusMinusValue(pt: TrendPoint, per10: boolean): number {
   if (per10 && pt.sec > 0) return (pt.pm * 600) / pt.sec;
   return pt.pm;
+}
+
+/** Idem voor turnovers: bij `per10` en `sec > 0` eerst per punt normaliseren (`tov * 600 / sec`). */
+export function pointTurnoversValue(pt: TrendPoint, per10: boolean): number {
+  if (per10 && pt.sec > 0) return (pt.tov * 600) / pt.sec;
+  return pt.tov;
 }
 
 /**

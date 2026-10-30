@@ -66,11 +66,51 @@ describe('segmentsCsvFor (Voorbeeld 1, geen classificatie)', () => {
     const csv = segmentsCsvFor(segments1, players1, false);
     expect(csv).toBe(
       [
-        'Opstelling,Kwart,Begin,Eind,Speeltijd,Seconden,Punten voor,Punten tegen,Plusminus,Lineup code',
-        `${LINEUP_LABEL},1,10:00,7:00,3:00,180,8,6,2,1-2-3-4-5`,
-        `${LINEUP_LABEL},1,7:00,4:00,3:00,180,6,8,-2,1-2-3-4-5`,
-        `${LINEUP_LABEL},2,10:00,6:00,4:00,240,10,4,6,1-2-3-4-5`,
+        'Opstelling,Kwart,Begin,Eind,Speeltijd,Seconden,Punten voor,Punten tegen,Plusminus,Lineup code,Turnovers',
+        `${LINEUP_LABEL},1,10:00,7:00,3:00,180,8,6,2,1-2-3-4-5,0`,
+        `${LINEUP_LABEL},1,7:00,4:00,3:00,180,6,8,-2,1-2-3-4-5,0`,
+        `${LINEUP_LABEL},2,10:00,6:00,4:00,240,10,4,6,1-2-3-4-5,0`,
       ].join('\n'),
+    );
+  });
+});
+
+describe('segmentsCsvFor — Turnovers-kolom (achteraan)', () => {
+  const withTov = [segment({ id: 's1', pf: 8, pa: 6, tov: 3 })];
+  const oldSegment = [segment({ id: 's2', pf: 8, pa: 6 })];
+
+  it('nieuw segment met tov 3 eindigt op ,3 (zonder klassekolommen)', () => {
+    const [head, row] = segmentsCsvFor(withTov, players1, false).split('\n');
+    expect(head?.endsWith(',Lineup code,Turnovers')).toBe(true);
+    expect(row).toBe(`${LINEUP_LABEL},1,10:00,7:00,3:00,180,8,6,2,1-2-3-4-5,3`);
+  });
+
+  it('oud segment zonder tov eindigt op ,0', () => {
+    const row = segmentsCsvFor(oldSegment, players1, false).split('\n')[1];
+    expect(row?.endsWith(',1-2-3-4-5,0')).toBe(true);
+  });
+
+  it('ook met klassekolommen staat Turnovers helemaal achteraan', () => {
+    const csv = segmentsCsvFor(
+      [segment({ pf: 5, pa: 3, classSum: 14.0, allowed: 17.0, tov: 2 })],
+      players1,
+      true,
+    );
+    const [head, row] = csv.split('\n');
+    expect(head?.endsWith(',Binnen klassegrens,Lineup code,Turnovers')).toBe(true);
+    expect(row?.endsWith(',14.0,17.0,OK,1-2-3-4-5,2')).toBe(true);
+  });
+
+  it('ongeldige of negatieve tov telt als 0 en de bestaande kolommen blijven gelijk', () => {
+    const row = segmentsCsvFor([segment({ tov: -4 })], players1, false).split('\n')[1];
+    expect(row).toBe(`${LINEUP_LABEL},1,10:00,7:00,3:00,180,0,0,0,1-2-3-4-5,0`);
+  });
+
+  it('de gecombineerde CSV neemt de kolom mee; de minutes-sectie is ongewijzigd', () => {
+    const csv = combinedCsvFor(withTov, players1, false);
+    expect(csv).toContain(',Lineup code,Turnovers\n');
+    expect(csv).toContain(
+      '\n\nSpeeltijd per speler\nSpeler,Nummer,Speeltijd,Seconden,Aantal beurten',
     );
   });
 });
@@ -122,9 +162,9 @@ describe('CSV met classificatiesysteem (Voorbeeld 2)', () => {
     const [head, row] = csv.split('\n');
     expect(head).toBe(
       'Opstelling,Kwart,Begin,Eind,Speeltijd,Seconden,Punten voor,Punten tegen,Plusminus,' +
-        'Som classificatie,Toegestane grens,Binnen klassegrens,Lineup code',
+        'Som classificatie,Toegestane grens,Binnen klassegrens,Lineup code,Turnovers',
     );
-    expect(row).toBe(`${LINEUP_LABEL},1,10:00,7:00,3:00,180,5,3,2,14.0,17.0,OK,1-2-3-4-5`);
+    expect(row).toBe(`${LINEUP_LABEL},1,10:00,7:00,3:00,180,5,3,2,14.0,17.0,OK,1-2-3-4-5,0`);
   });
 
   it("toont 'Te hoog' zodra een segment de classificatiegrens overschrijdt", () => {

@@ -79,6 +79,8 @@ function history(overrides: Partial<DerivedGameHistory> = {}): DerivedGameHistor
     scoreAgainst: 0,
     segStartFor: 0,
     segStartAgainst: 0,
+    turnovers: 0,
+    segStartTurnovers: 0,
     segments: [],
     ...overrides,
   };

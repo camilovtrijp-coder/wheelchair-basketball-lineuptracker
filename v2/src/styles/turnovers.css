@@ -1,0 +1,93 @@
+/* Turnovers: rij in de scorekaart, segmentregel, pil en totaal in Historie.
+   Kleur komt uit --lt-color-turnover(-fg); er staat altijd ook een getal. */
+.score-row--turnover {
+  --score-color: var(--lt-color-turnover);
+  --score-fg: var(--lt-color-turnover-fg);
+}
+
+.score-row--turnover .score-row__name {
+  border-left: 4px solid var(--score-color);
+  padding-left: var(--lt-space-2);
+}
+
+.turnover-row__controls {
+  display: flex;
+  gap: var(--lt-space-2);
+  align-items: stretch;
+}
+
+.turnover-count {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 5.5rem;
+  min-height: 3.5rem;
+  font-size: 2rem;
+  font-weight: 800;
+  line-height: 1;
+  border: 2px solid var(--score-color);
+  border-radius: var(--lt-radius-lg);
+  background: color-mix(in srgb, var(--score-color) 22%, var(--lt-color-bg));
+  color: var(--lt-color-fg);
+}
+
+.turnover-btn {
+  flex: 1;
+  min-height: 3.5rem;
+  font-size: var(--lt-font-size-lg);
+  font-weight: 800;
+  border: 0;
+  border-radius: var(--lt-radius-lg);
+  background: var(--score-color);
+  color: var(--score-fg);
+  box-shadow: 0 0 14px -3px var(--score-color);
+}
+
+.turnover-btn:disabled {
+  opacity: 0.5;
+  box-shadow: none;
+}
+
+.turnover-minus {
+  grid-column: auto;
+  width: 100%;
+  min-height: 2.75rem;
+}
+
+.segment-card__turnovers {
+  margin: 0;
+  font-size: var(--lt-font-size-sm);
+  color: var(--lt-color-muted);
+}
+
+.segment-card__turnovers strong {
+  color: var(--lt-color-turnover);
+  font-weight: 800;
+}
+
+.turnover-pill {
+  display: inline-block;
+  margin-left: var(--lt-space-2);
+  padding: 0.1rem 0.5rem;
+  border-radius: 999px;
+  border: 1px solid color-mix(in srgb, var(--lt-color-turnover) 55%, transparent);
+  background: color-mix(in srgb, var(--lt-color-turnover) 16%, var(--lt-color-surface));
+  color: var(--lt-color-turnover);
+  font-size: var(--lt-font-size-xs);
+  font-weight: 700;
+}
+
+.history-turnovers-total {
+  margin: var(--lt-space-3) 0;
+  padding: var(--lt-space-2) var(--lt-space-3);
+  border-radius: var(--lt-radius-md);
+  border: 1px solid color-mix(in srgb, var(--lt-color-turnover) 45%, transparent);
+  background: color-mix(in srgb, var(--lt-color-turnover) 12%, var(--lt-color-surface));
+  color: var(--lt-color-fg);
+  font-size: var(--lt-font-size-sm);
+}
+
+.history-turnovers-total strong {
+  color: var(--lt-color-turnover);
+  font-weight: 800;
+}
