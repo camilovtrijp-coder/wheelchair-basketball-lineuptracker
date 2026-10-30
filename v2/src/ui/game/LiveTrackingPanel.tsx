@@ -11,6 +11,8 @@ import {
   segmentEditedAction,
   segmentSavedAction,
   scoreDeltaAction,
+  segmentTurnovers,
+  turnoverDeltaAction,
   scoreSetAction,
   selectQuarter,
   swapOnCourt,
@@ -73,6 +75,7 @@ interface EditDraft {
   lineup: string[];
   pf: string;
   pa: string;
+  tov: string;
 }
 
 function playerLabel(players: GamePlayer[], id: string): string {
@@ -194,6 +197,7 @@ export function LiveTrackingPanel({
   const segDeltaFor = history.scoreFor - history.segStartFor;
   const segDeltaAgainst = history.scoreAgainst - history.segStartAgainst;
   const segPM = segDeltaFor - segDeltaAgainst;
+  const segTurnovers = history.turnovers - history.segStartTurnovers;
   const dur = segDur(game);
   const durValid = dur > 0;
   const lineupValid = game.onCourt.length === 5;
@@ -245,6 +249,7 @@ export function LiveTrackingPanel({
       segDeltaFor,
       segDeltaAgainst,
       classification,
+      segTurnovers,
     );
     onGameChange({
       ...game,
@@ -292,6 +297,7 @@ export function LiveTrackingPanel({
       lineup: [...segment.lineup],
       pf: String(segment.pf),
       pa: String(segment.pa),
+      tov: String(segmentTurnovers(segment)),
     });
   }
 
@@ -319,6 +325,7 @@ export function LiveTrackingPanel({
       classSum: sum,
       allowed,
       over,
+      tov: Math.max(0, Math.floor(Number(editDraft.tov) || 0)),
     };
     onGameChange({
       ...game,
@@ -414,6 +421,52 @@ export function LiveTrackingPanel({
     );
   }
 
+  function turnoverRow() {
+    return (
+      <div className="score-row score-row--turnover" data-testid="score-row-turnover">
+        <div className="score-row__header">
+          <span className="score-row__name">{t(lang, 'turnoversLabel')}</span>
+          <span className="score-row__delta">
+            {t(lang, 'segmentDeltaLabel')} {segTurnovers}
+          </span>
+        </div>
+        <div className="turnover-row__controls">
+          <div
+            className="turnover-count"
+            data-testid="turnover-count"
+            role="status"
+            aria-label={`${t(lang, 'turnoverCountLabel')} ${history.turnovers}`}
+          >
+            {history.turnovers}
+          </div>
+          <button
+            type="button"
+            className="turnover-btn"
+            disabled={!canWrite}
+            data-testid="turnover-plus"
+            onClick={() =>
+              onGameChange({ ...game, actions: [...game.actions, turnoverDeltaAction(1)] })
+            }
+          >
+            {t(lang, 'turnoverPlusBtn')}
+          </button>
+        </div>
+        <button
+          type="button"
+          className="btn-outline score-btn score-btn--wide turnover-minus"
+          disabled={!canWrite || segTurnovers <= 0}
+          data-testid="turnover-minus"
+          aria-label={t(lang, 'turnoverMinusAria')}
+          onClick={() =>
+            onGameChange({ ...game, actions: [...game.actions, turnoverDeltaAction(-1)] })
+          }
+        >
+          {t(lang, 'correctMinus1Btn')}
+        </button>
+      </div>
+    );
+  }
+
   return (
     <section className="tracking-panel" aria-label={t(lang, 'gameTitle')}>
       <header className="tracking-panel__header">
@@ -442,6 +495,7 @@ export function LiveTrackingPanel({
       <div className="score-card">
         {scoreRow('for')}
         {scoreRow('against')}
+        {turnoverRow()}
       </div>
 
       <div className="oncourt-section">
@@ -619,6 +673,9 @@ export function LiveTrackingPanel({
               ? t(lang, 'endAfterBegin')
               : ' '}
         </p>
+        <p className="segment-card__turnovers" data-testid="segment-turnovers">
+          {t(lang, 'segmentTurnoversLabel')} <strong>{segTurnovers}</strong>
+        </p>
         <button
           type="button"
           className="btn-primary segment-card__save"
@@ -667,6 +724,11 @@ export function LiveTrackingPanel({
                     {pm >= 0 ? '+' : ''}
                     {pm}
                   </span>
+                  {segmentTurnovers(s) >= 1 ? (
+                    <span className="turnover-pill" data-testid={`segment-tov-${s.id}`}>
+                      {t(lang, 'turnoverPillPrefix')} {segmentTurnovers(s)}
+                    </span>
+                  ) : null}
                 </span>
               </button>
             );
@@ -926,6 +988,19 @@ export function LiveTrackingPanel({
                 />
               </label>
             </div>
+            <label className="settings-field">
+              <span className="settings-field__label">{t(lang, 'turnoversLabel')}</span>
+              <input
+                type="number"
+                min={0}
+                step={1}
+                value={editDraft.tov}
+                data-testid="edit-tov"
+                onInput={(e) =>
+                  setEditDraft({ ...editDraft, tov: (e.target as HTMLInputElement).value })
+                }
+              />
+            </label>
             <button
               type="button"
               className="btn-primary"

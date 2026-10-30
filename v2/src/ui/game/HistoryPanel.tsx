@@ -1,5 +1,12 @@
 import type { CompletedGame } from '../../domain/game/types';
 import { combinedCsvForGame, csvFilenameFor } from '../../domain/game/csv';
+import { segmentTurnovers } from '../../domain/game/tracking';
+import {
+  fmtTurnoversPer10,
+  sumTurnovers,
+  totalSegmentSeconds,
+  turnoversPer10,
+} from '../../domain/game/turnoverStats';
 import { shareOrDownloadCsv } from '../../infrastructure/game/shareOrDownloadCsv';
 import { translate, type Lang, type StringKey } from '../../i18n/strings';
 import { SyncStatusIndicator } from '../sync/SyncStatusIndicator';
@@ -185,6 +192,8 @@ export function HistoryPanel({
 
   if (open) {
     const byId = new Map(open.players.map((p) => [p.id, p]));
+    const openTurnovers = sumTurnovers(open.segments);
+    const openSeconds = totalSegmentSeconds(open.segments);
     return (
       <section className="history-panel" aria-label={t(lang, 'historyTitle')}>
         {errorBanner}
@@ -226,6 +235,13 @@ export function HistoryPanel({
             testId={`history-sync-status-${open.id}`}
           />
         ) : null}
+        {openTurnovers > 0 ? (
+          <p className="history-turnovers-total" data-testid="history-turnovers-total">
+            {t(lang, 'historyTurnoversTotal')}: <strong>{openTurnovers}</strong> ·{' '}
+            {t(lang, 'historyTurnoversPer10')}:{' '}
+            <strong>{fmtTurnoversPer10(turnoversPer10(openTurnovers, openSeconds))}</strong>
+          </p>
+        ) : null}
         <div className="segment-list">
           {open.segments.map((s) => {
             const pm = s.pf - s.pa;
@@ -241,6 +257,11 @@ export function HistoryPanel({
                     {pm >= 0 ? '+' : ''}
                     {pm}
                   </span>
+                  {segmentTurnovers(s) >= 1 ? (
+                    <span className="turnover-pill" data-testid={`history-segment-tov-${s.id}`}>
+                      {t(lang, 'turnoverPillPrefix')} {segmentTurnovers(s)}
+                    </span>
+                  ) : null}
                 </span>
               </div>
             );

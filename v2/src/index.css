@@ -2,6 +2,7 @@
 @import './styles/history-settings.css';
 @import './styles/stats-trends.css';
 @import './styles/team-setup.css';
+@import './styles/turnovers.css';
 
 /* Zonder deze reset telt content-box de padding bovenop een expliciete
    width op (bijv. .app-main), wat op smalle viewports horizontale

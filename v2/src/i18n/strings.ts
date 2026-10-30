@@ -526,6 +526,15 @@ const nl = {
     'Bijwerken van de app is niet gelukt. Je kunt gewoon doorgaan met de huidige versie.',
   pwaErrorDetailsSummary: 'Technische details',
   pwaErrorDetailsHint: 'Maak een screenshot hiervan en deel die met de beheerder.',
+  // Turnovers (live-scherm, segmenten, Historie)
+  turnoversLabel: 'Turnovers',
+  turnoverPlusBtn: 'Turnover +1',
+  turnoverMinusAria: 'Turnover corrigeren (−1)',
+  turnoverCountLabel: 'Turnovers totaal',
+  segmentTurnoversLabel: 'Turnovers dit segment:',
+  turnoverPillPrefix: 'TO',
+  historyTurnoversTotal: 'Turnovers totaal',
+  historyTurnoversPer10: 'per 10 min',
 
   // PR 8.3c-1c: owner-only verwijderverzoek, opruimoverzicht en melding voor alle leden (NL).
   deletionTitle: 'Organisatie verwijderen',
@@ -1295,6 +1304,15 @@ const en = {
   pwaActionNeededMessage: 'Updating the app failed. You can keep using the current version.',
   pwaErrorDetailsSummary: 'Technical details',
   pwaErrorDetailsHint: 'Take a screenshot of this and share it with the administrator.',
+  // Turnovers (live screen, segments, History)
+  turnoversLabel: 'Turnovers',
+  turnoverPlusBtn: 'Turnover +1',
+  turnoverMinusAria: 'Correct turnover (−1)',
+  turnoverCountLabel: 'Total turnovers',
+  segmentTurnoversLabel: 'Turnovers this segment:',
+  turnoverPillPrefix: 'TO',
+  historyTurnoversTotal: 'Turnovers total',
+  historyTurnoversPer10: 'per 10 min',
 
   // PR 8.3c-1c: owner-only deletion request, cleanup overview and notice for all members (EN, mirrors NL key-for-key).
   deletionTitle: 'Delete organization',
