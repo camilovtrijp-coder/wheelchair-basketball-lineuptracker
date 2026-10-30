@@ -154,15 +154,18 @@ export function TrendsPanel({
         </div>
       </div>
 
-      {!showNoData && !showError && viewModel.turnoverSummary.tracked ? (
+      {!showNoData && !showError ? (
         <>
+          {/* De totaalregel staat er altijd (ook bij 0); de lineup-ranglijst alleen als er turnovers zijn. */}
           <TurnoverSummaryBanner summary={viewModel.turnoverSummary} lang={lang} />
-          <LineupTurnoverCard
-            ranking={viewModel.lineupRanking}
-            games={scope.games}
-            roster={roster}
-            lang={lang}
-          />
+          {viewModel.turnoverSummary.tracked ? (
+            <LineupTurnoverCard
+              ranking={viewModel.lineupRanking}
+              games={scope.games}
+              roster={roster}
+              lang={lang}
+            />
+          ) : null}
         </>
       ) : null}
 

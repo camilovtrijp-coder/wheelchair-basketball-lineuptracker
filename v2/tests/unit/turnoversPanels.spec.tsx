@@ -237,9 +237,11 @@ describe('Trends: tegels, totaalregel en lineup-kaart', () => {
     expect(getByTestId('trends-card-1').textContent).toContain('TURNOVERS');
   });
 
-  it('oude wedstrijden zonder turnover-gegevens: geen totaalregel, kaart of turnover-tegel, wel de bestaande waarden', () => {
+  it('oude wedstrijden zonder turnover-gegevens: totaalregel met 0, geen kaart of turnover-tegel, wel de bestaande waarden', () => {
     const { queryByTestId, getByTestId } = renderTrends(oneGame(false));
-    expect(queryByTestId('trends-tov-summary')).toBeNull();
+    expect(getByTestId('trends-tov-total').textContent).toBe('0');
+    expect(getByTestId('trends-tov-per10').textContent).toBe('0.0');
+    expect(getByTestId('trends-tov-summary').textContent).toContain('in 1 wedstrijd');
     expect(queryByTestId('trends-tov-lineups')).toBeNull();
     expect(queryByTestId('trends-tov-1')).toBeNull();
     expect(getByTestId('trends-avgmin-1').textContent).toBe('15.0');

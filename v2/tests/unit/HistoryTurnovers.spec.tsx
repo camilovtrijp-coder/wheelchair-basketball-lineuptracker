@@ -93,9 +93,11 @@ describe('ui/game/HistoryPanel — turnovers', () => {
     );
   });
 
-  it('een wedstrijd zonder registreerde turnovers (oude data) toont geen totaalregel', () => {
-    const { queryByTestId } = renderDetail(game([segment('s1', 600), segment('s2', 300, 0)]));
-    expect(queryByTestId('history-turnovers-total')).toBeNull();
+  it('een wedstrijd zonder registreerde turnovers (oude data) toont de totaalregel met 0', () => {
+    const { getByTestId } = renderDetail(game([segment('s1', 600), segment('s2', 300, 0)]));
+    expect(flat(getByTestId('history-turnovers-total'))).toBe(
+      'Turnovers totaal: 0 · per 10 min: 0.0',
+    );
   });
 
   it('Engelse teksten', () => {

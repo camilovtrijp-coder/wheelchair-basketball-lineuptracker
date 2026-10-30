@@ -235,13 +235,11 @@ export function HistoryPanel({
             testId={`history-sync-status-${open.id}`}
           />
         ) : null}
-        {openTurnovers > 0 ? (
-          <p className="history-turnovers-total" data-testid="history-turnovers-total">
-            {t(lang, 'historyTurnoversTotal')}: <strong>{openTurnovers}</strong> ·{' '}
-            {t(lang, 'historyTurnoversPer10')}:{' '}
-            <strong>{fmtTurnoversPer10(turnoversPer10(openTurnovers, openSeconds))}</strong>
-          </p>
-        ) : null}
+        <p className="history-turnovers-total" data-testid="history-turnovers-total">
+          {t(lang, 'historyTurnoversTotal')}: <strong>{openTurnovers}</strong> ·{' '}
+          {t(lang, 'historyTurnoversPer10')}:{' '}
+          <strong>{fmtTurnoversPer10(turnoversPer10(openTurnovers, openSeconds))}</strong>
+        </p>
         <div className="segment-list">
           {open.segments.map((s) => {
             const pm = s.pf - s.pa;
