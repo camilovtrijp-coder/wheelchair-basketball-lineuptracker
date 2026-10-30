@@ -1544,6 +1544,111 @@ describe('games/{gameId}/actions/{actionId}: create (stale-epoch/deviceId-weiger
     );
   });
 
+  // Turnovers (punt 20 in firestore.rules): optioneel Segment.tov en actie turnover-delta.
+  describe('turnovers', () => {
+    const dave = () =>
+      authCtx(env, USERS.dave.uid, { email: USERS.dave.email, email_verified: true });
+    const write = (db: ReturnType<typeof dave>, action: Record<string, unknown>, id = 'action-1') =>
+      setDoc(
+        actionRef(db, ORG_A, TEAM_A1, 'game-1', id),
+        sampleGameAction({
+          actionId: id,
+          authorUid: USERS.dave.uid,
+          deviceId: 'device-dave',
+          writerEpoch: 3,
+          action,
+        }),
+      );
+
+    it('mag WEL een segment-saved MET tov aanmaken (0 en positief)', async () => {
+      await assertSucceeds(
+        write(dave(), { type: 'segment-saved', segment: { ...validSegment, tov: 0 } }, 'a-tov-0'),
+      );
+      await assertSucceeds(
+        write(dave(), { type: 'segment-saved', segment: { ...validSegment, tov: 4 } }, 'a-tov-4'),
+      );
+    });
+
+    it('mag WEL een segment-saved ZONDER tov aanmaken (oude segmenten blijven geldig)', async () => {
+      await assertSucceeds(
+        write(dave(), { type: 'segment-saved', segment: validSegment }, 'a-no-tov'),
+      );
+    });
+
+    it('mag WEL een segment-edited met tov aanmaken', async () => {
+      await assertSucceeds(
+        write(dave(), {
+          type: 'segment-edited',
+          segmentId: 'seg-1',
+          segment: { ...validSegment, tov: 2 },
+        }),
+      );
+    });
+
+    it.each([
+      ['negatief', -1],
+      ['niet-geheel', 1.5],
+      ['string', '3'],
+      ['null', null],
+      ['boolean', true],
+    ])('mag GEEN segment-saved met tov %s aanmaken', async (_label, tov) => {
+      await assertFails(
+        write(dave(), { type: 'segment-saved', segment: { ...validSegment, tov } }),
+      );
+    });
+
+    it('mag WEL een geldige turnover-delta aanmaken (+1 en −1 corrigeren)', async () => {
+      await assertSucceeds(write(dave(), { type: 'turnover-delta', delta: 1 }, 'a-t-plus'));
+      await assertSucceeds(write(dave(), { type: 'turnover-delta', delta: -1 }, 'a-t-min'));
+    });
+
+    it('mag GEEN turnover-delta zonder delta aanmaken', async () => {
+      await assertFails(write(dave(), { type: 'turnover-delta' }));
+    });
+
+    it('mag GEEN turnover-delta met een extra sleutel aanmaken', async () => {
+      await assertFails(write(dave(), { type: 'turnover-delta', delta: 1, team: 'for' }));
+    });
+
+    it.each([
+      ['string', '1'],
+      ['niet-geheel', 0.5],
+      ['null', null],
+    ])('mag GEEN turnover-delta met delta %s aanmaken', async (_label, delta) => {
+      await assertFails(write(dave(), { type: 'turnover-delta', delta }));
+    });
+
+    it('viewer (erin) mag GEEN turnover-delta aanmaken', async () => {
+      const db = authCtx(env, USERS.erin.uid, { email: USERS.erin.email, email_verified: true });
+      await assertFails(
+        setDoc(
+          actionRef(db, ORG_A, TEAM_A1, 'game-1', 'action-1'),
+          sampleGameAction({
+            authorUid: USERS.erin.uid,
+            deviceId: 'device-erin',
+            writerEpoch: 3,
+            action: { type: 'turnover-delta', delta: 1 },
+          }),
+        ),
+      );
+    });
+
+    it('niet-writer (carol, coach) mag GEEN turnover-delta aanmaken (bestaande writerregel)', async () => {
+      const db = authCtx(env, USERS.carol.uid, { email: USERS.carol.email, email_verified: true });
+      await assertFails(
+        setDoc(
+          actionRef(db, ORG_A, TEAM_A1, 'game-1', 'action-1'),
+          sampleGameAction({
+            authorUid: USERS.carol.uid,
+            deviceId: 'device-carol',
+            writerEpoch: 3,
+            action: { type: 'turnover-delta', delta: 1 },
+          }),
+        ),
+      );
+    });
+  });
+
   it('viewer mag GEEN actie aanmaken', async () => {
     const db = authCtx(env, USERS.erin.uid, { email: USERS.erin.email, email_verified: true });
     await assertFails(

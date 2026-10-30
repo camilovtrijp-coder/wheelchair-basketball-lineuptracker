@@ -228,6 +228,14 @@ rules_version = '2';
 //      `gameConverter.fromFirestore()` past dezelfde afwezig-is-`null`-
 //      defaulting toe aan de leeskant (spiegelt `completedGameConverter`'s
 //      PR 7.2c-precedent).
+//  20. [Turnovers] `Segment.tov` is een OPTIONEEL niet-negatief geheel getal
+//      (eigen turnovers in dat segment; ontbrekend = 0, dus alle bestaande
+//      segmenten blijven geldig) en de actie `turnover-delta` ({type, delta},
+//      delta is int; −1 = corrigeren) is toegevoegd aan de discriminated union.
+//      De sleutelset van het parent-`games/{gameId}`-document verandert NIET:
+//      het turnovertotaal wordt uit het actielogboek afgeleid, net als de score.
+//      Een Rules-update is nodig zodra de app turnovers schrijft — zie
+//      docs/turnovers-rules-update.md voor de publicatiestappen.
 
 service cloud.firestore {
   match /databases/{database}/documents {
@@ -391,7 +399,7 @@ service cloud.firestore {
         ]) &&
         segment.keys().hasOnly([
           'id', 'quarter', 'beginSec', 'endSec', 'durSec', 'lineup',
-          'pf', 'pa', 'classSum', 'allowed', 'over'
+          'pf', 'pa', 'classSum', 'allowed', 'over', 'tov'
         ]) &&
         segment.id is string && segment.id.size() > 0 &&
         segment.quarter is int &&
@@ -403,7 +411,10 @@ service cloud.firestore {
         segment.pa is number &&
         segment.classSum is number &&
         segment.allowed is number &&
-        segment.over is bool;
+        segment.over is bool &&
+        // Punt 20: `tov` (eigen turnovers in dit segment) is OPTIONEEL —
+        // oudere segmenten hebben het veld niet en blijven geldig.
+        (!('tov' in segment) || (segment.tov is int && segment.tov >= 0));
     }
 
     // Discriminated union van GameActionPayloadDocument — exacte sleutelset
@@ -429,7 +440,11 @@ service cloud.firestore {
           action.segment is map && isValidSegment(action.segment)) ||
         (action.type == 'segment-deleted' &&
           action.keys().hasAll(['type', 'segmentId']) && action.keys().hasOnly(['type', 'segmentId']) &&
-          action.segmentId is string && action.segmentId.size() > 0);
+          action.segmentId is string && action.segmentId.size() > 0) ||
+        // Punt 20: turnover van het eigen team (+1 tikken, −1 corrigeren).
+        (action.type == 'turnover-delta' &&
+          action.keys().hasAll(['type', 'delta']) && action.keys().hasOnly(['type', 'delta']) &&
+          action.delta is int);
     }
 
     // Punt 13: volledige schema-/typevalidatie voor action-envelopes.
