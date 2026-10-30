@@ -212,7 +212,14 @@ export function replayCorrectionLog(
     if (entry.by !== null && typeof entry.by !== 'string') return null;
     if (typeof entry.at !== 'string' || Number.isNaN(new Date(entry.at).getTime())) return null;
     if (!isFieldsShape(entry.before) || !isFieldsShape(entry.after)) return null;
-    const result = correctSegment(current, entry.segmentId, entry.after, entry.by, {
+    // Alleen de gewijzigde velden als patch: `correctSegment` controleert alleen
+    // meegegeven velden op bereik, dus ongewijzigde oude waarden (bijv. een
+    // beginSec boven MAX_CLOCK_SECONDS) blokkeren een geldige correctie niet.
+    const changed: Partial<CorrectableSegmentFields> = {};
+    for (const key of Object.keys(entry.after) as (keyof CorrectableSegmentFields)[]) {
+      if (entry.after[key] !== entry.before[key]) changed[key] = entry.after[key];
+    }
+    const result = correctSegment(current, entry.segmentId, changed, entry.by, {
       now: new Date(entry.at),
       id: entry.id,
     });
