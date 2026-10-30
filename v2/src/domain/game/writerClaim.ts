@@ -1,3 +1,4 @@
+import { truncateDiagnosticText } from '../pwa/pwaErrorDetail';
 import { startBlockReason, type StartBlockReason } from './setup';
 import type { ActiveGame } from './types';
 import type { PwaReadinessStatus } from '../pwa/pwaReadiness';
@@ -92,7 +93,36 @@ export type CloudClaimStatus =
   | { kind: 'not-required' }
   | { kind: 'pending' }
   | { kind: 'confirmed'; identity: WriterIdentity }
-  | { kind: 'blocked'; code: WriterClaimErrorCode };
+  | {
+      kind: 'blocked';
+      code: WriterClaimErrorCode;
+      /**
+       * Optionele, veilige diagnosetekst bij een mislukte claim (fase, Firebase-
+       * foutcode en -melding). Bevat geen persoonsgegevens; getoond onder
+       * "Technische details" zodat een echte oorzaak (bijv. een geweigerde
+       * schrijfactie) zichtbaar is achter de globale 'geen verbinding'-melding.
+       */
+      detail?: string;
+    };
+
+/**
+ * Platte diagnosetekst voor een mislukte claimstap: fase plus, indien aanwezig,
+ * de Firebase-foutcode (bijv. `permission-denied`), naam en afgekapte melding.
+ */
+export function describeClaimError(stage: string, error: unknown): string {
+  const lines = [`stage: ${stage}`];
+  if (error !== null && typeof error === 'object') {
+    const e = error as { code?: unknown; name?: unknown; message?: unknown };
+    if (typeof e.code === 'string') lines.push(`code: ${e.code}`);
+    if (typeof e.name === 'string') lines.push(`name: ${e.name}`);
+    if (typeof e.message === 'string') {
+      lines.push(`message: ${truncateDiagnosticText(e.message, 300)}`);
+    }
+  } else if (error !== undefined && error !== null) {
+    lines.push(`error: ${truncateDiagnosticText(String(error), 300)}`);
+  }
+  return lines.join('\n');
+}
 
 export type GameStartBlockReason =
   | { kind: 'roster'; reason: StartBlockReason }

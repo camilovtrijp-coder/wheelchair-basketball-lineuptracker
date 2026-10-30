@@ -46,7 +46,7 @@ import {
   unconfirmedGameActions,
   type GameSyncDiagnostics,
 } from '../../domain/game/gameSyncDiagnostics';
-import type { CloudClaimStatus } from '../../domain/game/writerClaim';
+import { describeClaimError, type CloudClaimStatus } from '../../domain/game/writerClaim';
 import type {
   GameCloudGateway,
   GameCloudSubscriptionCallbacks,
@@ -144,13 +144,25 @@ export class GameSyncCoordinator {
       game.id,
       projectGameSnapshot(game),
     );
-    if (!ensure.ok) return { kind: 'blocked', code: 'offline' };
+    if (!ensure.ok) {
+      return {
+        kind: 'blocked',
+        code: 'offline',
+        detail: describeClaimError('ensureGame', ensure.error),
+      };
+    }
     // Invariant (review PR #100): alleen een server-bevestigde lezing mag een
     // claim als `confirmed` bestempelen. Na een eerder vastgelopen
     // claimWriter()/ensureGame()-write toont de lokale weergave de eigen
     // claim al, terwijl die alleen in Firestores wachtrij staat — dan nog
     // geen tip-off (docs/pr-7.3-plan.md §B: serverbevestigde writerclaim).
-    if (ensure.hasPendingWrites) return { kind: 'blocked', code: 'offline' };
+    if (ensure.hasPendingWrites) {
+      return {
+        kind: 'blocked',
+        code: 'offline',
+        detail: 'stage: ensureGame\nmessage: nog niet door de server bevestigd (pending writes)',
+      };
+    }
 
     const writerUid = ensure.writerUid ?? null;
     const deviceId = ensure.deviceId ?? null;
@@ -173,7 +185,13 @@ export class GameSyncCoordinator {
       ensure.revision ?? 0,
       this.now(),
     );
-    if (!claim.ok) return { kind: 'blocked', code: claim.code };
+    if (!claim.ok) {
+      return {
+        kind: 'blocked',
+        code: claim.code,
+        detail: `${describeClaimError('claimWriter', claim.error)}\ncode-class: ${claim.code}`,
+      };
+    }
     return { kind: 'confirmed', identity: claim.identity };
   }
 

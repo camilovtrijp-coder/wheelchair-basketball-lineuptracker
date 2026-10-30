@@ -858,7 +858,51 @@ describe('application/game/GameSyncCoordinator.ensureWriterClaim() (PR 7.3a)', (
 
     const status = await coordinator.ensureWriterClaim(game, writer);
 
-    expect(status).toEqual({ kind: 'blocked', code: 'offline' });
+    expect(status).toEqual({
+      kind: 'blocked',
+      code: 'offline',
+      detail: 'stage: ensureGame\nname: Error\nmessage: offline',
+    });
+  });
+
+  it('geeft de Firebase-foutcode door in de diagnose, zodat een geweigerde schrijfactie zichtbaar is achter "offline"', async () => {
+    const checkpoints = new LocalStorageGameSyncCheckpointRepository(new MemoryStorage());
+    const denied = Object.assign(new Error('Missing or insufficient permissions.'), {
+      code: 'permission-denied',
+      name: 'FirebaseError',
+    });
+    const gateway = mockGateway({
+      ensureGame: () => ({ ok: false, error: denied }),
+    });
+    const coordinator = new GameSyncCoordinator({ gateway, checkpoints, now: fixedClock() });
+    const game = gameWithActions([], { phase: 'setup' });
+
+    const status = await coordinator.ensureWriterClaim(game, writer);
+
+    expect(status).toEqual({
+      kind: 'blocked',
+      code: 'offline',
+      detail:
+        'stage: ensureGame\ncode: permission-denied\nname: FirebaseError\nmessage: Missing or insufficient permissions.',
+    });
+  });
+
+  it('claimWriter() faalt met een fout: de diagnose bevat fase, fout en codeklasse', async () => {
+    const checkpoints = new LocalStorageGameSyncCheckpointRepository(new MemoryStorage());
+    const gateway = mockGateway({
+      ensureGame: () => ({ ok: true, revision: 0, writerUid: null, deviceId: null }),
+      claimWriter: () => ({ ok: false, code: 'role-denied', error: new Error('nee') }),
+    });
+    const coordinator = new GameSyncCoordinator({ gateway, checkpoints, now: fixedClock() });
+    const game = gameWithActions([], { phase: 'setup' });
+
+    const status = await coordinator.ensureWriterClaim(game, writer);
+
+    expect(status).toEqual({
+      kind: 'blocked',
+      code: 'role-denied',
+      detail: 'stage: claimWriter\nname: Error\nmessage: nee\ncode-class: role-denied',
+    });
   });
 
   it('geeft de foutcode van claimWriter() door (bijv. een claimrace die het apparaat verliest)', async () => {
@@ -872,7 +916,7 @@ describe('application/game/GameSyncCoordinator.ensureWriterClaim() (PR 7.3a)', (
 
     const status = await coordinator.ensureWriterClaim(game, writer);
 
-    expect(status).toEqual({ kind: 'blocked', code: 'already-claimed' });
+    expect(status).toMatchObject({ kind: 'blocked', code: 'already-claimed' });
   });
 });
 

@@ -117,6 +117,20 @@ describe('ui/game/GameSetupPanel: pre-game cloudclaim-gate (PR 7.3a)', () => {
     expect(onRetry).toHaveBeenCalledTimes(1);
   });
 
+  it('geblokkeerde claim met diagnose: toont een dichtgeklapt blok Technische details met de ruwe fout', () => {
+    const detail = 'stage: ensureGame\ncode: permission-denied\nname: FirebaseError';
+    const { getByTestId } = renderPanel({ kind: 'blocked', code: 'offline', detail });
+    const block = getByTestId('game-claim-details') as HTMLDetailsElement;
+    expect(block.open).toBe(false);
+    expect(block.querySelector('summary')?.textContent).toBe('Technische details');
+    expect(getByTestId('game-claim-details-text').textContent).toBe(detail);
+  });
+
+  it('geblokkeerde claim zonder diagnose: geen details-blok', () => {
+    const { queryByTestId } = renderPanel({ kind: 'blocked', code: 'offline' });
+    expect(queryByTestId('game-claim-details')).toBeNull();
+  });
+
   it.each([
     ['offline', 'Geen verbinding — kan de wedstrijd niet claimen voor je begint.'],
     ['stale-revision', 'De wedstrijd is net gewijzigd. Probeer opnieuw.'],

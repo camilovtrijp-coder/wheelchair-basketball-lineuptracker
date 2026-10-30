@@ -139,6 +139,10 @@ export function GameSetupPanel({
   const startBlock = gameStartBlockReason(game, cloudClaim, pwaReadiness);
   const canStartNow = startBlock === null;
   const claimBlocked = startBlock?.kind === 'cloud-claim' && startBlock.status.kind === 'blocked';
+  const claimDetail =
+    startBlock?.kind === 'cloud-claim' && startBlock.status.kind === 'blocked'
+      ? startBlock.status.detail
+      : undefined;
   const pwaReadinessMsgKey = pwaReadinessMessageKey(pwaReadiness);
 
   if (vp.length === 0) {
@@ -318,6 +322,14 @@ export function GameSetupPanel({
           </button>
         ) : null}
       </div>
+
+      {claimDetail ? (
+        <details className="action-needed-details" data-testid="game-claim-details">
+          <summary>{t(lang, 'pwaErrorDetailsSummary')}</summary>
+          <p className="action-needed-details__hint">{t(lang, 'pwaErrorDetailsHint')}</p>
+          <pre data-testid="game-claim-details-text">{claimDetail}</pre>
+        </details>
+      ) : null}
     </section>
   );
 }
