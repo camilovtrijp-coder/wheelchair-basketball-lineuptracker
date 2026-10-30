@@ -87,6 +87,13 @@ binnen `quarterCount`.
   origineel altijd reconstrueerbaar en is de wijziging controleerbaar in de UI
   ("gecorrigeerd op … door …").
 
+In de cloudvorm (Firestore) krijgt elk logitem daarnaast een **cloud-only**
+veld `segmentIndex` (positie van het segment in `segments`). Dat is een
+aanwijzer voor de Rules, die een lijst niet op `segmentId` kunnen doorzoeken
+en daarmee afdwingen dat precies dat ene segment wijzigt. Het staat niet in
+het lokale domeinmodel (`CompletedGameCorrection`) en vervalt bij het lezen
+(`completedGameFromDocument`).
+
 Na een correctie zijn `segments[i]`, `scoreFor`, `scoreAgainst` en
 `revision` bijgewerkt. Score blijft consistent met `recalcRunningScore`:
 `scoreFor' = scoreFor + (nieuwe pf − oude pf)` (idem tegen), zodat punten die
@@ -173,6 +180,42 @@ idempotent), revisiegestuurde merge, hervatbare upload/status. Emulatortests
 (§F). Tweede-apparaat-e2e met fictieve data.
 
 Elke sub-PR eigen branch, eigen review; 7.5c start pas na akkoord op 7.5a/b.
+
+### 7.5c — bevindingen uit de review van PR #134 (verwerkt)
+
+- **Geen vals "gesynchroniseerd":** een cloudsnapshot met `hasPendingWrites`
+  (per document, anders voor de hele snapshot) bevat je eigen, onbevestigde
+  write. Zolang die pending is geldt `wacht-op-synchronisatie` en blijft het
+  statusrecord staan; pas een serverbevestigde snapshot geeft
+  `gesynchroniseerd`. Een door Rules geweigerde write geeft `actie-nodig`.
+- **Cloud-only wedstrijd (op een ander apparaat afgerond):** `update()` neemt
+  de cloudkopie eerst lokaal op (niet bij tombstone of ander organisatie/team,
+  nooit een duplicaat) en volgt dan de gewone lokaal-eerst-flow.
+- **Replay:** alleen de gewijzigde velden gaan als patch mee en vóór/ná worden
+  per veld vergeleken, zodat oude, ongewijzigde data (bijv. `beginSec` 720)
+  een correctie van alleen `pf` niet blokkeert.
+- **Redactie (8.3c-1):** de redactietak wist ook `corrections` (uid's in `by`)
+  en `correctedAt`.
+- **Automatische upload beperkt (eerlijke afweging):** zonder nieuwe
+  localStorage-key is niet bewijsbaar dat een lokale correctie op dit apparaat
+  is gemaakt nadat de app herstart is. Gekozen is de veilige variant: alleen
+  correcties die in de lopende sessie via `update()` zijn gemaakt worden
+  automatisch geüpload. Na een herstart, of na een back-up-herstel
+  (`replaceAll` wist ook de toestemming en triggert nooit een write), krijgt
+  een lokaal voorlopende correctie status `actie-nodig` en gaat pas omhoog na
+  een bewuste `retryCorrectionUploads()`. **Gevolg:** offline gecorrigeerd, app
+  gesloten en later online heropend = de correctie staat veilig lokaal maar
+  wacht op één bevestiging van de gebruiker (UI volgt in de aparte
+  vervolg-PR). Alternatief (een eigen persistente markering) vraagt een nieuwe
+  localStorage-key en is bewust niet gekozen.
+- Na een bevestigde upload wordt de volgende wachtende correctie meteen
+  opgepakt; een set bevestigde correctie-ID's voorkomt een dubbele upload en
+  een lus zolang de snapshot nog achterloopt.
+
+**Uitrolvolgorde:** publiceer eerst de Firestore Rules (correctietak en
+redactie-uitbreiding) en pas daarna clients die cloudcorrecties versturen.
+Clients zonder de revisiegestuurde merge mogen pas na de Rules-uitrol met
+cloudcorrecties in aanraking komen (zie §I).
 
 ## F. Testplan Firestore Rules (emulator, 7.5c)
 

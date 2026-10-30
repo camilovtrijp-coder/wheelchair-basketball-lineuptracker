@@ -774,6 +774,10 @@ onveranderlijk"; implementatie per sub-PR op eigen branch.
 - Rules-uitbreiding alleen voor owner/admin/coach, positief en negatief
   getest in de Emulator Suite;
 - sub-PR's 7.5a domein/lokaal, 7.5b UI, 7.5c cloud/merge.
+- Voortgang: 7.5a, 7.5b en 7.5c staan als draft-PR's open (7.5c = PR #134).
+  De koppeling van de cloudcorrectie aan de UI volgt als aparte vervolg-PR.
+- Uitrolvolgorde: eerst de Firestore Rules publiceren, daarna pas clients met
+  cloudcorrecties.
 
 ### Stabiliteitsfix game-sync: onbevestigde writes in de lokale weergave
 

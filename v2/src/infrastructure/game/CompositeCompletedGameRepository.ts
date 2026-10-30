@@ -72,9 +72,27 @@
 // - Hervatbaar zonder nieuwe opslag: "wat moet nog omhoog" wordt telkens
 //   afgeleid uit de data zelf (`compareCorrectionLineage`: het cloudlog is een
 //   voorvoegsel van het lokale log en lokaal heeft een hogere revisie). Bij
-//   elke cloud-snapshot (dus ook na een herstart of reconnect) worden de
-//   ontbrekende correcties een voor een geupload; de stappen worden uit het
-//   log gereconstrueerd via `correctSegment()` op de cloudkopie.
+//   elke cloud-snapshot worden de ontbrekende correcties een voor een
+//   geupload; de stappen worden uit het log gereconstrueerd via
+//   `correctSegment()` op de cloudkopie (alleen de GEWIJZIGDE velden als patch,
+//   vergeleken per veld).
+// - Alleen wat op dit apparaat bewust is gemaakt gaat automatisch omhoog
+//   (review PR #134). Zonder nieuwe localStorage-key is "op dit apparaat gemaakt"
+//   niet bewijsbaar na een herstart; daarom houdt `update()` een in-memory set
+//   van correctie-ID's bij en geldt: een correctie die NIET in die set zit
+//   (app herstart, of een back-up-herstel via `replaceAll`, dat de set ook
+//   wist) wordt nooit automatisch geupload en krijgt status `actie-nodig`; pas
+//   `retryCorrectionUploads()` (bewuste gebruikersactie) keurt ze goed.
+//   Gevolg: offline gecorrigeerd + app gesloten + later online heropend = de
+//   correctie staat veilig lokaal maar wacht op die ene bevestiging. Dit is
+//   bewust de veilige variant boven stil pushen van ongecontroleerde data.
+// - Geen vals succes bij latency compensation: een cloudsnapshot met
+//   `hasPendingWrites` (per document, anders voor de hele snapshot) bevat een
+//   eigen, onbevestigde write en telt nooit als `gesynchroniseerd`; het
+//   statusrecord blijft dan staan.
+// - Een wedstrijd die alleen in de cloud staat (op een ander apparaat afgerond)
+//   wordt bij `update()` eerst als cloudkopie lokaal opgenomen (niet bij
+//   tombstone/ander org/team, geen duplicaat) en volgt dan dezelfde flow.
 // - Loopt de cloud voor, dan wordt de lokale kopie via `local.update()`
 //   bijgewerkt (de 7.5a-regels beslissen; weigert die, dan blijft de lokale
 //   data staan en toont de lijst de cloudversie). Zijn beide kanten uit elkaar
@@ -88,7 +106,7 @@ import {
   pickHigherRevision,
   revisionOf,
 } from '../../domain/game/correctionLineage';
-import type { CompletedGame } from '../../domain/game/types';
+import type { CompletedGame, CorrectableSegmentFields } from '../../domain/game/types';
 import type { SyncState } from '../../domain/syncState';
 import type {
   CompletedGameRepository,
@@ -139,6 +157,13 @@ export interface CompletedGameCorrectionWriter {
   ): Promise<CompletedGameCorrectionResult>;
 }
 
+const CORRECTABLE_KEYS = ['quarter', 'beginSec', 'endSec', 'pf', 'pa', 'tov'] as const;
+
+/** Veldgewijze vergelijking (niet afhankelijk van sleutelvolgorde zoals JSON.stringify). */
+function sameFields(a: CorrectableSegmentFields, b: CorrectableSegmentFields): boolean {
+  return CORRECTABLE_KEYS.every((key) => a[key] === b[key]);
+}
+
 /** Foutcodes die een nieuwe poging niet zal oplossen (Rules/auth/validatie). */
 const NON_RETRYABLE_CODES = new Set([
   'permission-denied',
@@ -165,6 +190,28 @@ export class CompositeCompletedGameRepository implements CompletedGameRepository
   private readonly correctionOutcome = new Map<string, CorrectionSyncStatus>();
   /** PR 7.5c: wedstrijden met een lopende upload (voorkomt parallelle dubbele pogingen). */
   private readonly correctionUploading = new Set<string>();
+  /** Review PR #134: ID's van documenten met een eigen, nog niet server-bevestigde write
+   * (`null` = de bron gaf dit niet door; dan telt `cloudSync.hasPendingWrites`). */
+  private cloudPendingIds: ReadonlySet<string> | null = null;
+  /** Review PR #134: correctie-ID's die in DEZE sessie op dit apparaat via `update()` zijn
+   * gemaakt (of via een bewuste `retryCorrectionUploads()` zijn goedgekeurd). Alleen
+   * deze mogen automatisch omhoog; bewust alleen in het geheugen (zie bestandsdocstring). */
+  private readonly approvedCorrectionIds = new Set<string>();
+  /** Review PR #134: correctie-ID's die de server bevestigde; voorkomt een dubbele upload
+   * zolang de cloud-snapshot nog niet bijgewerkt is en vormt de lusbeveiliging. */
+  private readonly confirmedCorrectionIds = new Set<string>();
+
+  /** `true` zolang dit cloud-document een eigen, onbevestigde write toont. */
+  private isCloudPending(id: string): boolean {
+    if (this.cloudPendingIds !== null) return this.cloudPendingIds.has(id);
+    return this.cloudSync?.hasPendingWrites === true;
+  }
+
+  /** Alle nog te uploaden correcties van `local` (die de cloud nog niet kent) zijn goedgekeurd. */
+  private isUploadApproved(local: CompletedGame, cloud: CompletedGame): boolean {
+    const missing = (local.corrections ?? []).slice(cloud.corrections?.length ?? 0);
+    return missing.every((c) => this.approvedCorrectionIds.has(c.id));
+  }
 
   private readLocal(): CompletedGamesReadResult {
     if (this.local.safeList) return this.local.safeList();
@@ -241,8 +288,33 @@ export class CompositeCompletedGameRepository implements CompletedGameRepository
    * Zonder cloud-tegenhanger blijft de status `lokaal-beschikbaar`.
    */
   update(game: CompletedGame): boolean {
-    const ok = this.local.update(game);
+    const priorLocal = this.readLocal().games.find((g) => g.id === game.id);
+    let priorLog = priorLocal?.corrections ?? [];
+    let ok = this.local.update(game);
+    if (!ok && priorLocal === undefined) {
+      // Review PR #134: een wedstrijd die alleen in de cloud staat (op een ander
+      // apparaat afgerond). Neem de cloudkopie eerst lokaal op en volg dan de
+      // gewone lokaal-eerst-flow. Geen duplicaat: alleen als er lokaal niets onder
+      // dit ID staat; getombstoned/andere organisatie of team wordt niet opgenomen.
+      const cloud = this.cloudGames.find((g) => g.id === game.id && g.deletedAt == null);
+      if (
+        cloud !== undefined &&
+        cloud.organizationId === game.organizationId &&
+        cloud.teamId === game.teamId &&
+        this.local.add(cloud)
+      ) {
+        priorLog = cloud.corrections ?? [];
+        ok = this.local.update(game);
+        // Weigerde de 7.5a-validatie de correctie, dan blijft er niets achter.
+        if (!ok) this.local.remove(game.id);
+      }
+    }
     if (ok) {
+      // Alleen wat nu pas aan het log is toegevoegd, is op dit apparaat gemaakt.
+      const known = new Set(priorLog.map((c) => c.id));
+      for (const c of game.corrections ?? []) {
+        if (!known.has(c.id)) this.approvedCorrectionIds.add(c.id);
+      }
       // Een nieuwe lokale correctie heft een eerdere `actie-nodig` op: de
       // gebruiker heeft opnieuw gehandeld. `conflict` blijft staan.
       if (this.correctionOutcome.get(game.id) === 'actie-nodig') {
@@ -260,19 +332,38 @@ export class CompositeCompletedGameRepository implements CompletedGameRepository
     const corrected =
       (local?.corrections?.length ?? 0) > 0 || (cloud?.corrections?.length ?? 0) > 0;
     if (!corrected) return null;
-    if (!local || !cloud) return local ? 'lokaal-beschikbaar' : 'gesynchroniseerd';
+    // Geen vals succes (review PR #134): een cloudsnapshot met latency compensation
+    // bevat je EIGEN nog niet bevestigde write. Zolang het document pending writes
+    // heeft is het log wel gelijk, maar nog niet server-bevestigd.
+    const pendingStatus = (): CorrectionSyncStatus =>
+      this.correctionOutcome.get(id) ?? 'wacht-op-synchronisatie';
+    if (!local) return cloud && this.isCloudPending(id) ? pendingStatus() : 'gesynchroniseerd';
+    if (!cloud) return 'lokaal-beschikbaar';
     switch (compareCorrectionLineage(local, cloud)) {
       case 'same':
       case 'cloud-ahead':
-        return 'gesynchroniseerd';
+        return this.isCloudPending(id) ? pendingStatus() : 'gesynchroniseerd';
       case 'diverged':
         return 'conflict';
       case 'local-ahead':
-        return this.correctionOutcome.get(id) ?? 'wacht-op-synchronisatie';
+        // Niet op dit apparaat gemaakt (herstart/back-up-herstel): niet automatisch
+        // geüpload, dus ook niet "wachtend" noemen; de gebruiker moet bewust kiezen.
+        return (
+          this.correctionOutcome.get(id) ??
+          (this.isUploadApproved(local, cloud) ? 'wacht-op-synchronisatie' : 'actie-nodig')
+        );
     }
   }
 
   retryCorrectionUploads(): void {
+    // Een bewuste gebruikersactie: keur alle nu ontbrekende correcties goed.
+    for (const local of this.readLocal().games) {
+      const cloud = this.cloudGames.find((g) => g.id === local.id && g.deletedAt == null);
+      if (!cloud || compareCorrectionLineage(local, cloud) !== 'local-ahead') continue;
+      for (const c of (local.corrections ?? []).slice(cloud.corrections?.length ?? 0)) {
+        this.approvedCorrectionIds.add(c.id);
+      }
+    }
     for (const [id, status] of [...this.correctionOutcome]) {
       if (status === 'actie-nodig') this.correctionOutcome.delete(id);
     }
@@ -291,6 +382,9 @@ export class CompositeCompletedGameRepository implements CompletedGameRepository
       if (cloud.deletedAt != null) continue;
       const local = localById.get(cloud.id);
       if (!local) continue;
+      // Een document met een eigen, onbevestigde write is nog niet definitief:
+      // niets overnemen en het statusrecord niet wissen (review PR #134).
+      if (this.isCloudPending(cloud.id)) continue;
       const lineage = compareCorrectionLineage(local, cloud);
       if (lineage === 'cloud-ahead') this.local.update(cloud);
       if (lineage === 'same' || lineage === 'cloud-ahead') this.correctionOutcome.delete(cloud.id);
@@ -308,6 +402,8 @@ export class CompositeCompletedGameRepository implements CompletedGameRepository
       const cloud = this.cloudGames.find((g) => g.id === local.id && g.deletedAt == null);
       if (!cloud || this.correctionUploading.has(local.id)) continue;
       if (compareCorrectionLineage(local, cloud) !== 'local-ahead') continue;
+      // Alleen correcties die op dit apparaat bewust zijn gemaakt/goedgekeurd.
+      if (!this.isUploadApproved(local, cloud)) continue;
       const status = this.correctionOutcome.get(local.id);
       if (status === 'conflict' || status === 'actie-nodig') continue;
       void this.uploadNextCorrection(local, cloud, writer);
@@ -320,10 +416,18 @@ export class CompositeCompletedGameRepository implements CompletedGameRepository
     writer: CompletedGameCorrectionWriter['correctCompletedGame'],
   ): Promise<void> {
     const next = (local.corrections ?? [])[cloud.corrections?.length ?? 0];
-    if (!next) return;
+    // Al server-bevestigd maar de cloud-snapshot loopt nog achter: wachten op die
+    // snapshot i.p.v. dezelfde correctie nogmaals te sturen (ook de lusbeveiliging).
+    if (!next || this.confirmedCorrectionIds.has(next.id)) return;
     // Reconstrueer de cloudstap deterministisch uit het log: dezelfde
     // `correctSegment()` op de cloudkopie met het vastgelegde tijdstip/ID.
-    const replay = correctSegment(cloud, next.segmentId, next.after, next.by, {
+    // Review PR #134: alleen de velden die de correctie WIJZIGDE gaan als patch mee;
+    // ongewijzigde velden (bijv. een oude `beginSec`) mogen de replay niet blokkeren.
+    const patch: Partial<CorrectableSegmentFields> = {};
+    for (const key of CORRECTABLE_KEYS) {
+      if (next.after[key] !== next.before[key]) patch[key] = next.after[key];
+    }
+    const replay = correctSegment(cloud, next.segmentId, patch, next.by, {
       now: new Date(next.at),
       id: next.id,
     });
@@ -332,8 +436,8 @@ export class CompositeCompletedGameRepository implements CompletedGameRepository
       : null;
     const consistent =
       replay.ok &&
-      JSON.stringify(replay.correction.before) === JSON.stringify(next.before) &&
-      JSON.stringify(replay.correction.after) === JSON.stringify(next.after);
+      sameFields(replay.correction.before, next.before) &&
+      sameFields(replay.correction.after, next.after);
     if (!replay.ok || !consistent || payload === null) {
       // De lokale en cloudkopie sluiten niet op elkaar aan: niet gokken.
       this.setCorrectionOutcome(local.id, 'conflict');
@@ -358,8 +462,14 @@ export class CompositeCompletedGameRepository implements CompletedGameRepository
     if (result.ok) {
       // Server-bevestigd. De volgende cloud-snapshot (die de SDK na de write
       // altijd levert) toont het nieuwe log en start zo de eventuele volgende stap.
+      this.confirmedCorrectionIds.add(next.id);
       this.correctionOutcome.delete(local.id);
       this.notify();
+      // Review PR #134: een tweede wachtende correctie niet laten hangen tot er
+      // toevallig weer een snapshot komt. De bevestigde-ID-set is de lusbeveiliging:
+      // dezelfde correctie wordt niet opnieuw verstuurd, elke ronde heeft dus een
+      // nieuwe, eindige correctie nodig.
+      this.processCorrectionUploads();
       return;
     }
     const code = (result.error as { code?: unknown } | undefined)?.code;
@@ -379,7 +489,13 @@ export class CompositeCompletedGameRepository implements CompletedGameRepository
 
   replaceAll(games: CompletedGame[]): boolean {
     const ok = this.local.replaceAll(games);
-    if (ok) this.notify();
+    if (ok) {
+      // Review PR #134: een back-up-herstel is geen correctie op dit apparaat. Een
+      // herstelde, gecorrigeerde wedstrijd die voorloopt op de cloud mag NOOIT stil
+      // omhoog; alle eerdere toestemmingen vervallen.
+      this.approvedCorrectionIds.clear();
+      this.notify();
+    }
     return ok;
   }
 
@@ -422,9 +538,10 @@ export class CompositeCompletedGameRepository implements CompletedGameRepository
     this.listeners.set(onNext, onError);
     if (this.cloudUnsubscribe === null) {
       this.cloudUnsubscribe = this.cloud.subscribe(
-        (games, sync) => {
+        (games, sync, pendingIds) => {
           this.cloudGames = games;
           this.cloudSync = sync;
+          this.cloudPendingIds = pendingIds ?? null;
           // Resurrectie-preventie (zie bestandsdocstring): een net binnen-
           // gekomen cloud-tombstone ruimt een eventuele niet-getombstoned
           // lokale kopie meteen op, zodat een later apparaat dat de
@@ -464,6 +581,8 @@ export class CompositeCompletedGameRepository implements CompletedGameRepository
         this.cloudUnsubscribe = null;
         this.cloudGames = [];
         this.cloudSync = null;
+        this.cloudPendingIds = null;
+        this.confirmedCorrectionIds.clear();
       }
     };
   }

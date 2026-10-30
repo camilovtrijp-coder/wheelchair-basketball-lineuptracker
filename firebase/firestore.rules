@@ -1353,6 +1353,11 @@ service cloud.firestore {
           // - nog niet eerder geredigeerd, zodat `redactedAt` niet opnieuw gestempeld
           //   kan worden;
           // - `redactedAt == request.time` (servergebonden, net als `deletedAt`);
+          // - PR 7.5c-review: een gecorrigeerde wedstrijd draagt `corrections` (met
+          //   `by`-uid's en getallen) en `correctedAt`; ook die worden gewist
+          //   (`corrections == []`, `correctedAt == null`, of het veld verwijderd).
+          //   Blijft een niet-lege log of een `correctedAt` ongemoeid staan, dan
+          //   zit hij nog in het resulterende document en wordt de patch geweigerd.
           // - precies de leeg te maken velden plus `redactedAt`/`revision` mogen
           //   wijzigen (`affectedKeys().hasOnly()`), en elk krijgt zijn lege waarde;
           //   `deletedAt`, `sourceGameId`, `date` en de context blijven byte-identiek;
@@ -1367,7 +1372,7 @@ service cloud.firestore {
             request.resource.data.redactedAt == request.time &&
             request.resource.data.diff(resource.data).affectedKeys()
               .hasOnly(['opponent', 'competition', 'players', 'segments', 'scoreFor', 'scoreAgainst',
-                        'deletedBy', 'redactedAt', 'revision']) &&
+                        'deletedBy', 'corrections', 'correctedAt', 'redactedAt', 'revision']) &&
             request.resource.data.opponent == '' &&
             request.resource.data.competition == '' &&
             request.resource.data.players == [] &&
@@ -1375,6 +1380,8 @@ service cloud.firestore {
             request.resource.data.scoreFor == 0 &&
             request.resource.data.scoreAgainst == 0 &&
             request.resource.data.deletedBy == null &&
+            (!('corrections' in request.resource.data) || request.resource.data.corrections == []) &&
+            (!('correctedAt' in request.resource.data) || request.resource.data.correctedAt == null) &&
             request.resource.data.revision ==
               (('revision' in resource.data) ? resource.data.revision : 0) + 1;
 

@@ -58,7 +58,15 @@ export interface CloudCompletedGameSource {
    * `FirestoreRosterRepository`'s `subscribe()`).
    */
   subscribe(
-    onNext: (games: CompletedGame[], sync: SyncState) => void,
+    onNext: (
+      games: CompletedGame[],
+      sync: SyncState,
+      /** Review PR #134: ID's van documenten met een eigen, nog niet server-
+       * bevestigde write (`DocumentSnapshot.metadata.hasPendingWrites`).
+       * `undefined` = onbekend; de aanroeper valt dan terug op
+       * `sync.hasPendingWrites` voor de hele snapshot. */
+      pendingIds?: ReadonlySet<string>,
+    ) => void,
     onError?: (error: unknown) => void,
   ): () => void;
 }
@@ -138,7 +146,7 @@ export class FirestoreCompletedGameRepository implements CloudCompletedGameSourc
   }
 
   subscribe(
-    onNext: (games: CompletedGame[], sync: SyncState) => void,
+    onNext: Parameters<CloudCompletedGameSource['subscribe']>[0],
     onError?: (error: unknown) => void,
   ): () => void {
     return onSnapshot(
@@ -169,7 +177,14 @@ export class FirestoreCompletedGameRepository implements CloudCompletedGameSourc
           if (onError) onError(error);
           return;
         }
-        onNext(games, deriveSyncState(snap.metadata));
+        // Per-document pendingvlag (review PR #134): alleen uitgelezen als de
+        // query-snapshot als geheel pending writes heeft, zodat een gewone
+        // snapshot niets extra's kost. Een document met `hasPendingWrites` toont
+        // een eigen, nog niet server-bevestigde write (latency compensation).
+        const pendingIds = snap.metadata.hasPendingWrites
+          ? new Set(snap.docs.filter((d) => d.metadata.hasPendingWrites).map((d) => d.id))
+          : undefined;
+        onNext(games, deriveSyncState(snap.metadata), pendingIds);
       },
       (err) => {
         if (onError) onError(err);

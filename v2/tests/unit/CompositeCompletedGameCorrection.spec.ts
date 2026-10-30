@@ -93,15 +93,31 @@ function correct(
   return r.game;
 }
 
+const PENDING: SyncState = {
+  status: 'wacht-op-synchronisatie',
+  fromCache: false,
+  hasPendingWrites: true,
+};
+
+type CloudOnNext = Parameters<CloudCompletedGameSource['subscribe']>[0];
+
 class FakeCloudSource implements CloudCompletedGameSource {
-  private onNext: ((games: CompletedGame[], sync: SyncState) => void) | null = null;
-  subscribe(onNext: (games: CompletedGame[], sync: SyncState) => void): () => void {
+  private onNext: CloudOnNext | null = null;
+  subscribe(onNext: CloudOnNext): () => void {
     this.onNext = onNext;
     return () => undefined;
   }
-  emit(games: CompletedGame[], sync: SyncState = SERVER): void {
-    this.onNext?.(games, sync);
+  emit(games: CompletedGame[], sync: SyncState = SERVER, pendingIds?: ReadonlySet<string>): void {
+    this.onNext?.(games, sync, pendingIds);
   }
+}
+
+/** Latency-compensation-weergave van een eigen, nog niet bevestigde correctie:
+ * `correctedAt` is een onopgeloste serverTimestamp (null) en dus afwezig. */
+function optimistic(game: CompletedGame): CompletedGame {
+  const copy: CompletedGame = { ...game };
+  delete copy.correctedAt;
+  return copy;
 }
 
 type CorrectCall = Parameters<CompletedGameCorrectionWriter['correctCompletedGame']>;
@@ -355,15 +371,22 @@ describe('falen, herstel en conflict (PR 7.5c)', () => {
 });
 
 describe('hervatbare upload (PR 7.5c)', () => {
-  it('na een herstart (nieuwe instantie, zelfde opslag) hervat de eerste server-snapshot de upload', async () => {
+  it('na een herstart (nieuwe instantie, zelfde opslag) uploadt NIET automatisch: actie-nodig, pas na een expliciete retryCorrectionUploads()', async () => {
     const storage = new MemoryStorage();
     const first = harness({ storage, local: [base()] });
     first.repo.update(correct(base(), 'corr-1', 's1', { endSec: 300, pf: 9, tov: 3 })); // offline
     expect(first.calls).toHaveLength(0);
 
-    // "App herstart": nieuwe composite op dezelfde opslag.
+    // "App herstart": nieuwe composite op dezelfde opslag. Er is geen bewijs
+    // (in-memory markering) dat deze correctie op dit apparaat is gemaakt.
     const second = harness({ storage });
     second.cloud.emit([base()]);
+    await flush();
+    expect(second.calls).toHaveLength(0);
+    expect(second.repo.correctionSyncStatus('cg-1')).toBe('actie-nodig');
+
+    // Een bewuste gebruikersactie geeft wél toestemming.
+    second.repo.retryCorrectionUploads();
     await flush();
     expect(second.calls).toHaveLength(1);
     expect(second.calls[0]?.[3]).toBe(0);
@@ -405,7 +428,8 @@ describe('hervatbare upload (PR 7.5c)', () => {
       segments: [seg({ id: 's1', pf: 7 }), base().segments[1] as Segment],
       scoreFor: 15,
     });
-    const h = harness({ local: [mine] });
+    const h = harness({ local: [base()] });
+    h.repo.update(mine);
     h.cloud.emit([odd]);
     await flush();
     expect(h.calls).toHaveLength(0);
@@ -418,5 +442,247 @@ describe('hervatbare upload (PR 7.5c)', () => {
     await flush();
     expect(h.repo.correctionSyncStatus('cg-1')).toBeNull();
     expect(h.calls).toHaveLength(0);
+  });
+});
+
+describe('geen vals "gesynchroniseerd" vóór serverbevestiging (review PR #134, fix 1)', () => {
+  const c1 = () => correct(base(), 'corr-1', 's1', { endSec: 300, pf: 9, tov: 3 });
+
+  it('snapshot met hasPendingWrites (per document) is nog niet gesynchroniseerd; pas de serverbevestigde snapshot is dat', async () => {
+    let resolveUpload!: (value: CompletedGameCorrectionResult) => void;
+    const h = harness({
+      local: [base()],
+      result: () => new Promise((resolve) => (resolveUpload = resolve)),
+    });
+    h.cloud.emit([base()]);
+    h.repo.update(c1());
+    await flush();
+
+    // Latency compensation: de cloudquery toont al je eigen, onbevestigde write.
+    h.cloud.emit([optimistic(c1())], PENDING, new Set(['cg-1']));
+    expect(h.repo.correctionSyncStatus('cg-1')).toBe('wacht-op-synchronisatie');
+
+    // Ook als de writer-promise al bevestigt, blijft de status wachtend zolang
+    // de snapshot pending is; het statusrecord is niet gewist.
+    resolveUpload({ ok: true, revision: 1 });
+    await flush();
+    expect(h.repo.correctionSyncStatus('cg-1')).toBe('wacht-op-synchronisatie');
+
+    h.cloud.emit([c1()], SERVER);
+    expect(h.repo.correctionSyncStatus('cg-1')).toBe('gesynchroniseerd');
+    expect(h.seen.filter((s) => s.status === 'gesynchroniseerd')).toHaveLength(1);
+  });
+
+  it('zonder per-document-vlag telt snapshot-niveau hasPendingWrites als pending (conservatief)', async () => {
+    const h = harness({ local: [base()], result: () => new Promise(() => undefined) });
+    h.cloud.emit([base()]);
+    h.repo.update(c1());
+    await flush();
+    h.cloud.emit([optimistic(c1())], PENDING);
+    expect(h.repo.correctionSyncStatus('cg-1')).toBe('wacht-op-synchronisatie');
+    expect(h.seen.some((s) => s.status === 'gesynchroniseerd')).toBe(false);
+  });
+
+  it('een door Rules geweigerde write toont actie-nodig, zonder eerst succes te hebben getoond', async () => {
+    let rejectUpload!: (value: CompletedGameCorrectionResult) => void;
+    const h = harness({
+      local: [base()],
+      result: () => new Promise((resolve) => (rejectUpload = resolve)),
+    });
+    h.cloud.emit([base()]);
+    h.repo.update(c1());
+    await flush();
+    h.cloud.emit([optimistic(c1())], PENDING, new Set(['cg-1']));
+    expect(h.repo.correctionSyncStatus('cg-1')).toBe('wacht-op-synchronisatie');
+
+    rejectUpload({
+      ok: false,
+      error: Object.assign(new Error('denied'), { code: 'permission-denied' }),
+    });
+    await flush();
+    // De SDK draait de optimistische weergave terug.
+    h.cloud.emit([base()], SERVER);
+    expect(h.repo.correctionSyncStatus('cg-1')).toBe('actie-nodig');
+    expect(h.seen.some((s) => s.status === 'gesynchroniseerd')).toBe(false);
+    expect(h.calls).toHaveLength(1);
+  });
+});
+
+describe('correctie van een wedstrijd die alleen in de cloud staat (review PR #134, fix 2)', () => {
+  const c1 = () => correct(base(), 'corr-1', 's1', { endSec: 300, pf: 9, tov: 3 });
+
+  it('neemt de cloudkopie lokaal op, slaat de correctie lokaal op en uploadt die', async () => {
+    const h = harness({});
+    h.cloud.emit([base()]);
+    expect(h.local.list()).toEqual([]);
+
+    expect(h.repo.update(c1())).toBe(true);
+    await flush();
+
+    const stored = h.local.list();
+    expect(stored).toHaveLength(1);
+    expect(stored[0]?.revision).toBe(1);
+    expect(stored[0]?.corrections?.map((c) => c.id)).toEqual(['corr-1']);
+    expect(h.calls).toHaveLength(1);
+    expect(h.calls[0]?.[3]).toBe(0);
+    expect(h.calls[0]?.[4].correction.id).toBe('corr-1');
+  });
+
+  it('een herhaalde aanroep maakt geen duplicaat en verliest niets', async () => {
+    const h = harness({});
+    h.cloud.emit([base()]);
+    const second = correct(c1(), 'corr-2', 's2', { pa: 7 }, 'uid-1', '2026-02-03T09:00:00.000Z');
+    expect(h.repo.update(c1())).toBe(true);
+    expect(h.repo.update(second)).toBe(true);
+    expect(h.repo.update(second)).toBe(false); // zelfde revisie: geweigerd door 7.5a-regels
+    await flush();
+    expect(h.local.list()).toHaveLength(1);
+    expect(h.local.list()[0]?.corrections?.map((c) => c.id)).toEqual(['corr-1', 'corr-2']);
+    expect(h.repo.list()).toHaveLength(1);
+  });
+
+  it('een getombstonede cloudkopie wordt niet lokaal opgenomen', () => {
+    const h = harness({});
+    h.cloud.emit([
+      base({ revision: 3, deletedAt: '2026-03-01T00:00:00.000Z', deletedBy: 'uid-2' }),
+    ]);
+    expect(h.repo.update(c1())).toBe(false);
+    expect(h.local.list()).toEqual([]);
+  });
+
+  it('zonder cloudkopie (onbekend id) blijft update false en blijft de opslag leeg', () => {
+    const h = harness({});
+    h.cloud.emit([]);
+    expect(h.repo.update(c1())).toBe(false);
+    expect(h.local.list()).toEqual([]);
+  });
+
+  it('een cloudkopie van een ander team wordt niet lokaal opgenomen', () => {
+    const h = harness({});
+    h.cloud.emit([base({ teamId: 'team-2' })]);
+    expect(h.repo.update(c1())).toBe(false);
+    expect(h.local.list()).toEqual([]);
+  });
+
+  it('weigert de lokale regel de correctie, dan wordt de opgenomen cloudkopie weer verwijderd', () => {
+    const h = harness({});
+    h.cloud.emit([base()]);
+    // Revisie niet hoger dan die van de cloudkopie: local.update weigert.
+    expect(h.repo.update(base())).toBe(false);
+    expect(h.local.list()).toEqual([]);
+  });
+});
+
+describe('replay valideert alleen gewijzigde velden (review PR #134, fix 3)', () => {
+  it('een correctie van alleen pf op een segment met oude data (beginSec 720) wordt geüpload, geen conflict', async () => {
+    const oldSeg = seg({ id: 's1', beginSec: 720, endSec: 420, durSec: 300 });
+    const old = base({ segments: [oldSeg, base().segments[1] as Segment] });
+    const corrected = correct(old, 'corr-1', 's1', { pf: 9 });
+    const h = harness({ local: [old] });
+    h.cloud.emit([old]);
+    expect(h.repo.update(corrected)).toBe(true);
+    await flush();
+
+    expect(h.calls).toHaveLength(1);
+    expect(h.repo.correctionSyncStatus('cg-1')).toBe('wacht-op-synchronisatie');
+    const payload = h.calls[0]?.[4];
+    expect(payload?.correction.after).toMatchObject({ beginSec: 720, pf: 9 });
+    expect(payload?.segments[0]).toMatchObject({ beginSec: 720, durSec: 300, pf: 9 });
+    expect(payload?.scoreFor).toBe(17);
+  });
+
+  it('vergelijkt vóór/ná per veld: een andere sleutelvolgorde in het lokale log is geen conflict', async () => {
+    const c1 = correct(base(), 'corr-1', 's1', { endSec: 300, pf: 9, tov: 3 });
+    type Fields = NonNullable<CompletedGame['corrections']>[number]['before'];
+    const reorder = (f: Fields): Fields =>
+      Object.fromEntries(Object.entries(f).reverse()) as unknown as Fields;
+    const first = c1.corrections?.[0];
+    if (!first) throw new Error('fixture');
+    const reordered: CompletedGame = {
+      ...c1,
+      corrections: [{ ...first, before: reorder(first.before), after: reorder(first.after) }],
+    };
+    const h = harness({ local: [base()] });
+    h.cloud.emit([base()]);
+    expect(h.repo.update(reordered)).toBe(true);
+    await flush();
+    expect(h.calls).toHaveLength(1);
+    expect(h.repo.correctionSyncStatus('cg-1')).toBe('wacht-op-synchronisatie');
+  });
+});
+
+describe('geen automatische upload door een back-up-herstel (review PR #134, fix 5)', () => {
+  const c1 = () => correct(base(), 'corr-1', 's1', { endSec: 300, pf: 9, tov: 3 });
+
+  it('replaceAll met een gecorrigeerde wedstrijd doet nooit een gatewaywrite, ook niet bij latere cloud-snapshots', async () => {
+    const h = harness({ local: [base()] });
+    h.cloud.emit([base()]);
+    expect(h.repo.replaceAll([c1()])).toBe(true);
+    await flush();
+    h.cloud.emit([base()]);
+    h.cloud.emit([base()], SERVER);
+    await flush();
+    expect(h.calls).toHaveLength(0);
+    expect(h.writer.correctCompletedGame).not.toHaveBeenCalled();
+    // Eerlijke status: lokaal loopt voor, een gebruiker moet bewust uploaden.
+    expect(h.repo.correctionSyncStatus('cg-1')).toBe('actie-nodig');
+
+    h.repo.retryCorrectionUploads();
+    await flush();
+    expect(h.calls).toHaveLength(1);
+  });
+
+  it('een replaceAll na een update() wist de toestemming: ook die correctie gaat niet automatisch omhoog', async () => {
+    const h = harness({ local: [base()] });
+    h.repo.update(c1()); // offline gemaakt
+    h.repo.replaceAll([c1()]);
+    h.cloud.emit([base()]);
+    await flush();
+    expect(h.calls).toHaveLength(0);
+  });
+
+  it('zonder replaceAll uploadt een offline via update() gemaakte correctie na reconnect in dezelfde sessie', async () => {
+    const h = harness({ local: [base()] });
+    h.repo.update(c1());
+    h.cloud.emit([base()]);
+    await flush();
+    expect(h.calls).toHaveLength(1);
+  });
+});
+
+describe('volgende wachtende correctie na een bevestigde upload (review PR #134, fix 6)', () => {
+  it('na result.ok wordt de volgende correctie opgepakt zonder nieuwe snapshot', async () => {
+    const c1 = correct(base(), 'corr-1', 's1', { endSec: 300, pf: 9, tov: 3 });
+    const c2 = correct(c1, 'corr-2', 's2', { pa: 7 }, 'uid-1', '2026-02-03T09:00:00.000Z');
+    const resolvers: Array<(v: CompletedGameCorrectionResult) => void> = [];
+    const h = harness({
+      local: [base()],
+      result: () => new Promise((resolve) => resolvers.push(resolve)),
+    });
+    h.cloud.emit([base()]);
+    h.repo.update(c1);
+    h.repo.update(c2);
+    await flush();
+    expect(h.calls).toHaveLength(1);
+
+    // Tijdens de lopende upload komt de optimistische snapshot binnen (wordt
+    // overgeslagen: er loopt al een upload voor deze wedstrijd).
+    h.cloud.emit([optimistic(c1)], PENDING, new Set(['cg-1']));
+    expect(h.calls).toHaveLength(1);
+
+    resolvers[0]?.({ ok: true, revision: 1 });
+    await flush();
+    expect(h.calls).toHaveLength(2);
+    expect(h.calls[1]?.[3]).toBe(1);
+    expect(h.calls[1]?.[4].correction.id).toBe('corr-2');
+  });
+
+  it('start na result.ok geen tweede upload van dezelfde correctie zolang de snapshot nog achterloopt (geen lus)', async () => {
+    const h = harness({ local: [base()] });
+    h.cloud.emit([base()]);
+    h.repo.update(correct(base(), 'corr-1', 's1', { endSec: 300, pf: 9, tov: 3 }));
+    await flush();
+    await flush();
+    expect(h.calls).toHaveLength(1);
   });
 });
