@@ -65,6 +65,7 @@ De aanwezige `netlify.toml` hoort bij de meegekomen v1-referentie. Hosting, auto
 
 [docs/airtable-import-workflow.md](docs/airtable-import-workflow.md) is een **voorbeeld**-workflow voor het koppelen van de CSV-export aan een eigen Airtable-base (met placeholder-ID's, niet aan een specifieke klant gebonden).
 
+- [Papieren scoreformulier (back-up bij uitval van de app)](docs/papieren-scoreformulier/README.md)
 - [Implementatieplan en volledige roadmap](docs/IMPLEMENTATION_PLAN.md)
 - [Frontendarchitectuur (ADR-000)](docs/architecture/adr-000-frontend-architecture.md)
 - [Platformevaluatie: Firebase, Netlify en alternatieven](docs/architecture/platform-evaluation.md)

@@ -1,0 +1,172 @@
+<!doctype html>
+<html lang="nl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Papieren scoreformulier – Lineup Tracker</title>
+<style>
+  @page { size: A4 landscape; margin: 8mm; }
+  * { box-sizing: border-box; }
+  body { font: 11px/1.3 system-ui, -apple-system, "Segoe UI", Roboto, Arial, sans-serif; color: #111; margin: 0; background: #fff; }
+  .page { width: 281mm; height: 194mm; margin: 0 auto; padding: 0; page-break-after: always; position: relative; overflow: hidden; }
+  .page:last-child { page-break-after: auto; }
+  @media screen { body { background: #ddd; } .page { background: #fff; margin: 10px auto; padding: 6mm; box-shadow: 0 1px 4px rgba(0,0,0,.3); } }
+  h1 { font-size: 16px; margin: 0 0 2mm; }
+  h2 { font-size: 12px; margin: 0 0 1.5mm; text-transform: uppercase; letter-spacing: .04em; }
+  .en { color: #666; font-weight: 400; font-size: .85em; }
+  .head { display: flex; gap: 4mm; align-items: flex-end; margin-bottom: 3mm; }
+  .field { flex: 1; border-bottom: 1.2px solid #111; min-height: 8mm; padding-top: 1mm; }
+  .field small { display: block; font-size: 8.5px; color: #555; }
+  .field.s { flex: .45; }
+  table { border-collapse: collapse; width: 100%; }
+  th, td { border: 1px solid #111; padding: 0 1mm; text-align: center; }
+  th { background: #eee; font-size: 9px; font-weight: 600; line-height: 1.15; padding: 1mm; }
+  td.box { width: 10mm; }
+  .log td { height: 9.2mm; }
+  .log tr.tot td { height: 8mm; background: #f4f4f4; font-weight: 600; }
+  .log td.n { width: 8mm; font-weight: 600; color: #555; }
+  .log td.tally { text-align: left; }
+  .cols { display: flex; gap: 6mm; }
+  .cols > div { flex: 1; }
+  .roster td { height: 8.4mm; }
+  .roster td.name { text-align: left; }
+  .cb { display: inline-block; width: 4.5mm; height: 4.5mm; border: 1.2px solid #111; vertical-align: middle; }
+  ol, ul { margin: 0 0 2mm; padding-left: 5mm; }
+  li { margin-bottom: 1mm; }
+  .note { border: 1px solid #999; padding: 2mm 3mm; background: #fafafa; margin-bottom: 3mm; }
+  .big { height: 22mm; border: 1px solid #111; }
+  .foot { position: absolute; bottom: 0; left: 0; right: 0; font-size: 8.5px; color: #666; display: flex; justify-content: space-between; }
+  .ex td { height: 7mm; color: #666; font-style: italic; background: #fffbe6; }
+</style>
+</head>
+<body>
+
+<!-- PAGINA 1: voorblad -->
+<section class="page">
+  <h1>Lineup Tracker – papieren back-up <span class="en">/ paper back-up scoresheet</span></h1>
+
+  <div class="head">
+    <div class="field"><small>Tegenstander <span class="en">/ Opponent</span></small></div>
+    <div class="field"><small>Competitie / toernooi <span class="en">/ Competition</span></small></div>
+    <div class="field s"><small>Datum <span class="en">/ Date</span></small></div>
+    <div class="field s"><small>Bijgehouden door <span class="en">/ Scorer</span></small></div>
+  </div>
+  <div class="head" style="margin-bottom:4mm">
+    <div class="field s"><small>Aantal periodes <span class="en">/ Periods</span></small></div>
+    <div class="field s"><small>Klok <span class="en">/ Clock</span></small><span class="cb"></span> telt af (10:00→0:00) &nbsp; <span class="cb"></span> telt op</div>
+    <div class="field s"><small>Klassegrens <span class="en">/ Class limit</span> (optioneel)</small></div>
+  </div>
+
+  <div class="cols">
+    <div style="flex:1.25">
+      <h2>Spelers <span class="en">/ Roster</span></h2>
+      <table class="roster">
+        <thead><tr>
+          <th style="width:11mm">Rug&shy;nr.<br><span class="en">No.</span></th>
+          <th>Naam <span class="en">/ Name</span></th>
+          <th style="width:13mm">Klasse<br><span class="en">Class</span></th>
+          <th style="width:8mm">V</th>
+          <th style="width:8mm">J</th>
+          <th style="width:16mm">Doet mee<br><span class="en">Playing</span></th>
+          <th style="width:14mm">Start<br><span class="en">Starter</span></th>
+        </tr></thead>
+        <tbody id="roster"></tbody>
+      </table>
+      <div class="en" style="margin-top:1mm">V = vrouw, J = jeugd U19 (alleen invullen als het klassegrens-/bonussysteem aan staat). Rugnummers gebruiken in de opstellingen hiernaast.</div>
+    </div>
+
+    <div style="flex:1">
+      <h2>Zo houd je het bij <span class="en">/ How to use</span></h2>
+      <div class="note">
+        <ol>
+          <li><b>Voor de wedstrijd:</b> vul links de spelers in en zet een kruisje bij de vijf starters.</li>
+          <li><b>Eén regel = één segment</b> = een periode waarin dezelfde vijf spelers op het veld staan.</li>
+          <li><b>Bij elke wissel</b> (of einde periode) sluit je de regel af: noteer de <b>klok bij het einde</b>. De regel hoort bij de opstelling <i>vóór</i> de wissel.</li>
+          <li>De <b>volgende regel</b> begint op diezelfde kloktijd, met de nieuwe vijf. Meerdere wissels op hetzelfde moment = één nieuwe regel.</li>
+          <li><b>Punten:</b> schrijf elke score op in "Wij" / "Zij" (bijv. 2 3 2 1). Tel aan het eind van de regel op naar <b>Voor</b> en <b>Tegen</b>.</li>
+          <li><b>Eindstand</b> = cumulatieve stand (wij – zij). Dit is je controle: Voor/Tegen van alle regels moet optellen tot de eindstand.</li>
+          <li><b>Turnovers (TO):</b> zet een streepje per eigen balverlies in het segment en tel ze aan het eind.</li>
+          <li>Nieuwe periode: begin altijd een nieuwe regel en vul het <b>Kwart</b>-nummer in.</li>
+        </ol>
+      </div>
+
+      <h2>Later invoeren in de app <span class="en">/ Entering it later</span></h2>
+      <ul>
+        <li>Start op tabblad <b>Wedstrijd</b> en kies dezelfde spelers en starters.</li>
+        <li>Neem per regel over: <b>opstelling</b>, <b>Begin</b>/<b>Eind</b>-klok, <b>punten voor/tegen</b> → <b>Segment opslaan</b>.</li>
+        <li>Een fout? Tik het segment aan → <b>Segment bewerken</b> (kwart, tijden, opstelling, punten).</li>
+        <li>Controleer daarna of de eindstand in de app gelijk is aan je papieren eindstand. Rond dan af.</li>
+      </ul>
+
+      <h2>Aantekeningen <span class="en">/ Notes</span></h2>
+      <div class="big"></div>
+    </div>
+  </div>
+  <div class="foot"><span>Lineup Tracker – papieren back-up</span><span>Vervolg: volgende pagina's = segmentregels</span></div>
+</section>
+
+<!-- PAGINA 2-4: segmentregels -->
+<template id="logpage">
+  <section class="page">
+    <div class="head" style="margin-bottom:2mm">
+      <div class="field"><small>Tegenstander <span class="en">/ Opponent</span></small></div>
+      <div class="field s"><small>Datum <span class="en">/ Date</span></small></div>
+      <div class="field s"><small>Blad <span class="en">/ Sheet</span></small><span class="sheetno"></span></div>
+    </div>
+    <table class="log">
+      <thead>
+        <tr>
+          <th rowspan="2" style="width:8mm">#</th>
+          <th rowspan="2" style="width:11mm">Kwart<br><span class="en">Period</span></th>
+          <th rowspan="2" style="width:15mm">Begin<br><span class="en">klok</span></th>
+          <th rowspan="2" style="width:15mm">Eind<br><span class="en">klok</span></th>
+          <th colspan="5">Opstelling – rugnummers <span class="en">/ Lineup – numbers</span></th>
+          <th rowspan="2">Wij scoren<br><span class="en">We score (2 3 1 …)</span></th>
+          <th rowspan="2">Zij scoren<br><span class="en">They score</span></th>
+          <th rowspan="2" style="width:11mm">Voor<br><span class="en">For</span></th>
+          <th rowspan="2" style="width:11mm">Tegen<br><span class="en">Against</span></th>
+          <th rowspan="2" style="width:20mm">Eindstand<br><span class="en">Score (we – they)</span></th>
+          <th rowspan="2" style="width:16mm">TO<br><span class="en">turnovers</span></th>
+        </tr>
+        <tr><th>1</th><th>2</th><th>3</th><th>4</th><th>5</th></tr>
+      </thead>
+      <tbody class="rows"></tbody>
+    </table>
+    <div class="foot"><span>Rij compleet = 5 rugnummers, begin- en eindtijd, Voor en Tegen. Eindstand moet gelijk zijn aan som(Voor) – som(Tegen).</span><span class="pageno"></span></div>
+  </section>
+</template>
+
+<script>
+(function () {
+  // Spelerslijst
+  var r = document.getElementById('roster');
+  for (var i = 0; i < 14; i++) {
+    r.insertAdjacentHTML('beforeend',
+      '<tr><td></td><td class="name"></td><td></td><td></td><td></td>' +
+      '<td><span class="cb"></span></td><td><span class="cb"></span></td></tr>');
+  }
+
+  // Logbladen: 3 pagina's met 16 regels
+  var tpl = document.getElementById('logpage');
+  var ROWS = 16, PAGES = 3;
+  for (var p = 0; p < PAGES; p++) {
+    var node = tpl.content.cloneNode(true);
+    node.querySelector('.sheetno').textContent = (p + 1) + ' / ' + PAGES;
+    node.querySelector('.pageno').textContent = 'Blad ' + (p + 1) + ' van ' + PAGES;
+    var tb = node.querySelector('.rows');
+    for (var i = 0; i < ROWS; i++) {
+      var n = p * ROWS + i + 1;
+      tb.insertAdjacentHTML('beforeend',
+        '<tr><td class="n">' + n + '</td><td></td><td></td><td></td>' +
+        '<td class="box"></td><td class="box"></td><td class="box"></td><td class="box"></td><td class="box"></td>' +
+        '<td class="tally"></td><td class="tally"></td><td></td><td></td><td></td><td></td></tr>');
+    }
+    tb.insertAdjacentHTML('beforeend',
+      '<tr class="tot"><td colspan="11" style="text-align:right">Totaal dit blad <span class="en">/ Sheet total</span></td>' +
+      '<td></td><td></td><td></td><td></td></tr>');
+    document.body.appendChild(node);
+  }
+})();
+</script>
+</body>
+</html>
