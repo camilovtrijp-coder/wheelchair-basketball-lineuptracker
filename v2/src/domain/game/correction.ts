@@ -158,3 +158,68 @@ export function correctSegment(
     },
   };
 }
+
+function sameFields(a: CorrectableSegmentFields, b: CorrectableSegmentFields): boolean {
+  return (Object.keys(a) as (keyof CorrectableSegmentFields)[]).every((k) => a[k] === b[k]);
+}
+
+function isFieldsShape(value: unknown): value is CorrectableSegmentFields {
+  if (typeof value !== 'object' || value === null) return false;
+  const v = value as Record<string, unknown>;
+  return ['quarter', 'beginSec', 'endSec', 'pf', 'pa', 'tov'].every(
+    (k) => typeof v[k] === 'number',
+  );
+}
+
+/** Vergelijkt de zes bewerkbare velden plus id/segmentId/at/by; extra (cloud-only) velden tellen niet mee. */
+export function sameCorrectionEntry(
+  a: CompletedGameCorrection,
+  b: CompletedGameCorrection,
+): boolean {
+  return (
+    a.id === b.id &&
+    a.segmentId === b.segmentId &&
+    a.at === b.at &&
+    a.by === b.by &&
+    isFieldsShape(a.before) &&
+    isFieldsShape(b.before) &&
+    isFieldsShape(a.after) &&
+    isFieldsShape(b.after) &&
+    sameFields(a.before, b.before) &&
+    sameFields(a.after, b.after)
+  );
+}
+
+/**
+ * PR 7.5a (review): speelt de logitems `log[from..]` een voor een af op `base`
+ * via `correctSegment()` (dus met exact dezelfde validatieregels) en geeft het
+ * resultaat terug, of `null` als een item niet geldig is: onbekend segment,
+ * `before` wijkt af van de toen actuele waarden, ongeldige waarden/bereik,
+ * ongeldig tijdstip, of een vol/ongewijzigd log. Zo kan niets anders dan de
+ * gelogde segmenten wijzigen en volgen score en revisie uit het log.
+ */
+export function replayCorrectionLog(
+  base: CompletedGame,
+  log: readonly CompletedGameCorrection[],
+  from: number,
+): CompletedGame | null {
+  let current: CompletedGame = { ...base, corrections: log.slice(0, from) };
+  for (const entry of log.slice(from)) {
+    if (typeof entry !== 'object' || entry === null) return null;
+    if (typeof entry.id !== 'string' || entry.id === '' || typeof entry.segmentId !== 'string') {
+      return null;
+    }
+    if (entry.by !== null && typeof entry.by !== 'string') return null;
+    if (typeof entry.at !== 'string' || Number.isNaN(new Date(entry.at).getTime())) return null;
+    if (!isFieldsShape(entry.before) || !isFieldsShape(entry.after)) return null;
+    const result = correctSegment(current, entry.segmentId, entry.after, entry.by, {
+      now: new Date(entry.at),
+      id: entry.id,
+    });
+    if (!result.ok) return null;
+    if (!sameFields(result.correction.before, entry.before)) return null;
+    // Bewaar het origineel van het item (incl. eventuele extra velden) in het log.
+    current = { ...result.game, corrections: [...(current.corrections ?? []), entry] };
+  }
+  return current;
+}

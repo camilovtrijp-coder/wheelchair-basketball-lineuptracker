@@ -178,6 +178,20 @@ export function buildCloudMigrationPreview(
     for (const game of inventory.completedGames.value) {
       const hash = completedGamePayloadHash(game);
       const existing = existingCloud.completedGames.get(game.id);
+      if (game.corrections && game.corrections.length > 0) {
+        // PR 7.5a: gecorrigeerde wedstrijd — niet migreerbaar (log past niet
+        // in het cloudcontract); zichtbaar gerapporteerd, nooit geschreven.
+        warnings.push({ code: 'completedGameCorrectedBlocked', detail: game.id });
+        items.push({
+          kind: 'completedGame',
+          sourceId: game.id,
+          targetId: game.id,
+          label: `${game.opponent || '(zonder tegenstander)'} — ${game.date}`,
+          action: 'correctedBlocked',
+          payloadHash: hash,
+        });
+        continue;
+      }
       items.push({
         kind: 'completedGame',
         sourceId: game.id,

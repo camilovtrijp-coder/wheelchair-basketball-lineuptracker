@@ -1,3 +1,5 @@
+import { replayCorrectionLog, sameCorrectionEntry } from '../../domain/game/correction';
+import { segmentTurnovers } from '../../domain/game/tracking';
 import { MAX_CORRECTIONS, type CompletedGame } from '../../domain/game/types';
 import type { KeyValueStorage } from '../../i18n/persistence';
 import type {
@@ -43,10 +45,14 @@ function matchesContext(
 }
 
 /**
- * PR 7.5a: bewaakt dat `update()` alleen een echte correctie opslaat — zelfde
- * segmenten in dezelfde volgorde met dezelfde opstelling/classificatie,
- * hogere revisie, een correctielog dat alleen kan groeien (max.
- * `MAX_CORRECTIONS`) en een consistente `durSec`.
+ * PR 7.5a: bewaakt dat `update()` alleen een echte correctie opslaat. Het log
+ * moet het opgeslagen log als voorvoegsel houden en alleen groeien; de nieuwe
+ * logitems worden via `replayCorrectionLog()` (= `correctSegment()`, dus
+ * dezelfde regels, geen tweede kopie) afgespeeld op de opgeslagen wedstrijd.
+ * Segmenten, `scoreFor`/`scoreAgainst` en `durSec` van de binnenkomende
+ * wedstrijd moeten exact gelijk zijn aan dat resultaat: een niet-gelogd
+ * gewijzigd segment of een vervalste score wordt dus geweigerd. Revisie moet
+ * strikt hoger zijn (zie docstring van `update()`).
  */
 function isValidCorrectionUpdate(existing: CompletedGame, incoming: CompletedGame): boolean {
   if (!Array.isArray(incoming.segments) || incoming.segments.length !== existing.segments.length) {
@@ -63,20 +69,43 @@ function isValidCorrectionUpdate(existing: CompletedGame, incoming: CompletedGam
       other.over === segment.over &&
       Array.isArray(other.lineup) &&
       other.lineup.length === segment.lineup.length &&
-      other.lineup.every((id, k) => id === segment.lineup[k]) &&
-      Number.isFinite(other.beginSec) &&
-      Number.isFinite(other.endSec) &&
-      other.durSec === Math.abs(other.endSec - other.beginSec) &&
-      other.durSec > 0
+      other.lineup.every((id, k) => id === segment.lineup[k])
     );
   });
   if (!sameStructure) return false;
   const existingRevision = Number.isInteger(existing.revision) ? existing.revision : 0;
   if (!Number.isInteger(incoming.revision) || incoming.revision <= existingRevision) return false;
   const log = incoming.corrections;
+  const stored = existing.corrections ?? [];
   if (!Array.isArray(log) || log.length > MAX_CORRECTIONS) return false;
-  if (log.length < (existing.corrections?.length ?? 0)) return false;
-  return typeof incoming.correctedAt === 'string';
+  if (log.length <= stored.length) return false;
+  if (typeof incoming.correctedAt !== 'string') return false;
+  if (
+    !stored.every((entry, i) => {
+      const other = log[i];
+      return other !== undefined && sameCorrectionEntry(entry, other);
+    })
+  ) {
+    return false;
+  }
+  const replayed = replayCorrectionLog(existing, log, stored.length);
+  if (replayed === null) return false;
+  if (replayed.scoreFor !== incoming.scoreFor || replayed.scoreAgainst !== incoming.scoreAgainst) {
+    return false;
+  }
+  return replayed.segments.every((expected, i) => {
+    const other = incoming.segments[i];
+    return (
+      other !== undefined &&
+      other.quarter === expected.quarter &&
+      other.beginSec === expected.beginSec &&
+      other.endSec === expected.endSec &&
+      other.durSec === expected.durSec &&
+      other.pf === expected.pf &&
+      other.pa === expected.pa &&
+      segmentTurnovers(other) === segmentTurnovers(expected)
+    );
+  });
 }
 
 export class LocalStorageCompletedGameRepository implements CompletedGameRepository {
@@ -178,7 +207,17 @@ export class LocalStorageCompletedGameRepository implements CompletedGameReposit
     return this.writeAll(current.games.filter((g) => g.id !== id));
   }
 
-  /** Zie de interface-docstring: alleen correctievelden worden overgenomen. */
+  /**
+   * Zie de interface-docstring: alleen correctievelden worden overgenomen.
+   *
+   * Bewuste afwijking van de cloud (docs/pr-7.5-plan.md §D.2): lokaal wordt een
+   * revisie "strikt hoger dan opgeslagen" geaccepteerd (nodig om in 7.5c een
+   * cloudkopie die meerdere correcties voorloopt toe te passen), terwijl de
+   * cloud-Rules exact +1 eisen. Het cloud-logitem draagt in 7.5c bovendien een
+   * extra cloud-only veld `segmentIndex`; dat wordt bij het vergelijken en
+   * afspelen genegeerd (het log wordt zoals binnengekomen opgeslagen). Het log moet altijd een voorvoegsel-uitbreiding zijn
+   * en de score/segmenten moeten volgen uit het afspelen van de nieuwe items.
+   */
   update(game: CompletedGame): boolean {
     if (game.organizationId !== this.organizationId || game.teamId !== this.teamId) return false;
     const current = this.readAll();
@@ -201,7 +240,8 @@ export class LocalStorageCompletedGameRepository implements CompletedGameReposit
           durSec: incoming.durSec,
           pf: incoming.pf,
           pa: incoming.pa,
-          tov: incoming.tov ?? 0,
+          // Alleen overnemen als aanwezig: een segment zonder `tov` behoudt zijn vorm.
+          ...(incoming.tov !== undefined ? { tov: incoming.tov } : {}),
         };
       }),
       scoreFor: game.scoreFor,

@@ -252,6 +252,82 @@ describe('LocalStorageCompletedGameRepository.update — weigeringen laten opsla
   });
 });
 
+describe('LocalStorageCompletedGameRepository.update — sterkere invarianten (review)', () => {
+  it('niet-gecorrigeerd segment zonder tov blijft zonder tov (byte-identiek)', () => {
+    const { tov: _tov, ...noTov } = seg({ id: 's2', beginSec: 420, endSec: 180, durSec: 240 });
+    void _tov;
+    const base = game({ segments: [seg({ id: 's1' }), noTov], scoreFor: 12, scoreAgainst: 8 });
+    const { repo, storage, key } = setup([base]);
+    expect(repo.update(corrected(base))).toBe(true);
+    const stored = JSON.parse(storage.store.get(key) as string) as CompletedGame[];
+    const s2 = stored[0]?.segments[1] as Segment;
+    expect('tov' in s2).toBe(false);
+    expect(JSON.stringify(s2)).toBe(JSON.stringify(noTov));
+  });
+
+  it('vervalste score met hogere revisie wordt geweigerd', () => {
+    expectRejectedLocal({ ...corrected(game()), scoreFor: 99, revision: 7 });
+    expectRejectedLocal({ ...corrected(game()), scoreAgainst: 0 });
+  });
+
+  it('niet-gelogd gewijzigd segment (pf/pa/tov/tijd/kwart) wordt geweigerd', () => {
+    const good = corrected(game());
+    const [s1, s2] = good.segments as [Segment, Segment];
+    expectRejectedLocal({ ...good, segments: [s1, { ...s2, pf: s2.pf + 1 }] });
+    expectRejectedLocal({ ...good, segments: [s1, { ...s2, tov: 9 }] });
+    expectRejectedLocal({ ...good, segments: [s1, { ...s2, quarter: 2 }] });
+    expectRejectedLocal({ ...good, segments: [s1, { ...s2, endSec: 100, durSec: 320 }] });
+  });
+
+  it('log dat een ander dan het toegevoegde item wijzigt, of een ongeldig item toevoegt, wordt geweigerd', () => {
+    const first = corrected(game());
+    const second = correctSegment(first, 's2', { tov: 0 }, null);
+    if (!second.ok) throw new Error('verwacht ok');
+    const log = second.game.corrections ?? [];
+    const e0 = log[0];
+    if (!e0) throw new Error('verwacht item');
+    // opgeslagen item gewijzigd
+    expectRejectedLocal(
+      { ...second.game, corrections: [{ ...e0, after: { ...e0.after, pf: 1 } }, ...log.slice(1)] },
+      [first],
+    );
+    // nieuw item met afwijkende before
+    const e1 = log[1];
+    if (!e1) throw new Error('verwacht item');
+    expectRejectedLocal(
+      { ...second.game, corrections: [e0, { ...e1, before: { ...e1.before, pf: 5 } }] },
+      [first],
+    );
+    // nieuw item met onbekend segment
+    expectRejectedLocal({ ...second.game, corrections: [e0, { ...e1, segmentId: 'x' }] }, [first]);
+    // log gelijk gebleven (geen groei)
+    expectRejectedLocal({ ...first, revision: 5 }, [first]);
+  });
+
+  it('ondersteunt een cloudkopie met meerdere extra logitems, hogere revisie en segmentIndex', () => {
+    const one = corrected(game());
+    const two = correctSegment(one, 's2', { tov: 0 }, null);
+    if (!two.ok) throw new Error('verwacht ok');
+    const withIndex = {
+      ...two.game,
+      revision: 5,
+      corrections: two.game.corrections?.map((c, i) => ({ ...c, segmentIndex: i })),
+    } as CompletedGame;
+    const { repo } = setup();
+    expect(repo.update(withIndex)).toBe(true);
+    expect(repo.list()[0]?.revision).toBe(5);
+    expect(repo.list()[0]?.corrections).toHaveLength(2);
+    expect(repo.list()[0]?.scoreFor).toBe(17);
+  });
+});
+
+function expectRejectedLocal(attempt: CompletedGame, initial: CompletedGame[] = [game()]): void {
+  const { repo, storage, key } = setup(initial);
+  const before = storage.store.get(key);
+  expect(repo.update(attempt)).toBe(false);
+  expect(storage.store.get(key)).toBe(before);
+}
+
 describe('CompositeCompletedGameRepository.update — alleen lokaal pad', () => {
   function composite(): {
     repo: CompositeCompletedGameRepository;

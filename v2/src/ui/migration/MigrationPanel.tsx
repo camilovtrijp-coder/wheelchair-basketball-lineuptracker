@@ -456,6 +456,9 @@ function MigrationPreviewCard({
   const settingsItem = preview.items.find((i) => i.kind === 'settings');
   const rosterItem = preview.items.find((i) => i.kind === 'roster');
   const completedItems = preview.items.filter((i) => i.kind === 'completedGame');
+  const correctedBlockedCount = completedItems.filter(
+    (i) => i.action === 'correctedBlocked',
+  ).length;
   const activeItem = preview.items.find((i) => i.kind === 'activeGame');
 
   function sectionLine(item: CloudMigrationItem | undefined, sectionKey: StringKey) {
@@ -486,6 +489,11 @@ function MigrationPreviewCard({
           {t('migrationActionConflict')}
         </li>
       </ul>
+      {correctedBlockedCount > 0 ? (
+        <p className="settings-explainer" data-testid="migration-preview-corrected-blocked">
+          {t('migrationCorrectedBlocked').replace('{n}', String(correctedBlockedCount))}
+        </p>
+      ) : null}
 
       <h4>{t('migrationTrackingGameTitle')}</h4>
       {activeItem && activeItem.action === 'excludedTrackingGame' ? (
