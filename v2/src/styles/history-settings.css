@@ -255,3 +255,73 @@
   min-height: 3rem;
   border-radius: var(--lt-radius-md);
 }
+
+/* ---------- PR 7.5b: correctie van een afgeronde wedstrijd ---------- */
+
+.history-panel .segment-item--tappable {
+  cursor: pointer;
+}
+
+.history-panel .segment-item--tappable:focus-visible {
+  outline: 2px solid var(--lt-color-accent, currentColor);
+  outline-offset: 2px;
+}
+
+.correction-badge {
+  display: inline-block;
+  margin-left: var(--lt-space-2);
+  padding: 0 var(--lt-space-2);
+  border: var(--lt-border-thin);
+  border-radius: var(--lt-radius-md);
+  font-size: var(--lt-font-size-xs);
+  font-weight: 600;
+  color: var(--lt-color-fg);
+  vertical-align: middle;
+}
+
+.history-correction-saved {
+  color: var(--lt-color-fg);
+  font-weight: 600;
+}
+
+.correction-log ul {
+  list-style: none;
+  margin: var(--lt-space-2) 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--lt-space-2);
+}
+
+.correction-log li {
+  display: flex;
+  flex-direction: column;
+  gap: var(--lt-space-1);
+  font-variant-numeric: tabular-nums;
+}
+
+.correction-log__when {
+  font-weight: 600;
+}
+
+.correction-summary {
+  display: flex;
+  flex-direction: column;
+  gap: var(--lt-space-2);
+  margin: 0;
+}
+
+.correction-summary__row dt {
+  font-weight: 600;
+}
+
+.correction-summary__row dd {
+  display: flex;
+  flex-direction: column;
+  margin: 0;
+  font-variant-numeric: tabular-nums;
+}
+
+.correction-summary__tag {
+  color: var(--lt-color-muted);
+}
