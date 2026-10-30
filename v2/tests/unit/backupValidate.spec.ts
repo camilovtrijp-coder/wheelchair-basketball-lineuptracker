@@ -431,3 +431,62 @@ describe('domain/backup/validate — validateBackupData (plan §C.5/§G.3-4)', (
     expect(errors.some((e) => e.code === 'gameInvalid')).toBe(true);
   });
 });
+
+describe('domain/backup/validate — turnovers (additief veld en actie)', () => {
+  const at = '2026-01-01T10:00:00.000Z';
+
+  it('segmenten zonder tov (oude back-ups) blijven geldig', () => {
+    const game = completedGame({ segments: [segment()] });
+    expect(validateBackupData({ completedGames: [game] })).toEqual([]);
+  });
+
+  it('een segment met een geldige tov (geheel getal ≥ 0) is geldig', () => {
+    for (const tov of [0, 3, 12]) {
+      const game = completedGame({ segments: [segment({ tov })] });
+      expect(validateBackupData({ completedGames: [game] })).toEqual([]);
+    }
+  });
+
+  it.each([[-1], [1.5], ['3'], [null], [Number.NaN]])(
+    'een segment met ongeldige tov (%s) wordt geweigerd met een gestructureerde fout',
+    (tov) => {
+      const game = completedGame({ segments: [segment({ tov: tov as unknown as number })] });
+      const errors = validateBackupData({ completedGames: [game] });
+      expect(
+        errors.some((e) => e.code === 'gameInvalid' && e.detail?.includes('segmentField:tov')),
+      ).toBe(true);
+    },
+  );
+
+  it('activeGame.actions: turnover-delta-acties met een geheel getal zijn geldig', () => {
+    const errors = validateBackupData({
+      activeGame: activeGame({
+        actions: [
+          { type: 'turnover-delta', id: 'a1', delta: 1, at },
+          { type: 'turnover-delta', id: 'a2', delta: -1, at },
+        ],
+      }),
+    });
+    expect(errors).toEqual([]);
+  });
+
+  it('activeGame.actions: een turnover-delta met een niet-geheel of ontbrekend getal wordt geweigerd', () => {
+    for (const delta of [0.5, 'x', undefined]) {
+      const errors = validateBackupData({
+        activeGame: activeGame({
+          actions: [{ type: 'turnover-delta', id: 'a1', delta: delta as unknown as number, at }],
+        }),
+      });
+      expect(errors.some((e) => e.detail?.includes('actionField:delta'))).toBe(true);
+    }
+  });
+
+  it('een segment-saved-actie met tov in het embedded segment is geldig', () => {
+    const errors = validateBackupData({
+      activeGame: activeGame({
+        actions: [{ type: 'segment-saved', id: 'a1', at, segment: segment({ tov: 4 }) }],
+      }),
+    });
+    expect(errors).toEqual([]);
+  });
+});

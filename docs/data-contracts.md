@@ -24,6 +24,8 @@ Eén CSV-bestand bevat twee secties: opstellingen (+/-) en speeltijd per speler.
 Opstelling,Kwart,Begin,Eind,Speeltijd,Seconden,Punten voor,Punten tegen,Plusminus,Lineup code
 ```
 
+> **Uitbreiding (turnovers):** vanaf de turnover-uitbreiding in v2 bevat deze sectie één extra kolom **`Turnovers` helemaal achteraan** (na `Lineup code`). De header wordt `...,Plusminus,Lineup code,Turnovers`. Zie "Turnovers-kolom (additief)" hieronder. Alle onderstaande bestaande kolommen en hun volgorde zijn **ongewijzigd** (v1-contract voor de bestaande kolommen blijft gelijk).
+
 **Header (met classificatie)**:
 ```
 Opstelling,Kwart,Begin,Eind,Speeltijd,Seconden,Punten voor,Punten tegen,Plusminus,Som classificatie,Toegestane grens,Binnen klassegrens,Lineup code
@@ -45,16 +47,22 @@ Opstelling,Kwart,Begin,Eind,Speeltijd,Seconden,Punten voor,Punten tegen,Plusminu
 | Toegestane grens | number | Limiet incl. bonus (optioneel) | `16.0` |
 | Binnen klassegrens | string | "OK" of "Te hoog" (optioneel) | `"OK"` |
 | Lineup code | string | Gesorteerde rugnummers | `"3-5-7-9-11"` |
+| Turnovers | number | Eigen turnovers in dit segment (v2-uitbreiding, laatste kolom; oude segmenten: `0`) | `3` |
 
-**Voorbeeld rij (zonder classificatie)**:
+**Voorbeeld rij (zonder classificatie, v2 met turnovers)**:
 ```csv
-"Jan #7 | Piet #3 | Kees #5 | Jan #9 | Tom #11",1,10:00,8:00,2:00,120,8,6,2,3-5-7-9-11
+"Jan #7 | Piet #3 | Kees #5 | Jan #9 | Tom #11",1,10:00,8:00,2:00,120,8,6,2,3-5-7-9-11,3
 ```
 
-**Voorbeeld rij (met classificatie)**:
+**Voorbeeld rij (met classificatie, v2 met turnovers)**:
 ```csv
-"Jan #7 | Piet #3 | Kees #5 | Jan #9 | Tom #11",1,10:00,8:00,2:00,120,8,6,2,13.5,16.0,OK,3-5-7-9-11
+"Jan #7 | Piet #3 | Kees #5 | Jan #9 | Tom #11",1,10:00,8:00,2:00,120,8,6,2,13.5,16.0,OK,3-5-7-9-11,3
 ```
+
+**Turnovers-kolom (additief)**:
+- Nieuwe laatste kolom `Turnovers` = `segment.tov` (aantal eigen turnovers in het segment); een segment zonder `tov` (oudere wedstrijd/back-up) geeft `0`.
+- Bestaande koppelingen die de oorspronkelijke kolommen op naam of positie lezen, blijven werken; alleen een koppeling die het *aantal* kolommen aanneemt of `Lineup code` als laatste kolom verwacht, moet de nieuwe laatste kolom negeren of koppelen.
+- De sectie "Speeltijd per speler" is ongewijzigd.
 
 **Berekeningen**:
 - `Plusminus = Punten voor - Punten tegen`
@@ -404,6 +412,11 @@ interface Segment {
   over: boolean;
 }
 
+```
+
+> **v2-uitbreiding (turnovers, additief):** in v2 heeft een `Segment` een optioneel veld `tov?: number` (aantal eigen turnovers in het segment; geheel getal ≥ 0, ontbrekend = 0), en het actielogboek een actie `{ type: 'turnover-delta', id, delta: number, at }`. Back-ups (v2-schema) accepteren beide, oude back-ups zonder deze velden blijven geldig, en er is geen schemaversie-verhoging. Het v1-formaat hierboven is niet gewijzigd en v1-migratie laat `tov` weg.
+
+```typescript
 interface State {
   phase: "setup" | "tracking";
   players: PlayerWithMatchState[];

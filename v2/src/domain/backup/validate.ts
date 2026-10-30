@@ -219,6 +219,13 @@ function validateSegmentShape(
   ) {
     errors.push({ code: 'gameInvalidScore', detail: segLabel });
   }
+  // Optioneel veld (oude back-ups hebben het niet): als het er is, een geheel getal ≥ 0.
+  if (
+    raw.tov !== undefined &&
+    (typeof raw.tov !== 'number' || !Number.isInteger(raw.tov) || raw.tov < 0)
+  ) {
+    errors.push({ code: 'gameInvalid', detail: `segmentField:tov:${segLabel}` });
+  }
   return errors;
 }
 
@@ -457,6 +464,7 @@ const ACTION_TYPES = [
   'segment-saved',
   'segment-edited',
   'segment-deleted',
+  'turnover-delta',
 ] as const;
 
 /**
@@ -513,6 +521,11 @@ function validateActionShape(
     case 'segment-deleted':
       if (typeof raw.segmentId !== 'string') {
         errors.push({ code: 'gameInvalid', detail: `actionField:segmentId:${label}` });
+      }
+      break;
+    case 'turnover-delta':
+      if (typeof raw.delta !== 'number' || !Number.isInteger(raw.delta)) {
+        errors.push({ code: 'gameInvalid', detail: `actionField:delta:${label}` });
       }
       break;
   }

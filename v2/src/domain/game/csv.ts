@@ -1,4 +1,5 @@
 import type { CompletedGame, GamePlayer, Segment } from './types';
+import { segmentTurnovers } from './tracking';
 
 /**
  * Byte-exacte poort van v1's Nederlandse CSV-contract (index.html
@@ -9,6 +10,10 @@ import type { CompletedGame, GamePlayer, Segment } from './types';
  * "Opstelling"-veld staat tussen dubbele aanhalingstekens, komma's/quotes in
  * spelernamen worden niet geëscaped — exact v1-gedrag, nodig voor
  * byte-exacte gelijkheid.
+ *
+ * Uitbreiding (turnovers): `segmentsCsvFor` heeft één extra kolom `Turnovers`
+ * ACHTERAAN (na `Lineup code`); alle bestaande kolommen en hun volgorde zijn
+ * ongewijzigd. Oude segmenten zonder `tov` krijgen 0.
  */
 
 /** v1: `fmt()` — "-1:05"/"1:05" (min:ss, met minteken bij negatieve duur). */
@@ -46,7 +51,7 @@ export function segmentsCsvFor(
     return p ? p.nr : '?';
   };
   const classCols = useClassLimit ? ',Som classificatie,Toegestane grens,Binnen klassegrens' : '';
-  const head = `Opstelling,Kwart,Begin,Eind,Speeltijd,Seconden,Punten voor,Punten tegen,Plusminus${classCols},Lineup code`;
+  const head = `Opstelling,Kwart,Begin,Eind,Speeltijd,Seconden,Punten voor,Punten tegen,Plusminus${classCols},Lineup code,Turnovers`;
   const rows = segments.map((s) => {
     const lineup = s.lineup.map(lbl).join(' | ');
     const base = `"${lineup}",${s.quarter},${fmt(s.beginSec)},${fmt(s.endSec)},${fmt(s.durSec)},${s.durSec},${s.pf},${s.pa},${s.pf - s.pa}`;
@@ -59,7 +64,7 @@ export function segmentsCsvFor(
       .sort((a, b) => (parseInt(nr(a), 10) || 0) - (parseInt(nr(b), 10) || 0))
       .map(nr)
       .join('-');
-    return base + classPart + ',' + code;
+    return base + classPart + ',' + code + ',' + segmentTurnovers(s);
   });
   return [head, ...rows].join('\n');
 }

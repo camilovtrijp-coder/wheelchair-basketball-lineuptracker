@@ -158,6 +158,7 @@ Deze matrix beschrijft welke functionaliteit de v2 moet behouden, wijzigen of be
 | Minutes sectie | Behouden | Speeltijd per speler |
 | Classificatie kolommen | Behouden | Alleen als systeem aan |
 | Lineup code | Behouden | Gesorteerde rugnummers |
+| Turnovers-kolom | Toegevoegd (v2, additief) | Extra laatste kolom `Turnovers` na `Lineup code`; bestaande kolommen en volgorde ongewijzigd; oude segmenten → `0` |
 | Bestandsnaam format | Behouden | `{team}-{YYYYMMDD}-{HHmm}.csv` |
 | Share/download | Behouden | Web Share API of download |
 
