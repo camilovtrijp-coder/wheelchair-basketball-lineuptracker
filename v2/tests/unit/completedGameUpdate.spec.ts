@@ -304,6 +304,17 @@ describe('LocalStorageCompletedGameRepository.update — sterkere invarianten (r
     expectRejectedLocal({ ...first, revision: 5 }, [first]);
   });
 
+  it('correctie van alleen pf op een segment met oude data (beginSec 720) wordt geaccepteerd', () => {
+    const oldSeg = seg({ id: 's1', beginSec: 720, endSec: 420, durSec: 300 });
+    const base = game({ segments: [oldSeg, game().segments[1] as Segment], scoreFor: 14 });
+    const next = correctSegment(base, 's1', { pf: 9 }, null);
+    if (!next.ok) throw new Error('verwacht ok');
+    const { repo } = setup([base]);
+    expect(repo.update(next.game)).toBe(true);
+    expect(repo.list()[0]?.segments[0]).toMatchObject({ beginSec: 720, pf: 9 });
+    expect(repo.list()[0]?.scoreFor).toBe(17);
+  });
+
   it('ondersteunt een cloudkopie met meerdere extra logitems, hogere revisie en segmentIndex', () => {
     const one = corrected(game());
     const two = correctSegment(one, 's2', { tov: 0 }, null);
