@@ -763,6 +763,18 @@ sandbox worden uitgevoerd en staat expliciet open voor fase-7-acceptatie.
 - rollback en lokale back-up blijven beschikbaar;
 - cloudmigratie is opt-in en wist de bron niet automatisch.
 
+### PR 7.5 — correctie van een afgeronde wedstrijd (voorstel)
+
+Voorbereidingsplan: [`docs/pr-7.5-plan.md`](pr-7.5-plan.md). **Status:
+voorstel, wacht op eigenaarsbesluit** (uitzondering op "afgeronde wedstrijd
+standaard onveranderlijk"); nog geen implementatie.
+
+- één segment corrigeren in Historie: tijd, score en turnovers;
+- bewerken in-place met begrensd, append-only correctielog en revisiecontrole;
+- Rules-uitbreiding alleen voor owner/admin/coach, positief en negatief
+  getest in de Emulator Suite;
+- sub-PR's 7.5a domein/lokaal, 7.5b UI, 7.5c cloud/merge.
+
 ### Stabiliteitsfix game-sync: onbevestigde writes in de lokale weergave
 
 Opvolging van de flaky e2e-auth-suite (geen nieuwe roadmap-PR; branch
