@@ -92,6 +92,15 @@ Na een correctie zijn `segments[i]`, `scoreFor`, `scoreAgainst` en
 `scoreFor' = scoreFor + (nieuwe pf − oude pf)` (idem tegen), zodat punten die
 bij afronden buiten een segment vielen onaangetast blijven.
 
+**Bewuste afwijking lokaal vs. cloud (review 7.5a):** de lokale `update()`
+accepteert een revisie "strikt hoger dan opgeslagen" (niet exact +1). Dat is
+nodig om in 7.5c een cloudkopie toe te passen die meerdere correcties voorloopt;
+de cloud-Rules eisen wél exact +1. Lokaal moet het log altijd een
+voorvoegsel-uitbreiding zijn; de nieuwe items worden via `correctSegment()`
+afgespeeld en segmenten, `scoreFor` en `scoreAgainst` moeten daarmee exact
+overeenkomen. Het cloud-logitem draagt in 7.5c een extra cloud-only veld
+`segmentIndex`; de lokale validatie negeert dat veld.
+
 Alternatief **append-only subcollectie** `completedGames/{id}/corrections/*`
 met afleiding bij het lezen: zuiverder, maar iedere lijst-/stats-/CSV-read moet
 dan een extra query doen en de offline-cachegarantie van 7.2b wordt zwaarder.
@@ -239,3 +248,4 @@ Oorspronkelijke vraagstelling:
   uitgerold.
 - Een correctie wijzigt historische stats achteraf; dat is bedoeld, maar wordt
   zichtbaar gemaakt via de "Gecorrigeerd"-badge.
+- Gecorrigeerde wedstrijden worden bij cloudmigratie voorlopig geblokkeerd; meenemen van het log vraagt een create-Rules-wijziging en een eigen sub-PR.

@@ -3,7 +3,7 @@ import { describe, it, expect } from 'vitest';
 import type { CompletedGame, GamePlayer, Segment } from '../../src/domain/game/types';
 import { MAX_CORRECTIONS, MAX_SCORE } from '../../src/domain/game/types';
 import { correctSegment, correctableFieldsOf } from '../../src/domain/game/correction';
-import { segmentsCsvFor, combinedCsvForGame } from '../../src/domain/game/csv';
+import { segmentsCsvFor } from '../../src/domain/game/csv';
 import {
   fmtTurnoversPer10,
   sumTurnovers,
@@ -151,7 +151,21 @@ describe('correctSegment — vaste fixture uit plan §G', () => {
 
   it('CSV: ongewijzigde wedstrijd is byte-identiek, gecorrigeerde bevat de nieuwe segmentwaarden', () => {
     const roundtripped = JSON.parse(JSON.stringify(game)) as CompletedGame;
-    expect(combinedCsvForGame(roundtripped)).toBe(combinedCsvForGame(game));
+    // Vaste, letterlijke verwachting (niet afgeleid van dezelfde functie).
+    const expectedUncorrected = [
+      CSV_HEAD,
+      `${LINEUP},1,10:00,7:00,3:00,180,6,4,2,15.0,14.5,Te hoog,1-2-3-4-5,2`,
+      `${LINEUP},1,7:00,3:00,4:00,240,8,6,2,15.0,14.5,Te hoog,1-2-3-4-5,1`,
+    ].join('\n');
+    expect(segmentsCsvFor(roundtripped.segments, roundtripped.players, true)).toBe(
+      expectedUncorrected,
+    );
+    // Correctie op S1 laat de CSV-rij van het niet-gewijzigde S2 byte-identiek.
+    const other = correctSegment(game, 's1', { pf: 7 }, null, opts);
+    if (!other.ok) throw new Error('verwacht ok');
+    expect(segmentsCsvFor(other.game.segments, other.game.players, true).split('\n')[2]).toBe(
+      expectedUncorrected.split('\n')[2],
+    );
     expect(segmentsCsvFor(game.segments, game.players, true)).toBe(
       [
         CSV_HEAD,

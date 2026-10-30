@@ -231,6 +231,13 @@ export class MigrationCoordinator {
         const game = local.completedGames.get(item.sourceId);
         if (!game)
           return { ok: false, error: `lokale wedstrijd ${item.sourceId} ontbreekt voor deze run` };
+        // PR 7.5a: ook een hervatte (oudere) run schrijft nooit een
+        // gecorrigeerde wedstrijd — het correctielog past nog niet in de cloud.
+        if (game.corrections && game.corrections.length > 0)
+          return {
+            ok: false,
+            error: `wedstrijd ${item.sourceId} is gecorrigeerd en wordt nog niet naar de cloud gemigreerd`,
+          };
         return this.writeGateway.writeCompletedGame(
           target.organizationId,
           target.teamId,

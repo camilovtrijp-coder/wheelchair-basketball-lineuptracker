@@ -15,6 +15,7 @@ import type {
 import type { ActiveGame, CompletedGame } from '../../src/domain/game/types';
 import type { OrganizationRole } from '../../src/domain/organizations/types';
 
+const FIXED_UNCORRECTED_HASH = 'd2da54ab';
 const now = '2026-08-23T10:00:00.000Z';
 
 const sourceCtx: MigrationContextRef = {
@@ -313,5 +314,54 @@ describe('domain/migration/preview — buildCloudMigrationPreview (docs/pr-7.4-p
       baseInput('organizationOwner', emptyInventory(), emptyCloudSnapshot()),
     );
     expect(preview.contextFingerprint).not.toBe(other.contextFingerprint);
+  });
+});
+
+describe('PR 7.5a-fix — gecorrigeerde wedstrijden en payloadhash', () => {
+  const correction = {
+    id: 'corr-1',
+    segmentId: 'seg-1',
+    at: '2026-10-30T10:00:00.000Z',
+    by: null,
+    before: { quarter: 1, beginSec: 600, endSec: 420, pf: 6, pa: 4, tov: 2 },
+    after: { quarter: 1, beginSec: 600, endSec: 300, pf: 9, pa: 4, tov: 3 },
+  } as unknown as NonNullable<CompletedGame['corrections']>[number];
+  const corrected: CompletedGame = {
+    ...completedGame,
+    id: 'c2',
+    sourceGameId: 'src-2',
+    corrections: [correction],
+    correctedAt: '2026-10-30T10:00:00.000Z',
+  };
+
+  it('ongecorrigeerde wedstrijd: hash blijft byte-identiek (vaste waarde)', () => {
+    expect(completedGamePayloadHash(completedGame)).toBe(FIXED_UNCORRECTED_HASH);
+  });
+
+  it('corrections/correctedAt tellen niet mee (lokaal gecorrigeerd == cloud zonder log); segmentinhoud wel', () => {
+    const { corrections: _c, correctedAt: _ca, ...withoutLog } = corrected;
+    void _c;
+    void _ca;
+    expect(completedGamePayloadHash(corrected)).toBe(completedGamePayloadHash(withoutLog));
+    expect(completedGamePayloadHash({ ...withoutLog, scoreFor: 99 })).not.toBe(
+      completedGamePayloadHash(withoutLog),
+    );
+  });
+
+  it('preview markeert gecorrigeerde wedstrijd als correctedBlocked, buiten requiredWrites; rest normaal', () => {
+    const inventory = buildLocalMigrationInventory(sourceCtx.organizationId, sourceCtx.teamId, {
+      ...emptyRawSource,
+      completedGames: [completedGame, corrected],
+    });
+    const preview = buildCloudMigrationPreview(baseInput('coach', inventory, emptyCloudSnapshot()));
+    const byId = (id: string) => preview.items.find((i) => i.sourceId === id);
+    expect(byId('c1')?.action).toBe('create');
+    expect(byId('c2')?.action).toBe('correctedBlocked');
+    expect(preview.requiredWrites).toBe(1);
+    expect(preview.counts).toEqual({ create: 1, alreadyPresentIdentical: 0, conflict: 0 });
+    expect(preview.warnings).toContainEqual({
+      code: 'completedGameCorrectedBlocked',
+      detail: 'c2',
+    });
   });
 });

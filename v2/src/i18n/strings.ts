@@ -346,6 +346,8 @@ const nl = {
   migrationActionCreate: 'wordt aangemaakt',
   migrationActionAlreadyPresent: 'al gelijk aanwezig — geen write nodig',
   migrationActionConflict: 'conflict — cloudversie wijkt af, wordt nooit overschreven',
+  migrationCorrectedBlocked:
+    '{n} gecorrigeerde wedstrijd(en) kunnen nog niet naar de cloud en worden overgeslagen. Ze blijven lokaal behouden op dit apparaat.',
   migrationTrackingGameTitle: 'Actieve wedstrijd',
   migrationTrackingGameNone: 'Geen actieve wedstrijd op dit apparaat.',
   migrationTrackingGameExcludedTracking:
@@ -1185,6 +1187,8 @@ const en = {
   migrationActionCreate: 'will be created',
   migrationActionAlreadyPresent: 'already identical — no write needed',
   migrationActionConflict: 'conflict — cloud version differs, never overwritten',
+  migrationCorrectedBlocked:
+    '{n} corrected match(es) cannot be moved to the cloud yet and are skipped. They remain stored locally on this device.',
   migrationTrackingGameTitle: 'Active match',
   migrationTrackingGameNone: 'No active match on this device.',
   migrationTrackingGameExcludedTracking:
