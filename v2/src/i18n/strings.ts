@@ -1,6 +1,7 @@
 import { trendsEn, trendsNl } from './trendsStrings';
 import { trendsPlayersEn, trendsPlayersNl } from './trendsPlayersStrings';
 import { trendsOverviewEn, trendsOverviewNl } from './trendsOverviewStrings';
+import { trendsLineupsExtraEn, trendsLineupsExtraNl } from './trendsLineupsExtraStrings';
 
 export const LANG_STORAGE_KEY = 'lineup-tracker-lang';
 
@@ -905,6 +906,7 @@ const nl = {
   ...trendsNl,
   ...trendsPlayersNl,
   ...trendsOverviewNl,
+  ...trendsLineupsExtraNl,
 } as const;
 
 const en = {
@@ -1743,6 +1745,7 @@ const en = {
   ...trendsEn,
   ...trendsPlayersEn,
   ...trendsOverviewEn,
+  ...trendsLineupsExtraEn,
 } as const;
 
 export const STRINGS = { nl, en } as const;
