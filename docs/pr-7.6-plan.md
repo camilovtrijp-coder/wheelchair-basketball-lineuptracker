@@ -341,21 +341,15 @@ Oorspronkelijke vraagstelling:
   offline afronden geeft 'Wacht tot de wedstrijd is gesynchroniseerd' en
   niet-aantikbare segmenten; na reconnect en bevestiging is corrigeren
   beschikbaar en komt de correctie bij B.
-- **Gevonden defect (productiecode, niet gerepareerd).** Na een correctie van
-  een cloud-only wedstrijd maakt `update()` een lokale kopie op het
-  corrigerende apparaat. Het statuseffect in `App.tsx` ziet een lokale kopie
-  zonder lokaal synccheckpoint en zet `finalizeStatuses[id]` op
-  `lokaal-beschikbaar`. Omdat `effectiveSyncStatus` bij een correctiestatus
-  `gesynchroniseerd` op de afrondstatus terugvalt, toont dat apparaat blijvend
-  'Lokaal beschikbaar' i.p.v. 'Gesynchroniseerd' (terwijl de server de
-  correctie wel heeft), en `correctionBlockedIds` blokkeert daarna elke
-  volgende correctie van die wedstrijd op dat apparaat. Reproductie: test 3b
-  (`test.fail()`, slaagt zolang het defect bestaat en faalt zichtbaar zodra het
-  is opgelost; verwijder dan `test.fail()`). De tests 3 en 4 controleren om die
-  reden serverstand en het andere apparaat i.p.v. de statusindicator van B na
-  een cloud-only correctie. Een fix hoort in een eigen PR (statuseffect: een
-  lokale kopie zonder checkpoint maar mét cloudtegenhanger niet als
-  `lokaal-beschikbaar`/geblokkeerd behandelen).
+- **Gevonden defect, inmiddels opgelost in 7.6a.** Na een correctie van een
+  cloud-only wedstrijd bleef het corrigerende apparaat op 'Lokaal beschikbaar'
+  staan en was verdere correctie geblokkeerd, omdat een lokale kopie zonder
+  synccheckpoint als 'niet gesynchroniseerd' gold terwijl er een bevestigde
+  cloudkopie was. De fix (`hasConfirmedCloudCopy`, zie H2) is opgenomen; test 3b
+  is daarom een gewone test (geen `test.fail()` meer) en de tests 3 en 4
+  controleren nu ook de statusindicator van het corrigerende apparaat. De tests
+  2 en 4 eisen voor een offline gemaakte correctie strikt 'Wacht op
+  synchronisatie'.
 - **Niet gedekt.** Een viewer/scorer kan in de UI geen gecorrigeerde wedstrijd
   maken, dus de Rules zijn alleen via de eigen gateway geprobeerd (de
   Rules-emulatortests blijven leidend). Geen test voor `actie-nodig` met

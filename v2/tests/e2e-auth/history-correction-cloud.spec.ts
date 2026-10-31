@@ -145,7 +145,7 @@ test('2. A corrigeert offline: lokaal bewaard (wacht), na reconnect uit zichzelf
   await expectSegmentValues(page, { plusMinus: 5, turnovers: 1 });
   await expect
     .poll(async () => syncStatus(page, gameId).getAttribute('data-status'), { timeout: 20_000 })
-    .toMatch(/^(wacht-op-synchronisatie|lokaal-beschikbaar)$/);
+    .toBe('wacht-op-synchronisatie');
   await expect(page.getByTestId('history-correction-hint')).toBeVisible();
   expect((await readServerGame(team, gameId)).corrections).toHaveLength(0);
   expect(await readLocalCompletedGameIds(page, team.orgId, team.teamId)).toContain(gameId);
@@ -184,8 +184,9 @@ test('3. Cloud-only: een alleen op A afgeronde wedstrijd wordt op B gecorrigeerd
     await openHistoryGame(second.page, gameId);
     await expectSyncStatus(second.page, gameId, 'gesynchroniseerd');
     await correctFirstSegment(second.page, { pf: 5, pa: 2, tov: 3 });
-    // De correctie van B komt server-bevestigd op de server (de statusindicator van B
-    // zelf wordt in test 3b gecontroleerd, zie het gevonden defect aldaar).
+    // De correctie van B komt server-bevestigd op de server en B toont daarna
+    // 'Gesynchroniseerd' (een lokale kopie zonder checkpoint met bevestigde cloudkopie).
+    await expectSyncStatus(second.page, gameId, 'gesynchroniseerd', 30_000);
     await expect
       .poll(async () => (await readServerGame(team, gameId)).corrections.length, {
         timeout: 30_000,
@@ -205,25 +206,10 @@ test('3. Cloud-only: een alleen op A afgeronde wedstrijd wordt op B gecorrigeerd
   }
 });
 
-// GEVONDEN DEFECT (productiecode, bewust NIET gerepareerd in 7.6c): na een correctie van
-// een cloud-only wedstrijd maakt `CompositeCompletedGameRepository.update()` een lokale
-// kopie op apparaat B. Het statuseffect in `App.tsx` (finalizeStatuses) ziet daarna een
-// lokale kopie zonder lokaal synccheckpoint (B heeft de wedstrijd nooit zelf afgerond) en
-// zet de afrondstatus op 'lokaal-beschikbaar'. Omdat `effectiveSyncStatus` bij een
-// 'gesynchroniseerd' correctiestatus op de afrondstatus terugvalt, blijft B voor altijd
-// "Beschikbaar op dit apparaat" tonen i.p.v. "Gesynchroniseerd", en `correctionBlockedIds`
-// blokkeert op B daarna elke volgende correctie ("Wacht tot de wedstrijd is
-// gesynchroniseerd"). Reproductie: dit scenario. Verwacht gedrag volgens plan §D.4/§D.5:
-// 'gesynchroniseerd' en corrigeren blijft mogelijk. Zodra het defect is opgelost slaagt
-// deze test onverwacht; verwijder dan `test.fail()`.
-test('3b. Cloud-only gecorrigeerd op B: B toont daarna Gesynchroniseerd en blijft corrigeerbaar (BEKEND DEFECT, test.fail)', async ({
+test('3b. Cloud-only gecorrigeerd op B: B toont daarna Gesynchroniseerd en blijft corrigeerbaar', async ({
   browser,
   page,
 }) => {
-  test.fail(
-    true,
-    'Defect: de afrondstatus van B wordt na een cloud-only correctie "lokaal-beschikbaar" (lokale kopie zonder checkpoint) en blokkeert verdere correcties; zie PR-beschrijving 7.6c.',
-  );
   const { identity, team, gameId } = await finishAndSyncOnDeviceA(page, 'corr-cloudonly-b');
   const second = await openSecondDevice(browser, identity, team);
   try {
@@ -255,7 +241,7 @@ test('4. Conflict: A en B corrigeren dezelfde wedstrijd; B krijgt conflict, verw
     await expectSegmentValues(b, { plusMinus: 4, turnovers: 4 });
     await expect
       .poll(async () => syncStatus(b, gameId).getAttribute('data-status'), { timeout: 20_000 })
-      .toMatch(/^(wacht-op-synchronisatie|lokaal-beschikbaar)$/);
+      .toBe('wacht-op-synchronisatie');
 
     // ... terwijl A (online) eerst corrigeert en de server bevestigt.
     await openHistoryGame(page, gameId);
@@ -307,8 +293,8 @@ test('4. Conflict: A en B corrigeren dezelfde wedstrijd; B krijgt conflict, verw
 
     // Daarna kan B opnieuw corrigeren en dat wordt geüpload.
     await correctFirstSegment(b, { pf: 6, tov: 1 });
-    // (De statusindicator van B na een cloud-only correctie is het bekende defect van
-    // test 3b; hier controleren we de server en het andere apparaat.)
+    await expectSyncStatus(b, gameId, 'gesynchroniseerd', 30_000);
+    await expect(b.getByTestId('history-correct-hint')).toBeVisible();
     await expect
       .poll(async () => (await readServerGame(team, gameId)).corrections.length, {
         timeout: 30_000,
