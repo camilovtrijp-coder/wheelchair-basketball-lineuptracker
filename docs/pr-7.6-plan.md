@@ -1,7 +1,8 @@
 # Voorbereidingsplan PR 7.6 — cloudkoppeling van de correctie
 
-Status: **voorstel — wacht op goedkeuring van de eigenaar** (besluiten in §H).
-Er is nog geen code gewijzigd. Vervolg op PR 7.5 (`docs/pr-7.5-plan.md`;
+Status: **goedgekeurd door de eigenaar op 2026-10-31 (alle aanbevelingen uit
+§H zijn overgenomen)**. Er is nog geen code gewijzigd; implementatie volgt per
+sub-PR op een eigen branch. Vervolg op PR 7.5 (`docs/pr-7.5-plan.md`;
 7.5a/b/c zitten in PR #132). Dit plan raakt geen statistiekberekening, geen
 CSV-contract en geen bestaande `localStorage`-key.
 
@@ -177,7 +178,16 @@ gelogd. Geen secrets in code, tests of logs.
 - Statistiek en CSV zijn ongewijzigd; alle nieuwe tekst bestaat in NL en EN.
 - Alle tests groen, inclusief Emulator Suite en Playwright (nieuw + bestaand).
 
-## H. Besluiten voor de eigenaar
+## H. Besluiten (genomen door de eigenaar, 2026-10-31)
+
+Alle aanbevelingen zijn goedgekeurd: (1) corrigeren uitzetten tot de afronding
+gesynchroniseerd is; (2) `by` blijft `null` of de eigen uid, geen Rules-wijziging;
+(3) lokale versie verwerpen is alleen lokaal, met bevestiging, en niet zonder
+cloudkopie; (4) drie sub-PR's (7.6a, 7.6b, 7.6c); (5) de UI mag meeliften met
+de volgende release, terwijl Rules eerst publiceren de aanbevolen eerste stap
+blijft.
+
+Oorspronkelijke vraagstelling:
 
 1. **Afronding nog niet bevestigd:** corrigeren uitzetten tot de wedstrijd
    gesynchroniseerd is (aanbevolen), of de combinatie ondersteunen?
