@@ -1,4 +1,5 @@
-import type { AnalysisGame, RosterPlayer } from '../../domain/trends/types';
+import type { RosterPlayer } from '../../domain/roster/types';
+import type { AnalysisGame } from '../../domain/stats/types';
 import { lineupNames } from './trendsShared';
 
 /** Namen op een eigen, kleinere regel onder het nummerlabel van een lineup. */

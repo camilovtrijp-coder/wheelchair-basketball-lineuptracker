@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { lineupNames } from '../../src/ui/trends/trendsShared';
-import type { AnalysisGame, RosterPlayer } from '../../src/domain/trends/types';
+import type { RosterPlayer } from '../../src/domain/roster/types';
+import type { AnalysisGame } from '../../src/domain/stats/types';
 
 const roster = [
   { id: 1, nr: '14', naam: 'Henk' },
