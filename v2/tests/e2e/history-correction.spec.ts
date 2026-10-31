@@ -54,7 +54,7 @@ for (const lang of ['nl', 'en'] as const) {
     await expect(page.getByTestId('history-corrected-badge')).toBeVisible();
     await expect(page.getByTestId('history-turnovers-total')).toContainText('2');
     await page.getByTestId('history-corrections').locator('summary').click();
-    await expect(page.locator('[data-testid^="history-correction-"]').first()).toContainText(
+    await expect(page.getByTestId('history-corrections').locator('li').first()).toContainText(
       'TO 1',
     );
 
