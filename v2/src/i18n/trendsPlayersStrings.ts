@@ -29,6 +29,8 @@ export const trendsPlayersNl = {
   trendsPlayersRowOnOff: 'Op {on} · Af {off} per 10',
   trendsPlayersRowAll: 'Speelde alles',
   trendsPlayersRowLow: 'Op/af: te weinig minuten',
+  trendsPlayersRowLowOff: 'Op/af: slechts {time} af het veld, te weinig om te vergelijken',
+  trendsPlayersRowLowOn: 'Op/af: slechts {time} op het veld, te weinig om te vergelijken',
   trendsPlayersAriaOnOff:
     '{naam}: op het veld {on} per 10 in {onTime}, af het veld {off} in {offTime}, verschil {diff}, {tone}',
   trendsPlayersAriaAll:
@@ -70,6 +72,8 @@ export const trendsPlayersEn = {
   trendsPlayersRowOnOff: 'On {on} · Off {off} per 10',
   trendsPlayersRowAll: 'Played all minutes',
   trendsPlayersRowLow: 'On/off: too few minutes',
+  trendsPlayersRowLowOff: 'On/off: only {time} off the floor, too little to compare',
+  trendsPlayersRowLowOn: 'On/off: only {time} on the floor, too little to compare',
   trendsPlayersAriaOnOff:
     '{naam}: on court {on} per 10 in {onTime}, off court {off} in {offTime}, difference {diff}, {tone}',
   trendsPlayersAriaAll:

@@ -169,7 +169,9 @@ describe('Spelers: on/off in de compacte rij (drempel 5:00)', () => {
     const r4 = tid(q, 'trends-players-row-onoff-4');
     expect(r4.getAttribute('data-kind')).toBe('low');
     expect(r4.getAttribute('data-tone')).toBeNull();
-    expect(text(q, 'trends-players-row-onoff-4')).toBe('Op/af: te weinig minuten');
+    expect(text(q, 'trends-players-row-onoff-4')).toBe(
+      'Op/af: slechts 5:00 af het veld, te weinig om te vergelijken',
+    );
     // Speler 5: op +1.5, af +2.2, verschil -0.7 -> |0.7| < 1.0 -> rond gemiddelde (●)
     expect(text(q, 'trends-players-row-onoff-5')).toContain('Op +1.5 · Af +2.2 per 10');
     expect(tid(q, 'trends-players-row-onoff-5').getAttribute('data-tone')).toBe('flat');
@@ -261,7 +263,9 @@ describe('Spelers: blok "Op en af het veld"', () => {
     expect(chip(q, 'trends-threshold-btn').textContent).toContain('10:00');
     for (const n of [4, 7]) {
       expect(tid(q, `trends-players-row-onoff-${n}`).getAttribute('data-kind')).toBe('low');
-      expect(text(q, `trends-players-row-onoff-${n}`)).toBe('Op/af: te weinig minuten');
+      expect(text(q, `trends-players-row-onoff-${n}`)).toMatch(
+        /^Op\/af: slechts \d+:\d{2} (af|op) het veld, te weinig om te vergelijken$/,
+      );
       expect(tid(q, `trends-players-row-onoff-${n}`).getAttribute('data-tone')).toBeNull();
     }
     expand(q, 4);
@@ -399,7 +403,9 @@ describe('Spelers: NL en EN', () => {
     const q = renderPlayers(fixture(), 'en');
     expect(text(q, 'trends-players-row-onoff-7')).toContain('On +12.0 · Off +0.7 per 10');
     expect(text(q, 'trends-players-row-onoff-7')).toContain('better');
-    expect(text(q, 'trends-players-row-onoff-4')).toBe('On/off: too few minutes');
+    expect(text(q, 'trends-players-row-onoff-4')).toBe(
+      'On/off: only 5:00 off the floor, too little to compare',
+    );
     expect(text(q, 'trends-players-row-onoff-1')).toBe('Played all minutes');
     expand(q, 4);
     expect(tid(q, 'trends-players-onoff-4').textContent).toContain('On and off the court');

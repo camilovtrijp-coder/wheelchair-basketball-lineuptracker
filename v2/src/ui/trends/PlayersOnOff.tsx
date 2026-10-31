@@ -52,10 +52,13 @@ export function OnOffRowSummary({
   row,
   lang,
   id,
+  minSec,
 }: {
   row: OnOffRow | undefined;
   lang: Lang;
   id: number;
+  /** Drempel uit de filterbalk; bepaalt aan welke kant de tijd tekortschiet. */
+  minSec?: number;
 }) {
   if (!row) return null;
   const kind = kindOf(row);
@@ -68,9 +71,18 @@ export function OnOffRowSummary({
     );
   }
   if (kind === 'low') {
+    // Benoem de kant die tekortschiet: "36 min gespeeld" en toch "te weinig" is anders verwarrend.
+    const offShort = minSec !== undefined && row.offSec < offMinSecFor(minSec);
+    const onShort = minSec !== undefined && row.onSec < minSec;
+    const text =
+      offShort && !onShort
+        ? fill(t(lang, 'trendsPlayersRowLowOff'), { time: fmtSeconds(row.offSec) })
+        : onShort && !offShort
+          ? fill(t(lang, 'trendsPlayersRowLowOn'), { time: fmtSeconds(row.onSec) })
+          : t(lang, 'trendsPlayersRowLow');
     return (
       <span className="trends-players-row__onoff" data-testid={testId} data-kind="low">
-        {t(lang, 'trendsPlayersRowLow')}
+        {text}
       </span>
     );
   }

@@ -196,7 +196,7 @@ function PlayerRow({
             </span>
           ) : null}
         </span>
-        <OnOffRowSummary row={onOff} lang={lang} id={id} />
+        <OnOffRowSummary row={onOff} lang={lang} id={id} minSec={minSec} />
       </button>
       {open ? (
         <div id={bodyId} className="trends-card__body">
