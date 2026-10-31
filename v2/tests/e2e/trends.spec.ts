@@ -1,6 +1,7 @@
 import AxeBuilder from '@axe-core/playwright';
 import { expect, type Page } from '@playwright/test';
 import { test } from './fixtures';
+import { openTrendsFilters } from './trendsFilters';
 
 const WCAG_TAGS = ['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa'];
 
@@ -181,6 +182,7 @@ test.describe('v2 Trends-tab (PR 6.5)', () => {
     await page.getByTestId('nav-trends').click();
     await openPlayerCard(page);
     await expect(page.getByTestId('trends-avgpm-1')).toHaveText('+1.5');
+    await openTrendsFilters(page);
     await page.getByTestId('trends-per10-toggle').click();
     // per punt genormaliseerd: (2*600/180 + 1*600/240)/2 = (6.667+2.5)/2 ≈ 4.6
     await expect(page.getByTestId('trends-avgpm-1')).toHaveText('+4.6');
@@ -228,6 +230,7 @@ test.describe('v2 Trends-tab (PR 6.5)', () => {
     await openPlayerCard(page);
     // Dezelfde selectie geldt nu in Trends: gemiddelde minuten is alleen van g-A.
     await expect(page.getByTestId('trends-avgmin-1')).toHaveText('3.0'); // 180s/60/1
+    await openTrendsFilters(page);
     await page.getByTestId('trends-games-btn').click();
     await expect(page.getByTestId('trends-game-check-g-B')).not.toBeChecked();
   });
@@ -311,6 +314,7 @@ test.describe('v2 Trends-tab (PR 6.5)', () => {
     }
     // Lineups met alle metrieken, de groep "Te weinig data" open en een uitgeklapte spelerskaart.
     await page.getByTestId('trends-tab-lineups').click();
+    await openTrendsFilters(page);
     await page.getByTestId('trends-threshold-btn').click(); // 10:00 -> de lineup valt in de groep
     await page.getByTestId('trends-lineup-lowdata').locator('summary').click();
     expect(await overflow(), 'overflow met open groep op 320px').toBeLessThanOrEqual(1);
@@ -397,12 +401,12 @@ test.describe('v2 Trends-weergaven (T2/T3)', () => {
     expect(keys.filter((k) => /trends/i.test(k))).toEqual([]);
   });
 
-  test('filterbalk is sticky en blijft zichtbaar bij scrollen in elke weergave', async ({
+  test('vaste kop (tabs + samenvatting) is sticky en blijft zichtbaar bij scrollen in elke weergave', async ({
     page,
   }) => {
     await setupTwoGames(page);
     await page.getByTestId('nav-trends').click();
-    await expect(page.getByTestId('trends-filterbar')).toHaveCSS('position', 'sticky');
+    await expect(page.getByTestId('trends-sticky')).toHaveCSS('position', 'sticky');
     await page.evaluate(() => {
       const spacer = document.createElement('div');
       spacer.id = 'e2e-spacer';
@@ -413,16 +417,25 @@ test.describe('v2 Trends-weergaven (T2/T3)', () => {
       await page.getByTestId(`trends-tab-${view}`).click();
       await page.evaluate(() => window.scrollTo(0, 900));
       const top = await page
-        .getByTestId('trends-filterbar')
+        .getByTestId('trends-sticky')
         .evaluate((el) => el.getBoundingClientRect().top);
-      expect(Math.abs(top), `filterbalk bovenaan in ${view}`).toBeLessThanOrEqual(1);
-      await expect(page.getByTestId('trends-threshold-btn')).toBeInViewport();
+      expect(Math.abs(top), `vaste kop bovenaan in ${view}`).toBeLessThanOrEqual(1);
+      await expect(page.getByTestId('trends-tab-overview')).toBeInViewport();
+      await expect(page.getByTestId('trends-filters-toggle')).toBeInViewport();
     }
+    // Het chipspaneel is NIET vast: open en weggescrold is het niet meer in beeld.
+    await page.evaluate(() => window.scrollTo(0, 0));
+    await openTrendsFilters(page);
+    await expect(page.getByTestId('trends-filterbar')).not.toHaveCSS('position', 'sticky');
+    await page.evaluate(() => window.scrollTo(0, 900));
+    await expect(page.getByTestId('trends-filterbar')).not.toBeInViewport();
+    await expect(page.getByTestId('trends-filters-toggle')).toBeInViewport();
   });
 
   test('drempelchip: standaard 5:00 en cyclus uit/3:00/5:00/10:00', async ({ page }) => {
     await setupTwoGames(page);
     await page.getByTestId('nav-trends').click();
+    await openTrendsFilters(page);
     const btn = page.getByTestId('trends-threshold-btn');
     await expect(btn).toHaveText('Drempel: 5:00');
     const seen: string[] = [];
@@ -439,16 +452,17 @@ test.describe('v2 Trends-weergaven (T2/T3)', () => {
     await setupTwoGames(page);
     await page.getByTestId('nav-trends').click();
     await page.getByTestId('trends-tab-lineups').click();
+    await openTrendsFilters(page);
     await page.getByTestId('trends-per10-toggle').click();
     const row = page.getByTestId('trends-lineup-1-2-3-4-5');
     await expect(row).toBeVisible();
-    // 180 s + 240 s = 7:00; (8-6)+(5-4) = +3 -> 3*600/420 = +4.3; team = lineup -> rond gemiddelde.
+    // 180 s + 240 s = 7:00; (8-6)+(5-4) = +3 -> 3*600/420 = +4.3 > +0,5 -> positief (teken, niet team).
     await expect(row).toContainText('7:00');
     await expect(row).toContainText('2 wedstrijden');
     await expect(page.getByTestId('trends-lineup-value-1-2-3-4-5')).toHaveText('+4.3');
-    await expect(row).toContainText('●');
-    await expect(row).toContainText('rond gemiddelde');
-    await expect(row).toHaveAccessibleName('1-2-3-4-5, 7:00, +4.3 per 10 minuten, rond gemiddelde');
+    await expect(row).toContainText('▲');
+    await expect(row).toContainText('positief');
+    await expect(row).toHaveAccessibleName('1-2-3-4-5, 7:00, +4.3 per 10 minuten, positief');
     await expect(page.getByTestId('trends-lineup-explain')).toHaveText(
       'Beschrijvend: wat gebeurde er met deze vijf op het veld. Weinig minuten zegt bijna niets (drempel nu: 5:00). Per 10 min is geen balbezitcorrectie.',
     );
@@ -465,6 +479,7 @@ test.describe('v2 Trends-weergaven (T2/T3)', () => {
     await page.getByTestId('nav-trends').click();
     await page.getByTestId('trends-tab-lineups').click();
     await expect(page.getByTestId('trends-lineup-lowdata')).toHaveCount(0);
+    await openTrendsFilters(page);
     await page.getByTestId('trends-threshold-btn').click(); // 10:00 -> 7:00 valt eronder
     await expect(page.getByTestId('trends-lineup-1-2-3-4-5')).toHaveCount(0);
     const group = page.getByTestId('trends-lineup-lowdata');
@@ -485,6 +500,7 @@ test.describe('v2 Trends-weergaven (T2/T3)', () => {
   }) => {
     await setupTwoGames(page);
     await page.getByTestId('nav-trends').click();
+    await openTrendsFilters(page);
     const btn = page.getByTestId('trends-quick-current');
     await expect(btn).toHaveAttribute('aria-disabled', 'true');
     await expect(btn).toHaveAttribute('title', /geen lopende wedstrijd/);
@@ -547,6 +563,7 @@ test.describe('v2 Trends-weergaven (T2/T3)', () => {
     );
     await page.reload();
     await page.getByTestId('nav-trends').click();
+    await openTrendsFilters(page);
     await expect(page.getByTestId('trends-games-btn')).toHaveText('Wedstrijden (3)');
     await page.getByTestId('trends-quick-current').click();
     await expect(page.getByTestId('trends-games-btn')).toHaveText('Wedstrijden (1)');
@@ -556,6 +573,7 @@ test.describe('v2 Trends-weergaven (T2/T3)', () => {
     await expect(page.getByTestId('stats-games-btn')).toContainText('(1)');
     await page.getByTestId('nav-trends').click();
     // Nogmaals drukken zet het filter terug op alle wedstrijden.
+    await openTrendsFilters(page);
     await page.getByTestId('trends-quick-current').click();
     await expect(page.getByTestId('trends-games-btn')).toHaveText('Wedstrijden (3)');
   });
@@ -566,15 +584,17 @@ test.describe('v2 Trends-weergaven (T2/T3)', () => {
     await expect(page.getByTestId('trends-tab-lineups')).toHaveText('Lineups');
     await expect(page.getByTestId('trends-tab-players')).toHaveText('Spelers');
     await page.getByTestId('trends-tab-lineups').click();
+    await openTrendsFilters(page);
     await expect(page.getByTestId('trends-threshold-btn')).toHaveText('Drempel: 5:00');
     await page.getByTestId('lang-switch').click();
     await expect(page.getByTestId('trends-tab-players')).toHaveText('Players');
+    await openTrendsFilters(page);
     await expect(page.getByTestId('trends-threshold-btn')).toHaveText('Threshold: 5:00');
     await expect(page.getByTestId('trends-lineup-explain')).toHaveText(
       'Descriptive: what happened with these five on court. Few minutes tell you almost nothing (threshold now: 5:00). Per 10 min is not a possession adjustment.',
     );
     await expect(page.getByTestId('trends-lineup-1-2-3-4-5')).toHaveAccessibleName(
-      /1-2-3-4-5, 7:00, \+4\.3 per 10 minutes, around average/,
+      /1-2-3-4-5, 7:00, \+4\.3 per 10 minutes, positive/,
     );
     await page.getByTestId('trends-tab-quarters').click();
     await expect(page.getByTestId('trends-quarters-title')).toHaveText('Quarters: +/- total');
@@ -587,6 +607,7 @@ test.describe('v2 Trends-weergaven (T2/T3)', () => {
     await page.getByTestId('nav-trends').click();
     await expectNoAxeViolations(page); // Overzicht
     await page.getByTestId('trends-tab-lineups').click();
+    await openTrendsFilters(page);
     await page.getByTestId('trends-per10-toggle').click();
     await expectNoAxeViolations(page);
     for (const metric of ['pfpa', 'pm']) {

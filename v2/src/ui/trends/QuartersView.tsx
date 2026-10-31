@@ -11,8 +11,8 @@ import {
   fmtOne,
   fmtSignedInt,
   t,
-  toneKey,
-  toneOfDelta,
+  toneKeyOfSign,
+  toneOfSign,
   toneSymbol,
   type Tone,
   type TrendsViewProps,
@@ -24,8 +24,9 @@ import {
  * `computePlayerQuarterMinutes` (gememoiseerd); geen opslag, geen extra reads.
  *
  * - Kaart "Kwarten: +/- per 10 min" (of totaal volgens `props.per10`): per
- *   kwart minuten, waarde, Voor/Tegen, een balk rond 0 en de toon t.o.v. het
- *   teamgemiddelde van dezelfde selectie (`props.lineups.team`). De toon is
+ *   kwart minuten, waarde, Voor/Tegen, een balk rond 0 en de toon op het
+ *   TEKEN van +/- per 10 min (positief/rond 0/negatief; het verschil met het
+ *   teamgemiddelde `props.lineups.team` staat alleen als kleine tekst). De toon is
  *   altijd symbool + tekst (▲ ● ▼), kleur is nooit de enige aanwijzing. Een
  *   kwart zonder segmenten toont "geen data" zonder waarde en zonder toon.
  *   Een kwart met minder speeltijd dan de drempel (`minSec`, §E.6) toont alleen
@@ -179,13 +180,13 @@ function QuarterItem({
   }
 
   const delta = teamPer10 === null ? 0 : r.pmPer10 - teamPer10;
-  const tone: Tone = toneOfDelta(delta, true);
+  const tone: Tone = toneOfSign(r.pmPer10);
   const value = per10 ? fmtPlusMinus(r.pmPer10) : fmtSignedInt(r.pm);
   const aria = fill(t(lang, per10 ? 'trendsQuartersAriaPer10' : 'trendsQuartersAriaTotal'), {
     n: r.quarter,
     time: fmtSeconds(r.seconds),
     value,
-    tone: t(lang, toneKey(tone)),
+    tone: t(lang, toneKeyOfSign(tone)),
   });
   return (
     <li
@@ -224,7 +225,7 @@ function QuarterItem({
       </div>
       <div className="xs mut2" data-testid={`trends-quarter-tone-${r.quarter}`}>
         <span aria-hidden="true">{toneSymbol(tone)} </span>
-        {t(lang, toneKey(tone))}
+        {t(lang, toneKeyOfSign(tone))}
         {teamPer10 === null
           ? ''
           : ` · ${fill(t(lang, 'trendsQuartersVsTeam'), { delta: fmtPlusMinus(delta) })}`}

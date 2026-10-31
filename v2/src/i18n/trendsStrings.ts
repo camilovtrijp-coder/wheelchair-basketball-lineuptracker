@@ -67,6 +67,12 @@ export const trendsNl = {
   trendsLineupToneBetter: 'beter dan team',
   trendsLineupToneAround: 'rond gemiddelde',
   trendsLineupToneWorse: 'slechter dan team',
+  // +/- krijgt zijn toon op het TEKEN van de waarde per 10 min (besluit eigenaar 2026-10-31).
+  trendsToneSignPositive: 'positief',
+  trendsToneSignAround: 'rond 0',
+  trendsToneSignNegative: 'negatief',
+  trendsLineupLegendSign:
+    '▲ positief · ● rond 0 · ▼ negatief (teken van +/- per 10 min, minder dan 0,5 telt als rond 0)',
   trendsLineupListLabel: 'Lineups',
   trendsLineupVsTeam: '{delta} t.o.v. team ({team})',
   trendsLineupPer10Of: '{value} per 10 min',
@@ -151,6 +157,11 @@ export const trendsEn = {
   trendsLineupToneBetter: 'better than team',
   trendsLineupToneAround: 'around average',
   trendsLineupToneWorse: 'worse than team',
+  trendsToneSignPositive: 'positive',
+  trendsToneSignAround: 'around zero',
+  trendsToneSignNegative: 'negative',
+  trendsLineupLegendSign:
+    '▲ positive · ● around zero · ▼ negative (sign of +/- per 10 min, less than 0.5 counts as around zero)',
   trendsLineupListLabel: 'Lineups',
   trendsLineupVsTeam: '{delta} vs team ({team})',
   trendsLineupPer10Of: '{value} per 10 min',

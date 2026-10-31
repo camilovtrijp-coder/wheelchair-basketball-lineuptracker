@@ -169,6 +169,9 @@ function PlayerRow({
         data-testid={`trends-row-toggle-${id}`}
         onClick={onToggle}
       >
+        <span className="trends-row__chev" aria-hidden="true">
+          {open ? '▾' : '▸'}
+        </span>
         <span className="trends-row__name">
           #{player.nr} {player.naam}
         </span>
@@ -192,9 +195,6 @@ function PlayerRow({
               <b data-testid={`trends-row-tov-${id}`}>{player.totalTurnovers}</b>
             </span>
           ) : null}
-        </span>
-        <span className="trends-row__chev" aria-hidden="true">
-          {open ? '▾' : '▸'}
         </span>
         <OnOffRowSummary row={onOff} lang={lang} id={id} />
       </button>

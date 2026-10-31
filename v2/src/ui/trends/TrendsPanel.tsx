@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'preact/hooks';
+import { useEffect, useMemo, useRef, useState } from 'preact/hooks';
 import type { CompletedGameRepository } from '../../application/game/CompletedGameRepository';
 import { buildAnalysisScope } from '../../application/stats/buildAnalysisScope';
 import type { ActiveGame } from '../../domain/game/types';
@@ -11,7 +11,7 @@ import { LineupsView } from './LineupsView';
 import { OverviewView } from './OverviewView';
 import { PlayersView } from './PlayersView';
 import { QuartersView } from './QuartersView';
-import { TrendsFilterBar } from './TrendsFilterBar';
+import { FILTER_PANEL_ID, TrendsFilterBar, TrendsFilterSummary } from './TrendsFilterBar';
 import { panelId, tabId, TrendsViewTabs } from './TrendsViewTabs';
 import {
   DEFAULT_MIN_SEC,
@@ -27,8 +27,10 @@ import {
  * Trends-tab (PR 6.5, herindeeld in T2/T3). Dit bestand is alleen de SCHIL:
  *
  * - segmentbediening (`TrendsViewTabs`): Overzicht | Lineups | Spelers | Kwarten;
- * - vaste filterbalk (`TrendsFilterBar`) met Per 10 min, Wedstrijden (n),
- *   Drempel en de snelfilters Laatste 5 / Deze wedstrijd;
+ * - vaste kop (sticky) = segmentbediening + samenvattingsregel met de knop
+ *   "Filters" (`TrendsFilterSummary`); het chipspaneel (`TrendsFilterBar`: Per 10
+ *   min, Wedstrijden (n), Drempel, Laatste 5 / Deze wedstrijd) staat in de
+ *   normale paginastroom eronder en is standaard ingeklapt (state per mount);
  * - de gekozen weergave (`OverviewView`, `LineupsView`, `PlayersView`,
  *   `QuartersView`), elk in een eigen bestand met dezelfde `TrendsViewProps`.
  *
@@ -74,6 +76,8 @@ export function TrendsPanel({
   const [per10, setPer10] = useState(false);
   const [minSec, setMinSec] = useState(DEFAULT_MIN_SEC);
   const [gamesModalOpen, setGamesModalOpen] = useState(false);
+  const [filtersOpen, setFiltersOpen] = useState(false);
+  const stickyRef = useRef<HTMLDivElement | null>(null);
 
   // Basis-lineupinzichten, gedeeld door de weergaven (zie `TrendsViewProps.lineups`).
   const lineups = useMemo(
@@ -90,6 +94,26 @@ export function TrendsPanel({
       : partialSegments > 1
         ? fill(t(lang, 'statsPartialPlural'), { count: partialSegments })
         : null;
+
+  // Escape sluit het chipspaneel (als de focus op de knop "Filters" of in het paneel staat) en
+  // zet de focus terug op de knop. Niet terwijl de wedstrijdenmodaal open is: die sluit zichzelf.
+  useEffect(() => {
+    if (!filtersOpen || gamesModalOpen) return undefined;
+    function onKeyDown(e: KeyboardEvent): void {
+      if (e.key !== 'Escape') return;
+      const toggle = stickyRef.current?.querySelector<HTMLButtonElement>(
+        '[data-testid="trends-filters-toggle"]',
+      );
+      const panel = document.getElementById(FILTER_PANEL_ID);
+      const active = document.activeElement;
+      if (active === null || !(active === toggle || panel?.contains(active))) return;
+      e.preventDefault();
+      setFiltersOpen(false);
+      toggle?.focus();
+    }
+    document.addEventListener('keydown', onKeyDown);
+    return () => document.removeEventListener('keydown', onKeyDown);
+  }, [filtersOpen, gamesModalOpen]);
 
   const viewProps: TrendsViewProps = {
     lang,
@@ -123,21 +147,34 @@ export function TrendsPanel({
         </p>
       ) : null}
 
-      {!showError && !showNoData ? (
-        <TrendsViewTabs lang={lang} view={view} onChange={setView} />
+      {/* Vaste kop: tabbalk + samenvattingsregel. De filterbalk staat er altijd (ook zonder wedstrijden of bij een leesfout). */}
+      <div className="trends-sticky" data-testid="trends-sticky" ref={stickyRef}>
+        {!showError && !showNoData ? (
+          <TrendsViewTabs lang={lang} view={view} onChange={setView} />
+        ) : null}
+        <TrendsFilterSummary
+          lang={lang}
+          games={scope.games}
+          gameIds={gameIds}
+          per10={per10}
+          minSec={minSec}
+          open={filtersOpen}
+          onToggle={() => setFiltersOpen(!filtersOpen)}
+        />
+      </div>
+      {filtersOpen ? (
+        <TrendsFilterBar
+          lang={lang}
+          games={scope.games}
+          gameIds={gameIds}
+          onGameIdsChange={onGameIdsChange}
+          per10={per10}
+          onTogglePer10={() => setPer10(!per10)}
+          minSec={minSec}
+          onCycleMinSec={() => setMinSec(nextThreshold(minSec))}
+          onOpenGames={() => setGamesModalOpen(true)}
+        />
       ) : null}
-      {/* De filterbalk staat er altijd (ook zonder wedstrijden of bij een leesfout), zoals de chips vóór T3. */}
-      <TrendsFilterBar
-        lang={lang}
-        games={scope.games}
-        gameIds={gameIds}
-        onGameIdsChange={onGameIdsChange}
-        per10={per10}
-        onTogglePer10={() => setPer10(!per10)}
-        minSec={minSec}
-        onCycleMinSec={() => setMinSec(nextThreshold(minSec))}
-        onOpenGames={() => setGamesModalOpen(true)}
-      />
       {!showError && !showNoData
         ? TRENDS_VIEW_IDS.map((id) => (
             <div

@@ -23,8 +23,8 @@ import {
   formatDate,
   gamesText,
   t,
-  toneKey,
-  toneOfDelta,
+  toneKeyOfSign,
+  toneOfSign,
   toneSymbol,
   type Tone,
   type TrendsViewProps,
@@ -113,13 +113,7 @@ export function OverviewView(props: TrendsViewProps) {
 
       {classProfile.classLimitGames > 0 ? (
         <>
-          <ClassProfileCard
-            profile={classProfile}
-            lang={lang}
-            per10={per10}
-            minSec={minSec}
-            teamPer10={team.pmPer10}
-          />
+          <ClassProfileCard profile={classProfile} lang={lang} per10={per10} minSec={minSec} />
           <OverLimitCard items={overLimit} games={games} lang={lang} />
         </>
       ) : null}
@@ -142,13 +136,11 @@ function ClassProfileCard({
   lang,
   per10,
   minSec,
-  teamPer10,
 }: {
   profile: ClassProfile;
   lang: TrendsViewProps['lang'];
   per10: boolean;
   minSec: number;
-  teamPer10: number | null;
 }) {
   const byBucket = new Map(profile.groups.map((g) => [g.bucket, g] as const));
   const skipped = profile.skippedSegments;
@@ -173,7 +165,6 @@ function ClassProfileCard({
               lang={lang}
               per10={per10}
               minSec={minSec}
-              teamPer10={teamPer10}
             />
           );
         })}
@@ -200,7 +191,6 @@ function ClassRow({
   lang,
   per10,
   minSec,
-  teamPer10,
 }: {
   row: ClassBucketRow;
   label: string;
@@ -208,10 +198,9 @@ function ClassRow({
   lang: TrendsViewProps['lang'];
   per10: boolean;
   minSec: number;
-  teamPer10: number | null;
 }) {
-  const tone: Tone | null =
-    row.pmPer10 !== null && teamPer10 !== null ? toneOfDelta(row.pmPer10 - teamPer10, true) : null;
+  // Toon op het teken van +/- per 10 min (besluit eigenaar 2026-10-31), niet t.o.v. het team.
+  const tone: Tone | null = row.pmPer10 !== null ? toneOfSign(row.pmPer10) : null;
   return (
     <li className="trends-class__row" data-testid={`trends-class-row-${row.bucket}`}>
       <div className="trends-class__head">
@@ -249,7 +238,7 @@ function ClassRow({
               className={`trends-tone trends-tone--${tone}`}
               data-testid={`trends-class-tone-${row.bucket}`}
             >
-              <span aria-hidden="true">{toneSymbol(tone)}</span> {t(lang, toneKey(tone))}
+              <span aria-hidden="true">{toneSymbol(tone)}</span> {t(lang, toneKeyOfSign(tone))}
             </span>
           ) : null}
         </div>

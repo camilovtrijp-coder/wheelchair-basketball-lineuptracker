@@ -1,4 +1,6 @@
 // @vitest-environment jsdom
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import { cleanup, fireEvent, render, type RenderResult } from '@testing-library/preact';
 import { TrendsPanel } from '../../src/ui/trends/TrendsPanel';
@@ -8,6 +10,7 @@ import type { RosterPlayer } from '../../src/domain/roster/types';
 import { STRINGS, type Lang } from '../../src/i18n/strings';
 import { trendsPlayersEn, trendsPlayersNl } from '../../src/i18n/trendsPlayersStrings';
 import { ON_OFF_FLAT_EPS_PER10 } from '../../src/ui/trends/PlayersOnOff';
+import { chip } from './trendsFilterHelpers';
 
 afterEach(() => cleanup());
 
@@ -156,7 +159,7 @@ const text = (q: RenderResult, id: string) =>
 const expand = (q: RenderResult, n: number) =>
   fireEvent.click(q.getByTestId(`trends-row-toggle-${n}`));
 /** Drempelchip: 5:00 -> 10:00 (cyclus uit, 3:00, 5:00, 10:00). */
-const toTenMinutes = (q: RenderResult) => fireEvent.click(q.getByTestId('trends-threshold-btn'));
+const toTenMinutes = (q: RenderResult) => fireEvent.click(chip(q, 'trends-threshold-btn'));
 
 describe('Spelers: on/off in de compacte rij (drempel 5:00)', () => {
   it('toont per speler een samenvatting met symbool en tekst', () => {
@@ -255,7 +258,7 @@ describe('Spelers: blok "Op en af het veld"', () => {
   it('is niet gekwalificeerd bij drempel 10:00: speler 4 (af) en 7 (op), geen oordeel en geen per-10-waarde', () => {
     const q = renderPlayers();
     toTenMinutes(q); // 5:00 -> 10:00
-    expect(q.getByTestId('trends-threshold-btn').textContent).toContain('10:00');
+    expect(chip(q, 'trends-threshold-btn').textContent).toContain('10:00');
     for (const n of [4, 7]) {
       expect(tid(q, `trends-players-row-onoff-${n}`).getAttribute('data-kind')).toBe('low');
       expect(text(q, `trends-players-row-onoff-${n}`)).toBe('Op/af: te weinig minuten');
@@ -318,6 +321,33 @@ describe('Spelers: blok "Op en af het veld"', () => {
     expect(text(q, 'trends-row-pm-4')).toBe('+3');
     expect(text(q, 'trends-totalpm-4')).toBe('+3');
     expect(text(q, 'trends-avgmin-4')).toBe('22.5');
+  });
+});
+
+describe('Spelers: uitklappijltje staat in de kopregel (niet op een eigen regel)', () => {
+  it('het pijltje komt direct vóór de naam in dezelfde knop, met behoud van testid, naam en aria-expanded', () => {
+    const q = renderPlayers();
+    const btn = tid(q, 'trends-row-toggle-4');
+    const kids = [...btn.children].map((c) => c.className);
+    // Volgorde: pijltje, naam, statistieken (het pijltje volgt de statistieken niet meer).
+    expect(kids.slice(0, 3)).toEqual(['trends-row__chev', 'trends-row__name', 'trends-row__stats']);
+    expect(btn.querySelector('.trends-row__chev')!.getAttribute('aria-hidden')).toBe('true');
+    // Het pijltje is aria-hidden: de toegankelijke naam begint met de spelernaam.
+    expect(btn.textContent).toContain('#4 Speler 4');
+    expect(btn.getAttribute('aria-expanded')).toBe('false');
+    expand(q, 4);
+    expect(btn.getAttribute('aria-expanded')).toBe('true');
+    expect(btn.querySelector('.trends-row__chev')!.textContent).toBe('▾');
+  });
+
+  it('CSS: het pijltje krijgt een vaste breedte (geen eigen flex-regel) en de naam blijft groeien', () => {
+    const css = readFileSync(resolve(__dirname, '../../src/styles/trends-views.css'), 'utf8');
+    const rule = css.slice(
+      css.indexOf('.trends-row__chev {'),
+      css.indexOf('}', css.indexOf('.trends-row__chev {')),
+    );
+    expect(rule).toContain('flex: 0 0 auto');
+    expect(css).toMatch(/\.trends-row__name \{[^}]*flex: 1 1 /);
   });
 });
 

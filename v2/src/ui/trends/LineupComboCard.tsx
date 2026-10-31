@@ -6,8 +6,8 @@ import {
   lineupKey,
   lineupLabel,
   t,
-  toneKey,
-  toneOfDelta,
+  toneKeyOfSign,
+  toneOfSign,
   toneSymbol,
   type TrendsViewProps,
 } from './trendsShared';
@@ -18,8 +18,8 @@ import {
  * (10:00 totaal over de gekozen wedstrijden, niet de filterbalkdrempel van de
  * vijftallen). Combinaties die altijd samen speelden worden door de domeinfunctie
  * weggelaten; het aantal staat in `excludedAlwaysTogether`. De toon is relatief
- * aan het teamgemiddelde van dezelfde selectie en is altijd symbool + tekst
- * (groen/rood alleen als versterking). De duo/trio-keuze is sessiestate.
+ * op het TEKEN van +/- per 10 min (besluit eigenaar 2026-10-31; het teamgemiddelde
+ * speelt geen rol) en is altijd symbool + tekst (groen/rood alleen als versterking). De duo/trio-keuze is sessiestate.
  */
 
 /** Vaste drempel voor duo's en trio's (besluit eigenaar): 10:00. */
@@ -49,13 +49,13 @@ export function LineupComboCard(props: TrendsViewProps) {
   const renderRow = (side: 'best' | 'worst', r: ComboRow) => {
     const key = lineupKey(r.rosterIds);
     const label = lineupLabel(r.rosterIds, games, roster);
-    const tone = toneOfDelta(r.pmPer10 - (teamPm ?? 0), true);
+    const tone = toneOfSign(r.pmPer10);
     const aria = fill(t(lang, 'trendsLineupsExtraComboAria'), {
       kind,
       lineup: label,
       time: fmtSeconds(r.seconds),
       value: fmtPlusMinus(r.pmPer10),
-      tone: t(lang, toneKey(tone)),
+      tone: t(lang, toneKeyOfSign(tone)),
     });
     return (
       <li
@@ -78,7 +78,7 @@ export function LineupComboCard(props: TrendsViewProps) {
         </span>
         <span className="xs mut2 trends-combo-row__tone">
           <span aria-hidden="true">{toneSymbol(tone)} </span>
-          {t(lang, toneKey(tone))}
+          {t(lang, toneKeyOfSign(tone))}
         </span>
       </li>
     );

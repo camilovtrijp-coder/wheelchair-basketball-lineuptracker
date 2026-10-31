@@ -8,6 +8,7 @@ import type { AnalysisGame } from '../../src/domain/stats/types';
 import { sanitizeGameSelection } from '../../src/domain/stats/sanitizeGameSelection';
 import { StatsPanel } from '../../src/ui/stats/StatsPanel';
 import { TrendsPanel } from '../../src/ui/trends/TrendsPanel';
+import { chip } from './trendsFilterHelpers';
 
 afterEach(() => cleanup());
 
@@ -177,7 +178,7 @@ describe('panelen schonen een verouderde selectie op (na afronden)', () => {
     const q = render(
       <Host initial={new Set(['live-1'])} games={games} kind="trends" seen={seen} />,
     );
-    expect(q.getByTestId('trends-games-btn').textContent).toContain('(1)');
+    expect(chip(q, 'trends-games-btn').textContent).toContain('(1)');
     expect(q.getByTestId('trends-team-meta').textContent).toContain('1 wedstrijd');
     expect(q.queryByTestId('trends-no-data')).toBeNull();
     expect([...seen[seen.length - 1]!]).toEqual(['done-1']);
@@ -186,7 +187,7 @@ describe('panelen schonen een verouderde selectie op (na afronden)', () => {
   it('Trends: een selectie met alleen onbekende id’s valt terug op alles (2 wedstrijden)', () => {
     const seen: Array<Set<string> | null> = [];
     const q = render(<Host initial={new Set(['weg'])} games={games} kind="trends" seen={seen} />);
-    expect(q.getByTestId('trends-games-btn').textContent).toContain('(2)');
+    expect(chip(q, 'trends-games-btn').textContent).toContain('(2)');
     expect(seen[seen.length - 1]).toBeNull();
   });
 

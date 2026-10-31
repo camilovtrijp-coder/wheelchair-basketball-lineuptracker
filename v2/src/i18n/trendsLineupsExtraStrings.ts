@@ -34,7 +34,7 @@ export const trendsLineupsExtraNl = {
   trendsLineupsExtraComboKindDuo: 'Duo',
   trendsLineupsExtraComboKindTrio: 'Trio',
   trendsLineupsExtraComboHint:
-    '+/- per 10 min, alleen combinaties met minstens {min} samen op het veld in de gekozen wedstrijden. Beschrijvend, geen voorspelling. Toon is t.o.v. het teamgemiddelde ({team}).',
+    '+/- per 10 min, alleen combinaties met minstens {min} samen op het veld in de gekozen wedstrijden. Beschrijvend, geen voorspelling. De toon volgt het teken van +/- per 10 min (teamgemiddelde {team}).',
   trendsLineupsExtraComboBest: 'Beste 3',
   trendsLineupsExtraComboWorst: 'Slechtste 3',
   trendsLineupsExtraComboNoWorst: 'Geen aparte slechtste combinaties: alle staan al bij de beste.',
@@ -86,7 +86,7 @@ export const trendsLineupsExtraEn = {
   trendsLineupsExtraComboKindDuo: 'Pair',
   trendsLineupsExtraComboKindTrio: 'Trio',
   trendsLineupsExtraComboHint:
-    '+/- per 10 min, only combinations with at least {min} together on court in the selected games. Descriptive, not a prediction. Tone is relative to the team average ({team}).',
+    '+/- per 10 min, only combinations with at least {min} together on court in the selected games. Descriptive, not a prediction. The tone follows the sign of +/- per 10 min (team average {team}).',
   trendsLineupsExtraComboBest: 'Best 3',
   trendsLineupsExtraComboWorst: 'Worst 3',
   trendsLineupsExtraComboNoWorst: 'No separate worst combinations: all are already among the best.',

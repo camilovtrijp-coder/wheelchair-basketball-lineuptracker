@@ -119,7 +119,7 @@ test.describe('v2 Trends > Overzicht (T6)', () => {
     await expect(klass).toBeVisible();
     await expect(page.getByTestId('trends-class-time-vol')).toHaveText('10:00');
     await expect(page.getByTestId('trends-class-value-vol')).toHaveText('+6');
-    await expect(page.getByTestId('trends-class-tone-vol')).toContainText('beter dan team');
+    await expect(page.getByTestId('trends-class-tone-vol')).toContainText('positief');
     await expect(page.getByTestId('trends-class-low-ruimte')).toContainText('Te weinig data');
     await expect(page.getByTestId('trends-class-low-over')).toContainText('Te weinig data');
     await expect(page.getByTestId('trends-class-note')).toContainText('Beschrijvend');

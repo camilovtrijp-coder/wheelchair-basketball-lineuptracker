@@ -25,7 +25,7 @@ export const trendsOverviewNl = {
   trendsOverviewClassTooLittleRaw: '{pm} in {time}, onder de drempel van {threshold}',
   trendsOverviewClassNoTime: 'Geen speeltijd',
   trendsOverviewClassNote:
-    'Beschrijvend, geen oorzaak: dit toont wat er gebeurde als de vijf op het veld de klassegrens volledig, deels of te veel gebruikten, niet waarom. Per 10 min is geen balbezitcorrectie. De toon vergelijkt met het team over alle gekozen wedstrijden.',
+    'Beschrijvend, geen oorzaak: dit toont wat er gebeurde als de vijf op het veld de klassegrens volledig, deels of te veel gebruikten, niet waarom. Per 10 min is geen balbezitcorrectie. De toon volgt het teken van +/- per 10 min (positief, rond 0 of negatief).',
   trendsOverviewClassSkippedOne:
     '1 segment met ongeldige of ontbrekende klassegegevens is overgeslagen.',
   trendsOverviewClassSkippedMany:
@@ -75,7 +75,7 @@ export const trendsOverviewEn = {
   trendsOverviewClassTooLittleRaw: '{pm} in {time}, below the threshold of {threshold}',
   trendsOverviewClassNoTime: 'No playing time',
   trendsOverviewClassNote:
-    'Descriptive, not a cause: this shows what happened when the five on court used the class limit fully, partly or too much, not why. Per 10 min is not a possession correction. The tone compares with the team over all selected games.',
+    'Descriptive, not a cause: this shows what happened when the five on court used the class limit fully, partly or too much, not why. Per 10 min is not a possession correction. The tone follows the sign of +/- per 10 min (positive, around zero or negative).',
   trendsOverviewClassSkippedOne: '1 segment with invalid or missing class data was skipped.',
   trendsOverviewClassSkippedMany: '{n} segments with invalid or missing class data were skipped.',
 

@@ -8,6 +8,7 @@ import type { RosterPlayer } from '../../src/domain/roster/types';
 import { computeComboExtremes } from '../../src/domain/trends/lineupExtras';
 import type { Lang } from '../../src/i18n/strings';
 import { fixtureGames, gp, seg, segmentsA, segmentsB } from './support/trendsT6T7Fixture';
+import { chip } from './trendsFilterHelpers';
 
 afterEach(() => cleanup());
 
@@ -137,14 +138,14 @@ describe('Lineups T7: sorteeroptie "voorzichtig"', () => {
       'Voorzichtig = alsof de lineup nog 10 minuten gelijk speelde; korte lineups tellen daardoor minder zwaar.',
     );
     // De getoonde waarde blijft de gewone (per 10): L1 +0,8 en L2 +0,5, niet de gedempte waarde.
-    fireEvent.click(q.getByTestId('trends-per10-toggle'));
+    fireEvent.click(chip(q, 'trends-per10-toggle'));
     expect(q.getByTestId('trends-lineup-value-1-2-3-4-5').textContent).toBe('+0.8');
     expect(q.getByTestId('trends-lineup-value-1-2-3-4-6').textContent).toBe('+0.5');
   });
 
   it('wisselt de volgorde wanneer een korte lineup een hoge ruwe waarde heeft (zie de herleiding in het scenario)', () => {
     const q = renderLineups(switchScenario());
-    fireEvent.click(q.getByTestId('trends-per10-toggle'));
+    fireEvent.click(chip(q, 'trends-per10-toggle'));
     // Waarde: X (+2,0) vóór Y (+1,0).
     expect(orderOf(q, 'trends-lineup-list', 'trends-lineup-')).toEqual(['1-2-3-4-6', '1-2-3-4-5']);
     expect(q.getByTestId('trends-lineup-value-1-2-3-4-6').textContent).toBe('+2.0');
@@ -230,23 +231,20 @@ describe("Lineups T7: beste en slechtste duo's/trio's", () => {
 
     expect(orderOf(q, 'trends-combo-best', 'trends-combo-best-')).toEqual(keys(expected.best));
     expect(orderOf(q, 'trends-combo-worst', 'trends-combo-worst-')).toEqual(keys(expected.worst));
-    // Minuten, +/- per 10 en toon (1-6: +2,2 -> +0,4 t.o.v. team +1,8 = rond gemiddelde; 4-6: -1,3 = slechter).
+    // Minuten, +/- per 10 en toon op het TEKEN (besluit 2026-10-31): 1-6 = +2,2 -> positief (was
+    // "rond gemiddelde" t.o.v. team +1,8); 4-6 = +0,5 -> rond 0 (grens; was "slechter dan team").
     const best = q.getByTestId('trends-combo-best-1-6');
     expect(best.textContent).toContain('23:00');
     expect(best.textContent).toContain('+2.2');
-    expect(best.textContent).toContain('●');
-    expect(best.textContent).toContain('rond gemiddelde');
-    expect(best.getAttribute('aria-label')).toBe(
-      'Duo 1-6: 23:00, +2.2 per 10 minuten, rond gemiddelde',
-    );
+    expect(best.textContent).toContain('▲');
+    expect(best.textContent).toContain('positief');
+    expect(best.getAttribute('aria-label')).toBe('Duo 1-6: 23:00, +2.2 per 10 minuten, positief');
     const worst = q.getByTestId('trends-combo-worst-4-6');
     expect(worst.textContent).toContain('20:00');
     expect(worst.textContent).toContain('+0.5');
-    expect(worst.textContent).toContain('▼');
-    expect(worst.textContent).toContain('slechter');
-    expect(worst.getAttribute('aria-label')).toBe(
-      'Duo 4-6: 20:00, +0.5 per 10 minuten, slechter dan team',
-    );
+    expect(worst.textContent).toContain('●');
+    expect(worst.textContent).toContain('rond 0');
+    expect(worst.getAttribute('aria-label')).toBe('Duo 4-6: 20:00, +0.5 per 10 minuten, rond 0');
     expect(q.getByTestId('trends-combo-excluded').textContent).toContain('altijd samen speelden');
     expect(q.getByTestId('trends-combo-excluded').textContent).toContain('Weggelaten: 3.');
     // worst herhaalt best nooit.
@@ -268,7 +266,7 @@ describe("Lineups T7: beste en slechtste duo's/trio's", () => {
       expect(orderOf(q, 'trends-combo-worst', 'trends-combo-worst-')).toEqual(keys(expected.worst));
     }
     expect(q.getByTestId('trends-combo-best-1-2-6').getAttribute('aria-label')).toBe(
-      'Trio 1-2-6: 23:00, +2.2 per 10 minuten, rond gemiddelde',
+      'Trio 1-2-6: 23:00, +2.2 per 10 minuten, positief',
     );
     expect(q.getByTestId('trends-combo-excluded').textContent).toContain('Weggelaten: 1.');
   });
@@ -371,10 +369,8 @@ describe('Lineups T7: toegankelijkheid en taal', () => {
       expect(['good', 'flat', 'bad']).toContain(tone);
       const symbol = tone === 'good' ? '▲' : tone === 'bad' ? '▼' : '●';
       expect(row.textContent).toContain(symbol);
-      expect(row.textContent).toMatch(/beter dan team|rond gemiddelde|slechter dan team/);
-      expect(row.getAttribute('aria-label')).toMatch(
-        /beter dan team|rond gemiddelde|slechter dan team/,
-      );
+      expect(row.textContent).toMatch(/positief|rond 0|negatief/);
+      expect(row.getAttribute('aria-label')).toMatch(/positief|rond 0|negatief/);
       const symbolEl = [...row.querySelectorAll('[aria-hidden="true"]')].find((e) =>
         (e.textContent ?? '').includes(symbol),
       );
@@ -406,7 +402,7 @@ describe('Lineups T7: toegankelijkheid en taal', () => {
     );
     expect(q.getByTestId('trends-startclose-explain').textContent).toContain('one segment');
     expect(q.getByTestId('trends-combo-best-1-6').getAttribute('aria-label')).toBe(
-      'Pair 1-6: 23:00, +2.2 per 10 minutes, around average',
+      'Pair 1-6: 23:00, +2.2 per 10 minutes, positive',
     );
   });
 

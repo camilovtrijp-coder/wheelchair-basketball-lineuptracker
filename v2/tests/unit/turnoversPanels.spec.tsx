@@ -7,6 +7,7 @@ import type { CompletedGameRepository } from '../../src/application/game/Complet
 import type { CompletedGame, GamePlayer, Segment } from '../../src/domain/game/types';
 import type { RosterPlayer } from '../../src/domain/roster/types';
 import type { Lang } from '../../src/i18n/strings';
+import { chip } from './trendsFilterHelpers';
 
 afterEach(() => cleanup());
 
@@ -215,7 +216,7 @@ describe('Trends: tegels, totaalregel en lineup-kaart', () => {
     // waarde per 10 min vraagt nu de chip "Per 10 min" (de kaart volgt de chip).
     openView(q, 'lineups');
     fireEvent.click(getByTestId('trends-metric-tov'));
-    fireEvent.click(getByTestId('trends-per10-toggle'));
+    fireEvent.click(chip(q, 'trends-per10-toggle'));
     const card = getByTestId('trends-tov-lineups');
     expect(card.textContent).toContain('Lineups: turnovers per 10 min');
     expect(card.textContent).toContain('Laagste is het beste');

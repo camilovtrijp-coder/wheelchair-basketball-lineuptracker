@@ -1,6 +1,7 @@
 import AxeBuilder from '@axe-core/playwright';
 import { expect, type Page } from '@playwright/test';
 import { test } from './fixtures';
+import { openTrendsFilters } from './trendsFilters';
 
 const WCAG_TAGS = ['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa'];
 
@@ -58,7 +59,7 @@ test.describe('v2 Trends: weergave Kwarten (T5)', () => {
     await expect(page.getByTestId('trends-quarter-1')).toContainText('5:00');
     await expect(page.getByTestId('trends-quarter-1')).toContainText('1 wedstr.');
     await expect(page.getByTestId('trends-quarter-1')).toHaveAccessibleName(
-      'Kwart 1, 5:00, +2 totaal, rond gemiddelde',
+      'Kwart 1, 5:00, +2 totaal, positief',
     );
     // De andere kwarten hebben geen segmenten: "geen data", zonder toon.
     await expect(page.getByTestId('trends-quarter-value-2')).toHaveText('geen data');
@@ -70,11 +71,12 @@ test.describe('v2 Trends: weergave Kwarten (T5)', () => {
     await expect(page.getByTestId('trends-qmin-1-2')).toHaveText('0:00');
     await expect(page.locator('[data-testid^="trends-qmin-row-"]')).toHaveCount(5);
 
+    await openTrendsFilters(page);
     await page.getByTestId('trends-per10-toggle').click();
     await expect(page.getByTestId('trends-quarters-title')).toHaveText('Kwarten: +/- per 10 min');
     await expect(page.getByTestId('trends-quarter-value-1')).toHaveText('+4.0');
     await expect(page.getByTestId('trends-quarter-1')).toHaveAccessibleName(
-      'Kwart 1, 5:00, +4.0 per 10 minuten, rond gemiddelde',
+      'Kwart 1, 5:00, +4.0 per 10 minuten, positief',
     );
 
     await page.getByTestId('lang-switch').click();
@@ -82,7 +84,7 @@ test.describe('v2 Trends: weergave Kwarten (T5)', () => {
     await expect(page.getByTestId('trends-quarter-1')).toContainText('1 games');
     await expect(page.getByTestId('trends-quarter-value-2')).toHaveText('no data');
     await expect(page.getByTestId('trends-quarter-1')).toHaveAccessibleName(
-      'Quarter 1, 5:00, +4.0 per 10 minutes, around average',
+      'Quarter 1, 5:00, +4.0 per 10 minutes, positive',
     );
     await expect(page.getByTestId('trends-qmin-hint')).toContainText('Darker = more minutes');
   });
@@ -93,6 +95,7 @@ test.describe('v2 Trends: weergave Kwarten (T5)', () => {
     const pageOverflow = () =>
       page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
     expect(await pageOverflow(), 'horizontale paginascroll op 320px').toBeLessThanOrEqual(1);
+    await openTrendsFilters(page);
     await page.getByTestId('trends-per10-toggle').click();
     expect(await pageOverflow(), 'paginascroll per 10 min op 320px').toBeLessThanOrEqual(1);
 
@@ -115,6 +118,7 @@ test.describe('v2 Trends: weergave Kwarten (T5)', () => {
   test('axe: geen WCAG-overtredingen in Kwarten (totaal, per 10, EN, 320 px)', async ({ page }) => {
     await finishGameAndOpenQuarters(page);
     await expectNoAxeViolations(page);
+    await openTrendsFilters(page);
     await page.getByTestId('trends-per10-toggle').click();
     await expectNoAxeViolations(page);
     await page.getByTestId('lang-switch').click();

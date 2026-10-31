@@ -8,13 +8,15 @@ import type { CompletedGameRepository } from '../../src/application/game/Complet
 import type { CompletedGame, GamePlayer, Segment } from '../../src/domain/game/types';
 import type { RosterPlayer } from '../../src/domain/roster/types';
 import type { Lang } from '../../src/i18n/strings';
+import { chip } from './trendsFilterHelpers';
 
 afterEach(() => cleanup());
 
 // ---- Vaste fixture: docs/pr-trends-lineups-plan.md §F.2 (fictief, narekenbaar) ----
 //  Q1: 1200 s, +6 => +3.0/10 (2 wd)   Q2: 600 s, +2 => +2.0/10 (1 wd)
 //  Q3: geen segmenten (0 wd)          Q4: 1200 s, +1 => +0.5/10 (2 wd)
-//  Team 3000 s, +9 => +1.8/10. Toon: Q1 +1.2 = beter, Q2 +0.2 = rond, Q4 -1.3 = slechter.
+//  Team 3000 s, +9 => +1.8/10. Toon op het TEKEN (besluit 2026-10-31): Q1 +3.0 = positief, Q2 +2.0 = positief, Q4 +0.5 = rond 0
+//  (grens telt als grijs); het verschil met het team (+1.2 / +0.2 / -1.3) is alleen kleine tekst.
 //  Speler 4: Q1 600 s, Q2 210 s, Q3 0 s, Q4 540 s (gemiddeld per gespeelde wedstrijd).
 
 function gp(n: number): GamePlayer {
@@ -136,7 +138,7 @@ function renderQuarters(games: CompletedGame[] = fixture(), lang: Lang = 'nl') {
 type Q = ReturnType<typeof renderQuarters>;
 const text = (q: Q, id: string) => q.getByTestId(id).textContent;
 const aria = (q: Q, id: string) => q.getByTestId(id).getAttribute('aria-label');
-const togglePer10 = (q: Q) => fireEvent.click(q.getByTestId('trends-per10-toggle'));
+const togglePer10 = (q: Q) => fireEvent.click(chip(q, 'trends-per10-toggle'));
 
 describe('Kwarten: resultaat per kwart (fixture F.2)', () => {
   it('toont totalen (standaard) met minuten, wedstrijden en Voor/Tegen', () => {
@@ -180,35 +182,28 @@ describe('Kwarten: resultaat per kwart (fixture F.2)', () => {
     expect(q.queryByTestId('trends-quarter-tone-3')).toBeNull();
   });
 
-  it('geeft toon met symbool + tekst t.o.v. het team (|delta| < 0.5 = rond gemiddelde)', () => {
+  it('geeft toon met symbool + tekst op het teken van +/- per 10 (|waarde| <= 0.5 = rond 0)', () => {
     const q = renderQuarters();
     expect(q.getByTestId('trends-quarter-1').getAttribute('data-tone')).toBe('good');
-    expect(q.getByTestId('trends-quarter-2').getAttribute('data-tone')).toBe('flat');
-    expect(q.getByTestId('trends-quarter-4').getAttribute('data-tone')).toBe('bad');
-    expect(text(q, 'trends-quarter-tone-1')).toBe('▲ beter dan team · +1.2 per 10 min t.o.v. team');
-    expect(text(q, 'trends-quarter-tone-2')).toBe(
-      '● rond gemiddelde · +0.2 per 10 min t.o.v. team',
-    );
-    expect(text(q, 'trends-quarter-tone-4')).toBe(
-      '▼ slechter dan team · -1.3 per 10 min t.o.v. team',
-    );
+    // Oud (relatief aan het team): Q2 was "rond gemiddelde" en Q4 "slechter dan team".
+    expect(q.getByTestId('trends-quarter-2').getAttribute('data-tone')).toBe('good');
+    expect(q.getByTestId('trends-quarter-4').getAttribute('data-tone')).toBe('flat');
+    expect(text(q, 'trends-quarter-tone-1')).toBe('▲ positief · +1.2 per 10 min t.o.v. team');
+    expect(text(q, 'trends-quarter-tone-2')).toBe('▲ positief · +0.2 per 10 min t.o.v. team');
+    expect(text(q, 'trends-quarter-tone-4')).toBe('● rond 0 · -1.3 per 10 min t.o.v. team');
     // Symbool bij de waarde zelf.
     expect(text(q, 'trends-quarter-1')).toContain('▲');
-    expect(text(q, 'trends-quarter-2')).toContain('●');
-    expect(text(q, 'trends-quarter-4')).toContain('▼');
+    expect(text(q, 'trends-quarter-2')).toContain('▲');
+    expect(text(q, 'trends-quarter-4')).toContain('●');
   });
 
   it('heeft per rij een toegankelijke naam (totaal en per 10) en verbergt de balk', () => {
     const q = renderQuarters();
-    expect(aria(q, 'trends-quarter-4')).toBe('Kwart 4, 20:00, +1 totaal, slechter dan team');
-    expect(aria(q, 'trends-quarter-1')).toBe('Kwart 1, 20:00, +6 totaal, beter dan team');
+    expect(aria(q, 'trends-quarter-4')).toBe('Kwart 4, 20:00, +1 totaal, rond 0');
+    expect(aria(q, 'trends-quarter-1')).toBe('Kwart 1, 20:00, +6 totaal, positief');
     togglePer10(q);
-    expect(aria(q, 'trends-quarter-4')).toBe(
-      'Kwart 4, 20:00, +0.5 per 10 minuten, slechter dan team',
-    );
-    expect(aria(q, 'trends-quarter-2')).toBe(
-      'Kwart 2, 10:00, +2.0 per 10 minuten, rond gemiddelde',
-    );
+    expect(aria(q, 'trends-quarter-4')).toBe('Kwart 4, 20:00, +0.5 per 10 minuten, rond 0');
+    expect(aria(q, 'trends-quarter-2')).toBe('Kwart 2, 10:00, +2.0 per 10 minuten, positief');
     for (const m of q.getByTestId('trends-quarters-list').querySelectorAll('.trends-meter')) {
       expect(m.getAttribute('aria-hidden')).toBe('true');
     }
@@ -219,9 +214,9 @@ describe('Kwarten: resultaat per kwart (fixture F.2)', () => {
     for (const n of [1, 2, 4]) {
       const row = q.getByTestId(`trends-quarter-${n}`);
       expect(row.textContent).toMatch(/[▲●▼]/);
-      expect(row.textContent).toMatch(/beter dan team|rond gemiddelde|slechter dan team/);
+      expect(row.textContent).toMatch(/positief|rond 0|negatief/);
     }
-    expect(text(q, 'trends-quarters-legend')).toContain('▲ beter dan team');
+    expect(text(q, 'trends-quarters-legend')).toContain('▲ positief');
   });
 });
 
@@ -310,12 +305,10 @@ describe('Kwarten: Engels en tokens', () => {
     expect(text(q, 'trends-quarter-1')).toContain('Quarter 1');
     expect(text(q, 'trends-quarter-1')).toContain('2 games');
     expect(text(q, 'trends-quarter-value-3')).toBe('no data');
-    expect(aria(q, 'trends-quarter-4')).toBe(
-      'Quarter 4, 20:00, +0.5 per 10 minutes, worse than team',
-    );
+    expect(aria(q, 'trends-quarter-4')).toBe('Quarter 4, 20:00, +0.5 per 10 minutes, around zero');
     expect(aria(q, 'trends-quarter-3')).toBe('Quarter 3, no data');
     expect(text(q, 'trends-quarter-detail-1')).toBe('For 10.0 · Against 7.0 per 10 min');
-    expect(text(q, 'trends-quarter-tone-2')).toBe('● around average · +0.2 per 10 min vs team');
+    expect(text(q, 'trends-quarter-tone-2')).toBe('▲ positive · +0.2 per 10 min vs team');
     expect(text(q, 'trends-qmin-hint')).toContain('Darker = more minutes');
     expect(
       [...q.getByTestId('trends-qmin-table').querySelectorAll('thead th')].map(
@@ -379,7 +372,7 @@ describe('Kwarten: te weinig speeltijd per kwart (§E.6, review-fix M4)', () => 
 
   it('met drempel uit (0) krijgt een kort kwart wel een waarde en toon; de grens zelf telt mee', () => {
     const q = renderQuarters(shortFixture());
-    const btn = q.getByTestId('trends-threshold-btn');
+    const btn = chip(q, 'trends-threshold-btn');
     fireEvent.click(btn); // 5:00 -> 10:00
     fireEvent.click(btn); // -> uit
     expect(q.getByTestId('trends-quarter-1').getAttribute('data-low')).toBeNull();

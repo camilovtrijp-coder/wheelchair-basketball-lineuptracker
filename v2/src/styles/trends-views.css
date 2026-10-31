@@ -1,8 +1,10 @@
-/* Trends-weergaven (T2/T3): tablist, vaste filterbalk, lineupkaart, spelersrijen.
-   Alleen tokens uit tokens.css. Groen (--lt-color-success) = beter, rood
-   (--lt-color-danger) = slechter, grijs (--lt-color-muted) = rond gemiddelde.
+/* Trends-weergaven (T2/T3): tablist, vaste kop met inklapbare filters, lineupkaart, spelersrijen.
+   Alleen tokens uit tokens.css. Groen (--lt-color-success) = positief (+/-) of beter dan
+   het team (Voor/Tegen, turnovers), rood (--lt-color-danger) = negatief of slechter,
+   grijs (--lt-color-muted) = rond 0 of rond gemiddelde. De toon van +/- volgt het teken van
+   de waarde per 10 min (besluit eigenaar 2026-10-31), niet het verschil met het team.
    Kleur is nooit het enige signaal: elke toon heeft ook een symbool (▲ ● ▼)
-   en tekst in de markup, en de "slechter"-balk heeft bovendien een streeppatroon. */
+   en tekst in de markup, en de "slechter"/negatieve balk heeft bovendien een streeppatroon. */
 
 /* ---------- segmentbediening (tablist) ---------- */
 
@@ -47,16 +49,62 @@
   outline-offset: var(--lt-focus-offset);
 }
 
-/* ---------- vaste filterbalk ---------- */
+/* ---------- vaste kop (tabs + samenvatting) en inklapbaar chipspaneel ---------- */
 
-.trends-panel .trends-filterbar {
+/* Alleen de tabbalk en de samenvattingsregel zijn sticky (samen ~100 px op 320 px breed);
+   het chipspaneel staat in de normale paginastroom eronder. */
+.trends-panel .trends-sticky {
   position: sticky;
   top: 0;
   z-index: 5;
-  /* Onder een statusbalk/inkeping (PWA, viewport-fit=cover) blijft de balk leesbaar. */
-  padding: calc(var(--lt-space-2) + env(safe-area-inset-top)) 0 var(--lt-space-2);
+  /* Onder een statusbalk/inkeping (PWA, viewport-fit=cover) blijft de kop leesbaar. */
+  padding: calc(var(--lt-space-1) + env(safe-area-inset-top)) 0 var(--lt-space-1);
   margin-bottom: var(--lt-space-2);
   background: var(--lt-color-bg);
+  border-bottom: var(--lt-border-thin);
+}
+
+.trends-panel .trends-sticky .trends-tabs {
+  margin: 0 0 var(--lt-space-1);
+  padding: 2px;
+}
+
+.trends-panel .trends-filter-summary {
+  display: flex;
+  align-items: center;
+  gap: var(--lt-space-2);
+}
+
+.trends-panel .trends-filter-summary__text {
+  flex: 1 1 auto;
+  min-width: 0;
+  margin: 0;
+  font-size: var(--lt-font-size-xs);
+  line-height: 1.25;
+  color: var(--lt-color-muted);
+  overflow-wrap: anywhere;
+}
+
+/* Selectie is niet "alles": tekst (Gefilterd) staat er al; vet + vollere kleur versterkt dat. */
+.trends-panel .trends-filter-summary__text--filtered {
+  color: var(--lt-color-fg);
+  font-weight: 700;
+}
+
+.trends-panel .trends-filter-summary__btn {
+  flex: 0 0 auto;
+  min-height: 2.75rem;
+  white-space: nowrap;
+}
+
+.trends-panel .trends-filter-summary__btn:focus-visible {
+  outline: var(--lt-focus-ring);
+  outline-offset: var(--lt-focus-offset);
+}
+
+.trends-panel .trends-filterbar {
+  margin-bottom: var(--lt-space-2);
+  padding: var(--lt-space-2) 0;
   border-bottom: var(--lt-border-thin);
 }
 
@@ -222,7 +270,7 @@
   background: var(--lt-color-muted);
 }
 
-/* Patroon naast kleur: "slechter" is gestreept, "beter" effen. */
+/* Patroon naast kleur: "slechter"/negatief is gestreept, "beter"/positief effen. */
 .trends-panel .trends-tov-bar__fill--bad {
   background-image: repeating-linear-gradient(
     135deg,
@@ -328,7 +376,10 @@
   font-size: var(--lt-font-size-xs);
 }
 
+/* Het pijltje staat vóór de naam in dezelfde kopregel en wrapt nooit naar een eigen regel. */
 .trends-panel .trends-row__chev {
+  flex: 0 0 auto;
+  width: 1ch;
   color: var(--lt-color-muted);
 }
 

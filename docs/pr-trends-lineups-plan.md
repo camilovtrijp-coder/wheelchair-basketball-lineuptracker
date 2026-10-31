@@ -278,14 +278,25 @@ bestaande segmentdata. Drempels zie §E.
    bestaande functie blijft ongewijzigd.
 5. **Geen schijnprecisie**: één decimaal voor per 10, gehele getallen voor
    totalen. Geen percentages, geen SD, geen "significant".
-6. **Toon** (beter/slechter):
+6. **Toon**:
    - alleen boven de drempel;
-   - relatief aan het tijdgewogen teamgemiddelde van dezelfde selectie, zoals
-     de bestaande turnovertoon;
-   - een vierde toon "rond gemiddelde" bij |Δ| < 0,5 per 10 (besluit H.4;
-     **besluit eigenaar: groen/rood met ▲ ● ▼, zie §I.4**);
-   - altijd tekst of een symbool erbij (▲ beter / ▼ slechter / ● rond
-     gemiddelde) plus een patroon of dikte, nooit alleen rood of groen.
+   - **+/- (en +/- per 10 min) krijgt zijn toon op het TEKEN van de waarde per
+     10 min** (besluit eigenaar 2026-10-31, §I.4): > +0,5 groen met ▲
+     "positief", < −0,5 rood met ▼ "negatief", daartussen (grenzen +0,5 en −0,5
+     zelf inbegrepen) grijs met ● "rond 0". In de modus Totaal bepaalt de
+     waarde per 10 min de toon, niet het totaal. Dit geldt voor de lineupkaart,
+     de kwartenkaart, duo's/trio's en het classificatieprofiel. Het verschil met
+     het tijdgewogen teamgemiddelde blijft alleen als kleine tekst staan (bijv.
+     "−0,7 t.o.v. team (+5,8)") en bepaalt de toon niet. Reden: een kwart met +5
+     werd rood "slechter dan team" omdat het team +5,8 deed;
+   - **Voor/Tegen per lineup en turnovers per 10 blijven relatief aan het
+     tijdgewogen teamgemiddelde** (geen teken-waarden; Tegen en turnovers:
+     lager is beter), met een band "rond gemiddelde" bij |Δ| < 0,5 per 10;
+     de op/af-het-veld-toon staat al op het teken van het verschil;
+   - altijd tekst of een symbool erbij (▲ positief of beter / ▼ negatief of
+     slechter / ● rond 0 of rond gemiddelde) plus een patroon of dikte, nooit
+     alleen rood of groen: de balk is bij positief effen groen, bij negatief
+     rood en gestreept, en bij rond 0 grijs.
 7. **Vaste uitleg** onder elke lineupsectie (NL/EN): "Beschrijvend: wat
    gebeurde er met deze vijf op het veld. Minder dan 5 minuten zegt bijna
    niets. Per 10 min is geen balbezitcorrectie."
@@ -563,14 +574,16 @@ Desktop (≥ 960 px):
   - hoog contrast op het bestaande donkere thema, via de
     `--lt-color-*`-tokens en contrasttests zoals `statsTrendsTokenContrast.spec.ts`;
   - geen hover-only informatie.
-- **Kleur nooit alleen**: symbolen ▲/●/▼ plus de tekst "beter/rond/slechter"
-  in de toegankelijke naam. De balk onder de drempel is gearceerd of grijs.
+- **Kleur nooit alleen**: symbolen ▲/●/▼ plus de tekst in de toegankelijke naam:
+  "positief/rond 0/negatief" bij +/- (teken, §E.6) en "beter/rond gemiddelde/slechter
+  dan team" bij Voor/Tegen en turnovers. De balk onder de drempel is gearceerd of grijs.
   Bij voorkeur blauw/oranje in plaats van groen/rood (besluit H.4).
   **Besluit eigenaar (2026-10-31): groen/rood blijft, met symbolen ▲ ● ▼ en tekst
   (zie §I.4); blauw/oranje wordt niet ingevoerd.**
 - **Tabelalternatief**: de rijen zijn een `<ol>` met een volledige
   toegankelijke naam per rij ("Lineup 4, 9, 11, 13, 15: plus 0,8 per 10
-  minuten in 25 minuten, 2 wedstrijden, beter dan gemiddeld"). De balken zijn
+  minuten in 25 minuten, 2 wedstrijden, positief"; bij Voor/Tegen en turnovers
+  "beter dan team"). De balken zijn
   `aria-hidden`. Op desktop is er een echte `<table>`.
 - **i18n**:
   - alle nieuwe teksten in NL en EN onder `trends*`-keys, met een
@@ -729,6 +742,12 @@ T6 → T7.
    ruwe totaal en zonder waarde per 10 minuten.
 4. **Kleuren:** **groen en rood blijven**, met ▲ ● ▼ en tekst erbij (zie de status
    bovenaan). Een toon "rond gemiddelde" bij |Δ| < 0,5 per 10 minuten blijft.
+   **Aanscherping (2026-10-31): de toon voor +/- staat op het TEKEN van de waarde
+   per 10 min** (> +0,5 groen ▲ "positief", < −0,5 rood ▼ "negatief", ertussen
+   grijs ● "rond 0"; ook in Totaal-modus bepaalt de waarde per 10 min de toon). Het
+   verschil met het team blijft als kleine tekst staan. **Voor/Tegen per lineup en
+   turnovers per 10 blijven relatief aan het team**, en de op/af-toon blijft op het
+   teken van het verschil. Zie §E.6.
 5. **Snelfilters** "Laatste n" en "Deze wedstrijd": **gedeeld filter**, dus ook
    Statistieken verandert mee. De chip maakt dat zichtbaar.
 6. **Stint:** aaneengesloten tijd op het veld **binnen één kwart**.
@@ -765,8 +784,14 @@ Open punten:
 
 - **Prestatie bij zeer veel wedstrijden** is niet gemeten (alle inzichten worden in
   de browser herberekend bij elke filterwijziging).
-- **De hoge sticky filterbalk op 320 px** moet nog op een echte telefoon worden
-  beoordeeld (neemt veel schermhoogte in).
+- **Opgelost (2026-10-31): inklapbare filterbalk.** De vaste (sticky) kop is nu
+  alleen de tabbalk plus een samenvattingsregel met de knop "Filters" (±105 px op
+  320 px, was ongeveer een kwart van het scherm). De chips staan in een paneel
+  dat standaard ingeklapt is (state per mount, niet opgeslagen), in de normale
+  paginastroom direct onder de kop; Escape sluit het. "Laatste 5" en "Deze
+  wedstrijd" zijn alleen ingedrukt bij een expliciete selectie (nooit bij "alles"),
+  en het uitklappijltje in de spelerrijen staat in de kopregel naast de naam.
+  Nog te beoordelen op een echte telefoon.
 - **Dubbele turnovercijfers bij PARTIAL-segmenten**: bij segmenten met een
   onvolledige lineup (PARTIAL) komen twee turnovercijfers voor die niet gelijk zijn;
   nog te beoordelen of dit uitleg of een aparte regel nodig heeft.

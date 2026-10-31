@@ -81,6 +81,19 @@ export function toneOfDelta(
   return delta > 0 === higherIsBetter ? 'good' : 'bad';
 }
 
+/**
+ * Toon van een +/--waarde per 10 min op het TEKEN (besluit eigenaar 2026-10-31):
+ * groter dan `+eps` is groen, kleiner dan `-eps` is rood, en alles ertussen
+ * (de grenzen zelf inbegrepen) is grijs. Het teamgemiddelde speelt GEEN rol;
+ * dat blijft alleen als kleine tekst staan. Alleen voor +/-; Voor/Tegen en
+ * turnovers blijven relatief aan het team (`toneOfDelta`).
+ */
+export function toneOfSign(valuePer10: number, eps: number = FLAT_EPS_PER10): Tone {
+  if (valuePer10 > eps) return 'good';
+  if (valuePer10 < -eps) return 'bad';
+  return 'flat';
+}
+
 /** Symbool dat samen met tekst de toon draagt; kleur is nooit de enige aanwijzing. */
 export function toneSymbol(tone: Tone): string {
   return tone === 'good' ? '▲' : tone === 'bad' ? '▼' : '●';
@@ -92,6 +105,15 @@ export function toneKey(tone: Tone): StringKey {
     : tone === 'bad'
       ? 'trendsLineupToneWorse'
       : 'trendsLineupToneAround';
+}
+
+/** Tekstsleutel van een teken-toon: positief / rond 0 / negatief (bij +/-, niet "dan team"). */
+export function toneKeyOfSign(tone: Tone): StringKey {
+  return tone === 'good'
+    ? 'trendsToneSignPositive'
+    : tone === 'bad'
+      ? 'trendsToneSignNegative'
+      : 'trendsToneSignAround';
 }
 
 // ---- Tekst en opmaak ----
@@ -186,13 +208,4 @@ export function selectionEquals(
     return games.length === target.size && games.every((g) => target.has(g.id));
   }
   return gameIds.size === target.size && [...target].every((id) => gameIds.has(id));
-}
-
-/** Zet een doelselectie om naar de gedeelde state: alles geselecteerd wordt `null` (zoals `toggleGameIdInSet`). */
-export function selectionFromTarget(
-  target: ReadonlySet<string>,
-  games: readonly AnalysisGame[],
-): Set<string> | null {
-  const coversAll = games.length > 0 && games.every((g) => target.has(g.id));
-  return coversAll ? null : new Set(target);
 }

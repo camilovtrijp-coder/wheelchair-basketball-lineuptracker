@@ -55,8 +55,9 @@ describe('OverviewView T6 — classificatieprofiel', () => {
     // op de grens: 45:00, +3 in 2700 s = +0,667 per 10 -> +0.7
     expect(text(q, 'trends-class-time-vol')).toBe('45:00');
     expect(text(q, 'trends-class-value-vol')).toBe('+0.7');
-    // team +1,8 per 10: verschil -1,1, dus slechter dan het team (symbool + tekst)
-    expect(text(q, 'trends-class-tone-vol')).toBe('▼ slechter dan team');
+    // Toon op het TEKEN (besluit 2026-10-31): +0,7 per 10 > +0,5 is positief. Oud: team +1,8 gaf
+    // hier "▼ slechter dan team"; dat is voor +/- bewust vervallen.
+    expect(text(q, 'trends-class-tone-vol')).toBe('▲ positief');
 
     // ruimte over: A3, 3:00 onder de drempel van 5:00: geen waarde, geen toon, ruw totaal
     expect(text(q, 'trends-class-time-ruimte')).toBe('3:00');
@@ -98,9 +99,9 @@ describe('OverviewView T6 — classificatieprofiel', () => {
     // ruimte: +4 in 180 s = 13,33 per 10; over: +2 in 120 s = 10,0 per 10
     expect(text(q, 'trends-class-value-ruimte')).toBe('+13.3');
     expect(text(q, 'trends-class-value-over')).toBe('+10.0');
-    // team +1,8: beide ruim beter dan het team
-    expect(text(q, 'trends-class-tone-ruimte')).toBe('▲ beter dan team');
-    expect(text(q, 'trends-class-tone-over')).toBe('▲ beter dan team');
+    // beide ruim positief
+    expect(text(q, 'trends-class-tone-ruimte')).toBe('▲ positief');
+    expect(text(q, 'trends-class-tone-over')).toBe('▲ positief');
   });
 
   it('legt de groepen uit en benoemt dat het beschrijvend is', () => {
@@ -154,11 +155,11 @@ describe('OverviewView T6 — classificatieprofiel', () => {
     const q = renderOverview({ minSec: 0 });
     for (const bucket of ['vol', 'ruimte', 'over']) {
       const tone = q.getByTestId(`trends-class-tone-${bucket}`);
-      expect(tone.textContent).toMatch(/^[▲●▼] (beter|slechter) dan team$|^● rond gemiddelde$/);
+      expect(tone.textContent).toMatch(/^▲ positief$|^▼ negatief$|^● rond 0$/);
       expect(tone.querySelector('[aria-hidden="true"]')?.textContent).toMatch(/^[▲●▼]$/);
     }
     // de tekst zelf draagt de toon ook zonder symbool
-    expect(text(q, 'trends-class-tone-vol')).toContain('slechter dan team');
+    expect(text(q, 'trends-class-tone-vol')).toContain('positief');
   });
 });
 
@@ -245,7 +246,7 @@ describe('OverviewView T6 — Engels', () => {
     expect(q.getByText('At the limit')).toBeTruthy();
     expect(q.getByText('Room to spare')).toBeTruthy();
     expect(q.getByText('Over the limit')).toBeTruthy();
-    expect(text(q, 'trends-class-tone-vol')).toBe('▼ worse than team');
+    expect(text(q, 'trends-class-tone-vol')).toBe('▲ positive');
     expect(text(q, 'trends-class-low-ruimte')).toContain('Too little data');
     expect(text(q, 'trends-class-low-ruimte')).toContain('+4 in 3:00, below the threshold of 5:00');
     expect(text(q, 'trends-class-note')).toContain('Descriptive, not a cause');

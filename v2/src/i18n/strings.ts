@@ -4,6 +4,7 @@ import { trendsOverviewEn, trendsOverviewNl } from './trendsOverviewStrings';
 import { trendsLineupsExtraEn, trendsLineupsExtraNl } from './trendsLineupsExtraStrings';
 import { trendsQuartersEn, trendsQuartersNl } from './trendsQuartersStrings';
 import { trendsFixBEn, trendsFixBNl } from './trendsFixBStrings';
+import { trendsFilterSummaryEn, trendsFilterSummaryNl } from './trendsFilterSummaryStrings';
 
 export const LANG_STORAGE_KEY = 'lineup-tracker-lang';
 
@@ -911,6 +912,7 @@ const nl = {
   ...trendsLineupsExtraNl,
   ...trendsQuartersNl,
   ...trendsFixBNl,
+  ...trendsFilterSummaryNl,
 } as const;
 
 const en = {
@@ -1752,6 +1754,7 @@ const en = {
   ...trendsLineupsExtraEn,
   ...trendsQuartersEn,
   ...trendsFixBEn,
+  ...trendsFilterSummaryEn,
 } as const;
 
 export const STRINGS = { nl, en } as const;

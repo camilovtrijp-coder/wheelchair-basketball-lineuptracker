@@ -1,5 +1,6 @@
 import { expect, type Page } from '@playwright/test';
 import { test } from './fixtures';
+import { openTrendsFilters } from './trendsFilters';
 
 // H1: het gedeelde wedstrijdfilter ("Deze wedstrijd" courtside) blijft na het
 // afronden naar de afgeronde wedstrijd wijzen, in Trends én Statistieken.
@@ -38,6 +39,7 @@ test.describe('Trends en Statistieken: wedstrijdfilter na afronden (H1)', () => 
 
     // Courtside: alleen de lopende wedstrijd kiezen.
     await page.getByTestId('nav-trends').click();
+    await openTrendsFilters(page);
     await page.getByTestId('trends-quick-current').click();
     await expect(page.getByTestId('trends-games-btn')).toHaveText('Wedstrijden (1)');
 
@@ -49,6 +51,7 @@ test.describe('Trends en Statistieken: wedstrijdfilter na afronden (H1)', () => 
 
     // Trends: nog steeds 1 wedstrijd, niet 0, en geen lege staat.
     await page.getByTestId('nav-trends').click();
+    await openTrendsFilters(page);
     await expect(page.getByTestId('trends-games-btn')).toHaveText('Wedstrijden (1)');
     await expect(page.getByTestId('trends-team-meta')).toContainText('1 wedstrijd');
     await expect(page.getByTestId('trends-team-meta')).not.toContainText('0 wedstrijden');

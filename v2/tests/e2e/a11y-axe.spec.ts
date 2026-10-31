@@ -29,6 +29,7 @@ import AxeBuilder from '@axe-core/playwright';
 import { expect, type Page } from '@playwright/test';
 import { test } from './fixtures';
 import { openAccountMenu } from './accountMenu';
+import { openTrendsFilters } from './trendsFilters';
 
 const WCAG_TAGS = ['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa'];
 
@@ -134,6 +135,7 @@ test.describe('v2 a11y — axe-core-nulmeting kernschermen (PR 8.2a)', () => {
   test('trends incl. open filtermodaal', async ({ page }) => {
     await page.goto('/');
     await page.getByTestId('nav-trends').click();
+    await openTrendsFilters(page);
     await page.getByTestId('trends-games-btn').click();
     await expect(page.getByTestId('trends-games-modal')).toBeVisible();
     await expectNoViolations(page);

@@ -16,6 +16,7 @@ import type { CompletedGameRepository } from '../../src/application/game/Complet
 import type { ActiveGame, CompletedGame, GamePlayer, Segment } from '../../src/domain/game/types';
 import type { RosterPlayer } from '../../src/domain/roster/types';
 import type { Lang } from '../../src/i18n/strings';
+import { chip } from './trendsFilterHelpers';
 
 afterEach(() => cleanup());
 
@@ -155,7 +156,7 @@ type Q = ReturnType<typeof renderTrends>;
 const open = (q: Q, view: ViewId) => fireEvent.click(q.getByTestId(`trends-tab-${view}`));
 const lineupsPer10 = (q: Q) => {
   open(q, 'lineups');
-  fireEvent.click(q.getByTestId('trends-per10-toggle'));
+  fireEvent.click(chip(q, 'trends-per10-toggle'));
 };
 
 function activeGameWithSegment(): ActiveGame {
@@ -278,8 +279,11 @@ describe('Trends: segmentbediening (tablist)', () => {
 });
 
 describe('Trends: vaste filterbalk', () => {
-  it('staat in elke weergave in beeld en bevat de chips', () => {
+  it('staat in elke weergave in beeld en bevat de chips (na openen van het paneel)', () => {
+    // Migratie: de chips staan in een inklapbaar paneel (standaard dicht); eerst "Filters" openen.
     const q = renderTrends();
+    expect(q.queryByTestId('trends-filterbar')).toBeNull();
+    fireEvent.click(q.getByTestId('trends-filters-toggle'));
     for (const view of ['overview', 'lineups', 'players', 'quarters'] as const) {
       open(q, view);
       const bar = q.getByTestId('trends-filterbar');
@@ -294,14 +298,14 @@ describe('Trends: vaste filterbalk', () => {
         expect(bar.querySelector(`[data-testid="${id}"]`)).not.toBeNull();
       }
     }
-    expect(q.getByTestId('trends-games-btn').textContent).toBe('Wedstrijden (2)');
+    expect(chip(q, 'trends-games-btn').textContent).toBe('Wedstrijden (2)');
   });
 
-  it('is sticky en houdt rekening met de safe-area (CSS)', () => {
+  it('de vaste kop (tabs + samenvatting) is sticky en houdt rekening met de safe-area (CSS)', () => {
     const css = readFileSync(resolve(__dirname, '../../src/styles/trends-views.css'), 'utf8');
     const rule = css.slice(
-      css.indexOf('.trends-filterbar {'),
-      css.indexOf('}', css.indexOf('.trends-filterbar {')),
+      css.indexOf('.trends-sticky {'),
+      css.indexOf('}', css.indexOf('.trends-sticky {')),
     );
     expect(rule).toContain('position: sticky');
     expect(rule).toContain('top: 0');
@@ -310,7 +314,7 @@ describe('Trends: vaste filterbalk', () => {
 
   it('drempelchip: standaard 5:00 en cyclus 5:00 -> 10:00 -> uit -> 3:00 -> 5:00', () => {
     const q = renderTrends();
-    const btn = q.getByTestId('trends-threshold-btn');
+    const btn = chip(q, 'trends-threshold-btn');
     expect(btn.textContent).toBe('Drempel: 5:00');
     const seen: string[] = [];
     for (let i = 0; i < 4; i += 1) {
@@ -329,7 +333,7 @@ describe('Trends: vaste filterbalk', () => {
     );
     const onChange = vi.fn();
     const q = renderTrends(many, { onGameIdsChange: onChange });
-    fireEvent.click(q.getByTestId('trends-quick-last5'));
+    fireEvent.click(chip(q, 'trends-quick-last5'));
     expect(onChange).toHaveBeenCalledTimes(1);
     const set = onChange.mock.calls[0]![0] as Set<string>;
     expect([...set].sort()).toEqual(['G3', 'G4', 'G5', 'G6', 'G7']);
@@ -344,23 +348,24 @@ describe('Trends: vaste filterbalk', () => {
     const onChange = vi.fn();
     const selected = new Set(['G3', 'G4', 'G5', 'G6', 'G7']);
     const q = renderTrends(many, { gameIds: selected, onGameIdsChange: onChange });
-    const btn = q.getByTestId('trends-quick-last5');
+    const btn = chip(q, 'trends-quick-last5');
     expect(btn.getAttribute('aria-pressed')).toBe('true');
-    expect(q.getByTestId('trends-filter-shared-note').textContent).toContain('Statistieken');
-    expect(q.getByTestId('trends-games-btn').textContent).toBe('Wedstrijden (5)');
+    expect(chip(q, 'trends-filter-shared-note').textContent).toContain('Statistieken');
+    expect(chip(q, 'trends-games-btn').textContent).toBe('Wedstrijden (5)');
     fireEvent.click(btn);
     expect(onChange).toHaveBeenCalledWith(null);
   });
 
   it('zonder wedstrijdselectie (alles) staat de notitie er niet', () => {
     const q = renderTrends();
+    chip(q, 'trends-games-btn'); // paneel openen: anders is de notitie sowieso niet in de DOM
     expect(q.queryByTestId('trends-filter-shared-note')).toBeNull();
   });
 
   it('"Deze wedstrijd" is niet beschikbaar mét zichtbare uitleg zonder lopende wedstrijd', () => {
     const onChange = vi.fn();
     const q = renderTrends(fixture(), { onGameIdsChange: onChange });
-    const btn = q.getByTestId('trends-quick-current') as HTMLButtonElement;
+    const btn = chip(q, 'trends-quick-current') as HTMLButtonElement;
     // aria-disabled i.p.v. disabled: de knop blijft focusbaar, de klik doet niets.
     expect(btn.disabled).toBe(false);
     expect(btn.getAttribute('aria-disabled')).toBe('true');
@@ -375,11 +380,12 @@ describe('Trends: vaste filterbalk', () => {
 
   it('de hint bij "Deze wedstrijd" is Engels in EN en verdwijnt met een lopende wedstrijd', () => {
     const en = renderTrends(fixture(), { lang: 'en' });
-    expect(en.getByTestId('trends-quick-current-hint').textContent).toBe('No game in progress');
+    expect(chip(en, 'trends-quick-current-hint').textContent).toBe('No game in progress');
     cleanup();
     const live = renderTrends(fixture(), { activeGame: activeGameWithSegment() });
+    chip(live, 'trends-games-btn'); // paneel openen
     expect(live.queryByTestId('trends-quick-current-hint')).toBeNull();
-    expect(live.getByTestId('trends-quick-current').getAttribute('aria-disabled')).toBeNull();
+    expect(chip(live, 'trends-quick-current').getAttribute('aria-disabled')).toBeNull();
   });
 
   it('"Deze wedstrijd" kiest alleen de lopende wedstrijd (gedeeld filter)', () => {
@@ -388,7 +394,7 @@ describe('Trends: vaste filterbalk', () => {
       activeGame: activeGameWithSegment(),
       onGameIdsChange: onChange,
     });
-    const btn = q.getByTestId('trends-quick-current') as HTMLButtonElement;
+    const btn = chip(q, 'trends-quick-current') as HTMLButtonElement;
     expect(btn.disabled).toBe(false);
     fireEvent.click(btn);
     expect([...(onChange.mock.calls[0]![0] as Set<string>)]).toEqual(['live-1']);
@@ -416,7 +422,7 @@ describe('Trends: Overzicht', () => {
     expect(q.getByTestId('trends-team-for').textContent).toBe('50');
     expect(q.getByTestId('trends-team-against').textContent).toBe('41');
     expect(q.getByTestId('trends-team-tov').textContent).toBe('11');
-    fireEvent.click(q.getByTestId('trends-per10-toggle'));
+    fireEvent.click(chip(q, 'trends-per10-toggle'));
     expect(q.getByTestId('trends-team-pm').textContent).toBe('+1.8');
     expect(q.getByTestId('trends-team-for').textContent).toBe('10.0');
     expect(q.getByTestId('trends-team-against').textContent).toBe('8.2');
@@ -439,10 +445,13 @@ describe('Trends: Lineups', () => {
     expect(items[0]!.textContent).toContain('25:00');
     expect(items[0]!.textContent).toContain('2 wedstrijden');
     expect(items[1]!.textContent).toContain('20:00');
-    // Team +1.8: L1 -1.0 en L2 -1.3 -> slechter dan team (▼).
-    expect(items[0]!.getAttribute('data-tone')).toBe('bad');
-    expect(items[0]!.textContent).toContain('▼');
-    expect(items[0]!.textContent).toContain('slechter dan team');
+    // Toon op het TEKEN (besluit 2026-10-31): L1 +0.8 > +0.5 -> positief (▲), L2 +0.5 (grens)
+    // -> rond 0 (●). Oud: beide "slechter dan team" omdat ze onder het team (+1.8) liggen.
+    expect(items[0]!.getAttribute('data-tone')).toBe('good');
+    expect(items[0]!.textContent).toContain('▲');
+    expect(items[0]!.textContent).toContain('positief');
+    expect(items[1]!.getAttribute('data-tone')).toBe('flat');
+    expect(items[1]!.textContent).toContain('rond 0');
     expect(q.getByTestId('trends-lineup-delta-1-2-3-4-5').textContent).toContain(
       '-1.0 t.o.v. team (+1.8)',
     );
@@ -457,9 +466,7 @@ describe('Trends: Lineups', () => {
     const q = renderTrends();
     open(q, 'lineups');
     const li = q.getByTestId('trends-lineup-1-2-3-4-5');
-    expect(li.getAttribute('aria-label')).toBe(
-      '1-2-3-4-5, 25:00, +0.8 per 10 minuten, slechter dan team',
-    );
+    expect(li.getAttribute('aria-label')).toBe('1-2-3-4-5, 25:00, +0.8 per 10 minuten, positief');
     // De balken zijn decoratie.
     expect(li.querySelector('.trends-meter')!.getAttribute('aria-hidden')).toBe('true');
     // Ook in de Totaal-stand blijft de naam de waarde per 10 min noemen.
@@ -504,7 +511,7 @@ describe('Trends: Lineups', () => {
     const q = renderTrends();
     lineupsPer10(q);
     expect(q.queryByTestId('trends-lineup-threshold-warning')).toBeNull();
-    const btn = q.getByTestId('trends-threshold-btn');
+    const btn = chip(q, 'trends-threshold-btn');
     fireEvent.click(btn); // 10:00
     fireEvent.click(btn); // uit
     expect(btn.textContent).toBe('Drempel: uit');
@@ -524,10 +531,10 @@ describe('Trends: Lineups', () => {
     expect(q.getByTestId('trends-lineup-value-1-2-3-6-7').textContent).toBe('+13.3');
   });
 
-  it('drempel 3:00 (grens telt mee): L3 komt in de ranglijst, beter dan team (▲)', () => {
+  it('drempel 3:00 (grens telt mee): L3 komt in de ranglijst, positief (▲)', () => {
     const q = renderTrends();
     lineupsPer10(q);
-    const btn = q.getByTestId('trends-threshold-btn');
+    const btn = chip(q, 'trends-threshold-btn');
     fireEvent.click(btn);
     fireEvent.click(btn);
     fireEvent.click(btn); // 3:00
@@ -535,22 +542,21 @@ describe('Trends: Lineups', () => {
     const li = q.getByTestId('trends-lineup-1-2-3-6-7');
     expect(li.getAttribute('data-tone')).toBe('good');
     expect(li.textContent).toContain('▲');
-    expect(li.getAttribute('aria-label')).toBe(
-      '1-2-3-6-7, 3:00, +13.3 per 10 minuten, beter dan team',
-    );
+    expect(li.getAttribute('aria-label')).toBe('1-2-3-6-7, 3:00, +13.3 per 10 minuten, positief');
     expect(q.getByTestId('trends-lineup-lowdata').querySelector('summary')!.textContent).toBe(
       'Te weinig data (1 lineup onder 3:00)',
     );
   });
 
-  it('"rond gemiddelde" (●) bij |verschil| < 0,5 per 10 min', () => {
-    const game = completed('X', '2026-09-01T10:00:00.000Z', [seg('x1', 1, L1, 600, 3, 1, 0)]);
+  it('"rond 0" (●) bij |+/- per 10 min| <= 0,5, ongeacht het team', () => {
+    // 1500 s, +1 -> +0.4 per 10 (Voor/Tegen 3-2): grijs, ook al is het team (zelfde lineup) gelijk.
+    const game = completed('X', '2026-09-01T10:00:00.000Z', [seg('x1', 1, L1, 1500, 3, 2, 0)]);
     const q = renderTrends([game]);
     lineupsPer10(q);
     const li = q.getByTestId('trends-lineup-1-2-3-4-5');
     expect(li.getAttribute('data-tone')).toBe('flat');
     expect(li.textContent).toContain('●');
-    expect(li.getAttribute('aria-label')).toContain('rond gemiddelde');
+    expect(li.getAttribute('aria-label')).toContain('rond 0');
     expect(toneOfDelta(0.49, true)).toBe('flat');
     expect(toneOfDelta(-0.5, true)).toBe('bad');
     expect(toneOfDelta(0.5, false)).toBe('bad');
@@ -560,7 +566,7 @@ describe('Trends: Lineups', () => {
   it('kleur is nooit de enige aanwijzing: elke rij heeft symbool, tekst en toegankelijke naam', () => {
     const q = renderTrends();
     lineupsPer10(q);
-    const btn = q.getByTestId('trends-threshold-btn');
+    const btn = chip(q, 'trends-threshold-btn');
     fireEvent.click(btn);
     fireEvent.click(btn); // uit: alle vier de rijen
     for (const metricId of ['pm', 'pfpa', 'tov']) {
@@ -569,10 +575,13 @@ describe('Trends: Lineups', () => {
       expect(items.length).toBe(4);
       for (const li of items) {
         expect(li.textContent).toMatch(/[▲●▼]/);
-        expect(li.textContent).toMatch(/beter dan team|rond gemiddelde|slechter dan team/);
-        expect(li.getAttribute('aria-label')).toMatch(
-          /beter dan team|rond gemiddelde|slechter dan team/,
-        );
+        // +/- volgt het teken; Voor/Tegen en turnovers blijven relatief aan het team.
+        const words =
+          metricId === 'pm'
+            ? /positief|rond 0|negatief/
+            : /beter dan team|rond gemiddelde|slechter dan team/;
+        expect(li.textContent).toMatch(words);
+        expect(li.getAttribute('aria-label')).toMatch(words);
       }
     }
   });
@@ -595,7 +604,7 @@ describe('Trends: Lineups', () => {
     expect(sides[0]!.getAttribute('data-tone')).toBe('flat');
     expect(sides[1]!.getAttribute('data-tone')).toBe('bad');
     // Totalen in de Totaal-stand.
-    fireEvent.click(q.getByTestId('trends-per10-toggle'));
+    fireEvent.click(chip(q, 'trends-per10-toggle'));
     expect(q.getByTestId('trends-lineup-for-1-2-3-4-5').textContent).toBe('24');
     expect(q.getByTestId('trends-lineup-against-1-2-3-4-5').textContent).toBe('22');
     // Groep "Te weinig data" toont ruwe voor/tegen.
@@ -627,7 +636,7 @@ describe('Trends: Lineups', () => {
     );
     expect(group.textContent).toContain('Turnovers: 0 in 3:00');
     // Totaal-stand: turnovers tonen altijd per 10 min (onafhankelijk van de chip, review-fix M2).
-    fireEvent.click(q.getByTestId('trends-per10-toggle'));
+    fireEvent.click(chip(q, 'trends-per10-toggle'));
     expect(q.getByTestId('trends-tov-lineup-value-1-2-3-4-5').textContent).toBe('1.6');
     expect(q.getByTestId('trends-lineup-title').textContent).toBe('Lineups: turnovers per 10 min');
   });
@@ -636,7 +645,7 @@ describe('Trends: Lineups', () => {
     const q = renderTrends();
     lineupsPer10(q);
     fireEvent.click(q.getByTestId('trends-metric-tov'));
-    const btn = q.getByTestId('trends-threshold-btn');
+    const btn = chip(q, 'trends-threshold-btn');
     fireEvent.click(btn);
     fireEvent.click(btn); // uit
     const scope = buildAnalysisScope(repoOf(fixture()), null);
@@ -665,7 +674,7 @@ describe('Trends: Lineups', () => {
     expect(q.getByTestId('trends-lineup-explain').textContent).toBe(
       'Beschrijvend: wat gebeurde er met deze vijf op het veld. Weinig minuten zegt bijna niets (drempel nu: 5:00). Per 10 min is geen balbezitcorrectie.',
     );
-    expect(q.getByTestId('trends-lineup-legend').textContent).toContain('▲ beter dan team');
+    expect(q.getByTestId('trends-lineup-legend').textContent).toContain('▲ positief');
   });
 
   it('EN: uitleg, groep, toon en tabs zijn Engels', () => {
@@ -684,9 +693,9 @@ describe('Trends: Lineups', () => {
       'Too little data (2 lineups under 5:00)',
     );
     expect(q.getByTestId('trends-lineup-1-2-3-4-5').getAttribute('aria-label')).toBe(
-      '1-2-3-4-5, 25:00, +0.8 per 10 minutes, worse than team',
+      '1-2-3-4-5, 25:00, +0.8 per 10 minutes, positive',
     );
-    expect(q.getByTestId('trends-threshold-btn').textContent).toBe('Threshold: 5:00');
+    expect(chip(q, 'trends-threshold-btn').textContent).toBe('Threshold: 5:00');
   });
 
   it('lege staat: geen lineups boven de drempel en lege selectie', () => {
@@ -806,7 +815,7 @@ describe('Trends: Lineups — sortering en turnovers (review-fixes M1/M2/M5)', (
     open(q, 'lineups');
     fireEvent.click(q.getByTestId('trends-metric-pfpa'));
     expect(order(q)).toEqual(['trends-lineup-1-2-3-4-5', 'trends-lineup-1-2-3-4-6']);
-    fireEvent.click(q.getByTestId('trends-per10-toggle'));
+    fireEvent.click(chip(q, 'trends-per10-toggle'));
     expect(order(q)).toEqual(['trends-lineup-1-2-3-4-6', 'trends-lineup-1-2-3-4-5']);
   });
 
@@ -831,7 +840,7 @@ describe('Trends: Lineups — sortering en turnovers (review-fixes M1/M2/M5)', (
     expect(q.getByTestId('trends-tov-lineup-value-1-2-3-4-6').textContent).toBe('1.7');
     // Laagste eerst en identiek in beide standen van de chip.
     expect(order(q)).toEqual(['trends-tov-lineup-1-2-3-4-5', 'trends-tov-lineup-1-2-3-4-6']);
-    fireEvent.click(q.getByTestId('trends-per10-toggle'));
+    fireEvent.click(chip(q, 'trends-per10-toggle'));
     expect(order(q)).toEqual(['trends-tov-lineup-1-2-3-4-5', 'trends-tov-lineup-1-2-3-4-6']);
     expect(q.getByTestId('trends-tov-lineup-value-1-2-3-4-5').textContent).toBe('1.2');
     // Het aantal staat erbij als aanvullende regel.
@@ -857,7 +866,7 @@ describe('Trends: Lineups — sortering en turnovers (review-fixes M1/M2/M5)', (
   it('uitleg noemt de huidige drempel (3:00) of "uit" in plaats van een vaste 5', () => {
     const q = renderTrends();
     open(q, 'lineups');
-    const btn = q.getByTestId('trends-threshold-btn');
+    const btn = chip(q, 'trends-threshold-btn');
     fireEvent.click(btn); // 5:00 -> 10:00
     fireEvent.click(btn); // -> uit
     expect(q.getByTestId('trends-lineup-explain').textContent).toContain('drempel nu: uit');

@@ -26,7 +26,9 @@ import {
   lineupLabel,
   t,
   toneKey,
+  toneKeyOfSign,
   toneOfDelta,
+  toneOfSign,
   toneSymbol,
   type Tone,
   type TrendsViewProps,
@@ -46,8 +48,10 @@ import {
  *   "Te weinig data" (alleen presentatie via `buildLineupTurnoverView`).
  * - Rijen boven de drempel staan in de ranglijst met minuten, aantal
  *   wedstrijden, waarde (per 10 min of totaal volgens `props.per10`), verschil
- *   t.o.v. het teamgemiddelde, een balk en de toon (▲ ● ▼ + tekst). Kleur
- *   (groen/rood) is nooit de enige aanwijzing; elke rij heeft een volledige
+ *   t.o.v. het teamgemiddelde (kleine tekst), een balk en de toon (▲ ● ▼ + tekst).
+ *   De toon van +/- volgt het TEKEN van de waarde per 10 min (> +0,5 positief,
+ *   < -0,5 negatief); Voor/Tegen en turnovers blijven relatief aan het team.
+ *   Kleur (groen/rood) is nooit de enige aanwijzing; elke rij heeft een volledige
  *   toegankelijke naam (`aria-label`).
  * - Rijen onder de drempel staan NIET in de ranglijst maar in het ingeklapte
  *   `<details>` "Te weinig data": ruw totaal, geen per-10-waarde, geen toon.
@@ -167,7 +171,7 @@ export function LineupsView(props: TrendsViewProps) {
 
         {rowsCount > 0 ? (
           <p className="xs mut2 trends-legend" data-testid="trends-lineup-legend">
-            {t(lang, 'trendsLineupLegend')}
+            {t(lang, active === 'pm' ? 'trendsLineupLegendSign' : 'trendsLineupLegend')}
           </p>
         ) : null}
         {active === 'pm' && consistency.size > 0 ? (
@@ -305,12 +309,14 @@ function pmRows(
   const teamText = lineups.team.pmPer10 === null ? '–' : fmtPlusMinus(lineups.team.pmPer10);
   return rows.map((r) => {
     const key = lineupKey(r.rosterIds);
-    const tone = toneOfDelta(r.deltaVsTeamPer10, true);
+    // Toon op het teken van +/- per 10 min (besluit eigenaar 2026-10-31); ook in Totaal-modus
+    // bepaalt de waarde per 10 min de toon. Het verschil met het team is alleen kleine tekst.
+    const tone = toneOfSign(r.pmPer10);
     const aria = fill(t(lang, 'trendsLineupAriaPm'), {
       lineup: label(r.rosterIds),
       time: fmtSeconds(r.seconds),
       value: fmtPlusMinus(r.pmPer10),
-      tone: t(lang, toneKey(tone)),
+      tone: t(lang, toneKeyOfSign(tone)),
     });
     return (
       <li
@@ -337,7 +343,7 @@ function pmRows(
         <Meter value={r.pmPer10} max={max} tone={tone} centered />
         <div className="xs mut2" data-testid={`trends-lineup-delta-${key}`}>
           <span aria-hidden="true">{toneSymbol(tone)} </span>
-          {t(lang, toneKey(tone))} ·{' '}
+          {t(lang, toneKeyOfSign(tone))} ·{' '}
           {fill(t(lang, 'trendsLineupVsTeam'), {
             delta: fmtPlusMinus(r.deltaVsTeamPer10),
             team: teamText,

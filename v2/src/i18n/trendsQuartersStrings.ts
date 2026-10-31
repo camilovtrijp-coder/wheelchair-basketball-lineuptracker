@@ -9,7 +9,8 @@
 export const trendsQuartersNl = {
   trendsQuartersTitlePer10: 'Kwarten: +/- per 10 min',
   trendsQuartersTitleTotal: 'Kwarten: +/- totaal',
-  trendsQuartersHint: 'Alle lineups samen, per kwart, vergeleken met het teamgemiddelde.',
+  trendsQuartersHint:
+    'Alle lineups samen, per kwart. Het verschil met het teamgemiddelde staat er klein bij.',
   trendsQuartersTeamAvg: 'Teamgemiddelde van deze selectie: {value} per 10 min',
   trendsQuartersListLabel: 'Resultaat per kwart',
   trendsQuartersRowName: 'Kwart {n}',
@@ -22,7 +23,7 @@ export const trendsQuartersNl = {
   trendsQuartersAriaTotal: 'Kwart {n}, {time}, {value} totaal, {tone}',
   trendsQuartersAriaNoData: 'Kwart {n}, geen data',
   trendsQuartersLegend:
-    '▲ beter dan team · ● rond gemiddelde (minder dan 0,5 per 10 min verschil) · ▼ slechter dan team. Beschrijvend: per 10 min is geen balbezitcorrectie.',
+    '▲ positief · ● rond 0 (minder dan 0,5 per 10 min) · ▼ negatief. De toon volgt het teken van +/- per 10 min; het verschil met het team staat er klein bij. Beschrijvend: per 10 min is geen balbezitcorrectie.',
   trendsQuartersMinTitle: 'Minuten per kwart per speler',
   trendsQuartersMinHint:
     'Gemiddeld per gespeelde wedstrijd van de speler (m:ss). Donkerder = meer minuten; de tijden staan er altijd bij.',
@@ -40,7 +41,8 @@ export const trendsQuartersNl = {
 export const trendsQuartersEn = {
   trendsQuartersTitlePer10: 'Quarters: +/- per 10 min',
   trendsQuartersTitleTotal: 'Quarters: +/- total',
-  trendsQuartersHint: 'All lineups together, per quarter, compared with the team average.',
+  trendsQuartersHint:
+    'All lineups together, per quarter. The difference with the team average is shown in small text.',
   trendsQuartersTeamAvg: 'Team average of this selection: {value} per 10 min',
   trendsQuartersListLabel: 'Result per quarter',
   trendsQuartersRowName: 'Quarter {n}',
@@ -53,7 +55,7 @@ export const trendsQuartersEn = {
   trendsQuartersAriaTotal: 'Quarter {n}, {time}, {value} total, {tone}',
   trendsQuartersAriaNoData: 'Quarter {n}, no data',
   trendsQuartersLegend:
-    '▲ better than team · ● around average (less than 0.5 per 10 min difference) · ▼ worse than team. Descriptive: per 10 min is not a possession adjustment.',
+    '▲ positive · ● around zero (less than 0.5 per 10 min) · ▼ negative. The tone follows the sign of +/- per 10 min; the difference with the team is shown in small text. Descriptive: per 10 min is not a possession adjustment.',
   trendsQuartersMinTitle: 'Minutes per quarter per player',
   trendsQuartersMinHint:
     'Average per game the player played (m:ss). Darker = more minutes; the times are always shown.',
