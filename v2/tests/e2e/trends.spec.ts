@@ -372,7 +372,7 @@ test.describe('v2 Trends-weergaven (T2/T3)', () => {
     await expect(page.getByTestId('trends-lineups')).toBeVisible();
     await page.keyboard.press('End');
     await expect(page.getByTestId('trends-tab-quarters')).toBeFocused();
-    await expect(page.getByTestId('trends-quarters-empty')).toBeVisible();
+    await expect(page.getByTestId('trends-quarters-card')).toBeVisible();
     await page.keyboard.press('ArrowRight'); // omwikkelen
     await expect(page.getByTestId('trends-tab-overview')).toBeFocused();
     await page.keyboard.press('ArrowLeft'); // omwikkelen
@@ -573,7 +573,7 @@ test.describe('v2 Trends-weergaven (T2/T3)', () => {
       /1-2-3-4-5, 7:00, \+4\.3 per 10 minutes, around average/,
     );
     await page.getByTestId('trends-tab-quarters').click();
-    await expect(page.getByTestId('trends-quarters-empty')).toContainText('Quarters are coming');
+    await expect(page.getByTestId('trends-quarters-title')).toHaveText('Quarters: +/- total');
   });
 
   test('axe: geen WCAG-overtredingen in alle weergaven (NL en EN, groep open)', async ({

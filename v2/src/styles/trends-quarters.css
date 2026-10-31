@@ -1,0 +1,77 @@
+/* Trends-weergave Kwarten (T5). Alleen tokens uit tokens.css, geen losse hex-kleuren.
+   De rijen hergebruiken de lineupklassen uit trends-views.css (groen = beter,
+   rood = slechter met streeppatroon, grijs = rond gemiddelde); symbool en tekst
+   staan in de markup. De warmtekaart is alleen versterking: elke cel toont m:ss. */
+
+.trends-panel .trends-quarters-list {
+  margin-top: var(--lt-space-2);
+}
+
+.trends-panel .trends-quarter-row {
+  margin-bottom: var(--lt-space-2);
+}
+
+.trends-panel .trends-qmin {
+  padding: var(--lt-space-4);
+  margin-bottom: var(--lt-space-3);
+}
+
+/* Scrollt horizontaal binnen de kaart, nooit de pagina (ook op 320 px). */
+.trends-panel .trends-qmin__scroll {
+  max-width: 100%;
+  margin-top: var(--lt-space-2);
+  overflow-x: auto;
+  border: var(--lt-border-thin);
+  border-radius: var(--lt-radius-md);
+}
+
+.trends-panel .trends-qmin__scroll:focus-visible {
+  outline: var(--lt-focus-ring);
+  outline-offset: var(--lt-focus-offset);
+}
+
+.trends-panel .trends-qmin__table {
+  width: 100%;
+  min-width: 18rem;
+  border-collapse: collapse;
+  font-size: var(--lt-font-size-sm);
+  font-variant-numeric: tabular-nums;
+}
+
+.trends-panel .trends-qmin__table th,
+.trends-panel .trends-qmin__table td {
+  padding: var(--lt-space-2);
+  border-bottom: 1px solid var(--lt-color-border);
+  text-align: center;
+  color: var(--lt-color-fg);
+}
+
+.trends-panel .trends-qmin__table thead th {
+  color: var(--lt-color-muted);
+  font-size: var(--lt-font-size-xs);
+  font-weight: 700;
+}
+
+.trends-panel .trends-qmin__table abbr {
+  text-decoration: none;
+}
+
+.trends-panel .trends-qmin__table th[scope='row'],
+.trends-panel .trends-qmin__table thead th:first-child {
+  position: sticky;
+  left: 0;
+  min-width: 6rem;
+  max-width: 9rem;
+  text-align: left;
+  background: var(--lt-color-surface);
+  overflow-wrap: anywhere;
+}
+
+.trends-panel .trends-qmin__table th[scope='row'] {
+  font-weight: 700;
+}
+
+.trends-panel .trends-qmin__table tbody tr:last-child th,
+.trends-panel .trends-qmin__table tbody tr:last-child td {
+  border-bottom: 0;
+}
