@@ -1,4 +1,5 @@
 import { trendsEn, trendsNl } from './trendsStrings';
+import { trendsOverviewEn, trendsOverviewNl } from './trendsOverviewStrings';
 
 export const LANG_STORAGE_KEY = 'lineup-tracker-lang';
 
@@ -901,6 +902,7 @@ const nl = {
   trendsTovLineupsEmpty: 'Nog geen opstellingen om te vergelijken.',
   // Herindeling Trends-tab (T2/T3): zie i18n/trendsStrings.ts.
   ...trendsNl,
+  ...trendsOverviewNl,
 } as const;
 
 const en = {
@@ -1737,6 +1739,7 @@ const en = {
   trendsTovLineupsEmpty: 'No lineups to compare yet.',
   // Trends tab restructure (T2/T3): see i18n/trendsStrings.ts.
   ...trendsEn,
+  ...trendsOverviewEn,
 } as const;
 
 export const STRINGS = { nl, en } as const;
