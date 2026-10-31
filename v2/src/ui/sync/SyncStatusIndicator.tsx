@@ -4,11 +4,16 @@
 // docs/pr-5.3-plan.md §C/5.3c-2 punt 2).
 
 import { translate, type Lang, type StringKey } from '../../i18n/strings';
-import type { SyncStatus } from '../../domain/syncState';
+import type { CorrectionSyncStatus } from '../../application/game/CompletedGameRepository';
 
 export interface SyncStatusIndicatorProps {
   lang: Lang;
-  status: SyncStatus;
+  /**
+   * PR 7.6a: `CorrectionSyncStatus` = het domeintype `SyncStatus` (ADR-002, vier
+   * toestanden, ongewijzigd) plus `conflict` voor correcties van afgeronde
+   * wedstrijden. Elke `SyncStatus` is hier dus nog steeds geldig.
+   */
+  status: CorrectionSyncStatus;
   fromCache?: boolean;
   /**
    * PR 7.1c: SessionBar's settings/roster-indicator en App's nieuwe
@@ -20,11 +25,12 @@ export interface SyncStatusIndicatorProps {
   testId?: string;
 }
 
-const KEY_BY_STATUS: Record<SyncStatus, StringKey> = {
+const KEY_BY_STATUS: Record<CorrectionSyncStatus, StringKey> = {
   'lokaal-beschikbaar': 'syncStatusLocal',
   'wacht-op-synchronisatie': 'syncStatusPending',
   gesynchroniseerd: 'syncStatusSynced',
   'actie-nodig': 'syncStatusActionNeeded',
+  conflict: 'syncStatusConflict',
 };
 
 export function SyncStatusIndicator({

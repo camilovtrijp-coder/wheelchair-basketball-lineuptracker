@@ -201,6 +201,26 @@ Oorspronkelijke vraagstelling:
    uploaden zonder gepubliceerde Rules veilig faalt (`actie-nodig`, lokale data
    blijft), terwijl Rules publiceren de aanbevolen eerste stap blijft?
 
+## H2. Status 7.6a (geïmplementeerd)
+
+- **Aanname §B bevestigd.** De outbox (`pendingFinalizeRepo`) bewaart het
+  `(ActiveGame, CompletedGame)`-paar van het moment van afronden; `update()` op
+  de afgeronde-wedstrijdenrepository raakt de outbox nooit. Een correctie
+  voordat de afronding server-bevestigd is zit dus niet in de snapshot die
+  `finalize()` uploadt. Vastgelegd in
+  `tests/unit/pendingFinalizeSnapshotIndependence.spec.ts`.
+- **Blokkade (§D.5) in de code.** `App` blokkeert corrigeren voor een wedstrijd
+  zolang `finalizeStatuses[id]` bestaat en niet `gesynchroniseerd` is. Het
+  bestaande statuseffect zet een wedstrijd zonder lokale kopie (op een ander
+  apparaat afgerond) altijd op `gesynchroniseerd`; die blijft dus corrigeerbaar.
+  Een lokale wedstrijd zonder bevestigd checkpoint (`lokaal-beschikbaar`) is ook
+  geblokkeerd: ze heeft geen cloudkopie om tegen te corrigeren.
+- **Logboek.** Het logboek toont `by` nergens (ook niet in lokale modus), dus
+  er is geen nieuwe uid-weergave toegevoegd en er worden geen e-mailadressen of
+  namen getoond. `by` wordt alleen opgeslagen (uid in cloudmodus, `null` lokaal).
+- **Nog niet in 7.6a:** `discardLocalCorrection` en de verwerp-knop (7.6b), de
+  Playwright-auth-e2e voor twee apparaten (7.6c).
+
 ## I. Open risico's
 
 - Echte-apparaat- en staging-verificatie blijft nodig; de sandbox dekt alleen

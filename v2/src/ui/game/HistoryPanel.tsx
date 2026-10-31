@@ -13,6 +13,7 @@ import { translate, type Lang, type StringKey } from '../../i18n/strings';
 import { CorrectSegmentDialog, describeCorrectableFields } from './CorrectSegmentDialog';
 import { SyncStatusIndicator } from '../sync/SyncStatusIndicator';
 import type { SyncState, SyncStatus } from '../../domain/syncState';
+import type { CorrectionSyncStatus } from '../../application/game/CompletedGameRepository';
 
 export interface HistoryPanelProps {
   lang: Lang;
@@ -92,6 +93,36 @@ export interface HistoryPanelProps {
    * dit specifieke item) valt terug op `'lokaal-beschikbaar'`.
    */
   syncStatuses?: Record<string, SyncStatus>;
+  /**
+   * PR 7.6a: per-`CompletedGame.id` correctiestatus (uit
+   * `CompletedGameRepository.correctionSyncStatus`), uitsluitend gevuld door
+   * `App` in cloudmodus. Ontbrekende sleutel of `null` = nooit gecorrigeerd.
+   * Per wedstrijd verschijnt ÉÉN indicator: de correctiestatus zolang die niet
+   * `gesynchroniseerd`/`null` is, anders de afrondstatus uit `syncStatuses`.
+   */
+  correctionStatuses?: Record<string, CorrectionSyncStatus | null>;
+  /**
+   * PR 7.6a: wedstrijden waarvan de afronding in cloudmodus nog niet
+   * server-bevestigd is. Corrigeren is daarvoor uitgezet (segmenten niet
+   * aantikbaar) met een korte uitleg.
+   */
+  correctionBlockedIds?: ReadonlySet<string>;
+  /**
+   * PR 7.6a: bewuste "Opnieuw proberen" voor een mislukte/niet-goedgekeurde
+   * correctie-upload (`CompletedGameRepository.retryCorrectionUploads`).
+   * Alleen zichtbaar voor `canWrite`. `conflict` heeft hier bewust geen actie
+   * (verwerpen volgt in PR 7.6b).
+   */
+  onRetryCorrectionUploads?: () => void;
+}
+
+/** PR 7.6a, plan §D.2: één indicator per wedstrijd. */
+export function effectiveSyncStatus(
+  correction: CorrectionSyncStatus | null | undefined,
+  finalize: SyncStatus | undefined,
+): CorrectionSyncStatus {
+  if (correction != null && correction !== 'gesynchroniseerd') return correction;
+  return finalize ?? 'lokaal-beschikbaar';
 }
 
 function t(lang: Lang, key: StringKey): string {
@@ -147,6 +178,9 @@ export function HistoryPanel({
   cloudReadError,
   onCorrectGame,
   correctedBy,
+  correctionStatuses,
+  correctionBlockedIds,
+  onRetryCorrectionUploads,
 }: HistoryPanelProps) {
   const [correctingId, setCorrectingId] = useState<string | null>(null);
   const [correctionSaved, setCorrectionSaved] = useState(false);
@@ -217,7 +251,22 @@ export function HistoryPanel({
     const byId = new Map(open.players.map((p) => [p.id, p]));
     const openTurnovers = sumTurnovers(open.segments);
     const openSeconds = totalSegmentSeconds(open.segments);
-    const canCorrect = canWrite && onCorrectGame != null;
+    const correctionBlocked = correctionBlockedIds?.has(open.id) === true;
+    const canCorrect = canWrite && onCorrectGame != null && !correctionBlocked;
+    const correctionStatus = correctionStatuses?.[open.id] ?? null;
+    const openStatus = effectiveSyncStatus(correctionStatus, syncStatuses?.[open.id]);
+    const correctionHintKey: StringKey | null =
+      correctionStatus === 'actie-nodig'
+        ? 'correctionActionNeededHint'
+        : correctionStatus === 'wacht-op-synchronisatie' ||
+            correctionStatus === 'lokaal-beschikbaar'
+          ? 'correctionPendingOffline'
+          : null;
+    const canRetry =
+      canWrite &&
+      onRetryCorrectionUploads != null &&
+      (correctionStatus === 'actie-nodig' ||
+        (correctionStatus === 'lokaal-beschikbaar' && !correctionBlocked));
     const correctingSegment =
       canCorrect && correctingId != null
         ? open.segments.find((seg) => seg.id === correctingId)
@@ -279,9 +328,34 @@ export function HistoryPanel({
         {syncStatuses ? (
           <SyncStatusIndicator
             lang={lang}
-            status={syncStatuses[open.id] ?? 'lokaal-beschikbaar'}
+            status={openStatus}
             testId={`history-sync-status-${open.id}`}
           />
+        ) : null}
+        {correctionStatus === 'conflict' ? (
+          <p className="settings-error" role="status" data-testid="history-correction-conflict">
+            {t(lang, 'correctionConflictMessage')}
+          </p>
+        ) : null}
+        {canWrite && correctionHintKey != null ? (
+          <p className="segment-list__hint" data-testid="history-correction-hint">
+            {t(lang, correctionHintKey)}
+          </p>
+        ) : null}
+        {canRetry ? (
+          <button
+            type="button"
+            className="btn-outline"
+            data-testid="history-correction-retry-btn"
+            onClick={onRetryCorrectionUploads}
+          >
+            {t(lang, 'correctionRetry')}
+          </button>
+        ) : null}
+        {canWrite && onCorrectGame != null && correctionBlocked ? (
+          <p className="segment-list__hint" role="status" data-testid="history-correction-waiting">
+            {t(lang, 'correctionWaitingForFinalize')}
+          </p>
         ) : null}
         <p className="history-turnovers-total" data-testid="history-turnovers-total">
           {t(lang, 'historyTurnoversTotal')}: <strong>{openTurnovers}</strong> ·{' '}
@@ -446,7 +520,7 @@ export function HistoryPanel({
                   {syncStatuses ? (
                     <SyncStatusIndicator
                       lang={lang}
-                      status={syncStatuses[g.id] ?? 'lokaal-beschikbaar'}
+                      status={effectiveSyncStatus(correctionStatuses?.[g.id], syncStatuses[g.id])}
                       testId={`history-sync-status-${g.id}`}
                     />
                   ) : null}

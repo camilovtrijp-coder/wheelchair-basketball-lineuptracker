@@ -198,6 +198,15 @@ const nl = {
   correctRowTurnovers: 'Turnovers dit segment',
   correctRowTotalTurnovers: 'Turnovers totaal',
   correctionSaved: 'Correctie opgeslagen.',
+  // PR 7.6a: correctiestatus en herstel in cloudmodus.
+  correctionConflictMessage: 'Deze wedstrijd is ondertussen op een ander apparaat gewijzigd.',
+  correctionRetry: 'Opnieuw proberen',
+  correctionWaitingForFinalize:
+    'Wacht tot de wedstrijd is gesynchroniseerd voordat je een segment corrigeert.',
+  correctionPendingOffline:
+    'Je correctie staat veilig op dit apparaat en wordt geüpload zodra er verbinding is.',
+  correctionActionNeededHint:
+    'De correctie kon niet worden geüpload. Ze blijft veilig op dit apparaat; probeer het opnieuw.',
   correctedBadge: 'Gecorrigeerd',
   correctionsHistory: 'Correcties',
   correctionsHistoryEntry: 'Correctie van {when}',
@@ -525,6 +534,7 @@ const nl = {
   syncStatusPending: 'Wacht op synchronisatie',
   syncStatusSynced: 'Gesynchroniseerd',
   syncStatusActionNeeded: 'Actie nodig',
+  syncStatusConflict: 'Conflict',
   syncStatusFromCache: 'uit cache',
   lastModifiedLabel: 'Laatst gewijzigd',
   actionNeededTitle: 'Actie nodig',
@@ -1051,6 +1061,14 @@ const en = {
   correctRowTurnovers: 'Turnovers this segment',
   correctRowTotalTurnovers: 'Turnovers total',
   correctionSaved: 'Correction saved.',
+  // PR 7.6a: correction status and recovery in cloud mode.
+  correctionConflictMessage: 'This game was changed on another device in the meantime.',
+  correctionRetry: 'Try again',
+  correctionWaitingForFinalize: 'Wait until the game has synced before correcting a segment.',
+  correctionPendingOffline:
+    'Your correction is safely stored on this device and will be uploaded as soon as there is a connection.',
+  correctionActionNeededHint:
+    'The correction could not be uploaded. It stays safely on this device; try again.',
   correctedBadge: 'Corrected',
   correctionsHistory: 'Corrections',
   correctionsHistoryEntry: 'Correction of {when}',
@@ -1357,6 +1375,7 @@ const en = {
   syncStatusPending: 'Waiting to sync',
   syncStatusSynced: 'Synced',
   syncStatusActionNeeded: 'Action needed',
+  syncStatusConflict: 'Conflict',
   syncStatusFromCache: 'from cache',
   lastModifiedLabel: 'Last modified',
   actionNeededTitle: 'Action needed',
