@@ -172,6 +172,35 @@ export function lineupLabel(
     .join('-');
 }
 
+/** Voornamen bij een lineup, op rugnummer gesorteerd ("Bart · Henk"). Onbekende namen vallen weg. */
+export function lineupNames(
+  rosterIds: readonly number[],
+  games: AnalysisGame[],
+  roster: RosterPlayer[],
+): string {
+  const entries = rosterIds.map((id) => {
+    const fromRoster = roster.find((p) => p.id === id);
+    let nr = fromRoster ? String(fromRoster.nr) : '';
+    let naam = fromRoster?.naam ?? '';
+    if (!fromRoster) {
+      for (const g of games) {
+        const p = g.players.find((pl) => pl.rosterId === id);
+        if (p) {
+          nr = String(p.nr);
+          naam = p.naam;
+          break;
+        }
+      }
+    }
+    return { nr, naam: naam.trim() };
+  });
+  return entries
+    .filter((e) => e.naam !== '')
+    .sort((a, b) => (parseInt(a.nr, 10) || 0) - (parseInt(b.nr, 10) || 0))
+    .map((e) => e.naam)
+    .join(' · ');
+}
+
 /** Sleutel voor testids: `rosterId`'s met een streepje ("1-2-3-4-5"). */
 export function lineupKey(rosterIds: readonly number[]): string {
   return rosterIds.join('-');

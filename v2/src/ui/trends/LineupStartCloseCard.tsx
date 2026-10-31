@@ -1,3 +1,4 @@
+import { LineupNames } from './LineupNames';
 import { useMemo } from 'preact/hooks';
 import { fmtSeconds } from '../../domain/stats/format';
 import { computeStartCloseLineups, type StartCloseRow } from '../../domain/trends/lineupExtras';
@@ -55,7 +56,10 @@ export function LineupStartCloseCard(props: TrendsViewProps) {
                   data-testid={`trends-startclose-${side}-${key}`}
                   aria-label={aria}
                 >
-                  <span className="trends-combo-row__name">{label}</span>
+                  <span className="trends-combo-row__name">
+                    {label}
+                    <LineupNames rosterIds={r.rosterIds} games={games} roster={roster} />
+                  </span>
                   <span className="xs mut2 trends-startclose-row__meta">
                     {fmtSeconds(r.seconds)} · {t(lang, 'trendsPmLabel')} {fmtSignedInt(r.pm)} ·{' '}
                     {gamesText(lang, r.games)}

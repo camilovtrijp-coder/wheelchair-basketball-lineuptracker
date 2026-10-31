@@ -1,3 +1,4 @@
+import { LineupNames } from './LineupNames';
 import { useMemo, useState } from 'preact/hooks';
 import { fmtPlusMinus, fmtSeconds } from '../../domain/stats/format';
 import { computeComboExtremes, type ComboRow } from '../../domain/trends/lineupExtras';
@@ -67,6 +68,7 @@ export function LineupComboCard(props: TrendsViewProps) {
       >
         <span className="trends-combo-row__name">
           {label} <span className="mut2">· {fmtSeconds(r.seconds)}</span>
+          <LineupNames rosterIds={r.rosterIds} games={games} roster={roster} />
         </span>
         <span className="trends-lineup-val">
           <span className="trends-lineup-sym" aria-hidden="true">

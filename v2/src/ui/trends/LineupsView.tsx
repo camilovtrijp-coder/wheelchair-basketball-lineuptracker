@@ -1,3 +1,4 @@
+import { LineupNames } from './LineupNames';
 import { useMemo, useState } from 'preact/hooks';
 import {
   buildLineupTurnoverView,
@@ -294,6 +295,7 @@ function lineupTitle(
         · {fmtSeconds(seconds)}
         {games === undefined ? '' : ` · ${gamesText(lang, games)}`}
       </span>
+      <LineupNames rosterIds={ids} games={props.games} roster={props.roster} />
     </span>
   );
 }
@@ -529,6 +531,7 @@ function lowRow(
     <li key={key} className="trends-lowdata__row" data-testid={`trends-lineup-low-${key}`}>
       <span className="trends-lowdata__name">
         {label(r.rosterIds)} <span className="mut2">· {time}</span>
+        <LineupNames rosterIds={r.rosterIds} games={props.games} roster={props.roster} />
       </span>
       <span className="trends-lowdata__raw">{raw}</span>
     </li>
@@ -547,6 +550,7 @@ function lowTovRow(
     <li key={key} className="trends-lowdata__row" data-testid={`trends-lineup-low-${key}`}>
       <span className="trends-lowdata__name">
         {label(r.rosterIds)} <span className="mut2">· {time}</span>
+        <LineupNames rosterIds={r.rosterIds} games={props.games} roster={props.roster} />
       </span>
       <span className="trends-lowdata__raw">
         {fill(t(lang, 'trendsLineupLowTov'), { n: r.turnovers, time })}

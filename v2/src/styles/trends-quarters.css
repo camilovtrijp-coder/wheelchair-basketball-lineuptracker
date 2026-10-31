@@ -81,3 +81,10 @@
   border-left: 1px solid var(--lt-color-border);
   font-weight: 700;
 }
+
+/* Namen onder het nummerlabel van een lineup (eigen regel, mag afbreken). */
+.trends-panel .trends-lineup-names {
+  display: block;
+  font-weight: 400;
+  overflow-wrap: anywhere;
+}
