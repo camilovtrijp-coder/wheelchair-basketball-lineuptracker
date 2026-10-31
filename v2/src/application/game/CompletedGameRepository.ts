@@ -166,4 +166,12 @@ export interface CompletedGameRepository {
    * `conflict` wordt hiermee bewust NIET opgelost of overschreven.
    */
   retryCorrectionUploads?(): void;
+  /**
+   * Review PR #136: optioneel — alleen `CompositeCompletedGameRepository`. `true`
+   * wanneer er een niet-getombstonede, server-bevestigde cloudkopie van `id`
+   * bestaat (geen eigen onbevestigde write). Een lokale kopie zonder
+   * afrondcheckpoint (cloud-only wedstrijd die door een correctie lokaal werd
+   * opgenomen, back-up-herstel) is dan toch gesynchroniseerd.
+   */
+  hasConfirmedCloudCopy?(id: string): boolean;
 }

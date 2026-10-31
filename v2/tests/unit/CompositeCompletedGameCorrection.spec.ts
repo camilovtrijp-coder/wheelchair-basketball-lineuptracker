@@ -650,6 +650,33 @@ describe('geen automatische upload door een back-up-herstel (review PR #134, fix
   });
 });
 
+describe('hasConfirmedCloudCopy (review PR #136)', () => {
+  it('true voor een aanwezige, server-bevestigde cloudkopie (ook met lokale kopie zonder checkpoint)', () => {
+    const h = harness({ local: [base()] });
+    h.cloud.emit([base()]);
+    expect(h.repo.hasConfirmedCloudCopy('cg-1')).toBe(true);
+  });
+
+  it('false voor een cloudkopie met eigen, onbevestigde write (latency compensation)', () => {
+    const h = harness({ local: [base()] });
+    h.cloud.emit([base()], PENDING, new Set(['cg-1']));
+    expect(h.repo.hasConfirmedCloudCopy('cg-1')).toBe(false);
+  });
+
+  it('false voor een getombstonede cloudkopie', () => {
+    const h = harness({ local: [base()] });
+    h.cloud.emit([base({ deletedAt: '2026-03-01T10:00:00.000Z', deletedBy: 'uid-1' })]);
+    expect(h.repo.hasConfirmedCloudCopy('cg-1')).toBe(false);
+  });
+
+  it('false zonder cloudkopie (onbekend id of nog geen snapshot)', () => {
+    const h = harness({ local: [base()] });
+    expect(h.repo.hasConfirmedCloudCopy('cg-1')).toBe(false);
+    h.cloud.emit([base({ id: 'cg-2' })]);
+    expect(h.repo.hasConfirmedCloudCopy('cg-1')).toBe(false);
+  });
+});
+
 describe('volgende wachtende correctie na een bevestigde upload (review PR #134, fix 6)', () => {
   it('na result.ok wordt de volgende correctie opgepakt zonder nieuwe snapshot', async () => {
     const c1 = correct(base(), 'corr-1', 's1', { endSec: 300, pf: 9, tov: 3 });

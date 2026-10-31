@@ -1103,6 +1103,11 @@ export function App({
     // een geslaagde serverquery zichtbaar werd). Zulke items zijn per
     // constructie al 'gesynchroniseerd'.
     const localIds = new Set(localCompletedGameRepo.list().map((g) => g.id));
+    // Review PR #136: een lokale kopie zonder checkpoint maar mét server-bevestigde
+    // cloudkopie (cloud-only wedstrijd na een correctie, back-up-herstel,
+    // migratie) is gesynchroniseerd. Een openstaande outbox-afronding blijft
+    // altijd onbevestigd (§D.5), ook als de cloudsnapshot haar al toont.
+    const outboxIds = new Set(pendingFinalizeRepo.list().map((e) => e.completed.id));
     setFinalizeStatuses((prev) => {
       const next: Record<string, SyncStatus> = {};
       for (const g of completedGames) {
@@ -1110,13 +1115,29 @@ export function App({
           next[g.id] = 'gesynchroniseerd';
           continue;
         }
-        next[g.id] = pendingFinalizesRef.current.has(g.id)
-          ? (prev[g.id] ?? 'wacht-op-synchronisatie')
-          : coordinator.readFinalizeStatus(g.sourceGameId, organizationId, teamId, g.id);
+        if (pendingFinalizesRef.current.has(g.id)) {
+          next[g.id] = prev[g.id] ?? 'wacht-op-synchronisatie';
+          continue;
+        }
+        const s = coordinator.readFinalizeStatus(g.sourceGameId, organizationId, teamId, g.id);
+        next[g.id] =
+          s === 'lokaal-beschikbaar' &&
+          !outboxIds.has(g.id) &&
+          completedGameRepo.hasConfirmedCloudCopy?.(g.id) === true
+            ? 'gesynchroniseerd'
+            : s;
       }
       return next;
     });
-  }, [completedGames, repositories.gameSync, organizationId, teamId, localCompletedGameRepo]);
+  }, [
+    completedGames,
+    repositories.gameSync,
+    organizationId,
+    teamId,
+    localCompletedGameRepo,
+    completedGameRepo,
+    pendingFinalizeRepo,
+  ]);
 
   useEffect(() => {
     function handleOnline() {

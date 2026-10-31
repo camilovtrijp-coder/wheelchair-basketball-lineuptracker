@@ -355,6 +355,12 @@ export class CompositeCompletedGameRepository implements CompletedGameRepository
     }
   }
 
+  hasConfirmedCloudCopy(id: string): boolean {
+    return (
+      this.cloudGames.some((g) => g.id === id && g.deletedAt == null) && !this.isCloudPending(id)
+    );
+  }
+
   retryCorrectionUploads(): void {
     // Een bewuste gebruikersactie: keur alle nu ontbrekende correcties goed.
     for (const local of this.readLocal().games) {
