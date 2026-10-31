@@ -155,6 +155,8 @@ class FakeCompositeRepo implements CompletedGameRepository {
   public updateCalls: CompletedGame[] = [];
   public statusCalls = 0;
   public retry = vi.fn();
+  /** ID's met een server-bevestigde cloudkopie (`hasConfirmedCloudCopy`). */
+  public confirmedCloud = new Set<string>();
   private listener: Listener | null = null;
 
   constructor(games: CompletedGame[]) {
@@ -198,6 +200,9 @@ class FakeCompositeRepo implements CompletedGameRepository {
   }
   retryCorrectionUploads(): void {
     this.retry();
+  }
+  hasConfirmedCloudCopy(id: string): boolean {
+    return this.confirmedCloud.has(id);
   }
   emit(): void {
     this.listener?.(this.safeList(), SYNCED);
@@ -336,13 +341,13 @@ describe('app/App — correctie in cloudmodus (PR 7.6a): herstelacties', () => {
     expect(repo.retry).toHaveBeenCalledTimes(1);
   });
 
-  it('lokaal-beschikbaar met correctie: ook een "Opnieuw proberen"', async () => {
+  it('lokaal-beschikbaar met correctie (geen cloudkopie): geen nutteloze "Opnieuw proberen" en geen onjuiste hint', async () => {
     const repo = new FakeCompositeRepo([game('cg-1', true)]);
     repo.statuses.set('cg-1', 'lokaal-beschikbaar');
     const q = renderApp(repo);
     await openDetail(q, 'cg-1');
-    fireEvent.click(q.getByTestId('history-correction-retry-btn'));
-    expect(repo.retry).toHaveBeenCalledTimes(1);
+    expect(q.queryByTestId('history-correction-retry-btn')).toBeNull();
+    expect(q.queryByTestId('history-correction-hint')).toBeNull();
   });
 
   it('conflict: alleen de melding, geen retry- of verwerp-knop', async () => {
@@ -509,6 +514,83 @@ describe('app/App — correctie in cloudmodus (PR 7.6a): afronding nog niet beve
     fireEvent.click(await waitFor(() => q.getByTestId('history-item-cg-cloud-only')));
     await waitFor(() => expect(q.getByTestId('history-segment-s1').tagName).toBe('BUTTON'));
     expect(q.queryByTestId('history-correction-waiting')).toBeNull();
+  });
+});
+
+describe('app/App — lokale kopie zonder checkpoint met bevestigde cloudkopie (review PR #136)', () => {
+  function gameSyncWithoutCheckpoint(): GameSyncCoordinator {
+    return {
+      async ensureWriterClaim() {
+        return {
+          kind: 'confirmed' as const,
+          identity: { writerUid: writer.authorUid, deviceId: writer.deviceId, writerEpoch: 0 },
+        };
+      },
+      // Zonder lokaal checkpoint leest de echte coordinator 'lokaal-beschikbaar'.
+      readFinalizeStatus: () => 'lokaal-beschikbaar' as const,
+      finalize: vi.fn(() => new Promise<never>(() => undefined)),
+    } as unknown as GameSyncCoordinator;
+  }
+
+  function seedLocal(g: CompletedGame) {
+    window.localStorage.setItem(completedGamesStorageKey(ORG_ID, TEAM_ID), JSON.stringify([g]));
+  }
+
+  it('na een correctie op een cloud-only wedstrijd: indicator gesynchroniseerd en segmenten aantikbaar', async () => {
+    const g = game('cg-1', true);
+    seedLocal(g);
+    const repo = new FakeCompositeRepo([g]);
+    repo.statuses.set('cg-1', 'gesynchroniseerd');
+    repo.confirmedCloud.add('cg-1');
+    const q = renderApp(repo, { gameSync: gameSyncWithoutCheckpoint() });
+    await openDetail(q, 'cg-1');
+    await waitFor(() =>
+      expect(q.getByTestId('history-sync-status-cg-1').getAttribute('data-status')).toBe(
+        'gesynchroniseerd',
+      ),
+    );
+    expect(q.getByTestId('history-segment-s1').tagName).toBe('BUTTON');
+    expect(q.queryByTestId('history-correction-waiting')).toBeNull();
+  });
+
+  it('zonder bevestigde cloudkopie blijft de wedstrijd lokaal-beschikbaar en geblokkeerd', async () => {
+    const g = game('cg-1', true);
+    seedLocal(g);
+    const repo = new FakeCompositeRepo([g]);
+    repo.statuses.set('cg-1', 'gesynchroniseerd');
+    const q = renderApp(repo, { gameSync: gameSyncWithoutCheckpoint() });
+    await openDetail(q, 'cg-1');
+    expect(q.getByTestId('history-sync-status-cg-1').getAttribute('data-status')).toBe(
+      'lokaal-beschikbaar',
+    );
+    expect(q.getByTestId('history-segment-s1').tagName).toBe('DIV');
+    expect(q.getByTestId('history-correction-waiting')).toBeTruthy();
+  });
+
+  it('een onbevestigde afronding in de outbox deblokkeert niet, ook niet met een cloudkopie (latency-snapshot)', async () => {
+    const g = game('cg-pending');
+    seedLocal(g);
+    window.localStorage.setItem(
+      pendingFinalizeStorageKey(ORG_ID, TEAM_ID),
+      JSON.stringify([{ game: pendingGame(), completed: g }]),
+    );
+    const repo = new FakeCompositeRepo([g]);
+    repo.confirmedCloud.add('cg-pending');
+    const q = renderApp(repo, { gameSync: gameSyncWithoutCheckpoint() });
+    await openDetail(q, 'cg-pending');
+    expect(q.getByTestId('history-segment-s1').tagName).toBe('DIV');
+    expect(q.getByTestId('history-correction-waiting')).toBeTruthy();
+  });
+
+  it('een cloudkopie met eigen onbevestigde write (hasConfirmedCloudCopy=false) deblokkeert niet', async () => {
+    const g = game('cg-1', true);
+    seedLocal(g);
+    const repo = new FakeCompositeRepo([g]);
+    repo.statuses.set('cg-1', 'gesynchroniseerd');
+    // confirmedCloud leeg = cloudkopie ontbreekt of is pending.
+    const q = renderApp(repo, { gameSync: gameSyncWithoutCheckpoint() });
+    await openDetail(q, 'cg-1');
+    expect(q.getByTestId('history-segment-s1').tagName).toBe('DIV');
   });
 });
 

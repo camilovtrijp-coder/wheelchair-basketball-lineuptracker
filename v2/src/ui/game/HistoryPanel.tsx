@@ -293,15 +293,14 @@ export function HistoryPanel({
     const correctionHintKey: StringKey | null =
       correctionStatus === 'actie-nodig'
         ? 'correctionActionNeededHint'
-        : correctionStatus === 'wacht-op-synchronisatie' ||
-            correctionStatus === 'lokaal-beschikbaar'
+        : correctionStatus === 'wacht-op-synchronisatie'
           ? 'correctionPendingOffline'
           : null;
+    // Review PR #136: `lokaal-beschikbaar` betekent per definitie "geen cloudkopie";
+    // `retryCorrectionUploads()` slaat zulke wedstrijden over, dus daar valt niets te
+    // herstellen en past ook de "wordt geüpload"-hint niet.
     const canRetry =
-      canWrite &&
-      onRetryCorrectionUploads != null &&
-      (correctionStatus === 'actie-nodig' ||
-        (correctionStatus === 'lokaal-beschikbaar' && !correctionBlocked));
+      canWrite && onRetryCorrectionUploads != null && correctionStatus === 'actie-nodig';
     const canDiscard = canWrite && onDiscardLocalCorrection != null && openCanDiscardStatus;
     const correctingSegment =
       canCorrect && correctingId != null

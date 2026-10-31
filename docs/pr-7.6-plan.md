@@ -222,6 +222,32 @@ Oorspronkelijke vraagstelling:
 - **Logboek.** Het logboek toont `by` nergens (ook niet in lokale modus), dus
   er is geen nieuwe uid-weergave toegevoegd en er worden geen e-mailadressen of
   namen getoond. `by` wordt alleen opgeslagen (uid in cloudmodus, `null` lokaal).
+- **Review-fixes PR #136.**
+  - *Lokaal zonder checkpoint, mét bevestigde cloudkopie.* Na een correctie van
+    een cloud-only wedstrijd (de composite neemt de cloudkopie lokaal op), na
+    back-up-herstel en mogelijk na lokaal→cloud-migratie staat er een lokale
+    kopie zonder afrondcheckpoint; `readFinalizeStatus` gaf dan
+    `lokaal-beschikbaar` en blokkeerde elke volgende correctie. De poort kreeg
+    `hasConfirmedCloudCopy?(id)` (composite: niet-getombstonede cloudkopie én
+    geen eigen onbevestigde write). Het statuseffect in `App` zet een lokaal
+    item buiten `pendingFinalizesRef` alleen dan op `gesynchroniseerd` als de
+    status `lokaal-beschikbaar` is, het ID niet in de outbox
+    (`pendingFinalizeRepo.list()`) staat én de cloudkopie bevestigd is. De §D.5-
+    blokkade blijft dus gelden voor een onbevestigde afronding, ook als een
+    latency-gecompenseerde cloudsnapshot haar al toont.
+  - *Tests.* App-tests voor lokale kopie zonder checkpoint + bevestigde
+    cloudkopie (indicator `gesynchroniseerd`, segmenten aantikbaar), voor
+    outbox, ontbrekende en pending cloudkopie (blijft geblokkeerd), en
+    composite-tests voor `hasConfirmedCloudCopy` (aanwezig, pending,
+    getombstoned, ontbrekend).
+  - *"Opnieuw proberen".* Alleen bij `actie-nodig`. `lokaal-beschikbaar` van de
+    correctiestatus betekent per definitie "geen cloudkopie"; retry slaat zulke
+    wedstrijden over, dus knop en "wordt geüpload"-hint zijn daar weggehaald.
+- **Uitrol.** Na publicatie van de Rules: één correctie op staging doen en
+  controleren dat de status "Gesynchroniseerd" wordt. Gebruikers die vóór de
+  publicatie van de Rules corrigeerden, zien na een herstart "Actie nodig" en
+  moeten bewust "Opnieuw proberen" kiezen (herstart-correcties worden nooit
+  automatisch geüpload).
 - **Nog niet in 7.6a:** `discardLocalCorrection` en de verwerp-knop (7.6b), de
   Playwright-auth-e2e voor twee apparaten (7.6c).
 
@@ -291,3 +317,7 @@ Oorspronkelijke vraagstelling:
   niet uploaden (Rules weigeren een vreemde `by`); dat eindigt in `actie-nodig`
   met de keuze te verwerpen (de knop staat bij `conflict` én `actie-nodig`). Een betere oplossing vraagt een Rules-besluit.
 - `corrections[].id`-uniciteit blijft in Rules niet afdwingbaar.
+- `LocalStorageUnsyncedWorkProbe` telt alleen de outbox en de actieve
+  wedstrijd, geen niet-geüploade correcties. Een offline gemaakte correctie kan
+  daardoor zonder waarschuwing verloren gaan bij uitloggen op een onvertrouwd
+  apparaat (AuthGate `clearLocalDeviceData`). Eigen vervolg-PR.
