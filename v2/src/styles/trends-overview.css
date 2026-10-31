@@ -1,0 +1,112 @@
+/* Trends > Overzicht (T6): classificatieprofiel, tijd over de limiet en
+   datakwaliteit. Alleen tokens uit tokens.css. Groen = beter, rood = slechter,
+   grijs = rond gemiddelde; kleur is nooit de enige aanwijzing: elke toon heeft
+   ook een symbool (▲ ● ▼) en tekst in de markup. */
+
+.trends-panel .trends-class,
+.trends-panel .trends-overlimit,
+.trends-panel .trends-quality {
+  padding: var(--lt-space-4);
+  margin-bottom: var(--lt-space-3);
+}
+
+.trends-panel .trends-section__title {
+  margin: 0;
+  font-weight: 800;
+}
+
+.trends-panel .trends-note {
+  margin: var(--lt-space-2) 0 0;
+  overflow-wrap: anywhere;
+}
+
+.trends-panel .trends-note--warn {
+  color: var(--lt-color-fg);
+  font-weight: 700;
+}
+
+.trends-panel .trends-class__list,
+.trends-panel .trends-overlimit__list,
+.trends-panel .trends-quality__list {
+  list-style: none;
+  margin: var(--lt-space-2) 0 0;
+  padding: 0;
+}
+
+.trends-panel .trends-class__row {
+  padding: var(--lt-space-2) 0;
+  border-top: 1px solid var(--lt-color-border);
+}
+
+.trends-panel .trends-class__head {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: var(--lt-space-1) var(--lt-space-3);
+}
+
+.trends-panel .trends-class__time {
+  font-variant-numeric: tabular-nums;
+  color: var(--lt-color-muted);
+}
+
+.trends-panel .trends-class__val {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--lt-space-1) var(--lt-space-3);
+  margin-top: var(--lt-space-1);
+}
+
+.trends-panel .trends-class__val b {
+  font-size: var(--lt-font-size-xl);
+  font-variant-numeric: tabular-nums;
+}
+
+.trends-panel .trends-tone {
+  font-weight: 700;
+  font-size: var(--lt-font-size-sm);
+}
+
+.trends-panel .trends-tone--good {
+  color: var(--lt-color-success);
+}
+
+.trends-panel .trends-tone--bad {
+  color: var(--lt-color-danger);
+}
+
+.trends-panel .trends-tone--flat {
+  color: var(--lt-color-muted);
+}
+
+.trends-panel .trends-overlimit__row {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: var(--lt-space-1) var(--lt-space-3);
+  padding: var(--lt-space-2) 0;
+  border-top: 1px solid var(--lt-color-border);
+  font-size: var(--lt-font-size-sm);
+}
+
+.trends-panel .trends-quality__item {
+  padding: var(--lt-space-2) 0;
+  border-top: 1px solid var(--lt-color-border);
+  font-size: var(--lt-font-size-sm);
+  overflow-wrap: anywhere;
+}
+
+.trends-panel .trends-quality__details summary {
+  cursor: pointer;
+  min-height: 2.75rem;
+  display: flex;
+  align-items: center;
+  font-weight: 700;
+  font-size: var(--lt-font-size-sm);
+}
+
+.trends-panel .trends-quality__details summary:focus-visible {
+  outline: var(--lt-focus-ring);
+  outline-offset: var(--lt-focus-offset);
+}

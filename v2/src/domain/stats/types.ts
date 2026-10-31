@@ -24,6 +24,29 @@ export interface AnalysisGame {
   scoreFor: number;
   scoreAgainst: number;
   isCurrent: boolean;
+  /**
+   * Optioneel (additief): aantal kwarten/periodes van de wedstrijd, overgenomen
+   * uit `CompletedGame.quarterCount`. Ontbreekt voor de actieve wedstrijd (de
+   * scope-bouwer kent de instellingen niet); consumenten vallen dan terug op 4
+   * of het hoogste voorkomende segmentkwart.
+   */
+  quarterCount?: number;
+
+  /**
+   * Was de klassegrens actief toen deze wedstrijd werd gespeeld? Optioneel en
+   * additief: afgeronde wedstrijden nemen `CompletedGame.useClassLimit` over, de
+   * lopende wedstrijd de instelling. Ontbreekt het veld, dan geldt `false`
+   * (dan zijn `classSum`/`allowed`/`over` ook niet betekenisvol).
+   */
+  useClassLimit?: boolean;
+
+  /**
+   * Optioneel (additief): bij een afgeronde wedstrijd het id van de actieve
+   * wedstrijd waaruit ze is afgerond (`CompletedGame.sourceGameId`). Alleen
+   * gebruikt om een verouderde filterselectie te vertalen (zie
+   * `sanitizeGameSelection`); niet voor berekeningen.
+   */
+  sourceGameId?: string;
 }
 
 /**

@@ -1,3 +1,11 @@
+import { trendsEn, trendsNl } from './trendsStrings';
+import { trendsPlayersEn, trendsPlayersNl } from './trendsPlayersStrings';
+import { trendsOverviewEn, trendsOverviewNl } from './trendsOverviewStrings';
+import { trendsLineupsExtraEn, trendsLineupsExtraNl } from './trendsLineupsExtraStrings';
+import { trendsQuartersEn, trendsQuartersNl } from './trendsQuartersStrings';
+import { trendsFixBEn, trendsFixBNl } from './trendsFixBStrings';
+import { trendsFilterSummaryEn, trendsFilterSummaryNl } from './trendsFilterSummaryStrings';
+
 export const LANG_STORAGE_KEY = 'lineup-tracker-lang';
 
 export const SUPPORTED_LANGS = ['nl', 'en'] as const;
@@ -897,6 +905,14 @@ const nl = {
   trendsTovLineupsTitle: 'Lineups: turnovers per 10 min',
   trendsTovLineupsHint: 'Laagste is het beste',
   trendsTovLineupsEmpty: 'Nog geen opstellingen om te vergelijken.',
+  // Herindeling Trends-tab (T2/T3): zie i18n/trendsStrings.ts.
+  ...trendsNl,
+  ...trendsPlayersNl,
+  ...trendsOverviewNl,
+  ...trendsLineupsExtraNl,
+  ...trendsQuartersNl,
+  ...trendsFixBNl,
+  ...trendsFilterSummaryNl,
 } as const;
 
 const en = {
@@ -1731,6 +1747,14 @@ const en = {
   trendsTovLineupsTitle: 'Lineups: turnovers per 10 min',
   trendsTovLineupsHint: 'Lowest is best',
   trendsTovLineupsEmpty: 'No lineups to compare yet.',
+  // Trends tab restructure (T2/T3): see i18n/trendsStrings.ts.
+  ...trendsEn,
+  ...trendsPlayersEn,
+  ...trendsOverviewEn,
+  ...trendsLineupsExtraEn,
+  ...trendsQuartersEn,
+  ...trendsFixBEn,
+  ...trendsFilterSummaryEn,
 } as const;
 
 export const STRINGS = { nl, en } as const;

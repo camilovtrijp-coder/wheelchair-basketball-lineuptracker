@@ -1226,6 +1226,17 @@ export function App({
     const resetOk = gameRepo.write(fresh);
     setGameSaveError(!resetOk);
     setGame(resetOk ? fresh : null);
+    // H1: de afgeronde wedstrijd heeft een NIEUWE id; een gedeeld wedstrijdfilter
+    // dat de lopende wedstrijd bevat ("Deze wedstrijd") wijst voortaan naar de
+    // afgeronde. (De panelen schonen verouderde selecties daarnaast zelf op,
+    // zie `useSanitizedGameIds`, o.a. voor weggegooide/verwijderde wedstrijden.)
+    const finishedId = archived.id;
+    const runningId = game.id;
+    setStatsGameIds((prev) =>
+      prev !== null && prev.has(runningId)
+        ? new Set([...prev].map((id) => (id === runningId ? finishedId : id)))
+        : prev,
+    );
     setHistoryOpenId(archived.id);
     setTab('history');
   }
@@ -1873,6 +1884,7 @@ export function App({
             roster={roster}
             gameIds={statsGameIds}
             onGameIdsChange={setStatsGameIds}
+            useClassLimit={settings.useClassLimit === true}
           />
         ) : v1MigrationCandidate !== null ? (
           <V1MigrationPrompt

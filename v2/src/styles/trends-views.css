@@ -1,0 +1,398 @@
+/* Trends-weergaven (T2/T3): tablist, vaste kop met inklapbare filters, lineupkaart, spelersrijen.
+   Alleen tokens uit tokens.css. Groen (--lt-color-success) = positief (+/-) of beter dan
+   het team (Voor/Tegen, turnovers), rood (--lt-color-danger) = negatief of slechter,
+   grijs (--lt-color-muted) = rond 0 of rond gemiddelde. De toon van +/- volgt het teken van
+   de waarde per 10 min (besluit eigenaar 2026-10-31), niet het verschil met het team.
+   Kleur is nooit het enige signaal: elke toon heeft ook een symbool (▲ ● ▼)
+   en tekst in de markup, en de "slechter"/negatieve balk heeft bovendien een streeppatroon. */
+
+/* ---------- segmentbediening (tablist) ---------- */
+
+.trends-panel .trends-tabs {
+  display: flex;
+  gap: var(--lt-space-1);
+  margin: var(--lt-space-2) 0;
+  padding: var(--lt-space-1);
+  border: var(--lt-border-thin);
+  border-radius: var(--lt-radius-md);
+  background: var(--lt-color-surface);
+}
+
+.trends-panel .trends-tab {
+  flex: 1;
+  min-width: 0;
+  min-height: 2.75rem;
+  padding: var(--lt-space-2) var(--lt-space-1);
+  border: 1px solid transparent;
+  border-radius: var(--lt-radius-sm);
+  background: transparent;
+  color: var(--lt-color-muted);
+  font-size: var(--lt-font-size-sm);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.trends-panel .trends-tab--active {
+  background: color-mix(in srgb, var(--lt-color-accent) 18%, var(--lt-color-surface));
+  border-color: var(--lt-color-accent);
+  color: var(--lt-color-fg);
+  font-weight: 700;
+}
+
+.trends-panel .trends-tab:focus-visible,
+.trends-panel .trends-tabpanel:focus-visible,
+.trends-panel .trends-metric__btn:focus-visible,
+.trends-panel .trends-row__toggle:focus-visible,
+.trends-panel .trends-lowdata summary:focus-visible {
+  outline: var(--lt-focus-ring);
+  outline-offset: var(--lt-focus-offset);
+}
+
+/* ---------- vaste kop (tabs + samenvatting) en inklapbaar chipspaneel ---------- */
+
+/* Alleen de tabbalk en de samenvattingsregel zijn sticky (samen ~100 px op 320 px breed);
+   het chipspaneel staat in de normale paginastroom eronder. */
+.trends-panel .trends-sticky {
+  position: sticky;
+  top: 0;
+  z-index: 5;
+  /* Onder een statusbalk/inkeping (PWA, viewport-fit=cover) blijft de kop leesbaar. */
+  padding: calc(var(--lt-space-1) + env(safe-area-inset-top)) 0 var(--lt-space-1);
+  margin-bottom: var(--lt-space-2);
+  background: var(--lt-color-bg);
+  border-bottom: var(--lt-border-thin);
+}
+
+.trends-panel .trends-sticky .trends-tabs {
+  margin: 0 0 var(--lt-space-1);
+  padding: 2px;
+}
+
+.trends-panel .trends-filter-summary {
+  display: flex;
+  align-items: center;
+  gap: var(--lt-space-2);
+}
+
+.trends-panel .trends-filter-summary__text {
+  flex: 1 1 auto;
+  min-width: 0;
+  margin: 0;
+  font-size: var(--lt-font-size-xs);
+  line-height: 1.25;
+  color: var(--lt-color-muted);
+  overflow-wrap: anywhere;
+}
+
+/* Selectie is niet "alles": tekst (Gefilterd) staat er al; vet + vollere kleur versterkt dat. */
+.trends-panel .trends-filter-summary__text--filtered {
+  color: var(--lt-color-fg);
+  font-weight: 700;
+}
+
+.trends-panel .trends-filter-summary__btn {
+  flex: 0 0 auto;
+  min-height: 2.75rem;
+  white-space: nowrap;
+}
+
+.trends-panel .trends-filter-summary__btn:focus-visible {
+  outline: var(--lt-focus-ring);
+  outline-offset: var(--lt-focus-offset);
+}
+
+.trends-panel .trends-filterbar {
+  margin-bottom: var(--lt-space-2);
+  padding: var(--lt-space-2) 0;
+  border-bottom: var(--lt-border-thin);
+}
+
+/* De chips mogen op smalle schermen over meerdere regels, zodat niets verstopt zit. */
+.trends-panel .trends-filterbar .stats-controls__row--wrap {
+  flex-wrap: wrap;
+  overflow-x: visible;
+  gap: var(--lt-space-2);
+  padding-bottom: 0;
+}
+
+.trends-panel .trends-filterbar .stats-controls__row--wrap > button {
+  min-height: 2.75rem;
+}
+
+.trends-panel .trends-filterbar .stats-controls__row--wrap > button:disabled,
+.trends-panel .trends-filterbar .stats-controls__row--wrap > button[aria-disabled='true'] {
+  opacity: 0.55;
+}
+
+.trends-panel .trends-filterbar__note {
+  margin: var(--lt-space-1) 0 0;
+}
+
+/* ---------- Overzicht: teamkaartjes ---------- */
+
+.trends-panel .trends-team {
+  padding: var(--lt-space-4);
+  margin-bottom: var(--lt-space-3);
+}
+
+.trends-panel .trends-team__title {
+  font-weight: 800;
+}
+
+.trends-panel .trends-kpis {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--lt-space-2);
+  margin-top: var(--lt-space-3);
+}
+
+.trends-panel .trends-kpi {
+  min-width: 0;
+  padding: var(--lt-space-2) var(--lt-space-3);
+  border-radius: var(--lt-radius-md);
+  border: 1px solid var(--lt-color-border);
+  background: var(--lt-color-bg);
+}
+
+.trends-panel .trends-kpi__k,
+.trends-panel .trends-kpi__sub {
+  font-size: var(--lt-font-size-xs);
+  color: var(--lt-color-muted);
+}
+
+.trends-panel .trends-kpi__n {
+  font-size: var(--lt-font-size-xl);
+  font-weight: 800;
+  line-height: var(--lt-line-height-tight);
+  font-variant-numeric: tabular-nums;
+}
+
+/* ---------- Lineups: metriekschakelaar ---------- */
+
+.trends-panel .trends-metric {
+  display: flex;
+  gap: var(--lt-space-1);
+  margin-bottom: var(--lt-space-3);
+}
+
+.trends-panel .trends-metric__btn {
+  flex: 1;
+  min-width: 0;
+  min-height: 2.75rem;
+  padding: var(--lt-space-2);
+  border-radius: 999px;
+  border: 1px solid var(--lt-color-border);
+  background: var(--lt-color-surface-alt);
+  color: var(--lt-color-fg);
+  font-size: var(--lt-font-size-sm);
+}
+
+.trends-panel .trends-metric__btn--active {
+  background: color-mix(in srgb, var(--lt-color-accent) 18%, var(--lt-color-surface));
+  border-color: var(--lt-color-accent);
+  font-weight: 700;
+  box-shadow: var(--lt-glow);
+}
+
+/* ---------- Lineups: kaart en rijen ---------- */
+
+.trends-panel .trends-lineup-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.trends-panel .trends-lineup-row {
+  padding-top: var(--lt-space-2);
+  border-top: 1px solid var(--lt-color-border);
+}
+
+.trends-panel .trends-lineup-row:first-child {
+  border-top: 0;
+}
+
+.trends-panel .trends-lineup-val {
+  display: inline-flex;
+  align-items: baseline;
+  gap: var(--lt-space-1);
+  white-space: nowrap;
+}
+
+.trends-panel .trends-lineup-val b {
+  font-size: 1.25rem;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+}
+
+.trends-panel .trends-lineup-sym {
+  font-size: var(--lt-font-size-sm);
+}
+
+.trends-panel .trends-tov-row__v--flat {
+  color: var(--lt-color-muted);
+}
+
+.trends-panel .trends-lineup-two {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--lt-space-3);
+  margin-top: var(--lt-space-1);
+}
+
+.trends-panel .trends-lineup-side {
+  min-width: 0;
+}
+
+/* Balken: de basisklassen (.trends-tov-bar) komen uit turnovers-analysis.css. */
+.trends-panel .trends-meter {
+  position: relative;
+}
+
+.trends-panel .trends-meter__fill {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  height: auto;
+}
+
+.trends-panel .trends-meter__zero {
+  position: absolute;
+  left: 50%;
+  top: -2px;
+  bottom: -2px;
+  width: 2px;
+  background: var(--lt-color-fg);
+  opacity: 0.6;
+}
+
+.trends-panel .trends-tov-bar__fill--flat {
+  background: var(--lt-color-muted);
+}
+
+/* Patroon naast kleur: "slechter"/negatief is gestreept, "beter"/positief effen. */
+.trends-panel .trends-tov-bar__fill--bad {
+  background-image: repeating-linear-gradient(
+    135deg,
+    transparent 0,
+    transparent 4px,
+    color-mix(in srgb, var(--lt-color-bg) 55%, transparent) 4px,
+    color-mix(in srgb, var(--lt-color-bg) 55%, transparent) 7px
+  );
+  background-color: var(--lt-color-danger);
+}
+
+.trends-panel .trends-legend,
+.trends-panel .trends-explain {
+  margin: var(--lt-space-3) 0 0;
+}
+
+.trends-panel .trends-warning {
+  margin: 0 0 var(--lt-space-3);
+  padding: var(--lt-space-2) var(--lt-space-3);
+  border-radius: var(--lt-radius-md);
+  border: 1px solid var(--lt-color-border);
+  border-left: 4px solid var(--lt-color-danger);
+  background: var(--lt-color-surface);
+  color: var(--lt-color-fg);
+  font-size: var(--lt-font-size-sm);
+}
+
+/* ---------- Lineups: groep "Te weinig data" ---------- */
+
+.trends-panel .trends-lowdata {
+  padding: var(--lt-space-3) var(--lt-space-4);
+  margin-bottom: var(--lt-space-3);
+}
+
+.trends-panel .trends-lowdata summary {
+  cursor: pointer;
+  min-height: 2.75rem;
+  display: flex;
+  align-items: center;
+  font-weight: 700;
+  font-size: var(--lt-font-size-sm);
+}
+
+.trends-panel .trends-lowdata__list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.trends-panel .trends-lowdata__row {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: var(--lt-space-1) var(--lt-space-3);
+  padding: var(--lt-space-2) 0;
+  border-top: 1px solid var(--lt-color-border);
+  font-size: var(--lt-font-size-sm);
+}
+
+.trends-panel .trends-lowdata__raw {
+  color: var(--lt-color-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+/* ---------- Spelers: compacte rijen ---------- */
+
+.trends-panel .trends-row {
+  padding: 0;
+  margin-bottom: var(--lt-space-2);
+}
+
+.trends-panel .trends-row__toggle {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--lt-space-1) var(--lt-space-3);
+  width: 100%;
+  min-height: 2.75rem;
+  padding: var(--lt-space-2) var(--lt-space-3);
+  border: 0;
+  border-radius: var(--lt-radius-lg);
+  background: transparent;
+  color: var(--lt-color-fg);
+  text-align: left;
+}
+
+.trends-panel .trends-row__name {
+  flex: 1 1 8rem;
+  min-width: 0;
+  font-weight: 700;
+  overflow-wrap: anywhere;
+}
+
+.trends-panel .trends-row__stats {
+  display: flex;
+  gap: var(--lt-space-3);
+  font-size: var(--lt-font-size-sm);
+  font-variant-numeric: tabular-nums;
+}
+
+.trends-panel .trends-row__k {
+  color: var(--lt-color-muted);
+  font-size: var(--lt-font-size-xs);
+}
+
+/* Het pijltje staat vóór de naam in dezelfde kopregel en wrapt nooit naar een eigen regel. */
+.trends-panel .trends-row__chev {
+  flex: 0 0 auto;
+  width: 1ch;
+  color: var(--lt-color-muted);
+}
+
+.trends-panel .trends-card__body {
+  padding: 0 var(--lt-space-3) var(--lt-space-3);
+}
+
+/* ---------- Kwarten: lege staat ---------- */
+
+.trends-panel .trends-empty-state {
+  padding: var(--lt-space-4);
+}
+
+.trends-panel .trends-empty-state__title {
+  font-weight: 800;
+}

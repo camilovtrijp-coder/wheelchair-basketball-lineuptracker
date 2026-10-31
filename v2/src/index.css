@@ -4,6 +4,11 @@
 @import './styles/team-setup.css';
 @import './styles/turnovers.css';
 @import './styles/turnovers-analysis.css';
+@import './styles/trends-views.css';
+@import './styles/trends-players.css';
+@import './styles/trends-overview.css';
+@import './styles/trends-lineups-extra.css';
+@import './styles/trends-quarters.css';
 
 /* Zonder deze reset telt content-box de padding bovenop een expliciete
    width op (bijv. .app-main), wat op smalle viewports horizontale

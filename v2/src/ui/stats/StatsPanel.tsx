@@ -20,6 +20,7 @@ import type {
 } from '../../domain/stats/types';
 import { translate, type Lang, type StringKey } from '../../i18n/strings';
 import { GamesFilterModal, toggleGameIdInSet } from '../shared/GamesFilterModal';
+import { useSanitizedGameIds } from '../shared/useSanitizedGameIds';
 import { ModalDialog } from '../shared/ModalDialog';
 
 export interface StatsPanelProps {
@@ -68,10 +69,17 @@ export function StatsPanel({
   repository,
   activeGame,
   roster,
-  gameIds,
+  gameIds: gameIdsProp,
   onGameIdsChange,
 }: StatsPanelProps) {
   const scope = useMemo(() => buildAnalysisScope(repository, activeGame), [repository, activeGame]);
+  // Verouderde selectie (bijv. "Deze wedstrijd" uit Trends na het afronden) opschonen.
+  const gameIds = useSanitizedGameIds(
+    gameIdsProp,
+    scope.games,
+    scope.historyRead.status === 'ok',
+    onGameIdsChange,
+  );
   const [comboSize, setComboSize] = useState<1 | 2 | 3 | 4 | 5>(5);
   const [per10, setPer10] = useState(false);
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('desc');

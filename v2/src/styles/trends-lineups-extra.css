@@ -1,0 +1,91 @@
+/* Extra Lineups-kaarten (T7): sorteeroptie, duo's/trio's, start- en sluitlineup,
+   consistentieregel. Alleen tokens uit tokens.css. Toon: groen = beter, rood =
+   slechter, grijs = rond gemiddelde; symbolen (▲ ● ▼) en tekst staan in de
+   markup, kleur is nooit het enige signaal. */
+
+.trends-panel .trends-extra-card {
+  padding: var(--lt-space-3) var(--lt-space-4);
+  margin-bottom: var(--lt-space-3);
+}
+
+.trends-panel .trends-extra-card__title {
+  margin: 0 0 var(--lt-space-2);
+  font-weight: 800;
+}
+
+.trends-panel .trends-extra-card__sub {
+  margin: var(--lt-space-3) 0 var(--lt-space-1);
+  font-weight: 700;
+}
+
+.trends-panel .trends-extra-card__note {
+  margin: var(--lt-space-3) 0 0;
+}
+
+/* ---------- sorteeroptie ---------- */
+
+.trends-panel .trends-lineup-sort {
+  margin: var(--lt-space-2) 0;
+}
+
+.trends-panel .trends-lineup-sort .trends-metric {
+  align-items: center;
+  margin-bottom: var(--lt-space-1);
+}
+
+.trends-panel .trends-lineup-sort__label {
+  flex: 0 0 auto;
+}
+
+.trends-panel .trends-lineup-sort__badge {
+  display: inline-block;
+  margin-bottom: var(--lt-space-1);
+  padding: 0 var(--lt-space-2);
+  border: 1px solid var(--lt-color-border);
+  border-radius: 999px;
+  color: var(--lt-color-muted);
+}
+
+.trends-panel .trends-lineup-consistency {
+  margin-top: var(--lt-space-1);
+}
+
+/* ---------- duo's/trio's en start/sluit ---------- */
+
+.trends-panel .trends-combo-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.trends-panel .trends-combo-row,
+.trends-panel .trends-startclose-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--lt-space-1) var(--lt-space-3);
+  padding: var(--lt-space-2) 0;
+  border-top: 1px solid var(--lt-color-border);
+  font-size: var(--lt-font-size-sm);
+}
+
+.trends-panel .trends-combo-list > li:first-child {
+  border-top: 0;
+}
+
+.trends-panel .trends-combo-row__name {
+  flex: 1 1 8rem;
+  min-width: 0;
+  font-weight: 700;
+  overflow-wrap: anywhere;
+}
+
+.trends-panel .trends-combo-row__tone {
+  flex: 0 0 100%;
+}
+
+.trends-panel .trends-startclose-row__meta {
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
+}

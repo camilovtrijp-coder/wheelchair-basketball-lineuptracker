@@ -1,0 +1,101 @@
+/* Weergave Spelers: on/off per speler (T4) en stints (T7). Alleen tokens uit tokens.css.
+   Groen = beter, rood = slechter, grijs = rond gemiddelde; altijd met symbool en tekst. */
+
+.trends-panel .trends-players-row__onoff {
+  flex-basis: 100%;
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--lt-space-1);
+  font-size: var(--lt-font-size-sm);
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
+}
+
+.trends-panel .trends-players-block {
+  margin-top: var(--lt-space-3);
+  padding-top: var(--lt-space-3);
+  border-top: 1px solid var(--lt-color-border);
+}
+
+.trends-panel .trends-players-block__title {
+  margin: 0 0 var(--lt-space-2);
+  font-size: var(--lt-font-size-md);
+  font-weight: 800;
+}
+
+.trends-panel .trends-players-sides {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--lt-space-3);
+}
+
+.trends-panel .trends-players-side {
+  min-width: 0;
+}
+
+.trends-panel .trends-players-side__k {
+  color: var(--lt-color-muted);
+  font-size: var(--lt-font-size-xs);
+}
+
+.trends-panel .trends-players-side__v {
+  font-size: 1.25rem;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+}
+
+.trends-panel .trends-players-side__time {
+  color: var(--lt-color-muted);
+  font-size: var(--lt-font-size-sm);
+  font-variant-numeric: tabular-nums;
+}
+
+.trends-panel .trends-players-diff {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--lt-space-1) var(--lt-space-2);
+  margin-top: var(--lt-space-2);
+  font-variant-numeric: tabular-nums;
+}
+
+.trends-panel .trends-players-diff b {
+  font-size: 1.25rem;
+  font-weight: 800;
+}
+
+.trends-panel .trends-players-tone--good {
+  color: var(--lt-color-success);
+}
+
+.trends-panel .trends-players-tone--bad {
+  color: var(--lt-color-danger);
+}
+
+.trends-panel .trends-players-tone--flat {
+  color: var(--lt-color-muted);
+}
+
+.trends-panel .trends-players-note {
+  margin: var(--lt-space-2) 0 0;
+  color: var(--lt-color-muted);
+  font-size: var(--lt-font-size-xs);
+}
+
+.trends-panel .trends-players-warn {
+  margin: var(--lt-space-2) 0 0;
+  padding: var(--lt-space-2) var(--lt-space-3);
+  border: 1px solid var(--lt-color-border);
+  border-left: 4px solid var(--lt-color-danger);
+  border-radius: var(--lt-radius-sm);
+  background: var(--lt-color-surface);
+  color: var(--lt-color-fg);
+  font-size: var(--lt-font-size-sm);
+}
+
+.trends-panel .trends-players-stints {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--lt-space-3);
+}

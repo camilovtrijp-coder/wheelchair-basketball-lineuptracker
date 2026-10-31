@@ -7,6 +7,7 @@ import type { CompletedGameRepository } from '../../src/application/game/Complet
 import type { CompletedGame, GamePlayer, Segment } from '../../src/domain/game/types';
 import type { RosterPlayer } from '../../src/domain/roster/types';
 import type { Lang } from '../../src/i18n/strings';
+import { chip } from './trendsFilterHelpers';
 
 afterEach(() => cleanup());
 
@@ -127,6 +128,18 @@ function renderTrends(games: CompletedGame[], lang: Lang = 'nl') {
   );
 }
 
+type TrendsQueries = ReturnType<typeof renderTrends>;
+
+/** Open een weergave van de herindeelde Trends-tab (T3). */
+function openView(q: TrendsQueries, view: 'overview' | 'lineups' | 'players' | 'quarters'): void {
+  fireEvent.click(q.getByTestId(`trends-tab-${view}`));
+}
+
+/** Spelerrijen zijn compact; klap de gewenste rij uit om de bestaande kaart te zien. */
+function expandPlayer(q: TrendsQueries, rosterId: number): void {
+  fireEvent.click(q.getByTestId(`trends-row-toggle-${rosterId}`));
+}
+
 describe('Statistieken: TO met/zonder hen', () => {
   it('NL: toont de twee pillen met totalen en de kleur "minder is beter"', () => {
     const { getByTestId, getAllByText } = renderStats(oneGame());
@@ -196,8 +209,14 @@ describe('Trends: tegels, totaalregel en lineup-kaart', () => {
     expect(getByTestId('trends-tov-total').textContent).toBe('6');
   });
 
-  it('lineup-kaart: laagste eerst, waarde per 10 min, uitleg en kleurtoon', () => {
-    const { getByTestId } = renderTrends(oneGame());
+  it('lineup-kaart (metriek Turnovers): laagste eerst, waarde per 10 min, uitleg en kleurtoon', () => {
+    const q = renderTrends(oneGame());
+    const { getByTestId } = q;
+    // Migratie T2/T3: de kaart staat in de weergave Lineups als metriek Turnovers, en de
+    // waarde per 10 min vraagt nu de chip "Per 10 min" (de kaart volgt de chip).
+    openView(q, 'lineups');
+    fireEvent.click(getByTestId('trends-metric-tov'));
+    fireEvent.click(chip(q, 'trends-per10-toggle'));
     const card = getByTestId('trends-tov-lineups');
     expect(card.textContent).toContain('Lineups: turnovers per 10 min');
     expect(card.textContent).toContain('Laagste is het beste');
@@ -209,14 +228,21 @@ describe('Trends: tegels, totaalregel en lineup-kaart', () => {
     ]);
     expect(getByTestId('trends-tov-lineup-value-1-2-3-4-5').textContent).toBe('3.0');
     expect(getByTestId('trends-tov-lineup-value-1-2-3-4-6').textContent).toBe('4.0');
-    expect(getByTestId('trends-tov-lineup-1-2-3-4-5').getAttribute('data-tone')).toBe('good');
+    // Review-fix M5: toon via dezelfde band als de andere metrieken (|delta| < 0,5 per 10 = rond
+    // gemiddelde). 3,0 t.o.v. 3,33 is delta -0,33 -> rond gemiddelde (was binair "good");
+    // 4,0 t.o.v. 3,33 is delta +0,67 -> slechter.
+    expect(getByTestId('trends-tov-lineup-1-2-3-4-5').getAttribute('data-tone')).toBe('flat');
     expect(getByTestId('trends-tov-lineup-1-2-3-4-6').getAttribute('data-tone')).toBe('bad');
     expect(getByTestId('trends-tov-lineup-1-2-3-4-5').textContent).toContain('1-2-3-4-5');
     expect(getByTestId('trends-tov-lineup-1-2-3-4-5').textContent).toContain('10:00');
   });
 
   it('tegels per speler: +/- totaal met gemiddelde, turnovers, minuten; bestaande testids blijven', () => {
-    const { getByTestId } = renderTrends(oneGame());
+    const q = renderTrends(oneGame());
+    const { getByTestId } = q;
+    openView(q, 'players');
+    expandPlayer(q, 1);
+    expandPlayer(q, 6);
     // speler 1: A (+2) en B (-1) in dezelfde wedstrijd -> +1; turnovers 3 + 2 = 5; 900 s = 15,0 min
     expect(getByTestId('trends-totalpm-1').textContent).toBe('+1');
     expect(getByTestId('trends-avgpm-1').textContent).toBe('+1.0');
@@ -231,19 +257,30 @@ describe('Trends: tegels, totaalregel en lineup-kaart', () => {
   });
 
   it('EN: Engelse teksten', () => {
-    const { getByTestId } = renderTrends(oneGame(), 'en');
+    const q = renderTrends(oneGame(), 'en');
+    const { getByTestId } = q;
     expect(getByTestId('trends-tov-summary').textContent).toContain('Total turnovers');
     expect(getByTestId('trends-tov-summary').textContent).toContain('in 1 game');
+    openView(q, 'lineups');
+    fireEvent.click(getByTestId('trends-metric-tov'));
     expect(getByTestId('trends-tov-lineups').textContent).toContain('Lowest is best');
+    openView(q, 'players');
+    expandPlayer(q, 1);
     expect(getByTestId('trends-card-1').textContent).toContain('TURNOVERS');
   });
 
   it('oude wedstrijden zonder turnover-gegevens: totaalregel met 0, geen kaart of turnover-tegel, wel de bestaande waarden', () => {
-    const { queryByTestId, getByTestId } = renderTrends(oneGame(false));
+    const q = renderTrends(oneGame(false));
+    const { queryByTestId, getByTestId } = q;
     expect(getByTestId('trends-tov-total').textContent).toBe('0');
     expect(getByTestId('trends-tov-per10').textContent).toBe('0.0');
     expect(getByTestId('trends-tov-summary').textContent).toContain('in 1 wedstrijd');
+    openView(q, 'lineups');
+    // Zonder bijgehouden turnovers is de metriek Turnovers niet te kiezen en bestaat de kaart niet.
+    expect(queryByTestId('trends-metric-tov')).toBeNull();
     expect(queryByTestId('trends-tov-lineups')).toBeNull();
+    openView(q, 'players');
+    expandPlayer(q, 1);
     expect(queryByTestId('trends-tov-1')).toBeNull();
     expect(getByTestId('trends-avgmin-1').textContent).toBe('15.0');
     expect(getByTestId('trends-avgpm-1').textContent).toBe('+1.0');

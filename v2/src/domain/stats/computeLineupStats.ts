@@ -167,7 +167,7 @@ export function computeLineupStats(games: AnalysisGame[], filter: StatsFilter): 
  * gevonden zijn — die markeren het als PARTIAL (zie plan §C.2), en het
  * segment wordt door de aanroeper volledig overgeslagen.
  */
-function normalizeSegmentLineup(
+export function normalizeSegmentLineup(
   segment: { lineup: string[] },
   playersById: ReadonlyMap<string, { rosterId: number }>,
 ): { rosterIds: number[]; hasUnknown: boolean } {
