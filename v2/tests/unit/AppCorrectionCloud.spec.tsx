@@ -204,6 +204,23 @@ class FakeCompositeRepo implements CompletedGameRepository {
   }
 }
 
+/** PR 7.6b: nepcomposite met `discardLocalCorrection` (alleen lokale kopie weg, cloudversie terug). */
+class FakeDiscardRepo extends FakeCompositeRepo {
+  public discardCalls: string[] = [];
+  public discardOk = true;
+  /** De cloudversie die na verwerpen weer zichtbaar is. */
+  public cloudVersion: CompletedGame | null = null;
+  discardLocalCorrection(id: string): boolean {
+    this.discardCalls.push(id);
+    if (!this.discardOk || this.cloudVersion === null) return false;
+    const cloud = this.cloudVersion;
+    this.games = this.games.map((g) => (g.id === id ? cloud : g));
+    this.statuses.set(id, 'gesynchroniseerd');
+    this.emit();
+    return true;
+  }
+}
+
 interface RenderOpts {
   canWrite?: boolean;
   gameSync?: GameSyncCoordinator | null;
@@ -520,5 +537,182 @@ describe('app/App — correctie in cloudmodus (PR 7.6a): geen herhaalde afleidin
     await new Promise((r) => setTimeout(r, 50));
     expect(repo.statusCalls).toBe(settled + 2);
     expect(listSpy.mock.calls.length).toBe(settledLists);
+  });
+});
+
+describe('app/App — correctieconflict, lokale versie verwerpen (PR 7.6b, plan §D.3)', () => {
+  function conflictRepo(): FakeDiscardRepo {
+    const repo = new FakeDiscardRepo([game('cg-1', true), game('cg-2')]);
+    repo.statuses.set('cg-1', 'conflict');
+    const theirs = game('cg-1', true);
+    repo.cloudVersion = {
+      ...theirs,
+      corrections: [{ ...theirs.corrections![0]!, id: 'c-theirs', by: 'uid-bob' }],
+    };
+    return repo;
+  }
+
+  it('knop alleen bij conflict én canWrite; niet bij andere statussen of zonder rol', async () => {
+    const repo = conflictRepo();
+    const q = renderApp(repo);
+    await openDetail(q, 'cg-1');
+    expect(q.getByTestId('history-correction-discard-btn').textContent).toBe(
+      'Mijn lokale versie verwerpen',
+    );
+    expect(q.getByTestId('history-correction-discard-hint').textContent).toContain(
+      'Alleen de kopie op dit apparaat',
+    );
+    // Andere statussen: geen verwerp-knop.
+    for (const status of [
+      'actie-nodig',
+      'wacht-op-synchronisatie',
+      'lokaal-beschikbaar',
+    ] as const) {
+      repo.statuses.set('cg-1', status);
+      act(() => repo.emit());
+      await waitFor(() => expect(q.queryByTestId('history-correction-conflict')).toBeNull());
+      expect(q.queryByTestId('history-correction-discard-btn')).toBeNull();
+    }
+    cleanup();
+
+    const viewer = renderApp(conflictRepo(), { canWrite: false });
+    await openDetail(viewer, 'cg-1');
+    expect(viewer.getByTestId('history-correction-conflict')).toBeTruthy();
+    expect(viewer.queryByTestId('history-correction-discard-btn')).toBeNull();
+  });
+
+  it('lokale modus ongewijzigd: geen verwerp-actie', async () => {
+    window.localStorage.setItem(
+      completedGamesStorageKey(ORG_ID, TEAM_ID),
+      JSON.stringify([game('cg-local', true)]),
+    );
+    const q = renderApp(null, { local: true });
+    await openDetail(q, 'cg-local');
+    expect(q.queryByTestId('history-correction-discard-btn')).toBeNull();
+    expect(q.queryByTestId('history-correction-conflict')).toBeNull();
+  });
+
+  it('een repository zonder discardLocalCorrection krijgt geen knop', async () => {
+    const repo = new FakeCompositeRepo([game('cg-1', true)]);
+    repo.statuses.set('cg-1', 'conflict');
+    const q = renderApp(repo);
+    await openDetail(q, 'cg-1');
+    expect(q.getByTestId('history-correction-conflict')).toBeTruthy();
+    expect(q.queryByTestId('history-correction-discard-btn')).toBeNull();
+  });
+
+  it('bevestiging vereist: de knop opent een eigen dialoog (geen window.confirm) en verwerpt nog niets', async () => {
+    const confirmSpy = vi.spyOn(window, 'confirm');
+    const repo = conflictRepo();
+    const q = renderApp(repo);
+    await openDetail(q, 'cg-1');
+    fireEvent.click(q.getByTestId('history-correction-discard-btn'));
+    const dialog = q.getByRole('dialog', { name: 'Lokale versie verwerpen?' });
+    expect(dialog.getAttribute('aria-modal')).toBe('true');
+    // Focus-trap: de focus staat binnen de dialoog.
+    expect(dialog.contains(document.activeElement)).toBe(true);
+    const text = q.getByTestId('history-correction-discard-text').textContent ?? '';
+    expect(text).toContain('Alleen de kopie van deze wedstrijd op dit apparaat');
+    expect(text).toContain('versie van het team');
+    expect(text).toContain('nog niet is geüpload gaat verloren');
+    expect(q.getByTestId('history-correction-discard-confirm').textContent).toBe('Verwerpen');
+    expect(q.getByTestId('history-correction-discard-cancel').textContent).toBe('Annuleren');
+    expect(repo.discardCalls).toEqual([]);
+    expect(confirmSpy).not.toHaveBeenCalled();
+  });
+
+  it('annuleren (knop, Escape, achtergrond) doet niets: data en conflict blijven', async () => {
+    const repo = conflictRepo();
+    const q = renderApp(repo);
+    await openDetail(q, 'cg-1');
+    const before = JSON.stringify(repo.games);
+
+    fireEvent.click(q.getByTestId('history-correction-discard-btn'));
+    fireEvent.click(q.getByTestId('history-correction-discard-cancel'));
+    expect(q.queryByTestId('history-correction-discard-dialog')).toBeNull();
+
+    fireEvent.click(q.getByTestId('history-correction-discard-btn'));
+    fireEvent.keyDown(q.getByTestId('history-correction-discard-dialog'), { key: 'Escape' });
+    expect(q.queryByTestId('history-correction-discard-dialog')).toBeNull();
+
+    fireEvent.click(q.getByTestId('history-correction-discard-btn'));
+    fireEvent.click(q.getByTestId('history-correction-discard-dialog'));
+    expect(q.queryByTestId('history-correction-discard-dialog')).toBeNull();
+
+    expect(repo.discardCalls).toEqual([]);
+    expect(JSON.stringify(repo.games)).toBe(before);
+    expect(q.getByTestId('history-correction-conflict')).toBeTruthy();
+    expect(q.getByTestId('history-correction-discard-btn')).toBeTruthy();
+  });
+
+  it('verwerpen: conflictmelding weg, cloudversie terug, opnieuw corrigeren mogelijk', async () => {
+    const repo = conflictRepo();
+    const q = renderApp(repo);
+    await openDetail(q, 'cg-1');
+    fireEvent.click(q.getByTestId('history-correction-discard-btn'));
+    fireEvent.click(q.getByTestId('history-correction-discard-confirm'));
+
+    expect(repo.discardCalls).toEqual(['cg-1']);
+    await waitFor(() => expect(q.queryByTestId('history-correction-conflict')).toBeNull());
+    expect(q.queryByTestId('history-correction-discard-dialog')).toBeNull();
+    expect(q.queryByTestId('history-correction-discard-btn')).toBeNull();
+    // De versie van het team staat er weer.
+    expect(q.getByTestId('history-correction-c-theirs')).toBeTruthy();
+    expect(q.queryByTestId('history-correction-c-cg-1')).toBeNull();
+    expect(q.getByTestId('history-sync-status-cg-1').getAttribute('data-status')).toBe(
+      'gesynchroniseerd',
+    );
+    // Opnieuw corrigeren kan.
+    expect(q.getByTestId('history-segment-s1').tagName).toBe('BUTTON');
+    // De andere wedstrijd is ongemoeid.
+    expect(repo.games.find((g) => g.id === 'cg-2')).toEqual(game('cg-2'));
+  });
+
+  it('foutpad: bij false blijft alles staan en volgt een korte foutmelding', async () => {
+    const repo = conflictRepo();
+    repo.discardOk = false;
+    const q = renderApp(repo);
+    await openDetail(q, 'cg-1');
+    fireEvent.click(q.getByTestId('history-correction-discard-btn'));
+    fireEvent.click(q.getByTestId('history-correction-discard-confirm'));
+    expect(repo.discardCalls).toEqual(['cg-1']);
+    expect(q.getByTestId('history-correction-discard-error').textContent).toContain(
+      'Verwerpen is niet gelukt',
+    );
+    expect(q.getByTestId('history-correction-discard-dialog')).toBeTruthy();
+    expect(q.getByTestId('history-correction-conflict')).toBeTruthy();
+    // Annuleren sluit de dialoog en wist de fout bij een volgende poging.
+    fireEvent.click(q.getByTestId('history-correction-discard-cancel'));
+    fireEvent.click(q.getByTestId('history-correction-discard-btn'));
+    expect(q.queryByTestId('history-correction-discard-error')).toBeNull();
+  });
+
+  it('een conflict dat verdwijnt sluit een open bevestiging en laat geen oude dialoog terugkeren', async () => {
+    const repo = conflictRepo();
+    const q = renderApp(repo);
+    await openDetail(q, 'cg-1');
+    fireEvent.click(q.getByTestId('history-correction-discard-btn'));
+    repo.statuses.set('cg-1', 'gesynchroniseerd');
+    act(() => repo.emit());
+    await waitFor(() => expect(q.queryByTestId('history-correction-discard-dialog')).toBeNull());
+    repo.statuses.set('cg-1', 'conflict');
+    act(() => repo.emit());
+    await waitFor(() => expect(q.getByTestId('history-correction-discard-btn')).toBeTruthy());
+    expect(q.queryByTestId('history-correction-discard-dialog')).toBeNull();
+  });
+
+  it('Engelse teksten', async () => {
+    window.localStorage.setItem('lineup-tracker-lang', 'en');
+    const repo = conflictRepo();
+    const q = renderApp(repo);
+    await openDetail(q, 'cg-1');
+    expect(q.getByTestId('history-correction-discard-btn').textContent).toBe(
+      'Discard my local version',
+    );
+    fireEvent.click(q.getByTestId('history-correction-discard-btn'));
+    const dialog = q.getByRole('dialog', { name: 'Discard local version?' });
+    expect(dialog.textContent).toContain('A local correction that has not been uploaded is lost');
+    expect(q.getByTestId('history-correction-discard-confirm').textContent).toBe('Discard');
+    expect(q.getByTestId('history-correction-discard-cancel').textContent).toBe('Cancel');
   });
 });

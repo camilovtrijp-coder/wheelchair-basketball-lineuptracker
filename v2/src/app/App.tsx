@@ -1314,6 +1314,22 @@ export function App({
   }
 
   /**
+   * PR 7.6b: verwerpt na een bewuste bevestiging in `HistoryPanel` de LOKALE
+   * kopie van een wedstrijd met een correctieconflict (alleen cloudmodus). De
+   * cloud wordt niet aangeraakt; de cloudversie verschijnt via de samenvoeging
+   * weer als cloud-only wedstrijd. `false` = niets gewijzigd (het paneel toont
+   * dan zelf de foutmelding).
+   */
+  function handleDiscardLocalCorrection(id: string): boolean {
+    const ok = completedGameRepo.discardLocalCorrection?.(id) ?? false;
+    if (!ok) return false;
+    const games = completedGameRepo.list();
+    setCompletedGames(games);
+    setCorrectionStatuses(deriveCorrectionStatuses(completedGameRepo, games));
+    return true;
+  }
+
+  /**
    * PR 6.6: ververst alle vier live App-states nadat `BackupPanel` een
    * import heeft afgerond — de coordinator schrijft rechtstreeks naar de
    * repositories/localStorage, buiten React om, dus zonder deze herlezing
@@ -1788,6 +1804,13 @@ export function App({
               repositories.gameSync &&
               typeof completedGameRepo.retryCorrectionUploads === 'function'
                 ? () => completedGameRepo.retryCorrectionUploads?.()
+                : undefined
+            }
+            onDiscardLocalCorrection={
+              repositories.gameSync &&
+              canWrite &&
+              typeof completedGameRepo.discardLocalCorrection === 'function'
+                ? handleDiscardLocalCorrection
                 : undefined
             }
             // Externe PR-6.3-review (aug. 2026): verwijderen van historie is een

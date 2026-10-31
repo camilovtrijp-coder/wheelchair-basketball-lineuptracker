@@ -201,6 +201,17 @@ const nl = {
   // PR 7.6a: correctiestatus en herstel in cloudmodus.
   correctionConflictMessage: 'Deze wedstrijd is ondertussen op een ander apparaat gewijzigd.',
   correctionRetry: 'Opnieuw proberen',
+  // PR 7.6b: lokale versie bij een correctieconflict bewust verwerpen.
+  correctionDiscardLocal: 'Mijn lokale versie verwerpen',
+  correctionDiscardHint:
+    'Alleen de kopie op dit apparaat wordt verwijderd. De versie van het team blijft bestaan en komt terug.',
+  correctionDiscardConfirmTitle: 'Lokale versie verwerpen?',
+  correctionDiscardConfirm:
+    'Alleen de kopie van deze wedstrijd op dit apparaat wordt verwijderd; de versie van het team blijft ongewijzigd en komt terug. Een lokale correctie die nog niet is geüpload gaat verloren. Daarna kun je de wedstrijd opnieuw corrigeren.',
+  correctionDiscardConfirmAction: 'Verwerpen',
+  correctionDiscardCancel: 'Annuleren',
+  correctionDiscardFailed:
+    'Verwerpen is niet gelukt. Er is niets gewijzigd; probeer het later opnieuw.',
   correctionWaitingForFinalize:
     'Wacht tot de wedstrijd is gesynchroniseerd voordat je een segment corrigeert.',
   correctionPendingOffline:
@@ -1064,6 +1075,16 @@ const en = {
   // PR 7.6a: correction status and recovery in cloud mode.
   correctionConflictMessage: 'This game was changed on another device in the meantime.',
   correctionRetry: 'Try again',
+  // PR 7.6b: deliberately discard the local version after a correction conflict.
+  correctionDiscardLocal: 'Discard my local version',
+  correctionDiscardHint:
+    'Only the copy on this device is removed. The team version stays as it is and comes back.',
+  correctionDiscardConfirmTitle: 'Discard local version?',
+  correctionDiscardConfirm:
+    'Only the copy of this game on this device is removed; the team version is not changed and comes back. A local correction that has not been uploaded is lost. Afterwards you can correct the game again.',
+  correctionDiscardConfirmAction: 'Discard',
+  correctionDiscardCancel: 'Cancel',
+  correctionDiscardFailed: 'Discarding failed. Nothing was changed; try again later.',
   correctionWaitingForFinalize: 'Wait until the game has synced before correcting a segment.',
   correctionPendingOffline:
     'Your correction is safely stored on this device and will be uploaded as soon as there is a connection.',

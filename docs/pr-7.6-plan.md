@@ -221,6 +221,41 @@ Oorspronkelijke vraagstelling:
 - **Nog niet in 7.6a:** `discardLocalCorrection` en de verwerp-knop (7.6b), de
   Playwright-auth-e2e voor twee apparaten (7.6c).
 
+## H3. Status 7.6b (geïmplementeerd)
+
+- **Poort en composite.** `CompletedGameRepository.discardLocalCorrection?(id): boolean`,
+  geïmplementeerd in `CompositeCompletedGameRepository`. Verwijdert uitsluitend
+  de lokale kopie (`local.remove(id)`) en alleen als er een niet-getombstoned
+  cloudkopie van dezelfde organisatie/team bestaat én er een lokale kopie is.
+  Anders `false` zonder wijziging (ook bij een onbekend id of een opslagfout).
+  Na succes worden `correctionOutcome`, `approvedCorrectionIds` en
+  `confirmedCorrectionIds` van de correcties van die wedstrijd gewist en volgt
+  `notify()`. De cloud wordt nooit aangeraakt: geen tombstone, geen write, geen
+  gateway-aanroep (getest met spy's).
+- **Bewuste extra weigering.** Tijdens een lopende correctie-upload van die
+  wedstrijd geeft de methode `false`: het uploadresultaat zou anders een
+  uitkomst voor een al verwijderde lokale kopie schrijven. De gebruiker kan het
+  daarna opnieuw proberen. Het UI-foutbericht is daarvoor generiek.
+- **UI.** `HistoryPanel` krijgt `onDiscardLocalCorrection?: (id) => boolean`;
+  in het conflictblok staat, alleen voor `canWrite` en alleen met die prop, de
+  knop `history-correction-discard-btn` met uitleg. Bevestigen gaat via de
+  eigen `DiscardLocalCorrectionDialog` (focus-trap via `useFocusTrap`, Escape,
+  achtergrond en "Annuleren" doen niets; geen `window.confirm`). `App` geeft de
+  prop alleen in cloudmodus (`gameSync`) met `canWrite` door en ververst lijst
+  en correctiestatussen na succes; bij `false` toont de dialoog een korte
+  foutmelding en blijft alles staan.
+- **i18n.** Nieuwe sleutels (NL en EN): `correctionDiscardLocal`,
+  `correctionDiscardHint`, `correctionDiscardConfirmTitle`,
+  `correctionDiscardConfirm`, `correctionDiscardConfirmAction`,
+  `correctionDiscardCancel`, `correctionDiscardFailed`.
+- **Niet gewijzigd.** Rules, statistiek, CSV-contract, `localStorage`-keys en
+  het gedrag van 7.6a. Nog open: de tweede-apparaat-e2e met Playwright-auth
+  (7.6c).
+- **Open risico's 7.6b.** Een lokale correctie die nog niet is geüpload gaat bij
+  verwerpen onherroepelijk verloren (bewust, met expliciete bevestigingstekst).
+  Verwerpen is ook mogelijk bij een andere status dan `conflict` op poortniveau;
+  alleen de UI beperkt de knop tot `conflict`. Echte-apparaatverificatie blijft nodig.
+
 ## I. Open risico's
 
 - Echte-apparaat- en staging-verificatie blijft nodig; de sandbox dekt alleen

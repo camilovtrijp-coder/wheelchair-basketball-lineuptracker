@@ -1,4 +1,4 @@
-import { useState } from 'preact/hooks';
+import { useEffect, useState } from 'preact/hooks';
 import type { CompletedGame } from '../../domain/game/types';
 import { combinedCsvForGame, csvFilenameFor } from '../../domain/game/csv';
 import { segmentTurnovers } from '../../domain/game/tracking';
@@ -11,6 +11,7 @@ import {
 import { shareOrDownloadCsv } from '../../infrastructure/game/shareOrDownloadCsv';
 import { translate, type Lang, type StringKey } from '../../i18n/strings';
 import { CorrectSegmentDialog, describeCorrectableFields } from './CorrectSegmentDialog';
+import { DiscardLocalCorrectionDialog } from './DiscardLocalCorrectionDialog';
 import { SyncStatusIndicator } from '../sync/SyncStatusIndicator';
 import type { SyncState, SyncStatus } from '../../domain/syncState';
 import type { CorrectionSyncStatus } from '../../application/game/CompletedGameRepository';
@@ -110,10 +111,17 @@ export interface HistoryPanelProps {
   /**
    * PR 7.6a: bewuste "Opnieuw proberen" voor een mislukte/niet-goedgekeurde
    * correctie-upload (`CompletedGameRepository.retryCorrectionUploads`).
-   * Alleen zichtbaar voor `canWrite`. `conflict` heeft hier bewust geen actie
-   * (verwerpen volgt in PR 7.6b).
+   * Alleen zichtbaar voor `canWrite`. `conflict` heeft hier bewust geen
+   * "Opnieuw proberen" (zie `onDiscardLocalCorrection`).
    */
   onRetryCorrectionUploads?: () => void;
+  /**
+   * PR 7.6b: verwerpt bewust de lokale kopie van wedstrijd `id`
+   * (`CompletedGameRepository.discardLocalCorrection`; `false` = mislukt, er is
+   * niets gewijzigd). Alleen zichtbaar bij status `conflict` en `canWrite`, en
+   * pas na een bevestigingsdialoog. `undefined` = geen verwerp-actie.
+   */
+  onDiscardLocalCorrection?: (id: string) => boolean;
 }
 
 /** PR 7.6a, plan §D.2: één indicator per wedstrijd. */
@@ -181,10 +189,22 @@ export function HistoryPanel({
   correctionStatuses,
   correctionBlockedIds,
   onRetryCorrectionUploads,
+  onDiscardLocalCorrection,
 }: HistoryPanelProps) {
   const [correctingId, setCorrectingId] = useState<string | null>(null);
   const [correctionSaved, setCorrectionSaved] = useState(false);
+  const [discardConfirmOpen, setDiscardConfirmOpen] = useState(false);
+  const [discardFailed, setDiscardFailed] = useState(false);
   const open = openId != null ? games.find((g) => g.id === openId) : undefined;
+  const openIsConflict = open != null && correctionStatuses?.[open.id] === 'conflict';
+
+  // Een bevestiging hoort bij één conflict: verdwijnt het conflict (of wisselt de
+  // geopende wedstrijd), dan begint de volgende keer weer zonder open dialoog.
+  const openGameId = open?.id ?? null;
+  useEffect(() => {
+    setDiscardConfirmOpen(false);
+    setDiscardFailed(false);
+  }, [openGameId, openIsConflict]);
 
   const errorBanner = saveError ? (
     <p className="settings-error" role="alert" data-testid="history-save-error">
@@ -267,6 +287,8 @@ export function HistoryPanel({
       onRetryCorrectionUploads != null &&
       (correctionStatus === 'actie-nodig' ||
         (correctionStatus === 'lokaal-beschikbaar' && !correctionBlocked));
+    const canDiscard =
+      canWrite && onDiscardLocalCorrection != null && correctionStatus === 'conflict';
     const correctingSegment =
       canCorrect && correctingId != null
         ? open.segments.find((seg) => seg.id === correctingId)
@@ -336,6 +358,24 @@ export function HistoryPanel({
           <p className="settings-error" role="status" data-testid="history-correction-conflict">
             {t(lang, 'correctionConflictMessage')}
           </p>
+        ) : null}
+        {canDiscard ? (
+          <>
+            <p className="segment-list__hint" data-testid="history-correction-discard-hint">
+              {t(lang, 'correctionDiscardHint')}
+            </p>
+            <button
+              type="button"
+              className="btn-danger"
+              data-testid="history-correction-discard-btn"
+              onClick={() => {
+                setDiscardFailed(false);
+                setDiscardConfirmOpen(true);
+              }}
+            >
+              {t(lang, 'correctionDiscardLocal')}
+            </button>
+          </>
         ) : null}
         {canWrite && correctionHintKey != null ? (
           <p className="segment-list__hint" data-testid="history-correction-hint">
@@ -448,6 +488,25 @@ export function HistoryPanel({
               return ok;
             }}
             onClose={() => setCorrectingId(null)}
+          />
+        ) : null}
+        {canDiscard && discardConfirmOpen ? (
+          <DiscardLocalCorrectionDialog
+            lang={lang}
+            failed={discardFailed}
+            onCancel={() => {
+              setDiscardConfirmOpen(false);
+              setDiscardFailed(false);
+            }}
+            onConfirm={() => {
+              if (onDiscardLocalCorrection(open.id)) {
+                setDiscardConfirmOpen(false);
+                setDiscardFailed(false);
+                setCorrectionSaved(false);
+              } else {
+                setDiscardFailed(true);
+              }
+            }}
           />
         ) : null}
         <button

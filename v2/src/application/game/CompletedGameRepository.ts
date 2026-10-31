@@ -166,4 +166,15 @@ export interface CompletedGameRepository {
    * `conflict` wordt hiermee bewust NIET opgelost of overschreven.
    */
   retryCorrectionUploads?(): void;
+  /**
+   * PR 7.6b: optioneel — alleen `CompositeCompletedGameRepository`. Verwerpt
+   * bewust UITSLUITEND de lokale kopie van `id` (bijv. na een `conflict`);
+   * de cloud wordt nooit aangeraakt (geen tombstone, geen write). Alleen
+   * toegestaan als er een niet-getombstoned cloudkopie van dezelfde
+   * organisatie/team bestaat: de cloudversie verschijnt daarna weer als
+   * cloud-only wedstrijd. `false` (en niets gewijzigd) zonder zo'n cloudkopie,
+   * bij een onbekend id of bij een opslagfout. Wist de correctiestatus en
+   * -toestemmingen van die wedstrijd en notificeert `subscribe()`-luisteraars.
+   */
+  discardLocalCorrection?(id: string): boolean;
 }

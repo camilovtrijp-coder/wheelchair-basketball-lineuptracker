@@ -372,6 +372,44 @@ export class CompositeCompletedGameRepository implements CompletedGameRepository
   }
 
   /**
+   * PR 7.6b (docs/pr-7.6-plan.md §D.3): verwerpt bewust ALLEEN de lokale kopie
+   * van wedstrijd `id`, bijv. na een `conflict`. Raakt de cloud nooit aan: geen
+   * tombstone, geen write, geen gateway-aanroep. De cloudversie verschijnt
+   * daarna via `mergeGames()` weer als cloud-only wedstrijd en kan opnieuw
+   * gecorrigeerd worden. Zonder niet-getombstoned cloudkopie van dezelfde
+   * organisatie/team (of bij een onbekend id, een lopende upload of een
+   * opslagfout) gebeurt er niets en is het resultaat `false`: anders raakt de
+   * gebruiker de enige kopie kwijt of ontstaat een halve toestand.
+   */
+  discardLocalCorrection(id: string): boolean {
+    const localResult = this.readLocal();
+    if (localResult.status === 'error') return false;
+    const localGame = localResult.games.find((g) => g.id === id);
+    if (!localGame) return false;
+    const cloud = this.cloudGames.find((g) => g.id === id);
+    if (
+      !cloud ||
+      cloud.deletedAt != null ||
+      cloud.organizationId !== localGame.organizationId ||
+      cloud.teamId !== localGame.teamId
+    ) {
+      return false;
+    }
+    // Een upload is al onderweg; het eindresultaat zou een verwijderde kopie
+    // weer van een uitkomst voorzien. Eerst laten afronden.
+    if (this.correctionUploading.has(id)) return false;
+    if (!this.local.remove(id)) return false;
+    // Alleen na een geslaagde lokale verwijdering de afgeleide toestand wissen.
+    for (const c of localGame.corrections ?? []) {
+      this.approvedCorrectionIds.delete(c.id);
+      this.confirmedCorrectionIds.delete(c.id);
+    }
+    this.correctionOutcome.delete(id);
+    this.notify();
+    return true;
+  }
+
+  /**
    * PR 7.5c: werkt lokale kopieen bij die achterlopen op de cloud en ruimt
    * verouderde uitkomsten op. Alleen schrijfacties die de 7.5a-regels van
    * `local.update()` toestaan; een weigering laat de lokale data ongemoeid.
