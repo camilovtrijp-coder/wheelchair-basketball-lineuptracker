@@ -28,6 +28,9 @@ import {
  *   teamgemiddelde van dezelfde selectie (`props.lineups.team`). De toon is
  *   altijd symbool + tekst (▲ ● ▼), kleur is nooit de enige aanwijzing. Een
  *   kwart zonder segmenten toont "geen data" zonder waarde en zonder toon.
+ *   Een kwart met minder speeltijd dan de drempel (`minSec`, §E.6) toont alleen
+ *   het ruwe totaal ("+3 in 1:00") met het label "te weinig data": geen
+ *   waarde per 10, geen balk en geen toon.
  * - Kaart "Minuten per kwart per speler": tabel met m:ss per cel; de
  *   schaduw (donkerder = meer minuten) is alleen versterking. Spelers zonder
  *   speeltijd krijgen geen rij. De tabel scrolt horizontaal binnen de
@@ -35,10 +38,10 @@ import {
  * - Het aantal kwarten volgt de data (`quarterCount`), niet een vaste 4.
  *
  * Invoer: `TrendsViewProps`; gelezen worden `lang`, `games`, `gameIds`,
- * `per10`, `roster` en `lineups.team`.
+ * `per10`, `minSec`, `roster` en `lineups.team`.
  */
 export function QuartersView(props: TrendsViewProps) {
-  const { lang, games, gameIds, per10, roster, lineups } = props;
+  const { lang, games, gameIds, per10, minSec, roster, lineups } = props;
 
   const rows = useMemo(() => computeQuarterSplits(games, gameIds), [games, gameIds]);
   const minutes = useMemo(
@@ -61,7 +64,7 @@ export function QuartersView(props: TrendsViewProps) {
   }
 
   const teamPer10 = lineups.team.pmPer10;
-  const withData = rows.filter((r) => r.pmPer10 !== null);
+  const withData = rows.filter((r) => r.pmPer10 !== null && !isLow(r, minSec));
   const max = Math.max(1, ...withData.map((r) => Math.abs(r.pmPer10 ?? 0)));
 
   return (
@@ -95,6 +98,11 @@ export function QuartersView(props: TrendsViewProps) {
   );
 }
 
+/** Kwart met speeltijd, maar onder de drempel (gelijk aan de drempel telt mee). */
+function isLow(r: QuarterRow, minSec: number): boolean {
+  return minSec > 0 && r.seconds > 0 && r.seconds < minSec;
+}
+
 function QuarterItem({
   row: r,
   props,
@@ -106,7 +114,7 @@ function QuarterItem({
   teamPer10: number | null;
   max: number;
 }) {
-  const { lang, per10 } = props;
+  const { lang, per10, minSec } = props;
   const name = fill(t(lang, 'trendsQuartersRowName'), { n: r.quarter });
   const games = fill(t(lang, 'trendsQuartersGames'), { n: r.games });
   const testid = `trends-quarter-${r.quarter}`;
@@ -128,6 +136,43 @@ function QuarterItem({
           >
             {t(lang, 'trendsQuartersNoData')}
           </b>
+        </div>
+      </li>
+    );
+  }
+
+  if (isLow(r, minSec)) {
+    const raw = fill(t(lang, 'trendsLineupLowPm'), {
+      value: fmtSignedInt(r.pm),
+      time: fmtSeconds(r.seconds),
+    });
+    return (
+      <li
+        className="trends-tov-row trends-lineup-row trends-quarter-row"
+        data-testid={testid}
+        data-low="true"
+        aria-label={fill(t(lang, 'trendsFixBQuarterLowAria'), {
+          n: r.quarter,
+          value: fmtSignedInt(r.pm),
+          time: fmtSeconds(r.seconds),
+        })}
+      >
+        <div className="trends-tov-row__top">
+          <span>
+            {name}{' '}
+            <span className="mut2">
+              · {fmtSeconds(r.seconds)} · {games}
+            </span>
+          </span>
+          <b
+            className="trends-tov-row__v trends-tov-row__v--flat"
+            data-testid={`trends-quarter-value-${r.quarter}`}
+          >
+            {raw}
+          </b>
+        </div>
+        <div className="xs mut2" data-testid={`trends-quarter-low-${r.quarter}`}>
+          {t(lang, 'trendsFixBQuarterLow')}
         </div>
       </li>
     );

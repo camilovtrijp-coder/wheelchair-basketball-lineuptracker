@@ -12,12 +12,18 @@ import { fill, fmtSignedInt, t, toneOfDelta, toneSymbol, type Tone } from './tre
  * is het verschil van twee ruisige waarden (zeker met een korte off-kant), dus
  * kleine verschillen worden niet als beter/slechter bestempeld.
  *
- * Getoond wordt alleen een oordeel (toon) als de rij gekwalificeerd is: beide
- * kanten >= de drempel uit de filterbalk (`minSec`) en er zijn off-minuten.
+ * Getoond wordt alleen een oordeel (toon) als de rij gekwalificeerd is: de
+ * on-kant >= de drempel uit de filterbalk (`minSec`), de off-kant >= 10:00
+ * (besluit I.3; `offMinSecFor`) en er zijn off-minuten.
  * Anders: "Speelde alles" (geen off-tijd) of "Te weinig minuten aan een kant"
  * met alleen de ruwe totalen, zonder waarde per 10 en zonder toon.
  */
 export const ON_OFF_FLAT_EPS_PER10 = 1.0;
+
+/** Off-kant van on/off: 0 als de drempel uit staat, anders minstens 10:00 (besluit I.3). */
+export function offMinSecFor(minSec: number): number {
+  return minSec === 0 ? 0 : Math.max(600, minSec);
+}
 
 export function onOffTone(row: OnOffRow): Tone | null {
   if (!row.qualified || row.diffPer10 === null) return null;
@@ -214,7 +220,8 @@ export function OnOffBlock({
           {fill(t(lang, 'trendsPlayersLowHint'), {
             on: onTime,
             off: offTime,
-            min: fmtSeconds(minSec),
+            onMin: fmtSeconds(minSec),
+            offMin: fmtSeconds(offMinSecFor(minSec)),
           })}
         </p>
       ) : null}

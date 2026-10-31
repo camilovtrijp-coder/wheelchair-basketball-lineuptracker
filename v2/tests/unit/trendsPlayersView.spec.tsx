@@ -161,13 +161,12 @@ const toTenMinutes = (q: RenderResult) => fireEvent.click(q.getByTestId('trends-
 describe('Spelers: on/off in de compacte rij (drempel 5:00)', () => {
   it('toont per speler een samenvatting met symbool en tekst', () => {
     const q = renderPlayers();
-    // Speler 4: op +0.7, af +12.0 -> verschil -11.3 -> slechter (▼)
+    // Speler 4: af het veld slechts 5:00; de af-kant vraagt minstens 10:00 (besluit I.3), dus
+    // "te weinig minuten" zonder toon en zonder per-10-waarde (eerder: judged, ▼ slechter).
     const r4 = tid(q, 'trends-players-row-onoff-4');
-    expect(r4.getAttribute('data-kind')).toBe('judged');
-    expect(r4.getAttribute('data-tone')).toBe('bad');
-    expect(text(q, 'trends-players-row-onoff-4')).toContain('▼');
-    expect(text(q, 'trends-players-row-onoff-4')).toContain('Op +0.7 · Af +12.0 per 10');
-    expect(text(q, 'trends-players-row-onoff-4')).toContain('slechter');
+    expect(r4.getAttribute('data-kind')).toBe('low');
+    expect(r4.getAttribute('data-tone')).toBeNull();
+    expect(text(q, 'trends-players-row-onoff-4')).toBe('Op/af: te weinig minuten');
     // Speler 5: op +1.5, af +2.2, verschil -0.7 -> |0.7| < 1.0 -> rond gemiddelde (●)
     expect(text(q, 'trends-players-row-onoff-5')).toContain('Op +1.5 · Af +2.2 per 10');
     expect(tid(q, 'trends-players-row-onoff-5').getAttribute('data-tone')).toBe('flat');
@@ -191,19 +190,30 @@ describe('Spelers: on/off in de compacte rij (drempel 5:00)', () => {
 });
 
 describe('Spelers: blok "Op en af het veld"', () => {
-  it('toont minuten per kant, waarden per 10 en het verschil (speler 4)', () => {
+  it('toont voor speler 4 bij 5:00 alleen ruwe totalen (af-kant 5:00 < 10:00), geen oordeel', () => {
     const q = renderPlayers();
     expand(q, 4);
-    expect(text(q, 'trends-players-on-4')).toBe('+0.7');
-    expect(text(q, 'trends-players-on-min-4')).toBe('per 10 min · 45:00');
-    expect(text(q, 'trends-players-off-4')).toBe('+12.0');
-    expect(text(q, 'trends-players-off-min-4')).toBe('per 10 min · 5:00');
-    expect(text(q, 'trends-players-diff-value-4')).toBe('-11.3');
-    const diff = tid(q, 'trends-players-diff-4');
-    expect(diff.getAttribute('data-tone')).toBe('bad');
+    expect(tid(q, 'trends-players-onoff-4').getAttribute('data-kind')).toBe('low');
+    expect(text(q, 'trends-players-on-4')).toBe('+3 in 45:00');
+    expect(text(q, 'trends-players-off-4')).toBe('+6 in 5:00');
+    expect(q.queryByTestId('trends-players-diff-4')).toBeNull();
+    expect(tid(q, 'trends-players-onoff-4').textContent).toContain('af minimaal 10:00');
+    expect(tid(q, 'trends-players-onoff-4').textContent).toContain('op minimaal 5:00');
+  });
+
+  it('toont minuten per kant, waarden per 10 en het verschil (speler 5: beide kanten ver boven de drempel)', () => {
+    const q = renderPlayers();
+    expand(q, 7);
+    // Speler 7: op 5:00 (= on-drempel), af 45:00: gekwalificeerd, verschil +11,3, beter.
+    expect(text(q, 'trends-players-on-7')).toBe('+12.0');
+    expect(text(q, 'trends-players-off-7')).toBe('+0.7');
+    expect(text(q, 'trends-players-off-min-7')).toBe('per 10 min · 45:00');
+    expect(text(q, 'trends-players-diff-value-7')).toBe('+11.3');
+    const diff = tid(q, 'trends-players-diff-7');
+    expect(diff.getAttribute('data-tone')).toBe('good');
     // Symbool + tekst naast de kleur.
-    expect(diff.textContent).toContain('▼');
-    expect(diff.textContent).toContain('slechter');
+    expect(diff.textContent).toContain('▲');
+    expect(diff.textContent).toContain('beter');
   });
 
   it('toont speler 5 als rond gemiddelde met alle waarden', () => {
@@ -271,7 +281,7 @@ describe('Spelers: blok "Op en af het veld"', () => {
 
   it('gebruikt kleur nooit als enige aanwijzing: elke beoordeelde toon heeft symbool en tekst', () => {
     const q = renderPlayers();
-    for (const n of [4, 5, 6, 7]) {
+    for (const n of [5, 6, 7]) {
       const row = tid(q, `trends-players-row-onoff-${n}`);
       const tone = row.getAttribute('data-tone');
       const symbol = tone === 'good' ? '▲' : tone === 'bad' ? '▼' : '●';
@@ -283,9 +293,13 @@ describe('Spelers: blok "Op en af het veld"', () => {
 
   it('geeft het blok een toegankelijke naam met waarde, minuten en beoordeling', () => {
     const q = renderPlayers();
+    expand(q, 7);
+    expect(tid(q, 'trends-players-onoff-group-7').getAttribute('aria-label')).toBe(
+      'Speler 7: op het veld +12.0 per 10 in 5:00, af het veld +0.7 in 45:00, verschil +11.3, beter',
+    );
     expand(q, 4);
     expect(tid(q, 'trends-players-onoff-group-4').getAttribute('aria-label')).toBe(
-      'Speler 4: op het veld +0.7 per 10 in 45:00, af het veld +12.0 in 5:00, verschil -11.3, slechter',
+      'Speler 4: op het veld +3 in 45:00, af het veld +6 in 5:00, te weinig minuten aan één kant, geen oordeel',
     );
     expand(q, 1);
     expect(tid(q, 'trends-players-onoff-group-1').getAttribute('aria-label')).toBe(
@@ -353,13 +367,14 @@ describe('Spelers: blok "Stints"', () => {
 describe('Spelers: NL en EN', () => {
   it('toont Engelse teksten in de rij, het blok en de aria-label', () => {
     const q = renderPlayers(fixture(), 'en');
-    expect(text(q, 'trends-players-row-onoff-4')).toContain('On +0.7 · Off +12.0 per 10');
-    expect(text(q, 'trends-players-row-onoff-4')).toContain('worse');
+    expect(text(q, 'trends-players-row-onoff-7')).toContain('On +12.0 · Off +0.7 per 10');
+    expect(text(q, 'trends-players-row-onoff-7')).toContain('better');
+    expect(text(q, 'trends-players-row-onoff-4')).toBe('On/off: too few minutes');
     expect(text(q, 'trends-players-row-onoff-1')).toBe('Played all minutes');
     expand(q, 4);
     expect(tid(q, 'trends-players-onoff-4').textContent).toContain('On and off the court');
     expect(tid(q, 'trends-players-onoff-group-4').getAttribute('aria-label')).toBe(
-      'Speler 4: on court +0.7 per 10 in 45:00, off court +12.0 in 5:00, difference -11.3, worse',
+      'Speler 4: on court +3 in 45:00, off court +6 in 5:00, too few minutes on one side, no judgement',
     );
     expect(tid(q, 'trends-players-stints-4').textContent).toContain('Stints');
     expect(tid(q, 'trends-players-stints-warn-4').textContent).toContain('not reliable');

@@ -61,7 +61,7 @@ export const trendsNl = {
   trendsLineupHintPfPa: 'Voor: hoger is beter. Tegen: lager is beter.',
   trendsLineupTeamAvg: 'Teamgemiddelde {value} per 10 min',
   trendsLineupExplain:
-    'Beschrijvend: wat gebeurde er met deze vijf op het veld. Minder dan 5 minuten zegt bijna niets. Per 10 min is geen balbezitcorrectie.',
+    'Beschrijvend: wat gebeurde er met deze vijf op het veld. Weinig minuten zegt bijna niets (drempel nu: {min}). Per 10 min is geen balbezitcorrectie.',
   trendsLineupLegend: '▲ beter dan team · ● rond gemiddelde · ▼ slechter dan team',
   trendsLineupToneBetter: 'beter dan team',
   trendsLineupToneAround: 'rond gemiddelde',
@@ -144,7 +144,7 @@ export const trendsEn = {
   trendsLineupHintPfPa: 'For: higher is better. Against: lower is better.',
   trendsLineupTeamAvg: 'Team average {value} per 10 min',
   trendsLineupExplain:
-    'Descriptive: what happened with these five on court. Under 5 minutes tells you almost nothing. Per 10 min is not a possession adjustment.',
+    'Descriptive: what happened with these five on court. Few minutes tell you almost nothing (threshold now: {min}). Per 10 min is not a possession adjustment.',
   trendsLineupLegend: '▲ better than team · ● around average · ▼ worse than team',
   trendsLineupToneBetter: 'better than team',
   trendsLineupToneAround: 'around average',

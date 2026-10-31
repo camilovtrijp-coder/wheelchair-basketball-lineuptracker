@@ -450,7 +450,7 @@ test.describe('v2 Trends-weergaven (T2/T3)', () => {
     await expect(row).toContainText('rond gemiddelde');
     await expect(row).toHaveAccessibleName('1-2-3-4-5, 7:00, +4.3 per 10 minuten, rond gemiddelde');
     await expect(page.getByTestId('trends-lineup-explain')).toHaveText(
-      'Beschrijvend: wat gebeurde er met deze vijf op het veld. Minder dan 5 minuten zegt bijna niets. Per 10 min is geen balbezitcorrectie.',
+      'Beschrijvend: wat gebeurde er met deze vijf op het veld. Weinig minuten zegt bijna niets (drempel nu: 5:00). Per 10 min is geen balbezitcorrectie.',
     );
     // Voor/Tegen: 13 voor / 10 tegen in 7:00 -> 18.6 en 14.3 per 10.
     await page.getByTestId('trends-metric-pfpa').click();
@@ -567,7 +567,7 @@ test.describe('v2 Trends-weergaven (T2/T3)', () => {
     await expect(page.getByTestId('trends-tab-players')).toHaveText('Players');
     await expect(page.getByTestId('trends-threshold-btn')).toHaveText('Threshold: 5:00');
     await expect(page.getByTestId('trends-lineup-explain')).toHaveText(
-      'Descriptive: what happened with these five on court. Under 5 minutes tells you almost nothing. Per 10 min is not a possession adjustment.',
+      'Descriptive: what happened with these five on court. Few minutes tell you almost nothing (threshold now: 5:00). Per 10 min is not a possession adjustment.',
     );
     await expect(page.getByTestId('trends-lineup-1-2-3-4-5')).toHaveAccessibleName(
       /1-2-3-4-5, 7:00, \+4\.3 per 10 minutes, around average/,

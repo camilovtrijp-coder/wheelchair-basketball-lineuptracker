@@ -108,10 +108,12 @@ test.describe('Turnovers in Statistieken en Trends', () => {
     await expect(page.getByTestId('trends-tov-summary')).toContainText('in 2 wedstrijden');
     await expect(page.getByTestId('trends-tov-per10')).toHaveText('3.3');
     // Migratie T2/T3: de lineup-ranglijst is de metriek Turnovers in de weergave Lineups
-    // (waarde per 10 min vraagt de chip "Per 10 min").
+    // (toont altijd turnovers per 10 min, ook in de standaardstand "Totaal" van de chip).
     await page.getByTestId('trends-tab-lineups').click();
     await page.getByTestId('trends-metric-tov').click();
-    await page.getByTestId('trends-per10-toggle').click();
+    await expect(page.getByTestId('trends-lineup-title')).toHaveText(
+      'Lineups: turnovers per 10 min',
+    );
     await expect(page.getByTestId('trends-tov-lineup-value-1-2-3-4-5')).toHaveText('3.3');
     // Spelers: compacte rijen die uitklappen tot de bestaande kaart.
     await page.getByTestId('trends-tab-players').click();
