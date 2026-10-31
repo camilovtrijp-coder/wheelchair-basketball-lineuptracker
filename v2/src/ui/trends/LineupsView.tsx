@@ -4,9 +4,18 @@ import {
   type LineupTurnoverView,
 } from '../../application/trends/buildTrendViewModels';
 import { fmtPlusMinus, fmtSeconds } from '../../domain/stats/format';
+import { sortByDamped, type ConsistencyRow } from '../../domain/trends/lineupExtras';
 import type { LineupRow } from '../../domain/trends/lineupInsights';
 import type { LineupTurnoverRow } from '../../domain/trends/turnoverSummary';
 import { computeTurnoverSummary } from '../../domain/trends/turnoverSummary';
+import { LineupComboCard } from './LineupComboCard';
+import {
+  LineupConsistencyLine,
+  LineupSortControl,
+  useLineupConsistency,
+  type LineupSort,
+} from './LineupPmExtras';
+import { LineupStartCloseCard } from './LineupStartCloseCard';
 import {
   fill,
   fmtOne,
@@ -53,6 +62,8 @@ const METRICS: readonly { id: Metric; labelKey: Parameters<typeof t>[1] }[] = [
 export function LineupsView(props: TrendsViewProps) {
   const { lang, games, gameIds, per10, minSec, roster, lineups } = props;
   const [metric, setMetric] = useState<Metric>('pm');
+  // T7: sorteervolgorde van de +/--rijen; sessiestate, niet opgeslagen.
+  const [sort, setSort] = useState<LineupSort>('value');
 
   const tracked = useMemo(() => computeTurnoverSummary(games, gameIds).tracked, [games, gameIds]);
   // Turnovers zijn alleen te kiezen als er turnovers zijn bijgehouden (zoals voorheen de kaart).
@@ -61,6 +72,14 @@ export function LineupsView(props: TrendsViewProps) {
     () => (active === 'tov' ? buildLineupTurnoverView(games, gameIds, minSec) : null),
     [active, games, gameIds, minSec],
   );
+
+  // T7: "voorzichtig" sorteert op de gedempte waarde (alleen metriek +/-); de getoonde waarde blijft de gewone.
+  const careful = active === 'pm' && sort === 'careful';
+  const pmOrdered = useMemo(
+    () => (careful ? sortByDamped(lineups.rows) : lineups.rows),
+    [careful, lineups.rows],
+  );
+  const consistency = useLineupConsistency(props, active === 'pm');
 
   const minText = fmtSeconds(minSec);
   const label = (ids: readonly number[]) => lineupLabel(ids, games, roster);
@@ -109,6 +128,9 @@ export function LineupsView(props: TrendsViewProps) {
         <div className="xs mut2" data-testid="trends-lineup-teamavg">
           {teamAverageText(props, active, tovView)}
         </div>
+        {active === 'pm' && rowsCount > 0 ? (
+          <LineupSortControl lang={lang} sort={sort} onChange={setSort} />
+        ) : null}
 
         {rowsCount === 0 && belowCount === 0 ? (
           <p className="xs mut2" data-testid="trends-lineup-empty">
@@ -125,7 +147,7 @@ export function LineupsView(props: TrendsViewProps) {
             data-testid="trends-lineup-list"
           >
             {active === 'pm'
-              ? pmRows(props, lineups.rows, label)
+              ? pmRows(props, pmOrdered, label, consistency)
               : active === 'pfpa'
                 ? pfPaRows(props, lineups.rows, label)
                 : tovRows(props, tovView?.rows ?? [], label)}
@@ -135,6 +157,11 @@ export function LineupsView(props: TrendsViewProps) {
         {rowsCount > 0 ? (
           <p className="xs mut2 trends-legend" data-testid="trends-lineup-legend">
             {t(lang, 'trendsLineupLegend')}
+          </p>
+        ) : null}
+        {active === 'pm' && consistency.size > 0 ? (
+          <p className="xs mut2" data-testid="trends-lineup-consistency-note">
+            {t(lang, 'trendsLineupsExtraConsistencyNote')}
           </p>
         ) : null}
       </div>
@@ -159,7 +186,10 @@ export function LineupsView(props: TrendsViewProps) {
         </details>
       ) : null}
 
-      {/* T7: duo's/trio's (top en bottom 3), start- en sluitlineup en consistentie komen hier. */}
+      {/* T7: extra kaarten onder de lineupkaart (duo's/trio's, start- en sluitlineup). */}
+      <LineupComboCard {...props} />
+      <LineupStartCloseCard {...props} />
+      {/* T7 (consistentie en sorteeroptie) staan in de rijen van de +/--lineupkaart: zie LineupPmExtras.tsx. */}
     </div>
   );
 }
@@ -251,6 +281,7 @@ function pmRows(
   props: TrendsViewProps,
   rows: LineupRow[],
   label: (ids: readonly number[]) => string,
+  consistency: Map<string, ConsistencyRow>,
 ) {
   const { lang, per10, lineups } = props;
   const max = Math.max(1, ...rows.map((r) => Math.abs(r.pmPer10)));
@@ -298,6 +329,11 @@ function pmRows(
             ? ''
             : ` · ${fill(t(lang, 'trendsLineupPer10Of'), { value: fmtPlusMinus(r.pmPer10) })}`}
         </div>
+        <LineupConsistencyLine
+          lang={lang}
+          row={consistency.get(key)}
+          testId={`trends-lineup-consistency-${key}`}
+        />
       </li>
     );
   });

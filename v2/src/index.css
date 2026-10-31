@@ -5,6 +5,7 @@
 @import './styles/turnovers.css';
 @import './styles/turnovers-analysis.css';
 @import './styles/trends-views.css';
+@import './styles/trends-lineups-extra.css';
 
 /* Zonder deze reset telt content-box de padding bovenop een expliciete
    width op (bijv. .app-main), wat op smalle viewports horizontale
