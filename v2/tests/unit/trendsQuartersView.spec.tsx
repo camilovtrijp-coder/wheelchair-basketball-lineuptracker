@@ -227,6 +227,7 @@ describe('Kwarten: minuten per kwart per speler', () => {
     expect(text(q, 'trends-qmin-4-2')).toBe('3:30');
     expect(text(q, 'trends-qmin-4-3')).toBe('0:00');
     expect(text(q, 'trends-qmin-4-4')).toBe('9:00');
+    expect(text(q, 'trends-qmin-4-total')).toBe('22:30'); // 10:00 + 3:30 + 0:00 + 9:00
     expect(text(q, 'trends-qmin-hint')).toContain('per gespeelde wedstrijd');
   });
 
@@ -250,7 +251,7 @@ describe('Kwarten: minuten per kwart per speler', () => {
     const heads = [...q.getByTestId('trends-qmin-table').querySelectorAll('thead th')].map(
       (th) => th.textContent,
     );
-    expect(heads).toEqual(['Speler', 'K1', 'K2', 'K3', 'K4']);
+    expect(heads).toEqual(['Speler', 'K1', 'K2', 'K3', 'K4', 'Totaal']);
     expect(q.getByTestId('trends-qmin-table').querySelector('abbr')?.getAttribute('title')).toBe(
       'Kwart 1',
     );
@@ -278,7 +279,7 @@ describe('Kwarten: lege staat en aantal kwarten', () => {
     expect(text(q, 'trends-quarter-value-1')).toBe('+4');
     expect(text(q, 'trends-quarter-value-2')).toBe('-4');
     expect(text(q, 'trends-qmin-1-1')).toBe('15:00');
-    expect(q.getByTestId('trends-qmin-table').querySelectorAll('thead th').length).toBe(3);
+    expect(q.getByTestId('trends-qmin-table').querySelectorAll('thead th').length).toBe(4);
   });
 
   it('volgt quarterCount = 6: zes rijen, kwarten zonder data tonen "geen data"', () => {
@@ -293,7 +294,7 @@ describe('Kwarten: lege staat en aantal kwarten', () => {
     expect(q.getByTestId('trends-quarters-list').querySelectorAll('li').length).toBe(6);
     for (const n of [2, 3, 4, 5]) expect(text(q, `trends-quarter-value-${n}`)).toBe('geen data');
     expect(aria(q, 'trends-quarter-6')).toContain('Kwart 6, 5:00');
-    expect(q.getByTestId('trends-qmin-table').querySelectorAll('thead th').length).toBe(7);
+    expect(q.getByTestId('trends-qmin-table').querySelectorAll('thead th').length).toBe(8);
   });
 });
 
@@ -314,7 +315,7 @@ describe('Kwarten: Engels en tokens', () => {
       [...q.getByTestId('trends-qmin-table').querySelectorAll('thead th')].map(
         (x) => x.textContent,
       ),
-    ).toEqual(['Player', 'Q1', 'Q2', 'Q3', 'Q4']);
+    ).toEqual(['Player', 'Q1', 'Q2', 'Q3', 'Q4', 'Total']);
   });
 
   it('lege staat in het Engels', () => {

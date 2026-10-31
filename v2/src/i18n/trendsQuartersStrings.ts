@@ -26,10 +26,11 @@ export const trendsQuartersNl = {
     '▲ positief · ● rond 0 (minder dan 0,5 per 10 min) · ▼ negatief. De toon volgt het teken van +/- per 10 min; het verschil met het team staat er klein bij. Beschrijvend: per 10 min is geen balbezitcorrectie.',
   trendsQuartersMinTitle: 'Minuten per kwart per speler',
   trendsQuartersMinHint:
-    'Gemiddeld per gespeelde wedstrijd van de speler (m:ss). Donkerder = meer minuten; de tijden staan er altijd bij.',
+    'Gemiddeld per gespeelde wedstrijd van de speler (m:ss); Totaal is de som van de kwarten. Donkerder = meer minuten; de tijden staan er altijd bij.',
   trendsQuartersMinRegion:
     'Tabel met gemiddelde minuten per kwart per speler, horizontaal scrollbaar',
   trendsQuartersColPlayer: 'Speler',
+  trendsQuartersColTotal: 'Totaal',
   trendsQuartersColShort: 'K{n}',
   trendsQuartersColFull: 'Kwart {n}',
   trendsQuartersMinNone: 'Geen speler met speeltijd in deze selectie.',
@@ -58,9 +59,10 @@ export const trendsQuartersEn = {
     '▲ positive · ● around zero (less than 0.5 per 10 min) · ▼ negative. The tone follows the sign of +/- per 10 min; the difference with the team is shown in small text. Descriptive: per 10 min is not a possession adjustment.',
   trendsQuartersMinTitle: 'Minutes per quarter per player',
   trendsQuartersMinHint:
-    'Average per game the player played (m:ss). Darker = more minutes; the times are always shown.',
+    'Average per game the player played (m:ss); Total is the sum of the quarters. Darker = more minutes; the times are always shown.',
   trendsQuartersMinRegion: 'Table of average minutes per quarter per player, scrolls horizontally',
   trendsQuartersColPlayer: 'Player',
+  trendsQuartersColTotal: 'Total',
   trendsQuartersColShort: 'Q{n}',
   trendsQuartersColFull: 'Quarter {n}',
   trendsQuartersMinNone: 'No player with playing time in this selection.',

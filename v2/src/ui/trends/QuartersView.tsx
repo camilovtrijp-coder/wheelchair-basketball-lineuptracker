@@ -265,6 +265,10 @@ function MinutesCard({
     .filter((p) => minutes.has(p.id))
     .sort((a, b) => (parseInt(a.nr, 10) || 0) - (parseInt(b.nr, 10) || 0) || a.id - b.id);
   const maxSec = Math.max(1, ...players.flatMap((p) => minutes.get(p.id)!.map((c) => c.avgSec)));
+  // Totaal = som van de kwartgemiddelden; elk kwart deelt dezelfde noemer
+  // (gespeelde wedstrijden van de speler), dus dit is de gemiddelde totale speeltijd.
+  const totalOf = (id: number) => minutes.get(id)!.reduce((sum, c) => sum + c.avgSec, 0);
+  const maxTotal = Math.max(1, ...players.map((p) => totalOf(p.id)));
 
   return (
     <div className="card trends-qmin" data-testid="trends-qmin-card">
@@ -297,6 +301,9 @@ function MinutesCard({
                     </abbr>
                   </th>
                 ))}
+                <th scope="col" className="trends-qmin__total" data-testid="trends-qmin-total-head">
+                  {t(lang, 'trendsQuartersColTotal')}
+                </th>
               </tr>
             </thead>
             <tbody>
@@ -320,6 +327,15 @@ function MinutesCard({
                       </td>
                     );
                   })}
+                  <td
+                    className="trends-qmin__cell trends-qmin__total"
+                    data-testid={`trends-qmin-${p.id}-total`}
+                    style={{
+                      background: `color-mix(in srgb, var(--lt-color-accent) ${Math.round((totalOf(p.id) / maxTotal) * 40)}%, transparent)`,
+                    }}
+                  >
+                    {fmtSeconds(Math.round(totalOf(p.id)))}
+                  </td>
                 </tr>
               ))}
             </tbody>

@@ -32,7 +32,7 @@
 
 .trends-panel .trends-qmin__table {
   width: 100%;
-  min-width: 18rem;
+  min-width: 22rem;
   border-collapse: collapse;
   font-size: var(--lt-font-size-sm);
   font-variant-numeric: tabular-nums;
@@ -74,4 +74,10 @@
 .trends-panel .trends-qmin__table tbody tr:last-child th,
 .trends-panel .trends-qmin__table tbody tr:last-child td {
   border-bottom: 0;
+}
+
+/* Totaalkolom: licht afgescheiden en vet, zodat hij naast de kwarten leesbaar blijft. */
+.trends-panel .trends-qmin__table .trends-qmin__total {
+  border-left: 1px solid var(--lt-color-border);
+  font-weight: 700;
 }
