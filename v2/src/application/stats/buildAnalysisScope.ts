@@ -94,5 +94,6 @@ function toAnalysisGame(game: CompletedGame): AnalysisGame {
     scoreFor: game.scoreFor,
     scoreAgainst: game.scoreAgainst,
     isCurrent: false,
+    quarterCount: game.quarterCount,
   };
 }

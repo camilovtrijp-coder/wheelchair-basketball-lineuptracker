@@ -24,6 +24,13 @@ export interface AnalysisGame {
   scoreFor: number;
   scoreAgainst: number;
   isCurrent: boolean;
+  /**
+   * Optioneel (additief): aantal kwarten/periodes van de wedstrijd, overgenomen
+   * uit `CompletedGame.quarterCount`. Ontbreekt voor de actieve wedstrijd (de
+   * scope-bouwer kent de instellingen niet); consumenten vallen dan terug op 4
+   * of het hoogste voorkomende segmentkwart.
+   */
+  quarterCount?: number;
 }
 
 /**
