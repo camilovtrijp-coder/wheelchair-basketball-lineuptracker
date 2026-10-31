@@ -781,6 +781,18 @@ onveranderlijk"; implementatie per sub-PR op eigen branch.
 - Uitrolvolgorde: eerst de Firestore Rules publiceren, daarna pas clients met
   cloudcorrecties.
 
+### Trends: lineup-analyse (T1 tot en met T7)
+
+Voorbereidingsplan: [`docs/pr-trends-lineups-plan.md`](pr-trends-lineups-plan.md).
+**Status: goedgekeurd (2026-10-31)** als producttrack buiten de eerdere fasen;
+implementatie per stap op een eigen branch, daarna één bundel-PR.
+
+- +/- en voor/tegen per lineup met drempel (5:00 totaal) en groep "Te weinig data";
+- Trends opnieuw ingedeeld in Overzicht | Lineups | Spelers | Kwarten;
+- on/off per speler, kwarten en minuten per kwart, classificatieprofiel en
+  datakwaliteit, plus de Could-onderdelen uit het plan;
+- geen wijziging van bestaande berekeningen, CSV-contract of localStorage-keys.
+
 ### Stabiliteitsfix game-sync: onbevestigde writes in de lokale weergave
 
 Opvolging van de flaky e2e-auth-suite (geen nieuwe roadmap-PR; branch
