@@ -10,7 +10,7 @@
 // `redactedAt`, `revision + 1`, en niet twee keer.
 
 import { beforeAll, afterAll, beforeEach, describe, it, expect } from 'vitest';
-import { doc, getDoc, updateDoc, deleteDoc, serverTimestamp, Timestamp } from 'firebase/firestore';
+import { doc, getDoc, updateDoc, deleteDoc, deleteField, serverTimestamp, Timestamp } from 'firebase/firestore';
 import type { RulesTestEnvironment } from '@firebase/rules-unit-testing';
 import { createTestEnv, assertSucceeds, assertFails, authCtx, withAdmin } from './helpers/testEnv.js';
 import { ORG_A, ORG_B, TEAM_A1, USERS, sampleCompletedGame } from './helpers/fixtures.js';
@@ -235,6 +235,82 @@ describe('completedGames: redactie na 90 dagen', () => {
     await seedTombstoned(120);
     await assertFails(
       updateDoc(ref(ownerDb()), redactionPatch({ deletedAt: null, deletedBy: null })),
+    );
+  });
+});
+
+// Fix review PR #134 (7.5c): een gecorrigeerde wedstrijd draagt `corrections`
+// (met `by`-uid's en vóór/ná-getallen) en `correctedAt`. Die horen bij de
+// persoonsgegevens/getallen die de redactie na 90 dagen moet wissen.
+describe('completedGames: redactie van een gecorrigeerde, getombstonede wedstrijd', () => {
+  const LOGITEM = {
+    id: 'corr-1',
+    segmentId: 'seg-1',
+    segmentIndex: 0,
+    at: '2026-02-01T10:00:00.000Z',
+    by: USERS.carol.uid,
+    before: { quarter: 1, beginSec: 600, endSec: 480, pf: 4, pa: 2, tov: 0 },
+    after: { quarter: 1, beginSec: 600, endSec: 420, pf: 7, pa: 2, tov: 2 },
+  };
+  const gecorrigeerd = { corrections: [LOGITEM], correctedAt: dagenGeleden(200) };
+
+  async function leesDoc() {
+    return (await assertSucceeds(getDoc(ref(ownerDb())))).data()!;
+  }
+
+  it('owner mag corrections leegmaken en correctedAt op null zetten', async () => {
+    await seedTombstoned(120, gecorrigeerd);
+    await assertSucceeds(
+      updateDoc(ref(ownerDb()), redactionPatch({ corrections: [], correctedAt: null })),
+    );
+    const na = await leesDoc();
+    expect(na.corrections).toEqual([]);
+    expect(na.correctedAt).toBeNull();
+    expect(JSON.stringify(na)).not.toContain(USERS.carol.uid);
+  });
+
+  it('owner mag corrections en correctedAt ook verwijderen (deleteField)', async () => {
+    await seedTombstoned(120, gecorrigeerd);
+    await assertSucceeds(
+      updateDoc(ref(ownerDb()), redactionPatch({ corrections: deleteField(), correctedAt: deleteField() })),
+    );
+    const na = await leesDoc();
+    expect(na).not.toHaveProperty('corrections');
+    expect(na).not.toHaveProperty('correctedAt');
+  });
+
+  it('weigert een redactie die corrections laat staan (uid in `by` blijft bewaard)', async () => {
+    await seedTombstoned(120, gecorrigeerd);
+    await assertFails(updateDoc(ref(ownerDb()), redactionPatch({ correctedAt: null })));
+  });
+
+  it('weigert een redactie die correctedAt laat staan', async () => {
+    await seedTombstoned(120, gecorrigeerd);
+    await assertFails(updateDoc(ref(ownerDb()), redactionPatch({ corrections: [] })));
+  });
+
+  it('weigert een redactie met een niet-lege corrections-lijst of een nieuw correctedAt', async () => {
+    await seedTombstoned(120, gecorrigeerd);
+    await assertFails(
+      updateDoc(ref(ownerDb()), redactionPatch({ corrections: [LOGITEM], correctedAt: null })),
+    );
+    await assertFails(
+      updateDoc(ref(ownerDb()), redactionPatch({ corrections: [], correctedAt: serverTimestamp() })),
+    );
+  });
+
+  it('redactie van een tombstone zonder correcties blijft ongewijzigd mogelijk', async () => {
+    await seedTombstoned(120);
+    await assertSucceeds(updateDoc(ref(ownerDb()), redactionPatch()));
+  });
+
+  it('niet-owner mag een gecorrigeerde tombstone nog steeds niet redigeren', async () => {
+    await seedTombstoned(120, gecorrigeerd);
+    await assertFails(
+      updateDoc(
+        ref(authCtx(env, USERS.bob.uid, CLAIMS.bob)),
+        redactionPatch({ corrections: [], correctedAt: null }),
+      ),
     );
   });
 });

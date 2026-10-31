@@ -383,11 +383,13 @@ export const FIRESTORE_ACCESS_MATRIX: readonly FirestoreAccessMatrixEntry[] = [
       delete: [],
     },
     conditions:
-      "Create-only immutable game payload; update is either the tombstone patch (owner/admin/coach, revision/deletedBy checks, deletedAt == request.time) " +
-      "or, owner-only, the redaction of a tombstone older than 90 days (personal data cleared, deletedAt kept, redactedAt == request.time, once); hard delete denied.",
+      "Create-only game payload; update is either the tombstone patch (owner/admin/coach, revision/deletedBy checks, deletedAt == request.time), " +
+      "the single-segment correction (owner/admin/coach, not tombstoned, revision +1, correctedAt == request.time, log grows by exactly one item, only that segment's time/score/turnovers change) " +
+      "or, owner-only, the redaction of a tombstone older than 90 days (personal data cleared incl. the correction log and correctedAt, deletedAt kept, redactedAt == request.time, once); hard delete denied.",
     evidence: [
       "tests/rules/completed-games.spec.ts",
       "tests/rules/completed-games-redaction.spec.ts",
+      "tests/rules/completed-games-correction.spec.ts",
       "tests/rules/pilot-reads-writes-completed-games.spec.ts",
       "tests/rules/cross-org-isolation.spec.ts",
     ],

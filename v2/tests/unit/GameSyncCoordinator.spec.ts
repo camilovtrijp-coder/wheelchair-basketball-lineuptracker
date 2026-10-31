@@ -194,6 +194,9 @@ function mockGateway(script: GatewayScript): GameCloudGateway & {
         ? script.finalizeCompletedGame(completedGameId, snapshot, expectedRevision)
         : { ok: true, revision: expectedRevision + 1, completedGameId };
     },
+    async correctCompletedGame() {
+      return { ok: true };
+    },
     async tombstoneCompletedGame(_org, _team, _completedGameId, _deletedBy, expectedRevision) {
       return { ok: true, revision: expectedRevision + 1 };
     },
@@ -506,6 +509,7 @@ describe('application/game/GameSyncCoordinator (PR 7.1c)', () => {
       patchSnapshot,
       finalizeCompletedGame,
       tombstoneCompletedGame,
+      correctCompletedGame: vi.fn(async () => ({ ok: true })),
       subscribeToGame: () => () => undefined,
     };
     const coordinator = new GameSyncCoordinator({ gateway, checkpoints });
