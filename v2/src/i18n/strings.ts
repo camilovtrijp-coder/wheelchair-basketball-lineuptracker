@@ -205,6 +205,8 @@ const nl = {
   correctionDiscardLocal: 'Mijn lokale versie verwerpen',
   correctionDiscardHint:
     'Alleen de kopie op dit apparaat wordt verwijderd. De versie van het team blijft bestaan en komt terug.',
+  correctionDiscardHintActionNeeded:
+    'Deze correctie is mogelijk door een andere gebruiker op dit apparaat gemaakt of kon niet worden geüpload. Verwerpen verwijdert alleen de kopie op dit apparaat en brengt de versie van het team terug.',
   correctionDiscardConfirmTitle: 'Lokale versie verwerpen?',
   correctionDiscardConfirm:
     'Alleen de kopie van deze wedstrijd op dit apparaat wordt verwijderd; de versie van het team blijft ongewijzigd en komt terug. Een lokale correctie die nog niet is geüpload gaat verloren. Daarna kun je de wedstrijd opnieuw corrigeren.',
@@ -1079,6 +1081,8 @@ const en = {
   correctionDiscardLocal: 'Discard my local version',
   correctionDiscardHint:
     'Only the copy on this device is removed. The team version stays as it is and comes back.',
+  correctionDiscardHintActionNeeded:
+    'This correction may have been made by another user on this device, or it could not be uploaded. Discarding only removes the copy on this device and brings back the team version.',
   correctionDiscardConfirmTitle: 'Discard local version?',
   correctionDiscardConfirm:
     'Only the copy of this game on this device is removed; the team version is not changed and comes back. A local correction that has not been uploaded is lost. Afterwards you can correct the game again.',

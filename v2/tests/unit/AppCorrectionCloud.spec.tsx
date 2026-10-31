@@ -155,6 +155,8 @@ class FakeCompositeRepo implements CompletedGameRepository {
   public updateCalls: CompletedGame[] = [];
   public statusCalls = 0;
   public retry = vi.fn();
+  /** ID's met een server-bevestigde cloudkopie (`hasConfirmedCloudCopy`). */
+  public confirmedCloud = new Set<string>();
   private listener: Listener | null = null;
 
   constructor(games: CompletedGame[]) {
@@ -198,6 +200,9 @@ class FakeCompositeRepo implements CompletedGameRepository {
   }
   retryCorrectionUploads(): void {
     this.retry();
+  }
+  hasConfirmedCloudCopy(id: string): boolean {
+    return this.confirmedCloud.has(id);
   }
   emit(): void {
     this.listener?.(this.safeList(), SYNCED);
@@ -336,13 +341,13 @@ describe('app/App — correctie in cloudmodus (PR 7.6a): herstelacties', () => {
     expect(repo.retry).toHaveBeenCalledTimes(1);
   });
 
-  it('lokaal-beschikbaar met correctie: ook een "Opnieuw proberen"', async () => {
+  it('lokaal-beschikbaar met correctie (geen cloudkopie): geen nutteloze "Opnieuw proberen" en geen onjuiste hint', async () => {
     const repo = new FakeCompositeRepo([game('cg-1', true)]);
     repo.statuses.set('cg-1', 'lokaal-beschikbaar');
     const q = renderApp(repo);
     await openDetail(q, 'cg-1');
-    fireEvent.click(q.getByTestId('history-correction-retry-btn'));
-    expect(repo.retry).toHaveBeenCalledTimes(1);
+    expect(q.queryByTestId('history-correction-retry-btn')).toBeNull();
+    expect(q.queryByTestId('history-correction-hint')).toBeNull();
   });
 
   it('conflict: alleen de melding, geen retry- of verwerp-knop', async () => {
@@ -512,6 +517,83 @@ describe('app/App — correctie in cloudmodus (PR 7.6a): afronding nog niet beve
   });
 });
 
+describe('app/App — lokale kopie zonder checkpoint met bevestigde cloudkopie (review PR #136)', () => {
+  function gameSyncWithoutCheckpoint(): GameSyncCoordinator {
+    return {
+      async ensureWriterClaim() {
+        return {
+          kind: 'confirmed' as const,
+          identity: { writerUid: writer.authorUid, deviceId: writer.deviceId, writerEpoch: 0 },
+        };
+      },
+      // Zonder lokaal checkpoint leest de echte coordinator 'lokaal-beschikbaar'.
+      readFinalizeStatus: () => 'lokaal-beschikbaar' as const,
+      finalize: vi.fn(() => new Promise<never>(() => undefined)),
+    } as unknown as GameSyncCoordinator;
+  }
+
+  function seedLocal(g: CompletedGame) {
+    window.localStorage.setItem(completedGamesStorageKey(ORG_ID, TEAM_ID), JSON.stringify([g]));
+  }
+
+  it('na een correctie op een cloud-only wedstrijd: indicator gesynchroniseerd en segmenten aantikbaar', async () => {
+    const g = game('cg-1', true);
+    seedLocal(g);
+    const repo = new FakeCompositeRepo([g]);
+    repo.statuses.set('cg-1', 'gesynchroniseerd');
+    repo.confirmedCloud.add('cg-1');
+    const q = renderApp(repo, { gameSync: gameSyncWithoutCheckpoint() });
+    await openDetail(q, 'cg-1');
+    await waitFor(() =>
+      expect(q.getByTestId('history-sync-status-cg-1').getAttribute('data-status')).toBe(
+        'gesynchroniseerd',
+      ),
+    );
+    expect(q.getByTestId('history-segment-s1').tagName).toBe('BUTTON');
+    expect(q.queryByTestId('history-correction-waiting')).toBeNull();
+  });
+
+  it('zonder bevestigde cloudkopie blijft de wedstrijd lokaal-beschikbaar en geblokkeerd', async () => {
+    const g = game('cg-1', true);
+    seedLocal(g);
+    const repo = new FakeCompositeRepo([g]);
+    repo.statuses.set('cg-1', 'gesynchroniseerd');
+    const q = renderApp(repo, { gameSync: gameSyncWithoutCheckpoint() });
+    await openDetail(q, 'cg-1');
+    expect(q.getByTestId('history-sync-status-cg-1').getAttribute('data-status')).toBe(
+      'lokaal-beschikbaar',
+    );
+    expect(q.getByTestId('history-segment-s1').tagName).toBe('DIV');
+    expect(q.getByTestId('history-correction-waiting')).toBeTruthy();
+  });
+
+  it('een onbevestigde afronding in de outbox deblokkeert niet, ook niet met een cloudkopie (latency-snapshot)', async () => {
+    const g = game('cg-pending');
+    seedLocal(g);
+    window.localStorage.setItem(
+      pendingFinalizeStorageKey(ORG_ID, TEAM_ID),
+      JSON.stringify([{ game: pendingGame(), completed: g }]),
+    );
+    const repo = new FakeCompositeRepo([g]);
+    repo.confirmedCloud.add('cg-pending');
+    const q = renderApp(repo, { gameSync: gameSyncWithoutCheckpoint() });
+    await openDetail(q, 'cg-pending');
+    expect(q.getByTestId('history-segment-s1').tagName).toBe('DIV');
+    expect(q.getByTestId('history-correction-waiting')).toBeTruthy();
+  });
+
+  it('een cloudkopie met eigen onbevestigde write (hasConfirmedCloudCopy=false) deblokkeert niet', async () => {
+    const g = game('cg-1', true);
+    seedLocal(g);
+    const repo = new FakeCompositeRepo([g]);
+    repo.statuses.set('cg-1', 'gesynchroniseerd');
+    // confirmedCloud leeg = cloudkopie ontbreekt of is pending.
+    const q = renderApp(repo, { gameSync: gameSyncWithoutCheckpoint() });
+    await openDetail(q, 'cg-1');
+    expect(q.getByTestId('history-segment-s1').tagName).toBe('DIV');
+  });
+});
+
 describe('app/App — correctie in cloudmodus (PR 7.6a): geen herhaalde afleiding', () => {
   it('statusafleiding gebeurt per notificatie, alleen voor gecorrigeerde wedstrijden, en niet in een lus', async () => {
     const repo = new FakeCompositeRepo([game('cg-1', true), game('cg-2'), game('cg-3', true)]);
@@ -564,8 +646,8 @@ describe('app/App — correctieconflict, lokale versie verwerpen (PR 7.6b, plan 
     );
     // Andere statussen: geen verwerp-knop.
     for (const status of [
-      'actie-nodig',
       'wacht-op-synchronisatie',
+      'gesynchroniseerd',
       'lokaal-beschikbaar',
     ] as const) {
       repo.statuses.set('cg-1', status);
@@ -579,6 +661,76 @@ describe('app/App — correctieconflict, lokale versie verwerpen (PR 7.6b, plan 
     await openDetail(viewer, 'cg-1');
     expect(viewer.getByTestId('history-correction-conflict')).toBeTruthy();
     expect(viewer.queryByTestId('history-correction-discard-btn')).toBeNull();
+  });
+
+  it('actie-nodig (HOOG-2): knop met eigen uitleg voor canWrite; niet voor viewer of scorer', async () => {
+    const repo = conflictRepo();
+    repo.statuses.set('cg-1', 'actie-nodig');
+    const q = renderApp(repo);
+    await openDetail(q, 'cg-1');
+    expect(q.getByTestId('history-correction-discard-btn').textContent).toBe(
+      'Mijn lokale versie verwerpen',
+    );
+    expect(q.queryByTestId('history-correction-conflict')).toBeNull();
+    const hint = q.getByTestId('history-correction-discard-hint').textContent ?? '';
+    expect(hint).toContain('door een andere gebruiker');
+    expect(hint).toContain('versie van het team');
+    cleanup();
+
+    // Viewer en scorer hebben canWrite=false.
+    const viewer = renderApp(
+      (() => {
+        const r = conflictRepo();
+        r.statuses.set('cg-1', 'actie-nodig');
+        return r;
+      })(),
+      { canWrite: false },
+    );
+    await openDetail(viewer, 'cg-1');
+    expect(viewer.queryByTestId('history-correction-discard-btn')).toBeNull();
+    expect(viewer.queryByTestId('history-correction-discard-hint')).toBeNull();
+  });
+
+  it('actie-nodig: verwerpen werkt en de cloudversie keert terug; bevestigingstekst blijft volledig', async () => {
+    const repo = conflictRepo();
+    repo.statuses.set('cg-1', 'actie-nodig');
+    const q = renderApp(repo);
+    await openDetail(q, 'cg-1');
+    fireEvent.click(q.getByTestId('history-correction-discard-btn'));
+    expect(q.getByTestId('history-correction-discard-text').textContent).toContain(
+      'nog niet is geüpload gaat verloren',
+    );
+    fireEvent.click(q.getByTestId('history-correction-discard-confirm'));
+    expect(repo.discardCalls).toEqual(['cg-1']);
+    await waitFor(() => expect(q.queryByTestId('history-correction-discard-btn')).toBeNull());
+    expect(q.queryByTestId('history-correction-discard-dialog')).toBeNull();
+    expect(q.getByTestId('history-correction-c-theirs')).toBeTruthy();
+    expect(q.queryByTestId('history-correction-c-cg-1')).toBeNull();
+    expect(q.getByTestId('history-sync-status-cg-1').getAttribute('data-status')).toBe(
+      'gesynchroniseerd',
+    );
+  });
+
+  it('actie-nodig: Engelse uitleg', async () => {
+    window.localStorage.setItem('lineup-tracker-lang', 'en');
+    const repo = conflictRepo();
+    repo.statuses.set('cg-1', 'actie-nodig');
+    const q = renderApp(repo);
+    await openDetail(q, 'cg-1');
+    expect(q.getByTestId('history-correction-discard-hint').textContent).toContain('another user');
+  });
+
+  it('focus na succesvol verwerpen staat op de wedstrijdkop, niet op body (a11y)', async () => {
+    const repo = conflictRepo();
+    const q = renderApp(repo);
+    await openDetail(q, 'cg-1');
+    fireEvent.click(q.getByTestId('history-correction-discard-btn'));
+    fireEvent.click(q.getByTestId('history-correction-discard-confirm'));
+    await waitFor(() => expect(q.queryByTestId('history-correction-discard-dialog')).toBeNull());
+    await waitFor(() =>
+      expect(document.activeElement).toBe(q.getByTestId('history-detail-heading')),
+    );
+    expect(document.activeElement).not.toBe(document.body);
   });
 
   it('lokale modus ongewijzigd: geen verwerp-actie', async () => {

@@ -324,4 +324,23 @@ describe('lokale versie verwerpen na een conflict (PR 7.6b, plan §D.3)', () => 
     resolveUpload({ ok: true, revision: 1 });
     await flush();
   });
+
+  it('eigen, onbevestigde cloudwrite (latency-gecompenseerde cloudkopie): false, niets gewijzigd', async () => {
+    const h = harness({ local: [mine()] });
+    h.cloud.emit([theirs()], {
+      status: 'gesynchroniseerd',
+      fromCache: false,
+      hasPendingWrites: true,
+    });
+    await flush();
+    const before = h.seen.length;
+    expect(h.repo.discardLocalCorrection('cg-1')).toBe(false);
+    expect(h.local.list()).toHaveLength(1);
+    expect(h.seen.length).toBe(before);
+    expect(h.writer.tombstoneCompletedGame).not.toHaveBeenCalled();
+    // Zodra de server de write bevestigt, kan verwerpen weer.
+    h.cloud.emit([theirs()], SERVER);
+    await flush();
+    expect(h.repo.discardLocalCorrection('cg-1')).toBe(true);
+  });
 });
