@@ -1,4 +1,4 @@
-import { useState } from 'preact/hooks';
+import { useEffect, useRef, useState } from 'preact/hooks';
 import type { CompletedGame } from '../../domain/game/types';
 import { combinedCsvForGame, csvFilenameFor } from '../../domain/game/csv';
 import { segmentTurnovers } from '../../domain/game/tracking';
@@ -11,8 +11,10 @@ import {
 import { shareOrDownloadCsv } from '../../infrastructure/game/shareOrDownloadCsv';
 import { translate, type Lang, type StringKey } from '../../i18n/strings';
 import { CorrectSegmentDialog, describeCorrectableFields } from './CorrectSegmentDialog';
+import { DiscardLocalCorrectionDialog } from './DiscardLocalCorrectionDialog';
 import { SyncStatusIndicator } from '../sync/SyncStatusIndicator';
 import type { SyncState, SyncStatus } from '../../domain/syncState';
+import type { CorrectionSyncStatus } from '../../application/game/CompletedGameRepository';
 
 export interface HistoryPanelProps {
   lang: Lang;
@@ -92,6 +94,43 @@ export interface HistoryPanelProps {
    * dit specifieke item) valt terug op `'lokaal-beschikbaar'`.
    */
   syncStatuses?: Record<string, SyncStatus>;
+  /**
+   * PR 7.6a: per-`CompletedGame.id` correctiestatus (uit
+   * `CompletedGameRepository.correctionSyncStatus`), uitsluitend gevuld door
+   * `App` in cloudmodus. Ontbrekende sleutel of `null` = nooit gecorrigeerd.
+   * Per wedstrijd verschijnt ÉÉN indicator: de correctiestatus zolang die niet
+   * `gesynchroniseerd`/`null` is, anders de afrondstatus uit `syncStatuses`.
+   */
+  correctionStatuses?: Record<string, CorrectionSyncStatus | null>;
+  /**
+   * PR 7.6a: wedstrijden waarvan de afronding in cloudmodus nog niet
+   * server-bevestigd is. Corrigeren is daarvoor uitgezet (segmenten niet
+   * aantikbaar) met een korte uitleg.
+   */
+  correctionBlockedIds?: ReadonlySet<string>;
+  /**
+   * PR 7.6a: bewuste "Opnieuw proberen" voor een mislukte/niet-goedgekeurde
+   * correctie-upload (`CompletedGameRepository.retryCorrectionUploads`).
+   * Alleen zichtbaar voor `canWrite`. `conflict` heeft hier bewust geen
+   * "Opnieuw proberen" (zie `onDiscardLocalCorrection`).
+   */
+  onRetryCorrectionUploads?: () => void;
+  /**
+   * PR 7.6b: verwerpt bewust de lokale kopie van wedstrijd `id`
+   * (`CompletedGameRepository.discardLocalCorrection`; `false` = mislukt, er is
+   * niets gewijzigd). Alleen zichtbaar bij status `conflict` en `canWrite`, en
+   * pas na een bevestigingsdialoog. `undefined` = geen verwerp-actie.
+   */
+  onDiscardLocalCorrection?: (id: string) => boolean;
+}
+
+/** PR 7.6a, plan §D.2: één indicator per wedstrijd. */
+export function effectiveSyncStatus(
+  correction: CorrectionSyncStatus | null | undefined,
+  finalize: SyncStatus | undefined,
+): CorrectionSyncStatus {
+  if (correction != null && correction !== 'gesynchroniseerd') return correction;
+  return finalize ?? 'lokaal-beschikbaar';
 }
 
 function t(lang: Lang, key: StringKey): string {
@@ -147,10 +186,40 @@ export function HistoryPanel({
   cloudReadError,
   onCorrectGame,
   correctedBy,
+  correctionStatuses,
+  correctionBlockedIds,
+  onRetryCorrectionUploads,
+  onDiscardLocalCorrection,
 }: HistoryPanelProps) {
   const [correctingId, setCorrectingId] = useState<string | null>(null);
   const [correctionSaved, setCorrectionSaved] = useState(false);
+  const [discardConfirmOpen, setDiscardConfirmOpen] = useState(false);
+  const [discardFailed, setDiscardFailed] = useState(false);
   const open = openId != null ? games.find((g) => g.id === openId) : undefined;
+  const openStatusForDiscard = open != null ? correctionStatuses?.[open.id] : undefined;
+  // Verwerpen kan bij een conflict én bij `actie-nodig` (bijv. een correctie van
+  // een andere gebruiker op dit apparaat die Rules weigeren, plan §C/§I).
+  const openCanDiscardStatus =
+    openStatusForDiscard === 'conflict' || openStatusForDiscard === 'actie-nodig';
+  const detailHeadingRef = useRef<HTMLHeadingElement | null>(null);
+  const focusHeadingAfterDiscard = useRef(false);
+
+  // Een bevestiging hoort bij één herstelsituatie: verdwijnt die (of wisselt de
+  // geopende wedstrijd), dan begint de volgende keer weer zonder open dialoog.
+  const openGameId = open?.id ?? null;
+  useEffect(() => {
+    setDiscardConfirmOpen(false);
+    setDiscardFailed(false);
+  }, [openGameId, openStatusForDiscard]);
+
+  // Na succesvol verwerpen is de verwerp-knop weg en zou de focus-restore van de
+  // dialoog op `body` vallen: zet de focus op de wedstrijdkop. Dit effect draait
+  // na de cleanup (focus-restore) van de dialoog in dezelfde commit.
+  useEffect(() => {
+    if (discardConfirmOpen || !focusHeadingAfterDiscard.current) return;
+    focusHeadingAfterDiscard.current = false;
+    detailHeadingRef.current?.focus();
+  }, [discardConfirmOpen, openStatusForDiscard]);
 
   const errorBanner = saveError ? (
     <p className="settings-error" role="alert" data-testid="history-save-error">
@@ -217,7 +286,22 @@ export function HistoryPanel({
     const byId = new Map(open.players.map((p) => [p.id, p]));
     const openTurnovers = sumTurnovers(open.segments);
     const openSeconds = totalSegmentSeconds(open.segments);
-    const canCorrect = canWrite && onCorrectGame != null;
+    const correctionBlocked = correctionBlockedIds?.has(open.id) === true;
+    const canCorrect = canWrite && onCorrectGame != null && !correctionBlocked;
+    const correctionStatus = correctionStatuses?.[open.id] ?? null;
+    const openStatus = effectiveSyncStatus(correctionStatus, syncStatuses?.[open.id]);
+    const correctionHintKey: StringKey | null =
+      correctionStatus === 'actie-nodig'
+        ? 'correctionActionNeededHint'
+        : correctionStatus === 'wacht-op-synchronisatie'
+          ? 'correctionPendingOffline'
+          : null;
+    // Review PR #136: `lokaal-beschikbaar` betekent per definitie "geen cloudkopie";
+    // `retryCorrectionUploads()` slaat zulke wedstrijden over, dus daar valt niets te
+    // herstellen en past ook de "wordt geüpload"-hint niet.
+    const canRetry =
+      canWrite && onRetryCorrectionUploads != null && correctionStatus === 'actie-nodig';
+    const canDiscard = canWrite && onDiscardLocalCorrection != null && openCanDiscardStatus;
     const correctingSegment =
       canCorrect && correctingId != null
         ? open.segments.find((seg) => seg.id === correctingId)
@@ -264,7 +348,7 @@ export function HistoryPanel({
             {t(lang, 'deleteBtn')}
           </button>
         </div>
-        <h2>
+        <h2 ref={detailHeadingRef} tabIndex={-1} data-testid="history-detail-heading">
           {open.opponent || t(lang, 'teamOpponent')}
           {corrections.length > 0 ? (
             <span className="correction-badge" data-testid="history-corrected-badge">
@@ -279,9 +363,57 @@ export function HistoryPanel({
         {syncStatuses ? (
           <SyncStatusIndicator
             lang={lang}
-            status={syncStatuses[open.id] ?? 'lokaal-beschikbaar'}
+            status={openStatus}
             testId={`history-sync-status-${open.id}`}
           />
+        ) : null}
+        {correctionStatus === 'conflict' ? (
+          <p className="settings-error" role="status" data-testid="history-correction-conflict">
+            {t(lang, 'correctionConflictMessage')}
+          </p>
+        ) : null}
+        {canDiscard ? (
+          <>
+            <p className="segment-list__hint" data-testid="history-correction-discard-hint">
+              {t(
+                lang,
+                correctionStatus === 'actie-nodig'
+                  ? 'correctionDiscardHintActionNeeded'
+                  : 'correctionDiscardHint',
+              )}
+            </p>
+            <button
+              type="button"
+              className="btn-danger"
+              data-testid="history-correction-discard-btn"
+              onClick={() => {
+                setDiscardFailed(false);
+                setDiscardConfirmOpen(true);
+              }}
+            >
+              {t(lang, 'correctionDiscardLocal')}
+            </button>
+          </>
+        ) : null}
+        {canWrite && correctionHintKey != null ? (
+          <p className="segment-list__hint" data-testid="history-correction-hint">
+            {t(lang, correctionHintKey)}
+          </p>
+        ) : null}
+        {canRetry ? (
+          <button
+            type="button"
+            className="btn-outline"
+            data-testid="history-correction-retry-btn"
+            onClick={onRetryCorrectionUploads}
+          >
+            {t(lang, 'correctionRetry')}
+          </button>
+        ) : null}
+        {canWrite && onCorrectGame != null && correctionBlocked ? (
+          <p className="segment-list__hint" role="status" data-testid="history-correction-waiting">
+            {t(lang, 'correctionWaitingForFinalize')}
+          </p>
         ) : null}
         <p className="history-turnovers-total" data-testid="history-turnovers-total">
           {t(lang, 'historyTurnoversTotal')}: <strong>{openTurnovers}</strong> ·{' '}
@@ -376,6 +508,26 @@ export function HistoryPanel({
             onClose={() => setCorrectingId(null)}
           />
         ) : null}
+        {canDiscard && discardConfirmOpen ? (
+          <DiscardLocalCorrectionDialog
+            lang={lang}
+            failed={discardFailed}
+            onCancel={() => {
+              setDiscardConfirmOpen(false);
+              setDiscardFailed(false);
+            }}
+            onConfirm={() => {
+              if (onDiscardLocalCorrection(open.id)) {
+                focusHeadingAfterDiscard.current = true;
+                setDiscardConfirmOpen(false);
+                setDiscardFailed(false);
+                setCorrectionSaved(false);
+              } else {
+                setDiscardFailed(true);
+              }
+            }}
+          />
+        ) : null}
         <button
           type="button"
           className="btn-success history-detail__export"
@@ -446,7 +598,7 @@ export function HistoryPanel({
                   {syncStatuses ? (
                     <SyncStatusIndicator
                       lang={lang}
-                      status={syncStatuses[g.id] ?? 'lokaal-beschikbaar'}
+                      status={effectiveSyncStatus(correctionStatuses?.[g.id], syncStatuses[g.id])}
                       testId={`history-sync-status-${g.id}`}
                     />
                   ) : null}

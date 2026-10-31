@@ -47,6 +47,11 @@ import { useGameCloudViewer } from '../ui/game/useGameCloudViewer';
 import { downloadPendingGameActions } from '../infrastructure/game/exportPendingGameActions';
 import { V1MigrationPrompt } from '../ui/game/V1MigrationPrompt';
 import { HistoryPanel } from '../ui/game/HistoryPanel';
+import {
+  deriveCorrectionStatuses,
+  sameCorrectionStatuses,
+  type CorrectionStatusMap,
+} from '../application/game/deriveCorrectionStatuses';
 import { StatsPanel } from '../ui/stats/StatsPanel';
 import { TrendsPanel } from '../ui/trends/TrendsPanel';
 import { BackupPanel } from '../ui/backup/BackupPanel';
@@ -369,6 +374,10 @@ export function App({
   // `completedGames` hieronder intussen nog steeds toont) verder gewoon
   // bruikbaar blijft.
   const [completedGamesCloudError, setCompletedGamesCloudError] = useState(false);
+  // PR 7.6a: correctiestatus per gecorrigeerde wedstrijd (alleen cloudmodus,
+  // via `completedGameRepo.correctionSyncStatus`); ververst bij elke
+  // notificatie van de composite, zie het `subscribe`-effect hieronder.
+  const [correctionStatuses, setCorrectionStatuses] = useState<CorrectionStatusMap>({});
   // PR 6.5 §C.2/§F: het wedstrijdfilter is gedeeld tussen Stats en Trends —
   // één "welke wedstrijden tellen mee"-instelling voor de hele app, i.p.v.
   // twee aparte filters die uit de pas kunnen lopen (v1-pariteit). `null` =
@@ -387,6 +396,7 @@ export function App({
     setStatsGameIds(null);
     setCompletedGamesCloudSync(null);
     setCompletedGamesCloudError(false);
+    setCorrectionStatuses({});
   }, [completedGameRepo]);
 
   // PR 7.2b: abonneert op cloud-gedreven historie-updates (bijv. een
@@ -403,6 +413,12 @@ export function App({
       (result, cloudSync, removedByCloudTombstone) => {
         setCompletedGames(result.games);
         setCompletedGamesCloudSync(cloudSync);
+        // PR 7.6a: statusafleiding bij elke notificatie; zelfde inhoud houdt
+        // dezelfde referentie vast, dus geen extra render of renderlus.
+        const nextStatuses = deriveCorrectionStatuses(completedGameRepo, result.games);
+        setCorrectionStatuses((prev) =>
+          sameCorrectionStatuses(prev, nextStatuses) ? prev : nextStatuses,
+        );
         if (result.status !== 'error') setCompletedGamesCloudError(false);
         // PR 7.2c, externe review op PR #65 (P1): dit apparaat leerde
         // ZOJUIST dat een teamgenoot een wedstrijd verwijderde die híer nog
@@ -1087,6 +1103,11 @@ export function App({
     // een geslaagde serverquery zichtbaar werd). Zulke items zijn per
     // constructie al 'gesynchroniseerd'.
     const localIds = new Set(localCompletedGameRepo.list().map((g) => g.id));
+    // Review PR #136: een lokale kopie zonder checkpoint maar mét server-bevestigde
+    // cloudkopie (cloud-only wedstrijd na een correctie, back-up-herstel,
+    // migratie) is gesynchroniseerd. Een openstaande outbox-afronding blijft
+    // altijd onbevestigd (§D.5), ook als de cloudsnapshot haar al toont.
+    const outboxIds = new Set(pendingFinalizeRepo.list().map((e) => e.completed.id));
     setFinalizeStatuses((prev) => {
       const next: Record<string, SyncStatus> = {};
       for (const g of completedGames) {
@@ -1094,13 +1115,29 @@ export function App({
           next[g.id] = 'gesynchroniseerd';
           continue;
         }
-        next[g.id] = pendingFinalizesRef.current.has(g.id)
-          ? (prev[g.id] ?? 'wacht-op-synchronisatie')
-          : coordinator.readFinalizeStatus(g.sourceGameId, organizationId, teamId, g.id);
+        if (pendingFinalizesRef.current.has(g.id)) {
+          next[g.id] = prev[g.id] ?? 'wacht-op-synchronisatie';
+          continue;
+        }
+        const s = coordinator.readFinalizeStatus(g.sourceGameId, organizationId, teamId, g.id);
+        next[g.id] =
+          s === 'lokaal-beschikbaar' &&
+          !outboxIds.has(g.id) &&
+          completedGameRepo.hasConfirmedCloudCopy?.(g.id) === true
+            ? 'gesynchroniseerd'
+            : s;
       }
       return next;
     });
-  }, [completedGames, repositories.gameSync, organizationId, teamId, localCompletedGameRepo]);
+  }, [
+    completedGames,
+    repositories.gameSync,
+    organizationId,
+    teamId,
+    localCompletedGameRepo,
+    completedGameRepo,
+    pendingFinalizeRepo,
+  ]);
 
   useEffect(() => {
     function handleOnline() {
@@ -1263,19 +1300,53 @@ export function App({
     });
   }
 
+  // PR 7.6a, plan §D.5: een afronding die dit apparaat nog niet server-
+  // bevestigd kreeg, uploadt de outbox-snapshot van het moment van afronden
+  // (`pendingFinalizeRepo` wordt door `update()` nooit bijgewerkt). Corrigeren
+  // is daarom uitgezet zolang `finalizeStatuses[id]` bestaat en niet
+  // `gesynchroniseerd` is. Een cloud-only wedstrijd (op een ander apparaat
+  // afgerond, geen lokale kopie) staat via het statuseffect hieronder altijd
+  // op `gesynchroniseerd` en mag dus wel gecorrigeerd worden.
+  const correctionBlockedIds = useMemo(
+    () =>
+      new Set(
+        Object.entries(finalizeStatuses)
+          .filter(([, status]) => status !== 'gesynchroniseerd')
+          .map(([id]) => id),
+      ),
+    [finalizeStatuses],
+  );
+
   /**
    * PR 7.5b: slaat een gecorrigeerde afgeronde wedstrijd lokaal op via
    * `repository.update()`; bij `false` (opslag/validatie geweigerd) blijft de
    * lijst ongewijzigd en toont uitsluitend de correctiedialoog de fout (de
    * globale `gameSaveError`-banner wordt hier bewust niet gezet, zodat dezelfde
    * fout niet dubbel verschijnt). Een geslaagde opslag wist een eerdere banner.
-   * Cloudmodus krijgt dit pad niet (PR 7.5c).
+   * PR 7.6a: ook in cloudmodus (met `gameWriterContext`); de composite schrijft
+   * eerst lokaal en uploadt daarna, en notificeert bij elke statuswijziging.
    */
   function handleCorrectCompletedGame(corrected: CompletedGame): boolean {
     const ok = completedGameRepo.update(corrected);
     if (!ok) return false;
     setGameSaveError(false);
     setCompletedGames(completedGameRepo.list());
+    return true;
+  }
+
+  /**
+   * PR 7.6b: verwerpt na een bewuste bevestiging in `HistoryPanel` de LOKALE
+   * kopie van een wedstrijd met een correctieconflict (alleen cloudmodus). De
+   * cloud wordt niet aangeraakt; de cloudversie verschijnt via de samenvoeging
+   * weer als cloud-only wedstrijd. `false` = niets gewijzigd (het paneel toont
+   * dan zelf de foutmelding).
+   */
+  function handleDiscardLocalCorrection(id: string): boolean {
+    const ok = completedGameRepo.discardLocalCorrection?.(id) ?? false;
+    if (!ok) return false;
+    const games = completedGameRepo.list();
+    setCompletedGames(games);
+    setCorrectionStatuses(deriveCorrectionStatuses(completedGameRepo, games));
     return true;
   }
 
@@ -1738,8 +1809,31 @@ export function App({
               setDeleteError(false);
             }}
             onDeleteGame={handleDeleteCompletedGame}
-            // PR 7.5b: correctie alleen lokaal (cloud-upload/merge = PR 7.5c).
-            onCorrectGame={repositories.gameSync ? undefined : handleCorrectCompletedGame}
+            // PR 7.5b/7.6a: correctie lokaal altijd; in cloudmodus alleen met een
+            // `gameWriterContext` (de uid komt als `correctedBy` in het logitem).
+            onCorrectGame={
+              repositories.gameSync && !repositories.gameWriterContext
+                ? undefined
+                : handleCorrectCompletedGame
+            }
+            correctedBy={
+              repositories.gameSync ? (repositories.gameWriterContext?.authorUid ?? null) : null
+            }
+            correctionStatuses={repositories.gameSync ? correctionStatuses : undefined}
+            correctionBlockedIds={repositories.gameSync ? correctionBlockedIds : undefined}
+            onRetryCorrectionUploads={
+              repositories.gameSync &&
+              typeof completedGameRepo.retryCorrectionUploads === 'function'
+                ? () => completedGameRepo.retryCorrectionUploads?.()
+                : undefined
+            }
+            onDiscardLocalCorrection={
+              repositories.gameSync &&
+              canWrite &&
+              typeof completedGameRepo.discardLocalCorrection === 'function'
+                ? handleDiscardLocalCorrection
+                : undefined
+            }
             // Externe PR-6.3-review (aug. 2026): verwijderen van historie is een
             // beheeractie (ADR-003: "wedstrijden beheren" is coach/owner/admin),
             // geen live wedstrijdactie — dus `canWrite` (== canManageTeamData),

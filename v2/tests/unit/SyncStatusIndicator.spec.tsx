@@ -2,17 +2,19 @@
 import { describe, it, expect, afterEach } from 'vitest';
 import { render, cleanup } from '@testing-library/preact';
 import { SyncStatusIndicator } from '../../src/ui/sync/SyncStatusIndicator';
-import type { SyncStatus } from '../../src/domain/syncState';
+import type { CorrectionSyncStatus } from '../../src/application/game/CompletedGameRepository';
 
 afterEach(() => cleanup());
 
 describe('ui/sync/SyncStatusIndicator (PR 5.3c-2)', () => {
-  const cases: Array<[SyncStatus, string, string]> = [
+  const cases: Array<[CorrectionSyncStatus, string, string]> = [
     ['lokaal-beschikbaar', 'nl', 'Lokaal beschikbaar'],
     ['wacht-op-synchronisatie', 'nl', 'Wacht op synchronisatie'],
     ['gesynchroniseerd', 'nl', 'Gesynchroniseerd'],
     ['actie-nodig', 'nl', 'Actie nodig'],
     ['actie-nodig', 'en', 'Action needed'],
+    ['conflict', 'nl', 'Conflict'],
+    ['conflict', 'en', 'Conflict'],
   ];
 
   for (const [status, lang, expectedText] of cases) {

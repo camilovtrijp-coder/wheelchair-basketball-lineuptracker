@@ -602,6 +602,15 @@ button:focus-visible {
   border-color: var(--lt-color-danger);
 }
 
+/* PR 7.6a: correctie-conflict. Zelfde alarmkleur als actie-nodig, maar met
+   gestippelde rand en vet zodat het niet alleen op kleur te onderscheiden is. */
+.sync-status-indicator--conflict {
+  color: var(--lt-color-danger);
+  border-color: var(--lt-color-danger);
+  border-style: dashed;
+  font-weight: 600;
+}
+
 .action-needed-panel {
   padding: var(--lt-space-3) var(--lt-space-4);
   border-bottom: var(--lt-border-thin);

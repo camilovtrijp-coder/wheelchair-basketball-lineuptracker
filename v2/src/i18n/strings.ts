@@ -198,6 +198,28 @@ const nl = {
   correctRowTurnovers: 'Turnovers dit segment',
   correctRowTotalTurnovers: 'Turnovers totaal',
   correctionSaved: 'Correctie opgeslagen.',
+  // PR 7.6a: correctiestatus en herstel in cloudmodus.
+  correctionConflictMessage: 'Deze wedstrijd is ondertussen op een ander apparaat gewijzigd.',
+  correctionRetry: 'Opnieuw proberen',
+  // PR 7.6b: lokale versie bij een correctieconflict bewust verwerpen.
+  correctionDiscardLocal: 'Mijn lokale versie verwerpen',
+  correctionDiscardHint:
+    'Alleen de kopie op dit apparaat wordt verwijderd. De versie van het team blijft bestaan en komt terug.',
+  correctionDiscardHintActionNeeded:
+    'Deze correctie is mogelijk door een andere gebruiker op dit apparaat gemaakt of kon niet worden geüpload. Verwerpen verwijdert alleen de kopie op dit apparaat en brengt de versie van het team terug.',
+  correctionDiscardConfirmTitle: 'Lokale versie verwerpen?',
+  correctionDiscardConfirm:
+    'Alleen de kopie van deze wedstrijd op dit apparaat wordt verwijderd; de versie van het team blijft ongewijzigd en komt terug. Een lokale correctie die nog niet is geüpload gaat verloren. Daarna kun je de wedstrijd opnieuw corrigeren.',
+  correctionDiscardConfirmAction: 'Verwerpen',
+  correctionDiscardCancel: 'Annuleren',
+  correctionDiscardFailed:
+    'Verwerpen is niet gelukt. Er is niets gewijzigd; probeer het later opnieuw.',
+  correctionWaitingForFinalize:
+    'Wacht tot de wedstrijd is gesynchroniseerd voordat je een segment corrigeert.',
+  correctionPendingOffline:
+    'Je correctie staat veilig op dit apparaat en wordt geüpload zodra er verbinding is.',
+  correctionActionNeededHint:
+    'De correctie kon niet worden geüpload. Ze blijft veilig op dit apparaat; probeer het opnieuw.',
   correctedBadge: 'Gecorrigeerd',
   correctionsHistory: 'Correcties',
   correctionsHistoryEntry: 'Correctie van {when}',
@@ -525,6 +547,7 @@ const nl = {
   syncStatusPending: 'Wacht op synchronisatie',
   syncStatusSynced: 'Gesynchroniseerd',
   syncStatusActionNeeded: 'Actie nodig',
+  syncStatusConflict: 'Conflict',
   syncStatusFromCache: 'uit cache',
   lastModifiedLabel: 'Laatst gewijzigd',
   actionNeededTitle: 'Actie nodig',
@@ -1051,6 +1074,26 @@ const en = {
   correctRowTurnovers: 'Turnovers this segment',
   correctRowTotalTurnovers: 'Turnovers total',
   correctionSaved: 'Correction saved.',
+  // PR 7.6a: correction status and recovery in cloud mode.
+  correctionConflictMessage: 'This game was changed on another device in the meantime.',
+  correctionRetry: 'Try again',
+  // PR 7.6b: deliberately discard the local version after a correction conflict.
+  correctionDiscardLocal: 'Discard my local version',
+  correctionDiscardHint:
+    'Only the copy on this device is removed. The team version stays as it is and comes back.',
+  correctionDiscardHintActionNeeded:
+    'This correction may have been made by another user on this device, or it could not be uploaded. Discarding only removes the copy on this device and brings back the team version.',
+  correctionDiscardConfirmTitle: 'Discard local version?',
+  correctionDiscardConfirm:
+    'Only the copy of this game on this device is removed; the team version is not changed and comes back. A local correction that has not been uploaded is lost. Afterwards you can correct the game again.',
+  correctionDiscardConfirmAction: 'Discard',
+  correctionDiscardCancel: 'Cancel',
+  correctionDiscardFailed: 'Discarding failed. Nothing was changed; try again later.',
+  correctionWaitingForFinalize: 'Wait until the game has synced before correcting a segment.',
+  correctionPendingOffline:
+    'Your correction is safely stored on this device and will be uploaded as soon as there is a connection.',
+  correctionActionNeededHint:
+    'The correction could not be uploaded. It stays safely on this device; try again.',
   correctedBadge: 'Corrected',
   correctionsHistory: 'Corrections',
   correctionsHistoryEntry: 'Correction of {when}',
@@ -1357,6 +1400,7 @@ const en = {
   syncStatusPending: 'Waiting to sync',
   syncStatusSynced: 'Synced',
   syncStatusActionNeeded: 'Action needed',
+  syncStatusConflict: 'Conflict',
   syncStatusFromCache: 'from cache',
   lastModifiedLabel: 'Last modified',
   actionNeededTitle: 'Action needed',
