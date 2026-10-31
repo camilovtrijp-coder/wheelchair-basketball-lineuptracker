@@ -256,6 +256,67 @@ Oorspronkelijke vraagstelling:
   Verwerpen is ook mogelijk bij een andere status dan `conflict` op poortniveau;
   alleen de UI beperkt de knop tot `conflict`. Echte-apparaatverificatie blijft nodig.
 
+## H4. Status 7.6c (geïmplementeerd: alleen tests, hulpen en docs)
+
+- **Bestanden.** `v2/tests/e2e-auth/history-correction-cloud.spec.ts` (8 tests)
+  en `v2/tests/e2e-auth/correctionCloudFixtures.ts` (UI-correctie, statuswachters,
+  teamlid met gekozen rol, Admin-leesacties, CSV-download, vastlegging van
+  statusovergangen). Geen productiecode, Rules, statistiek, CSV-contract of
+  `localStorage`-key gewijzigd. Draait in de bestaande Playwright-auth-suite
+  met de Emulator Suite en fictieve data; er wordt nergens op vaste sleeps
+  gewacht (alleen `expect`/`toPass`-achtige polls op status-testids en
+  serverstand).
+- **Gedekt.** (1) A corrigeert online, B (open, andere browsercontext) ziet
+  live de badge, de nieuwe segmentwaarden en een CSV met de nieuwe waarden; A
+  loopt via 'Wacht op synchronisatie' naar 'Gesynchroniseerd' (statusovergangen
+  vastgelegd met een `MutationObserver`; de serverstand bevestigt revisie 1,
+  één logitem en `by` = eigen uid). (2) Offline corrigeren: lokaal bewaard en
+  wachtend, na reconnect uit zichzelf geüpload, op A, B en de server precies één
+  logregel. (3) Cloud-only: een alleen op A afgeronde wedstrijd wordt op B
+  gecorrigeerd en komt terug bij A. (4) Conflict: B offline, A eerst; B krijgt
+  `conflict` met melding en de cloud blijft onaangeroerd; annuleren laat alles
+  staan; bevestigen verwijdert alleen de lokale kopie van B, B toont de versie
+  van A, de wedstrijd is niet getombstoned en A ziet hem nog; B kan daarna
+  opnieuw corrigeren en dat komt op de server en bij A. (5) Scorer en viewer
+  (aparte accounts met teamrol) zien geen aantikbare segmenten, hint, retry- of
+  verwerpknop; een echte `correctCompletedGame()`-poging via hun eigen
+  Firestore-client wordt met `permission-denied` geweigerd en laat de server
+  ongewijzigd, terwijl dezelfde payload voor de coach slaagt (positieve
+  controle). (6) Cross-org: een gebruiker van een andere organisatie ziet de
+  wedstrijd niet in Historie en kan het document niet lezen
+  (`permission-denied`). (7) Geblokkeerd tijdens een onbevestigde afronding:
+  offline afronden geeft 'Wacht tot de wedstrijd is gesynchroniseerd' en
+  niet-aantikbare segmenten; na reconnect en bevestiging is corrigeren
+  beschikbaar en komt de correctie bij B.
+- **Gevonden defect (productiecode, niet gerepareerd).** Na een correctie van
+  een cloud-only wedstrijd maakt `update()` een lokale kopie op het
+  corrigerende apparaat. Het statuseffect in `App.tsx` ziet een lokale kopie
+  zonder lokaal synccheckpoint en zet `finalizeStatuses[id]` op
+  `lokaal-beschikbaar`. Omdat `effectiveSyncStatus` bij een correctiestatus
+  `gesynchroniseerd` op de afrondstatus terugvalt, toont dat apparaat blijvend
+  'Lokaal beschikbaar' i.p.v. 'Gesynchroniseerd' (terwijl de server de
+  correctie wel heeft), en `correctionBlockedIds` blokkeert daarna elke
+  volgende correctie van die wedstrijd op dat apparaat. Reproductie: test 3b
+  (`test.fail()`, slaagt zolang het defect bestaat en faalt zichtbaar zodra het
+  is opgelost; verwijder dan `test.fail()`). De tests 3 en 4 controleren om die
+  reden serverstand en het andere apparaat i.p.v. de statusindicator van B na
+  een cloud-only correctie. Een fix hoort in een eigen PR (statuseffect: een
+  lokale kopie zonder checkpoint maar mét cloudtegenhanger niet als
+  `lokaal-beschikbaar`/geblokkeerd behandelen).
+- **Niet gedekt.** Een viewer/scorer kan in de UI geen gecorrigeerde wedstrijd
+  maken, dus de Rules zijn alleen via de eigen gateway geprobeerd (de
+  Rules-emulatortests blijven leidend). Geen test voor `actie-nodig` met
+  'Opnieuw proberen' en geen test met twee verschillende gebruikers op één
+  apparaat (7.6a-component- en Rules-tests dekken dat). Geen echte
+  apparaten, geen netwerken met packet loss.
+- **Open risico's.** De offline-scenario's gebruiken `context.setOffline`; de
+  reconnecttijd van de Firestore-SDK hangt van zijn backoff af, daarom zijn de
+  timeouts ruim (60-90 s). De Rules-emulator logt bij de geweigerde
+  scorer/viewer-poging 'maximum of 1000 expressions' (de weigering zelf is
+  correct, de coach slaagt met dezelfde payload); het is geen beveiligingsissue
+  maar een aanwijzing dat de updateregel voor niet-coaches veel expressies
+  evalueert.
+
 ## I. Open risico's
 
 - Echte-apparaat- en staging-verificatie blijft nodig; de sandbox dekt alleen
