@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'preact/hooks';
+import { useEffect, useRef, useState } from 'preact/hooks';
 import type { CompletedGame } from '../../domain/game/types';
 import { combinedCsvForGame, csvFilenameFor } from '../../domain/game/csv';
 import { segmentTurnovers } from '../../domain/game/tracking';
@@ -196,15 +196,30 @@ export function HistoryPanel({
   const [discardConfirmOpen, setDiscardConfirmOpen] = useState(false);
   const [discardFailed, setDiscardFailed] = useState(false);
   const open = openId != null ? games.find((g) => g.id === openId) : undefined;
-  const openIsConflict = open != null && correctionStatuses?.[open.id] === 'conflict';
+  const openStatusForDiscard = open != null ? correctionStatuses?.[open.id] : undefined;
+  // Verwerpen kan bij een conflict én bij `actie-nodig` (bijv. een correctie van
+  // een andere gebruiker op dit apparaat die Rules weigeren, plan §C/§I).
+  const openCanDiscardStatus =
+    openStatusForDiscard === 'conflict' || openStatusForDiscard === 'actie-nodig';
+  const detailHeadingRef = useRef<HTMLHeadingElement | null>(null);
+  const focusHeadingAfterDiscard = useRef(false);
 
-  // Een bevestiging hoort bij één conflict: verdwijnt het conflict (of wisselt de
+  // Een bevestiging hoort bij één herstelsituatie: verdwijnt die (of wisselt de
   // geopende wedstrijd), dan begint de volgende keer weer zonder open dialoog.
   const openGameId = open?.id ?? null;
   useEffect(() => {
     setDiscardConfirmOpen(false);
     setDiscardFailed(false);
-  }, [openGameId, openIsConflict]);
+  }, [openGameId, openStatusForDiscard]);
+
+  // Na succesvol verwerpen is de verwerp-knop weg en zou de focus-restore van de
+  // dialoog op `body` vallen: zet de focus op de wedstrijdkop. Dit effect draait
+  // na de cleanup (focus-restore) van de dialoog in dezelfde commit.
+  useEffect(() => {
+    if (discardConfirmOpen || !focusHeadingAfterDiscard.current) return;
+    focusHeadingAfterDiscard.current = false;
+    detailHeadingRef.current?.focus();
+  }, [discardConfirmOpen, openStatusForDiscard]);
 
   const errorBanner = saveError ? (
     <p className="settings-error" role="alert" data-testid="history-save-error">
@@ -287,8 +302,7 @@ export function HistoryPanel({
       onRetryCorrectionUploads != null &&
       (correctionStatus === 'actie-nodig' ||
         (correctionStatus === 'lokaal-beschikbaar' && !correctionBlocked));
-    const canDiscard =
-      canWrite && onDiscardLocalCorrection != null && correctionStatus === 'conflict';
+    const canDiscard = canWrite && onDiscardLocalCorrection != null && openCanDiscardStatus;
     const correctingSegment =
       canCorrect && correctingId != null
         ? open.segments.find((seg) => seg.id === correctingId)
@@ -335,7 +349,7 @@ export function HistoryPanel({
             {t(lang, 'deleteBtn')}
           </button>
         </div>
-        <h2>
+        <h2 ref={detailHeadingRef} tabIndex={-1} data-testid="history-detail-heading">
           {open.opponent || t(lang, 'teamOpponent')}
           {corrections.length > 0 ? (
             <span className="correction-badge" data-testid="history-corrected-badge">
@@ -362,7 +376,12 @@ export function HistoryPanel({
         {canDiscard ? (
           <>
             <p className="segment-list__hint" data-testid="history-correction-discard-hint">
-              {t(lang, 'correctionDiscardHint')}
+              {t(
+                lang,
+                correctionStatus === 'actie-nodig'
+                  ? 'correctionDiscardHintActionNeeded'
+                  : 'correctionDiscardHint',
+              )}
             </p>
             <button
               type="button"
@@ -500,6 +519,7 @@ export function HistoryPanel({
             }}
             onConfirm={() => {
               if (onDiscardLocalCorrection(open.id)) {
+                focusHeadingAfterDiscard.current = true;
                 setDiscardConfirmOpen(false);
                 setDiscardFailed(false);
                 setCorrectionSaved(false);

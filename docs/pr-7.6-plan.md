@@ -53,7 +53,7 @@ van het logboek (PR 8.3), publiceren van Rules of deployen.
 | Vals succes | Status zegt "gesynchroniseerd" vóór serverbevestiging | Bestaande `hasPendingWrites`-guard blijft; e2e met offline/online |
 | Offline | Corrigeren mag niet op netwerk wachten | Lokaal eerst (bestaand); geen blokkade op connectiviteit |
 | Afronding nog niet bevestigd | Correctie vóór cloud-snapshot gebruikt de oude outbox-snapshot | Corrigeren uitzetten tot de afronding server-bevestigd is (§D.5) |
-| Andere gebruiker op hetzelfde apparaat | Correctie met `by = A` wordt door B geüpload en door Rules geweigerd | Status `actie-nodig` met uitleg en de keuze "lokale versie verwerpen" |
+| Andere gebruiker op hetzelfde apparaat | Correctie met `by = A` wordt door B geüpload en door Rules geweigerd | Status `actie-nodig` met uitleg en de keuze "lokale versie verwerpen" (knop bij `conflict` én `actie-nodig`, 7.6b-review) |
 | Rules niet gepubliceerd | UI draait vóór de Rules | Upload faalt veilig met `permission-denied` → `actie-nodig`; lokale data blijft; uitrolvolgorde blijft Rules eerst |
 | i18n | Nieuwe teksten | NL én EN, bestaande pariteitstests |
 | CSV/statistiek | Geen wijziging | Geen wijziging aan rekenfuncties; regressietest blijft |
@@ -82,6 +82,10 @@ blijft ongewijzigd.
 
 - `actie-nodig` of `lokaal-beschikbaar` met een lokaal voorlopende correctie:
   knop **"Opnieuw proberen"** → `retryCorrectionUploads()` (bewuste actie).
+- `actie-nodig` kan ook ontstaan doordat een tweede gebruiker op hetzelfde
+  apparaat een correctie van de eerste niet mag uploaden (Rules eisen
+  `by == null || by == uid`); "Opnieuw proberen" helpt dan niet. Ook hier is
+  **"Mijn lokale versie verwerpen"** beschikbaar, met een eigen uitleg.
 - `conflict` (uiteengelopen logs of revisie): geen automatische oplossing.
   Melding "Deze wedstrijd is ondertussen op een ander apparaat gewijzigd". Twee
   keuzes: **annuleren** (niets doen, de wedstrijd blijft zoals hij is) of
@@ -253,8 +257,31 @@ Oorspronkelijke vraagstelling:
   (7.6c).
 - **Open risico's 7.6b.** Een lokale correctie die nog niet is geüpload gaat bij
   verwerpen onherroepelijk verloren (bewust, met expliciete bevestigingstekst).
-  Verwerpen is ook mogelijk bij een andere status dan `conflict` op poortniveau;
-  alleen de UI beperkt de knop tot `conflict`. Echte-apparaatverificatie blijft nodig.
+  Verwerpen is ook mogelijk bij een andere status dan `conflict`/`actie-nodig`
+  op poortniveau; alleen de UI beperkt de knop tot die twee. Echte-apparaatverificatie
+  blijft nodig.
+
+**Review-fixes 7.6b (Opus-review).**
+
+- **HOOG-2, tweede gebruiker op hetzelfde apparaat.** Coach X corrigeert offline
+  (`by = uidX`) en logt uit; coach Y logt in. De goedkeuringen leven alleen in
+  het geheugen, dus de status wordt `actie-nodig` en "Opnieuw proberen" geeft
+  telkens `permission-denied`. `canDiscard` staat nu ook toe bij
+  `correctionStatus === 'actie-nodig'` (alleen met `canWrite`). Bij
+  `actie-nodig` toont de UI een eigen uitleg (`correctionDiscardHintActionNeeded`,
+  NL en EN: mogelijk door een andere gebruiker gemaakt of niet te uploaden;
+  verwerpen brengt de teamversie terug). De bevestigingstekst over verlies is
+  ongewijzigd. Niet bij `wacht-op-synchronisatie`, `gesynchroniseerd`,
+  `lokaal-beschikbaar`, en niet voor viewer/scorer.
+- **Hardening.** `discardLocalCorrection` weigert (`false`) ook bij een eigen,
+  onbevestigde cloudwrite (`isCloudPending`): die "cloudkopie" is een
+  latency-gecompenseerde weergave van onze eigen wijziging, geen teamversie. De
+  UI-foutmelding blijft generiek.
+- **a11y.** Na succesvol verwerpen valt de focus-restore van de dialoog op een
+  verdwenen knop; de focus gaat nu naar de wedstrijdkop
+  (`history-detail-heading`, `tabIndex={-1}`). Getest: `document.activeElement`
+  is de kop, niet `body`.
+- **Nieuwe sleutel.** `correctionDiscardHintActionNeeded` (NL en EN).
 
 ## I. Open risico's
 
@@ -262,5 +289,5 @@ Oorspronkelijke vraagstelling:
   de Emulator Suite.
 - Een tweede gebruiker op hetzelfde apparaat kan een correctie van de eerste
   niet uploaden (Rules weigeren een vreemde `by`); dat eindigt in `actie-nodig`
-  met de keuze te verwerpen. Een betere oplossing vraagt een Rules-besluit.
+  met de keuze te verwerpen (de knop staat bij `conflict` én `actie-nodig`). Een betere oplossing vraagt een Rules-besluit.
 - `corrections[].id`-uniciteit blijft in Rules niet afdwingbaar.

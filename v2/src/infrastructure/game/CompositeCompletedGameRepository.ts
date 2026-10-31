@@ -398,6 +398,9 @@ export class CompositeCompletedGameRepository implements CompletedGameRepository
     // Een upload is al onderweg; het eindresultaat zou een verwijderde kopie
     // weer van een uitkomst voorzien. Eerst laten afronden.
     if (this.correctionUploading.has(id)) return false;
+    // Een eigen, nog onbevestigde cloudwrite maakt de "cloudkopie" een
+    // latency-gecompenseerde weergave van onze eigen wijziging: geen teamversie.
+    if (this.isCloudPending(id)) return false;
     if (!this.local.remove(id)) return false;
     // Alleen na een geslaagde lokale verwijdering de afgeleide toestand wissen.
     for (const c of localGame.corrections ?? []) {
