@@ -186,6 +186,33 @@ describe('computeOnOffImpact — fixture §F.2 (minSec 300)', () => {
   });
 });
 
+describe('computeOnOffImpact — aparte drempels per kant (besluit I.3: off-kant 10:00)', () => {
+  it('on 5:00 / off 10:00: speler 4 (off 300 s) valt af, speler 7 (on 300 s, off 2700 s) blijft', () => {
+    // Fixture §F.2: speler 4 heeft 300 s af het veld (< 600) en wordt dus "te weinig minuten
+    // aan één kant"; speler 7 staat 300 s op het veld (>= onMinSec 300) met 2700 s af.
+    const rows = computeOnOffImpact(fixture(), null, roster, { onMinSec: 300, offMinSec: 600 });
+    expect(byId(rows, 4).qualified).toBe(false);
+    expect(byId(rows, 7).qualified).toBe(true);
+    expect(byId(rows, 5).qualified).toBe(true);
+    expect(byId(rows, 6).qualified).toBe(true);
+    // Ruwe totalen blijven beschikbaar voor de weergave zonder oordeel.
+    expect(byId(rows, 4).offSec).toBe(300);
+    expect(byId(rows, 4).offPm).toBe(6);
+  });
+
+  it('on 0 / off 0: speler 4 en 7 kwalificeren, spelers zonder off-minuten niet', () => {
+    const rows = computeOnOffImpact(fixture(), null, roster, { onMinSec: 0, offMinSec: 0 });
+    expect(byId(rows, 4).qualified).toBe(true);
+    expect(byId(rows, 1).qualified).toBe(false);
+  });
+
+  it('een getal als vierde argument werkt als beide drempels (compatibele aanroep)', () => {
+    const a = computeOnOffImpact(fixture(), null, roster, 300);
+    const b = computeOnOffImpact(fixture(), null, roster, { onMinSec: 300, offMinSec: 300 });
+    expect(a).toEqual(b);
+  });
+});
+
 describe('computeOnOffImpact — drempel, filter, randgevallen', () => {
   it('minSec 600: speler 4 (off 300 s) en speler 7 (on 300 s) zijn niet gekwalificeerd, 5 en 6 wel', () => {
     const rows = computeOnOffImpact(fixture(), null, roster, 600);

@@ -28,16 +28,28 @@ export interface OnOffRow {
   offPer10: number | null;
   /** `onPer10 − offPer10`; `null` zonder OFF-minuten. */
   diffPer10: number | null;
-  /** `onSec >= minSec` EN `offSec >= minSec` (gelijk telt mee) en er is OFF-tijd. */
+  /** `onSec >= onMinSec` EN `offSec >= offMinSec` (gelijk telt mee) en er is OFF-tijd. */
   qualified: boolean;
+}
+
+/**
+ * Drempels per kant (besluit I.3: de off-kant vraagt 10:00 bij een gekozen
+ * drempel > 0, de on-kant volgt de filterbalk). Een kaal getal geldt voor
+ * beide kanten (compatibele aanroepvorm).
+ */
+export interface OnOffThresholds {
+  onMinSec: number;
+  offMinSec: number;
 }
 
 export function computeOnOffImpact(
   games: AnalysisGame[],
   gameIds: Set<string> | null,
   roster: readonly RosterPlayer[],
-  minSec: number,
+  min: number | OnOffThresholds,
 ): OnOffRow[] {
+  const onMinSec = typeof min === 'number' ? min : min.onMinSec;
+  const offMinSec = typeof min === 'number' ? min : min.offMinSec;
   const stats = computeLineupStats(games, {
     comboSize: 1,
     per10: false,
@@ -81,7 +93,7 @@ export function computeOnOffImpact(
       offPm,
       offPer10,
       diffPer10: offPer10 === null ? null : onPer10 - offPer10,
-      qualified: offPer10 !== null && on.sec >= minSec && offSec >= minSec,
+      qualified: offPer10 !== null && on.sec >= onMinSec && offSec >= offMinSec,
     });
   }
   return rows;

@@ -8,7 +8,7 @@ import { computeStints, type PlayerStints } from '../../domain/trends/lineupExtr
 import { computeOnOffImpact, type OnOffRow } from '../../domain/trends/onOffImpact';
 import type { TrendsFilter, TrendsSortBy } from '../../domain/trends/types';
 import type { Lang } from '../../i18n/strings';
-import { OnOffBlock, OnOffRowSummary, StintsBlock } from './PlayersOnOff';
+import { OnOffBlock, OnOffRowSummary, StintsBlock, offMinSecFor } from './PlayersOnOff';
 import { fmtOne, fmtSignedInt, formatDate, t, type TrendsViewProps } from './trendsShared';
 
 /**
@@ -63,7 +63,9 @@ export function PlayersView(props: TrendsViewProps) {
   // T4/T7: pure berekeningen op de gedeelde, al ingelezen wedstrijden (geen extra reads of opslag).
   const onOffById = useMemo(() => {
     const m = new Map<number, OnOffRow>();
-    for (const r of computeOnOffImpact(games, gameIds, roster, minSec)) m.set(r.rosterId, r);
+    // Besluit I.3: on-kant = filterbalkdrempel, off-kant minstens 10:00 (tenzij de drempel uit staat).
+    const thresholds = { onMinSec: minSec, offMinSec: offMinSecFor(minSec) };
+    for (const r of computeOnOffImpact(games, gameIds, roster, thresholds)) m.set(r.rosterId, r);
     return m;
   }, [games, gameIds, roster, minSec]);
   const stintsResult = useMemo(

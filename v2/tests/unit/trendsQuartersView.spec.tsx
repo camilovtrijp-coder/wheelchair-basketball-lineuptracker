@@ -338,3 +338,57 @@ describe('Kwarten: Engels en tokens', () => {
     }
   });
 });
+
+describe('Kwarten: te weinig speeltijd per kwart (§E.6, review-fix M4)', () => {
+  // "Deze wedstrijd": Q1 slechts 60 s (+3 => ruw +30,0 per 10), Q2 1200 s (+2).
+  const shortFixture = () => [
+    completed('Z', '2026-09-20T10:00:00.000Z', [
+      seg('z1', 1, L1, 60, 3, 0),
+      seg('z2', 2, L2, 1200, 10, 8),
+    ]),
+  ];
+
+  it('onder de drempel alleen het ruwe totaal: geen per-10-waarde, balk of toon', () => {
+    const q = renderQuarters(shortFixture());
+    const item = q.getByTestId('trends-quarter-1');
+    expect(item.getAttribute('data-tone')).toBeNull();
+    expect(item.getAttribute('data-low')).toBe('true');
+    expect(text(q, 'trends-quarter-value-1')).toBe('+3 in 1:00');
+    expect(text(q, 'trends-quarter-low-1')).toBe('te weinig data');
+    expect(item.textContent).not.toMatch(/[▲●▼]/);
+    expect(item.textContent).not.toContain('30.0');
+    expect(item.querySelector('.trends-meter')).toBeNull();
+    expect(q.queryByTestId('trends-quarter-tone-1')).toBeNull();
+    expect(q.queryByTestId('trends-quarter-detail-1')).toBeNull();
+    expect(item.getAttribute('aria-label')).toBe(
+      'Kwart 1, +3 in 1:00, te weinig data, geen oordeel',
+    );
+    // Ook in de modus per 10 min geen per-10-waarde.
+    togglePer10(q);
+    expect(text(q, 'trends-quarter-value-1')).toBe('+3 in 1:00');
+    expect(item.textContent).not.toContain('30.0');
+  });
+
+  it('boven de drempel blijft alles zoals voorheen (Q2: 20:00, waarde, toon)', () => {
+    const q = renderQuarters(shortFixture());
+    const item = q.getByTestId('trends-quarter-2');
+    expect(item.getAttribute('data-tone')).not.toBeNull();
+    expect(item.textContent).toMatch(/[▲●▼]/);
+    expect(text(q, 'trends-quarter-value-2')).toBe('+2');
+  });
+
+  it('met drempel uit (0) krijgt een kort kwart wel een waarde en toon; de grens zelf telt mee', () => {
+    const q = renderQuarters(shortFixture());
+    const btn = q.getByTestId('trends-threshold-btn');
+    fireEvent.click(btn); // 5:00 -> 10:00
+    fireEvent.click(btn); // -> uit
+    expect(q.getByTestId('trends-quarter-1').getAttribute('data-low')).toBeNull();
+    expect(q.getByTestId('trends-quarter-1').textContent).toMatch(/[▲●▼]/);
+    fireEvent.click(btn); // -> 3:00
+    fireEvent.click(btn); // -> 5:00
+    const exact = renderQuarters([
+      completed('E', '2026-09-21T10:00:00.000Z', [seg('e1', 1, L1, 300, 3, 0)]),
+    ]);
+    expect(exact.getAllByTestId('trends-quarter-1').pop()!.getAttribute('data-low')).toBeNull();
+  });
+});

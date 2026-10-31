@@ -82,7 +82,18 @@ export function buildLineupTurnoverView(
   minSec: number,
 ): LineupTurnoverView {
   const full = computeLineupTurnoverRanking(games, gameIds, Number.POSITIVE_INFINITY);
-  const rows = full.rows.filter((r) => r.seconds >= minSec);
+  // §E.4 (alleen presentatie): bij gelijke waarde eerst de rij met de meeste minuten, daarna de
+  // sleutel. `computeLineupTurnoverRanking` valt bij gelijke waarde direct op de sleutel en blijft
+  // ongewijzigd.
+  const rows = full.rows
+    .filter((r) => r.seconds >= minSec)
+    .sort((a, b) => {
+      if (a.per10 !== b.per10) return a.per10 - b.per10;
+      if (a.seconds !== b.seconds) return b.seconds - a.seconds;
+      const ak = a.rosterIds.join(',');
+      const bk = b.rosterIds.join(',');
+      return ak < bk ? -1 : ak > bk ? 1 : 0;
+    });
   const belowThreshold = full.rows
     .filter((r) => r.seconds < minSec)
     .sort((a, b) => {

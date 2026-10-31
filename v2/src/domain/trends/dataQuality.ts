@@ -47,8 +47,12 @@ export function computeDataQualityWarnings(
   const selected = selectGames(games, gameIds);
   const warnings: DataQualityWarning[] = [];
 
+  // Een lopende wedstrijd (`isCurrent`) is nog niet klaar: ontbrekende kwarten en een speeltijd onder
+  // het totaal zijn daar normaal. Die twee controles slaan hem over; de overige controles blijven gelden.
+  const finished = selected.filter((g) => !g.isCurrent);
+
   const missingByQuarter = new Map<number, string[]>();
-  for (const game of selected) {
+  for (const game of finished) {
     const present = new Set(game.segments.map((s) => s.quarter));
     for (let q = 1; q <= quarterCountOf(game); q += 1) {
       if (!present.has(q)) {
@@ -63,11 +67,11 @@ export function computeDataQualityWarnings(
       code: 'quarter-without-segments',
       quarter,
       gameIds: missingByQuarter.get(quarter)!,
-      totalGames: selected.length,
+      totalGames: finished.length,
     });
   }
 
-  for (const game of selected) {
+  for (const game of finished) {
     const seconds = game.segments.reduce((sum, s) => sum + s.durSec, 0);
     const expectedSeconds = quarterCountOf(game) * QUARTER_SECONDS;
     if (seconds < expectedSeconds) {

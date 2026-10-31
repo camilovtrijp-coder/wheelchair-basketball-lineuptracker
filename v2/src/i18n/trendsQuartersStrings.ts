@@ -22,7 +22,7 @@ export const trendsQuartersNl = {
   trendsQuartersAriaTotal: 'Kwart {n}, {time}, {value} totaal, {tone}',
   trendsQuartersAriaNoData: 'Kwart {n}, geen data',
   trendsQuartersLegend:
-    '▲ beter dan team · ● rond gemiddelde (minder dan 0.5 per 10 min verschil) · ▼ slechter dan team. Beschrijvend: per 10 min is geen balbezitcorrectie.',
+    '▲ beter dan team · ● rond gemiddelde (minder dan 0,5 per 10 min verschil) · ▼ slechter dan team. Beschrijvend: per 10 min is geen balbezitcorrectie.',
   trendsQuartersMinTitle: 'Minuten per kwart per speler',
   trendsQuartersMinHint:
     'Gemiddeld per gespeelde wedstrijd van de speler (m:ss). Donkerder = meer minuten; de tijden staan er altijd bij.',

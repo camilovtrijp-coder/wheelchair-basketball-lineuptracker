@@ -8,6 +8,7 @@ import { sortByDamped, type ConsistencyRow } from '../../domain/trends/lineupExt
 import type { LineupRow } from '../../domain/trends/lineupInsights';
 import type { LineupTurnoverRow } from '../../domain/trends/turnoverSummary';
 import { computeTurnoverSummary } from '../../domain/trends/turnoverSummary';
+import { orderByTotalPm } from './lineupOrder';
 import { LineupComboCard } from './LineupComboCard';
 import {
   LineupConsistencyLine,
@@ -35,6 +36,10 @@ import {
  * Weergave "Lineups" (T2): lineupkaart met een metriekschakelaar
  * "+/-" | "Voor/Tegen" | "Turnovers".
  *
+ * - Sortering: in modus "Per 10 min" op de waarde per 10 (basis van
+ *   `computeLineupInsights`); in modus "Totaal" op het getoonde totaal (+/- of
+ *   voor min tegen), met minuten aflopend en dan de sleutel als tiebreak.
+ *   Turnovers tonen altijd per 10 min (onafhankelijk van de chip).
  * - "+/-" en "Voor/Tegen" komen uit `props.lineups` (`computeLineupInsights`,
  *   vijftallen, drempel = `props.minSec`). De bestaande turnoverkaart is hier
  *   de metriek "Turnovers" en gebruikt dezelfde drempel en dezelfde groep
@@ -75,9 +80,13 @@ export function LineupsView(props: TrendsViewProps) {
 
   // T7: "voorzichtig" sorteert op de gedempte waarde (alleen metriek +/-); de getoonde waarde blijft de gewone.
   const careful = active === 'pm' && sort === 'careful';
+  const shownRows = useMemo(
+    () => (per10 ? lineups.rows : orderByTotalPm(lineups.rows)),
+    [per10, lineups.rows],
+  );
   const pmOrdered = useMemo(
-    () => (careful ? sortByDamped(lineups.rows) : lineups.rows),
-    [careful, lineups.rows],
+    () => (careful ? sortByDamped(lineups.rows) : shownRows),
+    [careful, lineups.rows, shownRows],
   );
   const consistency = useLineupConsistency(props, active === 'pm');
 
@@ -124,7 +133,9 @@ export function LineupsView(props: TrendsViewProps) {
         <div className="sm trends-tov-lineups__title" data-testid="trends-lineup-title">
           {t(lang, titleKey(active, per10))}
         </div>
-        <div className="xs mut2">{t(lang, hintKey(active))}</div>
+        <div className="xs mut2" data-testid="trends-lineup-hint">
+          {t(lang, hintKey(active, per10, careful))}
+        </div>
         <div className="xs mut2" data-testid="trends-lineup-teamavg">
           {teamAverageText(props, active, tovView)}
         </div>
@@ -149,8 +160,8 @@ export function LineupsView(props: TrendsViewProps) {
             {active === 'pm'
               ? pmRows(props, pmOrdered, label, consistency)
               : active === 'pfpa'
-                ? pfPaRows(props, lineups.rows, label)
-                : tovRows(props, tovView?.rows ?? [], label)}
+                ? pfPaRows(props, shownRows, label)
+                : tovRows(props, tovView?.rows ?? [], tovView?.averagePer10 ?? null, label)}
           </ol>
         )}
 
@@ -167,7 +178,9 @@ export function LineupsView(props: TrendsViewProps) {
       </div>
 
       <p className="xs mut2 trends-explain" data-testid="trends-lineup-explain">
-        {t(lang, 'trendsLineupExplain')}
+        {fill(t(lang, 'trendsLineupExplain'), {
+          min: minSec === 0 ? t(lang, 'trendsFilterThresholdOff') : minText,
+        })}
       </p>
 
       {belowCount > 0 ? (
@@ -197,13 +210,17 @@ export function LineupsView(props: TrendsViewProps) {
 function titleKey(metric: Metric, per10: boolean): Parameters<typeof t>[1] {
   if (metric === 'pm') return per10 ? 'trendsLineupTitlePm' : 'trendsLineupTitlePmTotal';
   if (metric === 'pfpa') return per10 ? 'trendsLineupTitlePfPa' : 'trendsLineupTitlePfPaTotal';
-  return per10 ? 'trendsTovLineupsTitle' : 'trendsLineupTitleTovTotal';
+  // Turnovers staan altijd per 10 min, onafhankelijk van de chip (review-fix M2).
+  return 'trendsTovLineupsTitle';
 }
 
-function hintKey(metric: Metric): Parameters<typeof t>[1] {
-  if (metric === 'pm') return 'trendsLineupHintPm';
-  if (metric === 'pfpa') return 'trendsLineupHintPfPa';
-  return 'trendsTovLineupsHint';
+function hintKey(metric: Metric, per10: boolean, careful: boolean): Parameters<typeof t>[1] {
+  // In Totaal sorteren +/- en Voor/Tegen op het totaal; de "voorzichtig"-sortering heeft eigen uitleg.
+  if (metric === 'pm') {
+    return per10 || careful ? 'trendsLineupHintPm' : 'trendsFixBHintPmTotal';
+  }
+  if (metric === 'pfpa') return per10 ? 'trendsLineupHintPfPa' : 'trendsFixBHintPfPaTotal';
+  return 'trendsFixBTovHint';
 }
 
 function teamAverageText(
@@ -441,13 +458,16 @@ function PfPaSide({
 function tovRows(
   props: TrendsViewProps,
   rows: LineupTurnoverRow[],
+  averagePer10: number | null,
   label: (ids: readonly number[]) => string,
 ) {
-  const { lang, per10 } = props;
+  const { lang } = props;
   const max = Math.max(0.1, ...rows.map((r) => r.per10));
   return rows.map((row) => {
     const key = lineupKey(row.rosterIds);
-    const tone: Tone = row.tone;
+    // Toon in de presentatielaag: dezelfde band (|Δ| < 0,5 per 10) als de andere metrieken; de
+    // binaire `row.tone` van het domein belooft geen "rond gemiddelde" (review-fix M5).
+    const tone: Tone = toneOfDelta(row.per10 - (averagePer10 ?? row.per10), false);
     const aria = fill(t(lang, 'trendsLineupAriaTov'), {
       lineup: label(row.rosterIds),
       time: fmtSeconds(row.seconds),
@@ -472,15 +492,14 @@ function tovRows(
               className={`trends-tov-row__v trends-tov-row__v--${tone}`}
               data-testid={`trends-tov-lineup-value-${key}`}
             >
-              {per10 ? fmtOne(row.per10) : row.turnovers}
+              {fmtOne(row.per10)}
             </b>
           </span>
         </div>
         <Meter value={row.per10} max={max} tone={tone} centered={false} />
         <div className="xs mut2">
           <span aria-hidden="true">{toneSymbol(tone)} </span>
-          {t(lang, toneKey(tone))}
-          {per10 ? '' : ` · ${fill(t(lang, 'trendsLineupPer10Of'), { value: fmtOne(row.per10) })}`}
+          {t(lang, toneKey(tone))} · {fill(t(lang, 'trendsFixBTovCount'), { n: row.turnovers })}
         </div>
       </li>
     );

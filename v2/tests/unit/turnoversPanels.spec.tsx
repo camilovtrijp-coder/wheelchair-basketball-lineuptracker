@@ -227,7 +227,10 @@ describe('Trends: tegels, totaalregel en lineup-kaart', () => {
     ]);
     expect(getByTestId('trends-tov-lineup-value-1-2-3-4-5').textContent).toBe('3.0');
     expect(getByTestId('trends-tov-lineup-value-1-2-3-4-6').textContent).toBe('4.0');
-    expect(getByTestId('trends-tov-lineup-1-2-3-4-5').getAttribute('data-tone')).toBe('good');
+    // Review-fix M5: toon via dezelfde band als de andere metrieken (|delta| < 0,5 per 10 = rond
+    // gemiddelde). 3,0 t.o.v. 3,33 is delta -0,33 -> rond gemiddelde (was binair "good");
+    // 4,0 t.o.v. 3,33 is delta +0,67 -> slechter.
+    expect(getByTestId('trends-tov-lineup-1-2-3-4-5').getAttribute('data-tone')).toBe('flat');
     expect(getByTestId('trends-tov-lineup-1-2-3-4-6').getAttribute('data-tone')).toBe('bad');
     expect(getByTestId('trends-tov-lineup-1-2-3-4-5').textContent).toContain('1-2-3-4-5');
     expect(getByTestId('trends-tov-lineup-1-2-3-4-5').textContent).toContain('10:00');

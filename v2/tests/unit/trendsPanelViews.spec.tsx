@@ -626,10 +626,10 @@ describe('Trends: Lineups', () => {
       'Te weinig data (2 lineups onder 5:00)',
     );
     expect(group.textContent).toContain('Turnovers: 0 in 3:00');
-    // Totaal-stand: ruwe aantallen.
+    // Totaal-stand: turnovers tonen altijd per 10 min (onafhankelijk van de chip, review-fix M2).
     fireEvent.click(q.getByTestId('trends-per10-toggle'));
-    expect(q.getByTestId('trends-tov-lineup-value-1-2-3-4-5').textContent).toBe('4');
-    expect(q.getByTestId('trends-tov-lineups').textContent).toContain('Lineups: turnovers totaal');
+    expect(q.getByTestId('trends-tov-lineup-value-1-2-3-4-5').textContent).toBe('1.6');
+    expect(q.getByTestId('trends-lineup-title').textContent).toBe('Lineups: turnovers per 10 min');
   });
 
   it('Turnovers met drempel "uit" is inhoudelijk gelijk aan de ongewijzigde domeinranglijst', () => {
@@ -646,15 +646,24 @@ describe('Trends: Lineups', () => {
     const rendered = Array.from(q.getByTestId('trends-lineup-list').querySelectorAll('li')).map(
       (li) => li.getAttribute('data-testid'),
     );
-    expect(rendered).toEqual(expected);
-    expect(expected[0]).toBe('trends-tov-lineup-1-2-3-5-7'); // L4 (0), dan L3, L1, L2 (plan §F.2)
+    // Review-fix M5: de presentatielaag past §E.4 toe (bij gelijke waarde eerst meer minuten), terwijl
+    // `computeLineupTurnoverRanking` ongewijzigd op de sleutel valt. L3 (0 turnovers, 180 s) staat nu
+    // voor L4 (0 turnovers, 120 s); dezelfde verzameling rijen, andere volgorde bij gelijke waarde.
+    expect(expected[0]).toBe('trends-tov-lineup-1-2-3-5-7'); // domein: L4 (0) op sleutel, dan L3, L1, L2
+    expect(rendered).toEqual([
+      'trends-tov-lineup-1-2-3-6-7',
+      'trends-tov-lineup-1-2-3-5-7',
+      'trends-tov-lineup-1-2-3-4-5',
+      'trends-tov-lineup-1-2-3-4-6',
+    ]);
+    expect([...rendered].sort()).toEqual([...expected].sort());
   });
 
   it('vaste uitleg (NL) en legenda', () => {
     const q = renderTrends();
     open(q, 'lineups');
     expect(q.getByTestId('trends-lineup-explain').textContent).toBe(
-      'Beschrijvend: wat gebeurde er met deze vijf op het veld. Minder dan 5 minuten zegt bijna niets. Per 10 min is geen balbezitcorrectie.',
+      'Beschrijvend: wat gebeurde er met deze vijf op het veld. Weinig minuten zegt bijna niets (drempel nu: 5:00). Per 10 min is geen balbezitcorrectie.',
     );
     expect(q.getByTestId('trends-lineup-legend').textContent).toContain('▲ beter dan team');
   });
@@ -669,7 +678,7 @@ describe('Trends: Lineups', () => {
     ]);
     lineupsPer10(q);
     expect(q.getByTestId('trends-lineup-explain').textContent).toBe(
-      'Descriptive: what happened with these five on court. Under 5 minutes tells you almost nothing. Per 10 min is not a possession adjustment.',
+      'Descriptive: what happened with these five on court. Few minutes tell you almost nothing (threshold now: 5:00). Per 10 min is not a possession adjustment.',
     );
     expect(q.getByTestId('trends-lineup-lowdata').querySelector('summary')!.textContent).toBe(
       'Too little data (2 lineups under 5:00)',
@@ -759,5 +768,100 @@ describe('Trends: tokens en contrast van de nieuwe toon-kleuren', () => {
         `--lt-color-${m[1]}:`,
       );
     }
+  });
+});
+
+// ---- Review-fixes set B: sortering in Totaal, turnovers per 10, toon, uitleg ----
+
+describe('Trends: Lineups — sortering en turnovers (review-fixes M1/M2/M5)', () => {
+  // L1: 1500 s, 16-10 (+6, 1,44 per 10), 3 tov; L2: 360 s, 5-2 (+3, 5,0 per 10), 1 tov.
+  const sortFixture = () => [
+    completed('S', '2026-09-20T10:00:00.000Z', [
+      seg('s1', 1, L1, 1500, 16, 10, 3),
+      seg('s2', 2, L2, 360, 5, 2, 1),
+    ]),
+  ];
+  const order = (q: Q) =>
+    Array.from(q.getByTestId('trends-lineup-list').querySelectorAll('li')).map((li) =>
+      li.getAttribute('data-testid'),
+    );
+
+  it('Totaal: +/- sorteert op het getoonde totaal (+6 in 25:00 boven +3 in 6:00)', () => {
+    const q = renderTrends(sortFixture());
+    open(q, 'lineups');
+    expect(order(q)).toEqual(['trends-lineup-1-2-3-4-5', 'trends-lineup-1-2-3-4-6']);
+    expect(q.getByTestId('trends-lineup-value-1-2-3-4-5').textContent).toBe('+6');
+    expect(q.getByTestId('trends-lineup-hint').textContent).toContain('Gesorteerd op het totaal');
+  });
+
+  it('Per 10 min: +/- sorteert zoals voorheen op de waarde per 10 (+5,0 boven +1,4)', () => {
+    const q = renderTrends(sortFixture());
+    lineupsPer10(q);
+    expect(order(q)).toEqual(['trends-lineup-1-2-3-4-6', 'trends-lineup-1-2-3-4-5']);
+    expect(q.getByTestId('trends-lineup-hint').textContent).toBe('Hoogste is het beste');
+  });
+
+  it('Totaal: Voor/Tegen sorteert op voor min tegen (totaal)', () => {
+    const q = renderTrends(sortFixture());
+    open(q, 'lineups');
+    fireEvent.click(q.getByTestId('trends-metric-pfpa'));
+    expect(order(q)).toEqual(['trends-lineup-1-2-3-4-5', 'trends-lineup-1-2-3-4-6']);
+    fireEvent.click(q.getByTestId('trends-per10-toggle'));
+    expect(order(q)).toEqual(['trends-lineup-1-2-3-4-6', 'trends-lineup-1-2-3-4-5']);
+  });
+
+  it('Totaal: gelijk totaal -> meer minuten eerst, dan de sleutel', () => {
+    const games = [
+      completed('T', '2026-09-20T10:00:00.000Z', [
+        seg('t1', 1, L1, 400, 8, 6, 0), // +2 in 400 s
+        seg('t2', 2, L2, 700, 9, 7, 0), // +2 in 700 s
+      ]),
+    ];
+    const q = renderTrends(games);
+    open(q, 'lineups');
+    expect(order(q)).toEqual(['trends-lineup-1-2-3-4-6', 'trends-lineup-1-2-3-4-5']);
+  });
+
+  it('Turnovers tonen altijd per 10 min, ook in Totaal, met een titel die dat zegt', () => {
+    const q = renderTrends(sortFixture());
+    open(q, 'lineups'); // Totaal
+    fireEvent.click(q.getByTestId('trends-metric-tov'));
+    expect(q.getByTestId('trends-lineup-title').textContent).toBe('Lineups: turnovers per 10 min');
+    expect(q.getByTestId('trends-tov-lineup-value-1-2-3-4-5').textContent).toBe('1.2');
+    expect(q.getByTestId('trends-tov-lineup-value-1-2-3-4-6').textContent).toBe('1.7');
+    // Laagste eerst en identiek in beide standen van de chip.
+    expect(order(q)).toEqual(['trends-tov-lineup-1-2-3-4-5', 'trends-tov-lineup-1-2-3-4-6']);
+    fireEvent.click(q.getByTestId('trends-per10-toggle'));
+    expect(order(q)).toEqual(['trends-tov-lineup-1-2-3-4-5', 'trends-tov-lineup-1-2-3-4-6']);
+    expect(q.getByTestId('trends-tov-lineup-value-1-2-3-4-5').textContent).toBe('1.2');
+    // Het aantal staat erbij als aanvullende regel.
+    expect(q.getByTestId('trends-tov-lineup-1-2-3-4-5').textContent).toContain('Turnovers: 3');
+  });
+
+  it('Turnovertoon: gemiddelde 2,2 en lineup 2,25 -> rond gemiddelde (niet binair rood)', () => {
+    // A: 3 tov in 800 s = 2,25 per 10; B: 8 tov in 2200 s = 2,18; gemiddelde 11*600/3000 = 2,2.
+    const game = completed('M', '2026-09-20T10:00:00.000Z', [
+      seg('m1', 1, L1, 800, 6, 5, 3),
+      seg('m2', 2, L2, 2200, 20, 18, 8),
+    ]);
+    const q = renderTrends([game]);
+    open(q, 'lineups');
+    fireEvent.click(q.getByTestId('trends-metric-tov'));
+    const a = q.getByTestId('trends-tov-lineup-1-2-3-4-5');
+    expect(a.getAttribute('data-tone')).toBe('flat');
+    expect(a.textContent).toContain('●');
+    expect(a.getAttribute('aria-label')).toContain('rond gemiddelde');
+    expect(q.getByTestId('trends-tov-lineup-1-2-3-4-6').getAttribute('data-tone')).toBe('flat');
+  });
+
+  it('uitleg noemt de huidige drempel (3:00) of "uit" in plaats van een vaste 5', () => {
+    const q = renderTrends();
+    open(q, 'lineups');
+    const btn = q.getByTestId('trends-threshold-btn');
+    fireEvent.click(btn); // 5:00 -> 10:00
+    fireEvent.click(btn); // -> uit
+    expect(q.getByTestId('trends-lineup-explain').textContent).toContain('drempel nu: uit');
+    fireEvent.click(btn); // -> 3:00
+    expect(q.getByTestId('trends-lineup-explain').textContent).toContain('drempel nu: 3:00');
   });
 });

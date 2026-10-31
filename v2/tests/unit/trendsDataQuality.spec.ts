@@ -68,3 +68,38 @@ describe('computeDataQualityWarnings — fixture §F.2', () => {
     ]);
   });
 });
+
+describe('computeDataQualityWarnings — lopende wedstrijd (isCurrent)', () => {
+  const current = (segments: ReturnType<typeof segmentsA>) => ({
+    ...game('LIVE', '2026-10-31', segments),
+    isCurrent: true,
+  });
+
+  it('geeft geen kwart- of speeltijdwaarschuwing voor een lopende wedstrijd (die is nog niet klaar)', () => {
+    // Eén gespeeld segment in Q1: een afgeronde wedstrijd zou drie kwartmeldingen en een
+    // speeltijdmelding geven; een lopende wedstrijd hoort daar nog niet voor te waarschuwen.
+    const live = current([seg('L1', 1, 300, 0, L1, 1, 0, 0, 14)]);
+    expect(computeDataQualityWarnings([live], null)).toEqual([]);
+  });
+
+  it('houdt de andere controles voor een lopende wedstrijd (segment van 0 s)', () => {
+    const live = current([
+      seg('L1', 1, 300, 0, L1, 1, 0, 0, 14),
+      seg('L2', 1, 300, 300, L1, 0, 0, 0, 14),
+    ]);
+    expect(computeDataQualityWarnings([live], null)).toEqual([
+      { code: 'zero-length-segments', count: 1, gameIds: ['LIVE'] },
+    ]);
+  });
+
+  it('blijft afgeronde wedstrijden controleren; totalGames telt alleen gecontroleerde wedstrijden', () => {
+    const live = current([seg('L1', 1, 300, 0, L1, 1, 0, 0, 14)]);
+    const warnings = computeDataQualityWarnings([live, ...fixtureGames()], null);
+    expect(warnings).toEqual([
+      { code: 'quarter-without-segments', quarter: 2, gameIds: ['B'], totalGames: 2 },
+      { code: 'quarter-without-segments', quarter: 3, gameIds: ['A', 'B'], totalGames: 2 },
+      { code: 'playtime-below-total', gameId: 'A', seconds: 1800, expectedSeconds: 2400 },
+      { code: 'playtime-below-total', gameId: 'B', seconds: 1200, expectedSeconds: 2400 },
+    ]);
+  });
+});

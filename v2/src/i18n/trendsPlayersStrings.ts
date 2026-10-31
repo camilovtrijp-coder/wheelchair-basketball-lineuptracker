@@ -22,10 +22,10 @@ export const trendsPlayersNl = {
   trendsPlayersAllHint: 'Geen minuten af het veld: er is geen af-waarde en geen oordeel.',
   trendsPlayersLow: 'Te weinig minuten aan één kant',
   trendsPlayersLowHint:
-    'Op {on}, af {off}. Elke kant heeft minimaal {min} nodig. Geen oordeel; alleen de ruwe totalen.',
+    'Op {on}, af {off}. Nodig: op minimaal {onMin}, af minimaal {offMin}. Geen oordeel; alleen de ruwe totalen.',
   trendsPlayersRawTotal: '{value} in {time}',
   trendsPlayersOnOffExplain:
-    'Beschrijvend, geen oorzaak: het +/- per 10 min van het team met en zonder deze speler op het veld. Rond gemiddelde = verschil kleiner dan 1.0 per 10 min. De drempel uit de filterbalk geldt voor beide kanten.',
+    'Beschrijvend, geen oorzaak: het +/- per 10 min van het team met en zonder deze speler op het veld. Rond gemiddelde = verschil kleiner dan 1,0 per 10 min. Voor een oordeel moet de speler minstens de drempel uit de filterbalk op het veld hebben gestaan en minstens 10:00 af het veld (staat de drempel uit, dan geldt geen minimum).',
   trendsPlayersRowOnOff: 'Op {on} · Af {off} per 10',
   trendsPlayersRowAll: 'Speelde alles',
   trendsPlayersRowLow: 'Op/af: te weinig minuten',
@@ -43,7 +43,7 @@ export const trendsPlayersNl = {
   trendsPlayersStintsLongest: 'Langste',
   trendsPlayersStintsNone: 'Geen stints in deze selectie.',
   trendsPlayersStintsExplain:
-    'Een stint is aaneengesloten tijd op het veld binnen één kwart. Een kwartgrens of een wissel beëindigt de stint.',
+    'Een stint is aaneengesloten tijd op het veld binnen één kwart. Een kwartgrens, een wissel, een tijdgat tussen twee segmenten of een segment met onbekende spelers (PARTIAL) beëindigt de stint. Segmenten van 0 s tellen niet mee.',
   trendsPlayersStintsUnreliable:
     'Let op: de volgorde van de segmenten is niet overal betrouwbaar (bijvoorbeeld na een correctie). Stints kunnen daardoor te kort of te lang uitvallen.',
   trendsPlayersStintsAria: '{naam}: {n} stints, gemiddeld {avg}, langste {longest}',
@@ -63,10 +63,10 @@ export const trendsPlayersEn = {
   trendsPlayersAllHint: 'No minutes off the court: there is no off value and no judgement.',
   trendsPlayersLow: 'Too few minutes on one side',
   trendsPlayersLowHint:
-    'On {on}, off {off}. Each side needs at least {min}. No judgement; raw totals only.',
+    'On {on}, off {off}. Needed: on at least {onMin}, off at least {offMin}. No judgement; raw totals only.',
   trendsPlayersRawTotal: '{value} in {time}',
   trendsPlayersOnOffExplain:
-    'Descriptive, not a cause: the team +/- per 10 min with and without this player on the court. Around average = difference smaller than 1.0 per 10 min. The threshold from the filter bar applies to both sides.',
+    'Descriptive, not a cause: the team +/- per 10 min with and without this player on the court. Around average = difference smaller than 1.0 per 10 min. A judgement needs at least the filter-bar threshold on court and at least 10:00 off court (when the threshold is off, there is no minimum).',
   trendsPlayersRowOnOff: 'On {on} · Off {off} per 10',
   trendsPlayersRowAll: 'Played all minutes',
   trendsPlayersRowLow: 'On/off: too few minutes',
@@ -84,7 +84,7 @@ export const trendsPlayersEn = {
   trendsPlayersStintsLongest: 'Longest',
   trendsPlayersStintsNone: 'No stints in this selection.',
   trendsPlayersStintsExplain:
-    'A stint is continuous time on the court within one quarter. A quarter boundary or a substitution ends the stint.',
+    'A stint is continuous time on the court within one quarter. A quarter boundary, a substitution, a time gap between two segments or a segment with unknown players (PARTIAL) ends the stint. Segments of 0 s are ignored.',
   trendsPlayersStintsUnreliable:
     'Note: the order of the segments is not reliable everywhere (for example after a correction). Stints may therefore come out too short or too long.',
   trendsPlayersStintsAria: '{naam}: {n} stints, average {avg}, longest {longest}',
