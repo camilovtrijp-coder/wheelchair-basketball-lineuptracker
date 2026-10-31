@@ -143,6 +143,8 @@ test.describe('v2 Stats en Trends in v1-look', () => {
   test('Trends: groene lijn, teal staven en uitklapbare wedstrijdenlijst', async ({ page }) => {
     await seed(page, { pf: 5, pa: 4 });
     await page.getByTestId('nav-trends').click();
+    await page.getByTestId('trends-tab-players').click();
+    await page.getByTestId('trends-row-toggle-1').click();
 
     const line = page.getByTestId('trends-line-chart-1').locator('polyline');
     await expect(line).toHaveCSS('stroke', 'rgb(52, 211, 153)');
@@ -175,6 +177,11 @@ test.describe('v2 Stats en Trends in v1-look', () => {
     await page.keyboard.press('Escape');
 
     await page.getByTestId('nav-trends').click();
+    expect(await contrastViolations(page)).toEqual([]);
+    await page.getByTestId('trends-tab-lineups').click();
+    expect(await contrastViolations(page)).toEqual([]);
+    await page.getByTestId('trends-tab-players').click();
+    await page.getByTestId('trends-row-toggle-1').click();
     await page.getByTestId('trends-toggle-games-1').click();
     expect(await contrastViolations(page)).toEqual([]);
 

@@ -1873,6 +1873,7 @@ export function App({
             roster={roster}
             gameIds={statsGameIds}
             onGameIdsChange={setStatsGameIds}
+            useClassLimit={settings.useClassLimit === true}
           />
         ) : v1MigrationCandidate !== null ? (
           <V1MigrationPrompt

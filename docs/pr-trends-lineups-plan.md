@@ -662,6 +662,22 @@ Elke sub-PR doet het volgende:
   - axe zonder nieuwe overtredingen;
   - de spelertrendgetallen zijn ongewijzigd.
 
+#### Uitvoeringsnotitie T2 + T3 (gebouwd op `ccr-trends-ui1-indeling`)
+
+- `TrendsPanel.tsx` is nu de schil (tablist + vaste filterbalk + gekozen
+  weergave). Elke weergave staat in een eigen bestand in `v2/src/ui/trends/`
+  (`OverviewView`, `LineupsView`, `PlayersView`, `QuartersView`) en krijgt
+  dezelfde `TrendsViewProps` (zie `trendsShared.ts`), zodat vervolgstappen
+  parallel één bestand kunnen uitbreiden. Elke weergave heeft gemarkeerde
+  uitbreidingsplekken (`// T4: ...`, `// T5: ...`, `// T6: ...`, `// T7: ...`).
+- Vertalingen staan in `v2/src/i18n/trendsStrings.ts` (spread in `strings.ts`),
+  met een blok per weergave.
+- Afwijkingen van het plan: de weergave Kwarten is al zichtbaar met een lege
+  staat; de lineup-ranglijst en de bestaande turnoverkaart delen de drempel
+  (standaard 5:00, niet opgeslagen); de spelerrijen klappen uit tot de
+  bestaande kaart, dus de oude kaarttestids (`trends-totalpm-*`, ...) zijn
+  pas na uitklappen aanwezig en de e2e is daarop gemigreerd.
+
 ### T4 — on/off per speler [Should]
 
 - **Scope**: `computeOnOffImpact` + tests (§F.2 on/off), tonen in de rij en

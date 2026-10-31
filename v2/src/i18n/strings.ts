@@ -1,3 +1,5 @@
+import { trendsEn, trendsNl } from './trendsStrings';
+
 export const LANG_STORAGE_KEY = 'lineup-tracker-lang';
 
 export const SUPPORTED_LANGS = ['nl', 'en'] as const;
@@ -897,6 +899,8 @@ const nl = {
   trendsTovLineupsTitle: 'Lineups: turnovers per 10 min',
   trendsTovLineupsHint: 'Laagste is het beste',
   trendsTovLineupsEmpty: 'Nog geen opstellingen om te vergelijken.',
+  // Herindeling Trends-tab (T2/T3): zie i18n/trendsStrings.ts.
+  ...trendsNl,
 } as const;
 
 const en = {
@@ -1731,6 +1735,8 @@ const en = {
   trendsTovLineupsTitle: 'Lineups: turnovers per 10 min',
   trendsTovLineupsHint: 'Lowest is best',
   trendsTovLineupsEmpty: 'No lineups to compare yet.',
+  // Trends tab restructure (T2/T3): see i18n/trendsStrings.ts.
+  ...trendsEn,
 } as const;
 
 export const STRINGS = { nl, en } as const;

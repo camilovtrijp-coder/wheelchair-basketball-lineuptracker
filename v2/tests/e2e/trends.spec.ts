@@ -1,5 +1,19 @@
+import AxeBuilder from '@axe-core/playwright';
 import { expect, type Page } from '@playwright/test';
 import { test } from './fixtures';
+
+const WCAG_TAGS = ['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa'];
+
+async function expectNoAxeViolations(page: Page): Promise<void> {
+  const results = await new AxeBuilder({ page }).withTags(WCAG_TAGS).analyze();
+  expect(results.violations, JSON.stringify(results.violations, null, 2)).toEqual([]);
+}
+
+/** T3: Trends heeft de weergaven Overzicht | Lineups | Spelers | Kwarten; open Spelers en klap een rij uit. */
+async function openPlayerCard(page: Page, rosterId = 1): Promise<void> {
+  await page.getByTestId('trends-tab-players').click();
+  await page.getByTestId(`trends-row-toggle-${rosterId}`).click();
+}
 
 const ACTIVE_GAME_KEY = 'lineup-tracker-v2-active-game:org-rotterdam:team-u23';
 const COMPLETED_GAMES_KEY = 'lineup-tracker-v2-completed-games:org-rotterdam:team-u23';
@@ -133,11 +147,16 @@ test.describe('v2 Trends-tab (PR 6.5)', () => {
   }) => {
     await setupTwoGames(page);
     await page.getByTestId('nav-trends').click();
+    await page.getByTestId('trends-tab-players').click();
     await expect(page.getByTestId('trends-list')).toBeVisible();
     // rosterId 1 speelde beide wedstrijden onder twee verschillende
     // game-player-UUID's ('p1'/'q1') — moet als één kaart samenkomen.
     const card = page.getByTestId('trends-card-1');
     await expect(card).toBeVisible();
+    // De rij vat samen (minuten en +/-); de volledige kaart staat achter de uitklaptoggle.
+    await expect(page.getByTestId('trends-row-min-1')).toHaveText('3.5');
+    await expect(page.getByTestId('trends-row-pm-1')).toHaveText('+3');
+    await page.getByTestId('trends-row-toggle-1').click();
     // totaal 180+240=420s / 60 / 2 wedstrijden = 3.5
     await expect(page.getByTestId('trends-avgmin-1')).toHaveText('3.5');
     // pm: (8-6) + (5-4) = 3, /2 wedstrijden = +1.5
@@ -160,6 +179,7 @@ test.describe('v2 Trends-tab (PR 6.5)', () => {
   test('per10-toggle herberekent het gemiddelde plus/min per speler', async ({ page }) => {
     await setupTwoGames(page);
     await page.getByTestId('nav-trends').click();
+    await openPlayerCard(page);
     await expect(page.getByTestId('trends-avgpm-1')).toHaveText('+1.5');
     await page.getByTestId('trends-per10-toggle').click();
     // per punt genormaliseerd: (2*600/180 + 1*600/240)/2 = (6.667+2.5)/2 ≈ 4.6
@@ -169,6 +189,7 @@ test.describe('v2 Trends-tab (PR 6.5)', () => {
   test('sorteercyclus doorloopt rugnummer -> minuten -> plus/min', async ({ page }) => {
     await setupTwoGames(page);
     await page.getByTestId('nav-trends').click();
+    await page.getByTestId('trends-tab-players').click();
     const toggle = page.getByTestId('trends-sort-toggle');
     await expect(toggle).toContainText('Nr');
     await toggle.click();
@@ -184,6 +205,7 @@ test.describe('v2 Trends-tab (PR 6.5)', () => {
   }) => {
     await setupTwoGames(page);
     await page.getByTestId('nav-trends').click();
+    await openPlayerCard(page);
     await page.getByTestId('trends-toggle-games-1').click();
     const list = page.getByTestId('trends-games-list-1');
     await expect(list).toBeVisible();
@@ -203,6 +225,7 @@ test.describe('v2 Trends-tab (PR 6.5)', () => {
     await page.getByTestId('stats-games-modal-done').click();
 
     await page.getByTestId('nav-trends').click();
+    await openPlayerCard(page);
     // Dezelfde selectie geldt nu in Trends: gemiddelde minuten is alleen van g-A.
     await expect(page.getByTestId('trends-avgmin-1')).toHaveText('3.0'); // 180s/60/1
     await page.getByTestId('trends-games-btn').click();
@@ -263,6 +286,7 @@ test.describe('v2 Trends-tab (PR 6.5)', () => {
     );
     await page.reload();
     await page.getByTestId('nav-trends').click();
+    await openPlayerCard(page);
     await page.getByTestId('trends-toggle-games-1').click();
     // De lijst toont nieuwste-eerst (TrendsPanel keert de chronologische
     // old->new-punten om voor weergave), dus de EERSTE rij hoort bij de
@@ -272,15 +296,34 @@ test.describe('v2 Trends-tab (PR 6.5)', () => {
     await expect(rows.first()).toContainText('Voorlopig');
   });
 
-  test('Trends-tab op een 320px-viewport toont geen horizontale overflow', async ({ page }) => {
+  test('Trends-tab op een 320px-viewport toont geen horizontale overflow (alle weergaven)', async ({
+    page,
+  }) => {
     await page.setViewportSize({ width: 320, height: 568 });
     await setupTwoGames(page);
     await page.getByTestId('nav-trends').click();
+    const overflow = () =>
+      page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
+    for (const view of ['overview', 'lineups', 'players', 'quarters']) {
+      await page.getByTestId(`trends-tab-${view}`).click();
+      await expect(page.getByTestId(`trends-tabpanel-${view}`)).toBeVisible();
+      expect(await overflow(), `horizontale overflow in ${view} op 320px`).toBeLessThanOrEqual(1);
+    }
+    // Lineups met alle metrieken, de groep "Te weinig data" open en een uitgeklapte spelerskaart.
+    await page.getByTestId('trends-tab-lineups').click();
+    await page.getByTestId('trends-threshold-btn').click(); // 10:00 -> de lineup valt in de groep
+    await page.getByTestId('trends-lineup-lowdata').locator('summary').click();
+    expect(await overflow(), 'overflow met open groep op 320px').toBeLessThanOrEqual(1);
+    await page.getByTestId('trends-threshold-btn').click(); // uit
+    for (const metric of ['pm', 'pfpa']) {
+      await page.getByTestId(`trends-metric-${metric}`).click();
+      expect(await overflow(), `overflow in metriek ${metric} op 320px`).toBeLessThanOrEqual(1);
+    }
+    await openPlayerCard(page);
     await expect(page.getByTestId('trends-list')).toBeVisible();
-    const overflow = await page.evaluate(
-      () => document.documentElement.scrollWidth - window.innerWidth,
+    expect(await overflow(), 'overflow met uitgeklapte spelerskaart op 320px').toBeLessThanOrEqual(
+      1,
     );
-    expect(overflow, 'pagina heeft horizontale overflow op 320px').toBeLessThanOrEqual(1);
   });
 
   test('NL/EN: alle zichtbare trends-teksten vertalen mee', async ({ page }) => {
@@ -310,5 +353,254 @@ test.describe('v2 Trends-tab (PR 6.5)', () => {
     await page.getByTestId('nav-trends').click();
     await expect(page.getByTestId('trends-read-error')).toBeVisible();
     await expect(page.getByTestId('trends-no-data')).toHaveCount(0);
+  });
+});
+
+test.describe('v2 Trends-weergaven (T2/T3)', () => {
+  test('segmentbediening: toetsenbord, roving tabindex en panelen', async ({ page }) => {
+    await setupTwoGames(page);
+    await page.getByTestId('nav-trends').click();
+    const tablist = page.getByRole('tablist');
+    await expect(tablist).toBeVisible();
+    await expect(page.getByTestId('trends-tab-overview')).toHaveAttribute('aria-selected', 'true');
+    await expect(page.getByTestId('trends-tab-lineups')).toHaveAttribute('tabindex', '-1');
+
+    await page.getByTestId('trends-tab-overview').focus();
+    await page.keyboard.press('ArrowRight');
+    await expect(page.getByTestId('trends-tab-lineups')).toBeFocused();
+    await expect(page.getByTestId('trends-tab-lineups')).toHaveAttribute('aria-selected', 'true');
+    await expect(page.getByTestId('trends-lineups')).toBeVisible();
+    await page.keyboard.press('End');
+    await expect(page.getByTestId('trends-tab-quarters')).toBeFocused();
+    await expect(page.getByTestId('trends-quarters-empty')).toBeVisible();
+    await page.keyboard.press('ArrowRight'); // omwikkelen
+    await expect(page.getByTestId('trends-tab-overview')).toBeFocused();
+    await page.keyboard.press('ArrowLeft'); // omwikkelen
+    await expect(page.getByTestId('trends-tab-quarters')).toBeFocused();
+    await page.keyboard.press('Home');
+    await expect(page.getByTestId('trends-tab-overview')).toBeFocused();
+    await expect(page.getByTestId('trends-tabpanel-overview')).toBeVisible();
+
+    // Het gekozen paneel is gekoppeld via aria-controls/labelledby.
+    const controls = await page.getByTestId('trends-tab-overview').getAttribute('aria-controls');
+    await expect(page.locator(`#${controls}`)).toHaveAttribute('role', 'tabpanel');
+  });
+
+  test('de gekozen weergave wordt niet opgeslagen', async ({ page }) => {
+    await setupTwoGames(page);
+    await page.getByTestId('nav-trends').click();
+    await page.getByTestId('trends-tab-lineups').click();
+    await page.reload();
+    await page.getByTestId('nav-trends').click();
+    await expect(page.getByTestId('trends-tab-overview')).toHaveAttribute('aria-selected', 'true');
+    const keys = await page.evaluate(() => Object.keys(window.localStorage));
+    expect(keys.filter((k) => /trends/i.test(k))).toEqual([]);
+  });
+
+  test('filterbalk is sticky en blijft zichtbaar bij scrollen in elke weergave', async ({
+    page,
+  }) => {
+    await setupTwoGames(page);
+    await page.getByTestId('nav-trends').click();
+    await expect(page.getByTestId('trends-filterbar')).toHaveCSS('position', 'sticky');
+    await page.evaluate(() => {
+      const spacer = document.createElement('div');
+      spacer.id = 'e2e-spacer';
+      spacer.style.height = '3000px';
+      document.querySelector('.trends-panel')!.appendChild(spacer);
+    });
+    for (const view of ['overview', 'lineups', 'players', 'quarters']) {
+      await page.getByTestId(`trends-tab-${view}`).click();
+      await page.evaluate(() => window.scrollTo(0, 900));
+      const top = await page
+        .getByTestId('trends-filterbar')
+        .evaluate((el) => el.getBoundingClientRect().top);
+      expect(Math.abs(top), `filterbalk bovenaan in ${view}`).toBeLessThanOrEqual(1);
+      await expect(page.getByTestId('trends-threshold-btn')).toBeInViewport();
+    }
+  });
+
+  test('drempelchip: standaard 5:00 en cyclus uit/3:00/5:00/10:00', async ({ page }) => {
+    await setupTwoGames(page);
+    await page.getByTestId('nav-trends').click();
+    const btn = page.getByTestId('trends-threshold-btn');
+    await expect(btn).toHaveText('Drempel: 5:00');
+    const seen: string[] = [];
+    for (let i = 0; i < 4; i += 1) {
+      await btn.click();
+      seen.push((await btn.textContent()) ?? '');
+    }
+    expect(seen).toEqual(['Drempel: 10:00', 'Drempel: uit', 'Drempel: 3:00', 'Drempel: 5:00']);
+  });
+
+  test('Lineups: rij met minuten, wedstrijden, toon met symbool en toegankelijke naam', async ({
+    page,
+  }) => {
+    await setupTwoGames(page);
+    await page.getByTestId('nav-trends').click();
+    await page.getByTestId('trends-tab-lineups').click();
+    await page.getByTestId('trends-per10-toggle').click();
+    const row = page.getByTestId('trends-lineup-1-2-3-4-5');
+    await expect(row).toBeVisible();
+    // 180 s + 240 s = 7:00; (8-6)+(5-4) = +3 -> 3*600/420 = +4.3; team = lineup -> rond gemiddelde.
+    await expect(row).toContainText('7:00');
+    await expect(row).toContainText('2 wedstrijden');
+    await expect(page.getByTestId('trends-lineup-value-1-2-3-4-5')).toHaveText('+4.3');
+    await expect(row).toContainText('●');
+    await expect(row).toContainText('rond gemiddelde');
+    await expect(row).toHaveAccessibleName('1-2-3-4-5, 7:00, +4.3 per 10 minuten, rond gemiddelde');
+    await expect(page.getByTestId('trends-lineup-explain')).toHaveText(
+      'Beschrijvend: wat gebeurde er met deze vijf op het veld. Minder dan 5 minuten zegt bijna niets. Per 10 min is geen balbezitcorrectie.',
+    );
+    // Voor/Tegen: 13 voor / 10 tegen in 7:00 -> 18.6 en 14.3 per 10.
+    await page.getByTestId('trends-metric-pfpa').click();
+    await expect(page.getByTestId('trends-lineup-for-1-2-3-4-5')).toHaveText('18.6');
+    await expect(page.getByTestId('trends-lineup-against-1-2-3-4-5')).toHaveText('14.3');
+  });
+
+  test('Lineups: onder de drempel staat in het ingeklapte "Te weinig data" met ruw totaal', async ({
+    page,
+  }) => {
+    await setupTwoGames(page);
+    await page.getByTestId('nav-trends').click();
+    await page.getByTestId('trends-tab-lineups').click();
+    await expect(page.getByTestId('trends-lineup-lowdata')).toHaveCount(0);
+    await page.getByTestId('trends-threshold-btn').click(); // 10:00 -> 7:00 valt eronder
+    await expect(page.getByTestId('trends-lineup-1-2-3-4-5')).toHaveCount(0);
+    const group = page.getByTestId('trends-lineup-lowdata');
+    await expect(group).toBeVisible();
+    await expect(group).not.toHaveAttribute('open', '');
+    await expect(group.locator('summary')).toHaveText('Te weinig data (1 lineup onder 10:00)');
+    await expect(page.getByTestId('trends-lineup-low-1-2-3-4-5')).toBeHidden();
+    await group.locator('summary').click();
+    await expect(page.getByTestId('trends-lineup-low-1-2-3-4-5')).toContainText('+3 in 7:00');
+    // Drempel uit: waarschuwing en geen groep.
+    await page.getByTestId('trends-threshold-btn').click();
+    await expect(page.getByTestId('trends-lineup-threshold-warning')).toBeVisible();
+    await expect(page.getByTestId('trends-lineup-lowdata')).toHaveCount(0);
+  });
+
+  test('"Deze wedstrijd" is uitgeschakeld zonder lopende wedstrijd en toont de uitleg', async ({
+    page,
+  }) => {
+    await setupTwoGames(page);
+    await page.getByTestId('nav-trends').click();
+    const btn = page.getByTestId('trends-quick-current');
+    await expect(btn).toBeDisabled();
+    await expect(btn).toHaveAttribute('title', /geen lopende wedstrijd/);
+    await expect(page.getByTestId('trends-quick-last5')).toBeEnabled();
+  });
+
+  test('snelfilter "Deze wedstrijd" zet het gedeelde filter (ook in Statistieken)', async ({
+    page,
+  }) => {
+    await setupTwoGames(page);
+    await page.evaluate(
+      ({ key, value }: { key: string; value: string }) => window.localStorage.setItem(key, value),
+      {
+        key: ACTIVE_GAME_KEY,
+        value: JSON.stringify({
+          id: 'live-2',
+          organizationId: 'org-rotterdam',
+          teamId: 'team-u23',
+          phase: 'tracking',
+          players: ['a1', 'a2', 'a3', 'a4', 'a5'].map((id, i) =>
+            player(id, i + 1, String(i + 1), CURRENT_ROSTER[i]!.naam),
+          ),
+          opponent: 'Live',
+          competition: '',
+          clockDown: true,
+          limitStr: '',
+          onCourt: ['a1', 'a2', 'a3', 'a4', 'a5'],
+          curQuarter: 1,
+          beginSec: 600,
+          endSec: 540,
+          pendingSwapLineup: null,
+          actions: [
+            {
+              type: 'segment-saved',
+              id: 'live-act-2',
+              segment: {
+                id: 'live-seg-2',
+                quarter: 1,
+                beginSec: 0,
+                endSec: 60,
+                durSec: 60,
+                lineup: ['a1', 'a2', 'a3', 'a4', 'a5'],
+                pf: 2,
+                pa: 0,
+                classSum: 0,
+                allowed: 0,
+                over: false,
+              },
+              at: '2026-02-01T00:00:00.000Z',
+            },
+          ],
+          createdAt: '2026-02-01T00:00:00.000Z',
+          startedAt: '2026-02-01T00:00:00.000Z',
+        }),
+      },
+    );
+    await page.reload();
+    await page.getByTestId('nav-trends').click();
+    await expect(page.getByTestId('trends-games-btn')).toHaveText('Wedstrijden (3)');
+    await page.getByTestId('trends-quick-current').click();
+    await expect(page.getByTestId('trends-games-btn')).toHaveText('Wedstrijden (1)');
+    await expect(page.getByTestId('trends-quick-current')).toHaveAttribute('aria-pressed', 'true');
+    await expect(page.getByTestId('trends-filter-shared-note')).toContainText('Statistieken');
+    await page.getByTestId('nav-stats').click();
+    await expect(page.getByTestId('stats-games-btn')).toContainText('(1)');
+    await page.getByTestId('nav-trends').click();
+    // Nogmaals drukken zet het filter terug op alle wedstrijden.
+    await page.getByTestId('trends-quick-current').click();
+    await expect(page.getByTestId('trends-games-btn')).toHaveText('Wedstrijden (3)');
+  });
+
+  test('NL/EN: nieuwe tabs, lineupkaart en uitleg wisselen mee van taal', async ({ page }) => {
+    await setupTwoGames(page);
+    await page.getByTestId('nav-trends').click();
+    await expect(page.getByTestId('trends-tab-lineups')).toHaveText('Lineups');
+    await expect(page.getByTestId('trends-tab-players')).toHaveText('Spelers');
+    await page.getByTestId('trends-tab-lineups').click();
+    await expect(page.getByTestId('trends-threshold-btn')).toHaveText('Drempel: 5:00');
+    await page.getByTestId('lang-switch').click();
+    await expect(page.getByTestId('trends-tab-players')).toHaveText('Players');
+    await expect(page.getByTestId('trends-threshold-btn')).toHaveText('Threshold: 5:00');
+    await expect(page.getByTestId('trends-lineup-explain')).toHaveText(
+      'Descriptive: what happened with these five on court. Under 5 minutes tells you almost nothing. Per 10 min is not a possession adjustment.',
+    );
+    await expect(page.getByTestId('trends-lineup-1-2-3-4-5')).toHaveAccessibleName(
+      /1-2-3-4-5, 7:00, \+4\.3 per 10 minutes, around average/,
+    );
+    await page.getByTestId('trends-tab-quarters').click();
+    await expect(page.getByTestId('trends-quarters-empty')).toContainText('Quarters are coming');
+  });
+
+  test('axe: geen WCAG-overtredingen in alle weergaven (NL en EN, groep open)', async ({
+    page,
+  }) => {
+    await setupTwoGames(page);
+    await page.getByTestId('nav-trends').click();
+    await expectNoAxeViolations(page); // Overzicht
+    await page.getByTestId('trends-tab-lineups').click();
+    await page.getByTestId('trends-per10-toggle').click();
+    await expectNoAxeViolations(page);
+    for (const metric of ['pfpa', 'pm']) {
+      await page.getByTestId(`trends-metric-${metric}`).click();
+      await expectNoAxeViolations(page);
+    }
+    await page.getByTestId('trends-threshold-btn').click(); // 10:00 -> groep
+    await page.getByTestId('trends-lineup-lowdata').locator('summary').click();
+    await expectNoAxeViolations(page);
+    await page.getByTestId('trends-threshold-btn').click(); // uit -> waarschuwing
+    await expectNoAxeViolations(page);
+    await page.getByTestId('trends-tab-players').click();
+    await page.getByTestId('trends-row-toggle-1').click();
+    await expectNoAxeViolations(page);
+    await page.getByTestId('trends-tab-quarters').click();
+    await expectNoAxeViolations(page);
+    await page.getByTestId('lang-switch').click();
+    await page.getByTestId('trends-tab-lineups').click();
+    await expectNoAxeViolations(page);
   });
 });
