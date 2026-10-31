@@ -36,6 +36,8 @@ export interface AnalysisScope {
 export function buildAnalysisScope(
   repository: CompletedGameRepository,
   activeGame: ActiveGame | null,
+  /** Instelling `useClassLimit` voor de lopende wedstrijd (ontbreekt = false). */
+  activeUseClassLimit = false,
 ): AnalysisScope {
   const historyRead = readHistory(repository);
   const completedIds = new Set(historyRead.games.map((g) => g.id));
@@ -64,6 +66,7 @@ export function buildAnalysisScope(
         scoreFor: derived.scoreFor,
         scoreAgainst: derived.scoreAgainst,
         isCurrent: true,
+        useClassLimit: activeUseClassLimit,
       };
     }
   }
@@ -95,5 +98,6 @@ function toAnalysisGame(game: CompletedGame): AnalysisGame {
     scoreAgainst: game.scoreAgainst,
     isCurrent: false,
     quarterCount: game.quarterCount,
+    useClassLimit: game.useClassLimit === true,
   };
 }

@@ -31,6 +31,14 @@ export interface AnalysisGame {
    * of het hoogste voorkomende segmentkwart.
    */
   quarterCount?: number;
+
+  /**
+   * Was de klassegrens actief toen deze wedstrijd werd gespeeld? Optioneel en
+   * additief: afgeronde wedstrijden nemen `CompletedGame.useClassLimit` over, de
+   * lopende wedstrijd de instelling. Ontbreekt het veld, dan geldt `false`
+   * (dan zijn `classSum`/`allowed`/`over` ook niet betekenisvol).
+   */
+  useClassLimit?: boolean;
 }
 
 /**
