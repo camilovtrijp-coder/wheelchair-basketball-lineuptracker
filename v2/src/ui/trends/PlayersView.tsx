@@ -4,8 +4,11 @@ import {
   type TrendPlayerViewModel,
 } from '../../application/trends/buildTrendViewModels';
 import { fmtSeconds } from '../../domain/stats/format';
+import { computeStints, type PlayerStints } from '../../domain/trends/lineupExtras';
+import { computeOnOffImpact, type OnOffRow } from '../../domain/trends/onOffImpact';
 import type { TrendsFilter, TrendsSortBy } from '../../domain/trends/types';
 import type { Lang } from '../../i18n/strings';
+import { OnOffBlock, OnOffRowSummary, StintsBlock } from './PlayersOnOff';
 import { fmtOne, fmtSignedInt, formatDate, t, type TrendsViewProps } from './trendsShared';
 
 /**
@@ -43,7 +46,7 @@ function sortLabel(lang: Lang, sortBy: TrendsSortBy): string {
 }
 
 export function PlayersView(props: TrendsViewProps) {
-  const { lang, scope, gameIds, per10, roster } = props;
+  const { lang, scope, games, gameIds, per10, minSec, roster } = props;
   const [sortBy, setSortBy] = useState<TrendsSortBy>('nr');
   const [openRows, setOpenRows] = useState<Set<number>>(new Set());
 
@@ -56,6 +59,22 @@ export function PlayersView(props: TrendsViewProps) {
     [scope, roster, filter],
   );
   const showTurnovers = viewModel.turnoverSummary.tracked;
+
+  // T4/T7: pure berekeningen op de gedeelde, al ingelezen wedstrijden (geen extra reads of opslag).
+  const onOffById = useMemo(() => {
+    const m = new Map<number, OnOffRow>();
+    for (const r of computeOnOffImpact(games, gameIds, roster, minSec)) m.set(r.rosterId, r);
+    return m;
+  }, [games, gameIds, roster, minSec]);
+  const stintsResult = useMemo(
+    () => computeStints(games, gameIds, roster),
+    [games, gameIds, roster],
+  );
+  const stintsById = useMemo(() => {
+    const m = new Map<number, PlayerStints>();
+    for (const p of stintsResult.players) m.set(p.rosterId, p);
+    return m;
+  }, [stintsResult]);
 
   function toggleRow(rosterId: number): void {
     setOpenRows((prev) => {
@@ -81,8 +100,6 @@ export function PlayersView(props: TrendsViewProps) {
         </div>
       </div>
 
-      {/* T4: de on/off-samenvatting (computeOnOffImpact) komt per speler in PlayerRow en PlayerTrendBody. */}
-
       {viewModel.players.length === 0 ? (
         <p className="stats-empty" data-testid="trends-no-data">
           {t(lang, 'trendsNoData')}
@@ -101,14 +118,16 @@ export function PlayersView(props: TrendsViewProps) {
               lang={lang}
               per10={per10}
               showTurnovers={showTurnovers}
+              onOff={onOffById.get(p.rosterId)}
+              stints={stintsById.get(p.rosterId)}
+              orderReliable={stintsResult.orderReliable}
+              minSec={minSec}
               open={openRows.has(p.rosterId)}
               onToggle={() => toggleRow(p.rosterId)}
             />
           ))}
         </div>
       )}
-
-      {/* T7: stints, duo's en consistentie per speler komen in PlayerTrendBody. */}
     </div>
   );
 }
@@ -118,6 +137,10 @@ function PlayerRow({
   lang,
   per10,
   showTurnovers,
+  onOff,
+  stints,
+  orderReliable,
+  minSec,
   open,
   onToggle,
 }: {
@@ -125,6 +148,10 @@ function PlayerRow({
   lang: Lang;
   per10: boolean;
   showTurnovers: boolean;
+  onOff: OnOffRow | undefined;
+  stints: PlayerStints | undefined;
+  orderReliable: boolean;
+  minSec: number;
   open: boolean;
   onToggle: () => void;
 }) {
@@ -167,6 +194,7 @@ function PlayerRow({
         <span className="trends-row__chev" aria-hidden="true">
           {open ? '▾' : '▸'}
         </span>
+        <OnOffRowSummary row={onOff} lang={lang} id={id} />
       </button>
       {open ? (
         <div id={bodyId} className="trends-card__body">
@@ -175,6 +203,14 @@ function PlayerRow({
             lang={lang}
             per10={per10}
             showTurnovers={showTurnovers}
+          />
+          <OnOffBlock row={onOff} lang={lang} id={id} naam={player.naam} minSec={minSec} />
+          <StintsBlock
+            stints={stints}
+            orderReliable={orderReliable}
+            lang={lang}
+            id={id}
+            naam={player.naam}
           />
         </div>
       ) : null}
