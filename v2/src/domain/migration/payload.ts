@@ -103,10 +103,24 @@ export function activeGameCloudPayloadHash(doc: ActiveGameCloudPayloadFields): s
 }
 
 export function completedGamePayloadHash(game: CompletedGame): string {
-  const { id: _id, organizationId: _o, teamId: _t, revision: _r, ...contentOnly } = game;
+  // PR 7.5a-fix: `corrections`/`correctedAt` zijn lokaal correctielog (nog niet
+  // in het cloudcontract, zie docs/pr-7.5-plan.md §I) en tellen niet mee —
+  // de gecorrigeerde segmentinhoud zelf wel. Ongecorrigeerde wedstrijden
+  // hebben deze velden niet: hun hash blijft byte-identiek.
+  const {
+    id: _id,
+    organizationId: _o,
+    teamId: _t,
+    revision: _r,
+    corrections: _c,
+    correctedAt: _ca,
+    ...contentOnly
+  } = game;
   void _id;
   void _o;
   void _t;
   void _r;
+  void _c;
+  void _ca;
   return payloadHash(contentOnly);
 }

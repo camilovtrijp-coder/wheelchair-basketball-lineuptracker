@@ -40,6 +40,7 @@
 //    firestore.rules punt 16) — twee losse writes lieten voorheen een
 //    dubbele-snapshot/orphan-snapshot-gat open.
 import {
+  arrayUnion,
   collection,
   doc,
   getDoc,
@@ -61,6 +62,8 @@ import {
   type GameActionEnvelopeDocument,
 } from 'firebase-base/documents';
 import type {
+  CompletedGameCorrectionPayload,
+  CompletedGameCorrectionResult,
   CompletedGameSnapshotProjection,
   CompletedGameTombstoneResult,
   GameActionUploadOutcome,
@@ -726,6 +729,90 @@ export class FirestoreGameCloudGateway implements GameCloudGateway {
       return { ok: false, error };
     }
     return { ok: true, revision: nextRevision };
+  }
+
+  /**
+   * PR 7.5c (docs/pr-7.5-plan.md §D.3): één niet-transactionele `updateDoc()`
+   * is al atomisch en de optimistische concurrency zit in firestore.rules
+   * (punt 21: `revision` exact +1), net als bij `tombstoneCompletedGame()`.
+   * `arrayUnion(correction)` voegt het ene logitem toe zonder het bestaande
+   * log opnieuw te versturen (Rules zien het resulterende log en eisen
+   * "bestaande items ongewijzigd + exact één erbij").
+   *
+   * Idempotentie en conflictclassificatie bij een MISLUKTE write (bewust de
+   * eenvoudigste correcte aanpak: geen pre-read, geen transactie — het
+   * succespad kost dus één write en nul reads):
+   * - één readback (`getDoc`, lokale weergave met geschatte servertijden);
+   * - `payload.correction.id` staat al in `corrections`: een eerdere poging is
+   *   alsnog toegepast. Staat die write nog als wachtende lokale write in de
+   *   SDK-wachtrij (`hasPendingWrites`), dan is er nog GEEN serverbevestiging
+   *   → `ok: false` (geen vals succes; een latere retry vindt het item dan
+   *   server-bevestigd). Anders `ok: true, alreadyApplied: true`;
+   * - item niet aanwezig maar de revisie wijkt af van `expectedRevision`: een
+   *   ander apparaat was eerder → `ok: false, conflict: true`; niets wordt
+   *   samengevoegd of overschreven;
+   * - anders (netwerk, Rules-afwijzing zoals scorer/viewer, timeout) →
+   *   `ok: false, error`.
+   * Een timeout laat de write in Firestores wachtrij staan; een latere retry
+   * kan dus een tweede, dan door Rules geweigerde write achterlaten (revisie
+   * is dan al +1). Dat is onschadelijk: geen dubbele logregel mogelijk.
+   */
+  async correctCompletedGame(
+    organizationId: string,
+    teamId: string,
+    completedGameId: string,
+    expectedRevision: number,
+    payload: CompletedGameCorrectionPayload,
+  ): Promise<CompletedGameCorrectionResult> {
+    const ref = this.completedGameRef(organizationId, teamId, completedGameId);
+    const nextRevision = expectedRevision + 1;
+    let writeError: unknown;
+    try {
+      await withTimeout(
+        updateDoc(ref, {
+          segments: payload.segments,
+          scoreFor: payload.scoreFor,
+          scoreAgainst: payload.scoreAgainst,
+          corrections: arrayUnion(payload.correction),
+          correctedAt: serverTimestamp(),
+          revision: nextRevision,
+        }),
+        this.timeoutMs,
+        'correctCompletedGame:updateDoc',
+      );
+      return { ok: true, revision: nextRevision };
+    } catch (error) {
+      writeError = error;
+    }
+    try {
+      const readback = await withTimeout(
+        getDoc(ref),
+        this.timeoutMs,
+        'correctCompletedGame:readback',
+      );
+      if (!readback.exists()) return { ok: false, error: writeError };
+      const data = readback.data(PENDING_TIMESTAMP_ESTIMATE);
+      const log: unknown = data['corrections'];
+      const applied =
+        Array.isArray(log) &&
+        log.some(
+          (item: unknown) =>
+            typeof item === 'object' &&
+            item !== null &&
+            (item as { id?: unknown }).id === payload.correction.id,
+        );
+      const serverRevision = typeof data['revision'] === 'number' ? data['revision'] : 0;
+      if (applied) {
+        if (readback.metadata.hasPendingWrites) return { ok: false, error: writeError };
+        return { ok: true, revision: serverRevision, alreadyApplied: true };
+      }
+      if (serverRevision !== expectedRevision && !readback.metadata.hasPendingWrites) {
+        return { ok: false, conflict: true, revision: serverRevision, error: writeError };
+      }
+    } catch {
+      /* readback onmogelijk (offline zonder cache): de write-fout is leidend */
+    }
+    return { ok: false, error: writeError };
   }
 
   /**

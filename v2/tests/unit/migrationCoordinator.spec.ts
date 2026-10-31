@@ -524,3 +524,94 @@ describe('application/migration/MigrationCoordinator — lokale bron blijft onaa
     expect(local.completedGames.get(completedGame.id)).toEqual(completedGame);
   });
 });
+
+describe('PR 7.5a-fix — gecorrigeerde wedstrijd wordt nooit naar de cloud geschreven', () => {
+  const correctedGame: CompletedGame = {
+    ...completedGame,
+    id: 'c-corrected',
+    sourceGameId: 'src-2',
+    corrections: [
+      {
+        id: 'corr-1',
+        segmentId: 'seg-1',
+        at: '2026-10-30T10:00:00.000Z',
+        by: null,
+        before: { quarter: 1, beginSec: 600, endSec: 420, pf: 6, pa: 4, tov: 2 },
+        after: { quarter: 1, beginSec: 600, endSec: 300, pf: 9, pa: 4, tov: 3 },
+      } as unknown as NonNullable<CompletedGame['corrections']>[number],
+    ],
+    correctedAt: '2026-10-30T10:00:00.000Z',
+  };
+
+  function build() {
+    const { local } = buildPreview();
+    const settingsValue = { ...DEFAULT_SETTINGS, teamName: 'De Adelaars' };
+    const inventory = buildLocalMigrationInventory(sourceCtx.organizationId, sourceCtx.teamId, {
+      settings: settingsValue,
+      roster: [sampleRosterPlayer],
+      activeGame: undefined,
+      completedGames: [completedGame, correctedGame],
+    });
+    const preview = buildCloudMigrationPreview({
+      now,
+      source: sourceCtx,
+      target: targetCtx,
+      callerRole: 'coach',
+      inventory,
+      existingCloud: emptyCloudSnapshot(),
+    });
+    const localBoth: MigrationLocalSource = {
+      ...local,
+      completedGames: new Map([
+        [completedGame.id, completedGame],
+        [correctedGame.id, correctedGame],
+      ]),
+    };
+    return { preview, local: localBoth };
+  }
+
+  function makeCoord(writeGateway: FakeWriteGateway) {
+    return makeCoordinator({
+      writeGateway,
+      inventoryGateway: new FakeInventoryGateway(),
+      runRepo: new FakeRunRepository(),
+      cloudRunGateway: new FakeCloudRunGateway(),
+    });
+  }
+
+  it('schrijft de rest wel, de gecorrigeerde niet, en laat de lokale bron ongemoeid', async () => {
+    const { preview, local } = build();
+    const writeGateway = new FakeWriteGateway();
+    const coordinator = makeCoord(writeGateway);
+    const { run } = await coordinator.prepareRun(preview, 'uid-1');
+    expect(run.items.some((i) => i.sourceId === correctedGame.id)).toBe(false);
+    const result = await coordinator.runMigration(run, local, writer, callerContext);
+    expect(result.status).toBe('completed');
+    expect(writeGateway.completedGameCalls).toBe(1);
+    expect(local.completedGames.get(correctedGame.id)).toBe(correctedGame);
+  });
+
+  it('een hervatte (oudere) run met een gecorrigeerd item schrijft het nooit', async () => {
+    const { preview, local } = build();
+    const writeGateway = new FakeWriteGateway();
+    const coordinator = makeCoord(writeGateway);
+    const { run } = await coordinator.prepareRun(preview, 'uid-1');
+    const legacy: MigrationRun = {
+      ...run,
+      items: [
+        ...run.items,
+        {
+          kind: 'completedGame',
+          sourceId: correctedGame.id,
+          targetId: correctedGame.id,
+          label: 'x',
+          payloadHash: 'h',
+          status: 'pending',
+        },
+      ],
+    };
+    const result = await coordinator.runMigration(legacy, local, writer, callerContext);
+    expect(writeGateway.completedGameCalls).toBe(1);
+    expect(result.items.find((i) => i.sourceId === correctedGame.id)?.status).toBe('failed');
+  });
+});

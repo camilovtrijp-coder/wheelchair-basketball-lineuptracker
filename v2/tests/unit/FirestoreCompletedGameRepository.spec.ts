@@ -150,6 +150,36 @@ describe('FirestoreCompletedGameRepository — subscribe', () => {
     expect(seen).toEqual([{ ids: ['completed-1', 'completed-2'], status: 'gesynchroniseerd' }]);
   });
 
+  it("review PR #134: geeft de ID's van documenten met eigen pending writes door, en niets bij een bevestigde snapshot", () => {
+    const doc = (id: string, pending: boolean) => ({
+      id,
+      data: () => sampleDoc(),
+      metadata: { hasPendingWrites: pending },
+    });
+    (onSnapshot as Mock).mockImplementationOnce(
+      (_ref: unknown, _opts: unknown, onNext: (snap: unknown) => void) => {
+        onNext({
+          docs: [doc('completed-1', true), doc('completed-2', false)],
+          metadata: { fromCache: false, hasPendingWrites: true },
+        });
+        onNext({
+          docs: [doc('completed-1', false), doc('completed-2', false)],
+          metadata: { fromCache: false, hasPendingWrites: false },
+        });
+        return () => undefined;
+      },
+    );
+    const repo = new FirestoreCompletedGameRepository(fakeDb, 'org-1', 'team-1');
+    const seen: Array<{ status: string; pending: string[] | undefined }> = [];
+    repo.subscribe((_games, sync, pendingIds) =>
+      seen.push({ status: sync.status, pending: pendingIds ? [...pendingIds] : undefined }),
+    );
+    expect(seen).toEqual([
+      { status: 'wacht-op-synchronisatie', pending: ['completed-1'] },
+      { status: 'gesynchroniseerd', pending: undefined },
+    ]);
+  });
+
   it('geeft een queryfout door aan onError', () => {
     const failure = new Error('permission-denied');
     (onSnapshot as Mock).mockImplementationOnce(

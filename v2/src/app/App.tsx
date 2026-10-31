@@ -1264,6 +1264,22 @@ export function App({
   }
 
   /**
+   * PR 7.5b: slaat een gecorrigeerde afgeronde wedstrijd lokaal op via
+   * `repository.update()`; bij `false` (opslag/validatie geweigerd) blijft de
+   * lijst ongewijzigd en toont uitsluitend de correctiedialoog de fout (de
+   * globale `gameSaveError`-banner wordt hier bewust niet gezet, zodat dezelfde
+   * fout niet dubbel verschijnt). Een geslaagde opslag wist een eerdere banner.
+   * Cloudmodus krijgt dit pad niet (PR 7.5c).
+   */
+  function handleCorrectCompletedGame(corrected: CompletedGame): boolean {
+    const ok = completedGameRepo.update(corrected);
+    if (!ok) return false;
+    setGameSaveError(false);
+    setCompletedGames(completedGameRepo.list());
+    return true;
+  }
+
+  /**
    * PR 6.6: ververst alle vier live App-states nadat `BackupPanel` een
    * import heeft afgerond — de coordinator schrijft rechtstreeks naar de
    * repositories/localStorage, buiten React om, dus zonder deze herlezing
@@ -1722,6 +1738,8 @@ export function App({
               setDeleteError(false);
             }}
             onDeleteGame={handleDeleteCompletedGame}
+            // PR 7.5b: correctie alleen lokaal (cloud-upload/merge = PR 7.5c).
+            onCorrectGame={repositories.gameSync ? undefined : handleCorrectCompletedGame}
             // Externe PR-6.3-review (aug. 2026): verwijderen van historie is een
             // beheeractie (ADR-003: "wedstrijden beheren" is coach/owner/admin),
             // geen live wedstrijdactie — dus `canWrite` (== canManageTeamData),

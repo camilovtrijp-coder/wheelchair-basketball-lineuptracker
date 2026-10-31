@@ -41,25 +41,25 @@ function t(lang: Lang, key: StringKey): string {
 }
 
 /** v1: `fmt()` — "-1:05"/"1:05" (min:ss, met minteken bij negatieve duur). */
-function fmtSec(sec: number): string {
+export function fmtSec(sec: number): string {
   const neg = sec < 0;
   const abs = Math.abs(sec);
   return `${neg ? '-' : ''}${Math.floor(abs / 60)}:${String(abs % 60).padStart(2, '0')}`;
 }
 
-function minutesOf(totalSec: number): number {
+export function minutesOf(totalSec: number): number {
   return Math.floor(totalSec / 60);
 }
 
-function secondsOf(totalSec: number): number {
+export function secondsOf(totalSec: number): number {
   return totalSec % 60;
 }
 
-function withMinutes(totalSec: number, min: number): number {
+export function withMinutes(totalSec: number, min: number): number {
   return min * 60 + secondsOf(totalSec);
 }
 
-function withSeconds(totalSec: number, sec: number): number {
+export function withSeconds(totalSec: number, sec: number): number {
   return minutesOf(totalSec) * 60 + sec;
 }
 
@@ -83,7 +83,7 @@ function playerLabel(players: GamePlayer[], id: string): string {
   return p ? `${p.naam} #${p.nr}` : '?';
 }
 
-function TimeSelect({
+export function TimeSelect({
   value,
   max,
   pad,

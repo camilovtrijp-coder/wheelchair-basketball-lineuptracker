@@ -141,3 +141,15 @@ describe('i18n/persistence — alleen `lineup-tracker-lang`', () => {
     expect(readLang(storage)).toBeNull();
   });
 });
+
+describe('PR 7.5a-fix — melding gecorrigeerde wedstrijden bij cloudmigratie', () => {
+  it('bestaat in NL en EN, met {n}-placeholder en uitleg over lokaal behoud', () => {
+    const nl = translate('nl', 'migrationCorrectedBlocked');
+    const en = translate('en', 'migrationCorrectedBlocked');
+    expect(nl).toContain('{n}');
+    expect(en).toContain('{n}');
+    expect(nl).toContain('lokaal');
+    expect(en).toContain('locally');
+    expect(nl).not.toBe(en);
+  });
+});

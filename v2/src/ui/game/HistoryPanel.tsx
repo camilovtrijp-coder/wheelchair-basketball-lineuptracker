@@ -1,3 +1,4 @@
+import { useState } from 'preact/hooks';
 import type { CompletedGame } from '../../domain/game/types';
 import { combinedCsvForGame, csvFilenameFor } from '../../domain/game/csv';
 import { segmentTurnovers } from '../../domain/game/tracking';
@@ -9,6 +10,7 @@ import {
 } from '../../domain/game/turnoverStats';
 import { shareOrDownloadCsv } from '../../infrastructure/game/shareOrDownloadCsv';
 import { translate, type Lang, type StringKey } from '../../i18n/strings';
+import { CorrectSegmentDialog, describeCorrectableFields } from './CorrectSegmentDialog';
 import { SyncStatusIndicator } from '../sync/SyncStatusIndicator';
 import type { SyncState, SyncStatus } from '../../domain/syncState';
 
@@ -72,6 +74,15 @@ export interface HistoryPanelProps {
    */
   cloudReadError?: boolean;
   /**
+   * PR 7.5b: slaat een gecorrigeerde afgeronde wedstrijd op (`false` = opslaan
+   * mislukt). Segmentrijen zijn alleen aantikbaar als dit gezet is én
+   * `canWrite` (dezelfde bevoegdheid als verwijderen). `undefined` = geen
+   * correctiepad (bv. cloudmodus tot PR 7.5c).
+   */
+  onCorrectGame?: (corrected: CompletedGame) => boolean;
+  /** PR 7.5b: uid voor het correctielogitem; `null`/afwezig in lokale modus. */
+  correctedBy?: string | null;
+  /**
    * PR 7.2a: per-`CompletedGame.id` cloudsyncstatus, uitsluitend gevuld door
    * `App` in cloud-modus (net als `SyncStatusIndicator` elders — "gesynchro-
    * niseerd" tonen zonder cloud zou misleidend zijn, zie de eigen docstring
@@ -107,6 +118,14 @@ function fmtSec(sec: number): string {
   return `${neg ? '-' : ''}${Math.floor(abs / 60)}:${String(abs % 60).padStart(2, '0')}`;
 }
 
+function correctionWhen(iso: string, lang: Lang): string {
+  try {
+    return new Date(iso).toLocaleString(localeCode(lang));
+  } catch {
+    return iso;
+  }
+}
+
 const pmColor = (n: number): string =>
   n > 0 ? 'live-pm--pos' : n < 0 ? 'live-pm--neg' : 'live-pm--flat';
 
@@ -126,7 +145,11 @@ export function HistoryPanel({
   syncStatuses,
   cloudSync,
   cloudReadError,
+  onCorrectGame,
+  correctedBy,
 }: HistoryPanelProps) {
+  const [correctingId, setCorrectingId] = useState<string | null>(null);
+  const [correctionSaved, setCorrectionSaved] = useState(false);
   const open = openId != null ? games.find((g) => g.id === openId) : undefined;
 
   const errorBanner = saveError ? (
@@ -194,6 +217,12 @@ export function HistoryPanel({
     const byId = new Map(open.players.map((p) => [p.id, p]));
     const openTurnovers = sumTurnovers(open.segments);
     const openSeconds = totalSegmentSeconds(open.segments);
+    const canCorrect = canWrite && onCorrectGame != null;
+    const correctingSegment =
+      canCorrect && correctingId != null
+        ? open.segments.find((seg) => seg.id === correctingId)
+        : undefined;
+    const corrections = open.corrections ?? [];
     return (
       <section className="history-panel" aria-label={t(lang, 'historyTitle')}>
         {errorBanner}
@@ -201,12 +230,24 @@ export function HistoryPanel({
         {deleteErrorBanner}
         {tombstoneNoticeBanner}
         {cloudReadErrorBanner}
+        {correctionSaved ? (
+          <p
+            className="history-correction-saved"
+            role="status"
+            data-testid="history-correction-saved"
+          >
+            {t(lang, 'correctionSaved')}
+          </p>
+        ) : null}
         <div className="history-detail__actions">
           <button
             type="button"
             className="btn-outline"
             data-testid="history-back-btn"
-            onClick={() => onOpenChange(null)}
+            onClick={() => {
+              setCorrectionSaved(false);
+              onOpenChange(null);
+            }}
           >
             ← {t(lang, 'backBtn')}
           </button>
@@ -223,7 +264,14 @@ export function HistoryPanel({
             {t(lang, 'deleteBtn')}
           </button>
         </div>
-        <h2>{open.opponent || t(lang, 'teamOpponent')}</h2>
+        <h2>
+          {open.opponent || t(lang, 'teamOpponent')}
+          {corrections.length > 0 ? (
+            <span className="correction-badge" data-testid="history-corrected-badge">
+              {t(lang, 'correctedBadge')}
+            </span>
+          ) : null}
+        </h2>
         <p className="history-detail__meta">
           {gameDateLabel(open, lang)}
           {open.competition ? ` · ${open.competition}` : ''} · {open.scoreFor} - {open.scoreAgainst}
@@ -240,12 +288,35 @@ export function HistoryPanel({
           {t(lang, 'historyTurnoversPer10')}:{' '}
           <strong>{fmtTurnoversPer10(turnoversPer10(openTurnovers, openSeconds))}</strong>
         </p>
+        {canCorrect ? (
+          <p className="segment-list__hint" data-testid="history-correct-hint">
+            {t(lang, 'correctSegmentHint')}
+          </p>
+        ) : null}
         <div className="segment-list">
           {open.segments.map((s) => {
             const pm = s.pf - s.pa;
             const nrs = s.lineup.map((id) => byId.get(id)?.nr ?? '?').join('-');
+            const Row = canCorrect ? 'button' : 'div';
             return (
-              <div key={s.id} className="segment-item" data-testid={`history-segment-${s.id}`}>
+              <Row
+                key={s.id}
+                {...(canCorrect
+                  ? {
+                      type: 'button' as const,
+                      'aria-label': t(lang, 'correctSegmentAria').replace(
+                        '{segment}',
+                        `Q${s.quarter} ${nrs} ${fmtSec(s.durSec)}`,
+                      ),
+                      onClick: () => {
+                        setCorrectionSaved(false);
+                        setCorrectingId(s.id);
+                      },
+                    }
+                  : {})}
+                className={canCorrect ? 'segment-item segment-item--tappable' : 'segment-item'}
+                data-testid={`history-segment-${s.id}`}
+              >
                 <span className="segment-item__lineup">
                   <span className="segment-item__quarter">Q{s.quarter}</span> {nrs}
                 </span>
@@ -261,10 +332,50 @@ export function HistoryPanel({
                     </span>
                   ) : null}
                 </span>
-              </div>
+              </Row>
             );
           })}
         </div>
+        {corrections.length > 0 ? (
+          <details className="correction-log" data-testid="history-corrections">
+            <summary>
+              {t(lang, 'correctionsHistory')} ({corrections.length})
+            </summary>
+            <ul>
+              {corrections.map((c) => (
+                <li key={c.id} data-testid={`history-correction-${c.id}`}>
+                  <span className="correction-log__when">
+                    {t(lang, 'correctionsHistoryEntry').replace(
+                      '{when}',
+                      correctionWhen(c.at, lang),
+                    )}
+                  </span>
+                  <span className="correction-log__before">
+                    {t(lang, 'correctBeforeLabel')}: {describeCorrectableFields(c.before, lang)}
+                  </span>
+                  <span className="correction-log__after">
+                    {t(lang, 'correctAfterLabel')}: {describeCorrectableFields(c.after, lang)}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          </details>
+        ) : null}
+        {correctingSegment && onCorrectGame ? (
+          <CorrectSegmentDialog
+            key={correctingSegment.id}
+            lang={lang}
+            game={open}
+            segment={correctingSegment}
+            by={correctedBy ?? null}
+            onSave={(corrected) => {
+              const ok = onCorrectGame(corrected);
+              if (ok) setCorrectionSaved(true);
+              return ok;
+            }}
+            onClose={() => setCorrectingId(null)}
+          />
+        ) : null}
         <button
           type="button"
           className="btn-success history-detail__export"
@@ -310,6 +421,14 @@ export function HistoryPanel({
                 <span className="history-item__meta">
                   <span className="history-item__opponent">
                     {g.opponent || t(lang, 'teamOpponent')}
+                    {(g.corrections?.length ?? 0) > 0 ? (
+                      <span
+                        className="correction-badge"
+                        data-testid={`history-item-corrected-${g.id}`}
+                      >
+                        {t(lang, 'correctedBadge')}
+                      </span>
+                    ) : null}
                   </span>
                   <span className="history-item__date">
                     {gameDateLabel(g, lang)}

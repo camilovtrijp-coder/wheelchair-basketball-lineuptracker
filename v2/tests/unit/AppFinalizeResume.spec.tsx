@@ -189,6 +189,9 @@ function alwaysSucceedsGateway(): GameCloudGateway {
     ): Promise<GameSnapshotWriteResult> {
       return { ok: true, revision: expectedRevision + 1, completedGameId };
     },
+    async correctCompletedGame() {
+      return { ok: true };
+    },
     async tombstoneCompletedGame(
       _o: string,
       _t: string,
@@ -647,6 +650,9 @@ function controlledFinalizeGateway(): {
       finalizeCalls.push(call);
       const result = await call.promise;
       return { ...result, completedGameId };
+    },
+    async correctCompletedGame() {
+      return { ok: true };
     },
     async tombstoneCompletedGame(
       _o: string,

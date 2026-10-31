@@ -1,5 +1,5 @@
 import type { CompletedGame } from '../../domain/game/types';
-import type { SyncState } from '../../domain/syncState';
+import type { SyncState, SyncStatus } from '../../domain/syncState';
 
 /**
  * PR 6.4 §A.2 / §C.1: een expliciet leesresultaat voor de
@@ -18,6 +18,17 @@ export interface CompletedGamesReadResult {
   status: CompletedGamesReadStatus;
   games: CompletedGame[];
 }
+
+/**
+ * PR 7.5c: synchronisatiestatus van de correcties van één wedstrijd. Hergebruikt
+ * de bestaande 4-statencontract van `SyncStatus` (`lokaal-beschikbaar` = nog
+ * geen cloud-tegenhanger, `wacht-op-synchronisatie` = lokaal opgeslagen, upload
+ * nog niet server-bevestigd, `gesynchroniseerd`, `actie-nodig` = de upload
+ * werd geweigerd en wordt niet automatisch herhaald) plus `conflict`: een
+ * ander apparaat corrigeerde dezelfde wedstrijd onafhankelijk. Bij `conflict`
+ * wordt niets samengevoegd en niets overschreven; de gebruiker beslist.
+ */
+export type CorrectionSyncStatus = SyncStatus | 'conflict';
 
 export interface CompletedGameRepository {
   /** Nieuwste eerst (v1-pariteit: `games.unshift(...)`). Lege array als er nog niets is. */
@@ -58,6 +69,20 @@ export interface CompletedGameRepository {
    * al, dan is dit een no-op die `true` teruggeeft.
    */
   remove(id: string): boolean;
+  /**
+   * PR 7.5a (docs/pr-7.5-plan.md §D.3): slaat een gecorrigeerde versie van een
+   * bestaande wedstrijd op (resultaat van `correctSegment()`). GEEN algemene
+   * edit-API: alleen `segments` (uitsluitend quarter/beginSec/endSec/durSec/
+   * pf/pa/tov), `scoreFor`, `scoreAgainst`, `corrections`, `correctedAt` en
+   * `revision` worden overgenomen; `id`, `sourceGameId`, organisatie/team,
+   * spelers en alle overige velden blijven die van de opgeslagen wedstrijd.
+   * `false` (en de bestaande data blijft ongemoeid) als het ID onbekend is,
+   * `game` bij een ander organisatie/team hoort, de opgeslagen wedstrijd
+   * getombstoned is, de segmentstructuur/lineup afwijkt, `revision` niet
+   * hoger is dan de opgeslagen revisie, het correctielog verkleint of
+   * `MAX_CORRECTIONS` overschrijdt, of de opslag faalde.
+   */
+  update(game: CompletedGame): boolean;
   /**
    * PR 6.6 §F 6.6b: vervangt de VOLLEDIGE historie voor deze organisatie/
    * team in één keer — nodig voor het replace-per-onderdeel-importcontract
@@ -126,4 +151,19 @@ export interface CompletedGameRepository {
    *   revisiemismatch, netwerk) — de lokale kopie is ONGEMOEID gelaten.
    */
   tombstone?(id: string, deletedBy: string): Promise<'ok' | 'not-synced' | 'error'>;
+  /**
+   * PR 7.5c: optioneel — alleen `CompositeCompletedGameRepository`. Status van
+   * de correcties van wedstrijd `id` (zie `CorrectionSyncStatus`); `null` als
+   * de wedstrijd nooit gecorrigeerd is. Geen vals succes: `gesynchroniseerd`
+   * volgt uitsluitend uit een server-bevestigde cloudkopie met hetzelfde
+   * correctielog. Wijzigt de status, dan krijgen `subscribe()`-luisteraars een
+   * nieuwe notificatie en kan de UI deze methode opnieuw lezen.
+   */
+  correctionSyncStatus?(id: string): CorrectionSyncStatus | null;
+  /**
+   * PR 7.5c: optioneel — start een nieuwe uploadpoging voor correcties met
+   * status `actie-nodig` (bijv. nadat de gebruiker de oorzaak herstelde).
+   * `conflict` wordt hiermee bewust NIET opgelost of overschreven.
+   */
+  retryCorrectionUploads?(): void;
 }
