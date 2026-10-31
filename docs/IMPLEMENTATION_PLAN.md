@@ -775,7 +775,9 @@ onveranderlijk"; implementatie per sub-PR op eigen branch.
   getest in de Emulator Suite;
 - sub-PR's 7.5a domein/lokaal, 7.5b UI, 7.5c cloud/merge.
 - Voortgang: 7.5a, 7.5b en 7.5c staan als draft-PR's open (7.5c = PR #134).
-  De koppeling van de cloudcorrectie aan de UI volgt als aparte vervolg-PR.
+  De koppeling van de cloudcorrectie aan de UI volgt als aparte vervolg-PR
+  (PR 7.6, voorstel: [`docs/pr-7.6-plan.md`](pr-7.6-plan.md), wacht op
+  eigenaarsbesluit).
 - Uitrolvolgorde: eerst de Firestore Rules publiceren, daarna pas clients met
   cloudcorrecties.
 
