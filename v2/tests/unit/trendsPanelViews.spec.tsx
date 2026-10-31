@@ -718,13 +718,13 @@ describe('Trends: Spelers en Kwarten', () => {
     expect(sort.textContent).toContain('Nr');
   });
 
-  it('Kwarten: nette lege staat (NL en EN)', () => {
+  it('Kwarten: toont de kwartkaarten (inhoud: trendsQuartersView.spec.tsx)', () => {
     const q = renderTrends();
     open(q, 'quarters');
-    expect(q.getByTestId('trends-quarters-empty').textContent).toContain('Kwarten komen eraan');
+    expect(q.getByTestId('trends-quarters-title').textContent).toBe('Kwarten: +/- totaal');
     cleanup();
     const en = renderTrends(fixture(), { lang: 'en', initialView: 'quarters' });
-    expect(en.getByTestId('trends-quarters-empty').textContent).toContain('Quarters are coming');
+    expect(en.getByTestId('trends-quarters-title').textContent).toBe('Quarters: +/- total');
   });
 
   it('zonder wedstrijden: alleen de "geen data"-melding, geen tabs', () => {
