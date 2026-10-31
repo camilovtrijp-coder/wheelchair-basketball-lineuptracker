@@ -1,5 +1,6 @@
 import { trendsEn, trendsNl } from './trendsStrings';
 import { trendsPlayersEn, trendsPlayersNl } from './trendsPlayersStrings';
+import { trendsOverviewEn, trendsOverviewNl } from './trendsOverviewStrings';
 
 export const LANG_STORAGE_KEY = 'lineup-tracker-lang';
 
@@ -903,6 +904,7 @@ const nl = {
   // Herindeling Trends-tab (T2/T3): zie i18n/trendsStrings.ts.
   ...trendsNl,
   ...trendsPlayersNl,
+  ...trendsOverviewNl,
 } as const;
 
 const en = {
@@ -1740,6 +1742,7 @@ const en = {
   // Trends tab restructure (T2/T3): see i18n/trendsStrings.ts.
   ...trendsEn,
   ...trendsPlayersEn,
+  ...trendsOverviewEn,
 } as const;
 
 export const STRINGS = { nl, en } as const;
