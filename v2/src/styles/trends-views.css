@@ -72,7 +72,8 @@
   min-height: 2.75rem;
 }
 
-.trends-panel .trends-filterbar .stats-controls__row--wrap > button:disabled {
+.trends-panel .trends-filterbar .stats-controls__row--wrap > button:disabled,
+.trends-panel .trends-filterbar .stats-controls__row--wrap > button[aria-disabled='true'] {
   opacity: 0.55;
 }
 

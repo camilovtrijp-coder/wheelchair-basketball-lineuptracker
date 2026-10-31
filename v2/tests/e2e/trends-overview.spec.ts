@@ -144,7 +144,9 @@ test.describe('v2 Trends > Overzicht (T6)', () => {
     );
   });
 
-  test('de kaarten ontbreken met klassegrens uit, de datakwaliteit blijft', async ({ page }) => {
+  test('de kaarten blijven voor een wedstrijd met klassegrens ook als de instelling uit staat (M7)', async ({
+    page,
+  }) => {
     await setup(page, 'nl');
     await page.evaluate((key) => {
       window.localStorage.setItem(key, JSON.stringify({ useClassLimit: false }));
@@ -152,8 +154,9 @@ test.describe('v2 Trends > Overzicht (T6)', () => {
     await page.reload();
     await page.getByTestId('nav-trends').click();
     await expect(page.getByTestId('trends-overview')).toBeVisible();
-    await expect(page.getByTestId('trends-class-card')).toHaveCount(0);
-    await expect(page.getByTestId('trends-overlimit-card')).toHaveCount(0);
+    // De afgeronde wedstrijd had de klassegrens aan: het domein filtert per wedstrijd.
+    await expect(page.getByTestId('trends-class-card')).toBeVisible();
+    await expect(page.getByTestId('trends-overlimit-card')).toBeVisible();
     await expect(page.getByTestId('trends-quality')).toBeVisible();
   });
 

@@ -30,6 +30,7 @@ export const trendsNl = {
   trendsFilterThisGameTitle:
     'Kies alleen de lopende wedstrijd. Dit wedstrijdfilter geldt ook in Statistieken.',
   trendsFilterThisGameDisabled: 'Er is geen lopende wedstrijd met gespeelde segmenten.',
+  trendsFilterNoCurrentHint: 'Geen lopende wedstrijd',
   trendsFilterSharedNote: 'Deze wedstrijdselectie geldt ook in Statistieken.',
 
   // ---- Gedeeld ----
@@ -113,6 +114,7 @@ export const trendsEn = {
   trendsFilterThisGameTitle:
     'Select only the game in progress. This game filter also applies in Statistics.',
   trendsFilterThisGameDisabled: 'There is no game in progress with played segments.',
+  trendsFilterNoCurrentHint: 'No game in progress',
   trendsFilterSharedNote: 'This game selection also applies in Statistics.',
 
   // ---- Shared ----

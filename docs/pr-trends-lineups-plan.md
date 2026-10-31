@@ -9,7 +9,8 @@ kleur is nooit de enige aanwijzing. Waar dit plan "blauw/oranje" noemt, geldt du
 groen/rood met symbolen.
 
 
-Status: **onderzoek en plan, nog niet goedgekeurd**. Er is geen code gewijzigd.
+Status: **goedgekeurd door de eigenaar op 2026-10-31** (was: onderzoek en plan, nog niet
+goedgekeurd). Dit plan zelf wijzigt geen code; de uitvoering staat in §H.
 Gebaseerd op `origin/main` `69d267c` (PR 7.6). Dit plan wijzigt geen
 bestaande statistiekberekening, geen CSV-contract en geen `localStorage`-key.
 Alle nieuwe berekeningen zijn **additief** en krijgen eerst een vaste,
@@ -281,7 +282,8 @@ bestaande segmentdata. Drempels zie §E.
    - alleen boven de drempel;
    - relatief aan het tijdgewogen teamgemiddelde van dezelfde selectie, zoals
      de bestaande turnovertoon;
-   - een vierde toon "rond gemiddelde" bij |Δ| < 0,5 per 10 (besluit H.4);
+   - een vierde toon "rond gemiddelde" bij |Δ| < 0,5 per 10 (besluit H.4;
+     **besluit eigenaar: groen/rood met ▲ ● ▼, zie §I.4**);
    - altijd tekst of een symbool erbij (▲ beter / ▼ slechter / ● rond
      gemiddelde) plus een patroon of dikte, nooit alleen rood of groen.
 7. **Vaste uitleg** onder elke lineupsectie (NL/EN): "Beschrijvend: wat
@@ -564,6 +566,8 @@ Desktop (≥ 960 px):
 - **Kleur nooit alleen**: symbolen ▲/●/▼ plus de tekst "beter/rond/slechter"
   in de toegankelijke naam. De balk onder de drempel is gearceerd of grijs.
   Bij voorkeur blauw/oranje in plaats van groen/rood (besluit H.4).
+  **Besluit eigenaar (2026-10-31): groen/rood blijft, met symbolen ▲ ● ▼ en tekst
+  (zie §I.4); blauw/oranje wordt niet ingevoerd.**
 - **Tabelalternatief**: de rijen zijn een `<ol>` met een volledige
   toegankelijke naam per rij ("Lineup 4, 9, 11, 13, 15: plus 0,8 per 10
   minuten in 25 minuten, 2 wedstrijden, beter dan gemiddeld"). De balken zijn
@@ -739,6 +743,35 @@ T6 → T7.
 11. **Mix van laag- en hoogpunters (#14):** nu niet.
 12. **Uitvoering:** elke stap als aparte branch, daarna een Opus-review met
     Sonnet-fixes, daarna bundelen in één PR naar `main` (één productiebuild).
+
+## Status bundel
+
+Gebouwd (branch-per-stap, daarna Opus-review en Sonnet-fixes; één bundel-PR):
+
+- T1 domein: lineup-inzichten (+/-, PF/PA, drempel); T2 lineupkaart met +/- en
+  Voor/Tegen; T3 segmentbediening Overzicht | Lineups | Spelers | Kwarten met
+  sticky filterbalk (per 10 min, Wedstrijden (n), drempel, snelfilters "Laatste 5"
+  en "Deze wedstrijd" op het gedeelde wedstrijdfilter); T4 on/off per speler;
+  T5 kwarten en minuten per kwart; T6 classificatieprofiel, tijd over de limiet en
+  datakwaliteit; T7 (Could-onderdelen volgens §I).
+- Review-fixes set A: het gedeelde wedstrijdfilter wordt na afronden, weggooien of
+  verwijderen opgeschoond (`sanitizeGameSelection` + `useSanitizedGameIds`, in
+  Trends én Statistieken; `handleFinishGame` vertaalt de selectie meteen); de
+  uitleg bij "Deze wedstrijd" is zichtbaar en toetsenbord-bereikbaar
+  (`aria-disabled` + zichtbare hint); het classificatieprofiel hangt niet meer af van
+  de huidige instelling `useClassLimit` maar van `classLimitGames > 0`.
+
+Open punten:
+
+- **Prestatie bij zeer veel wedstrijden** is niet gemeten (alle inzichten worden in
+  de browser herberekend bij elke filterwijziging).
+- **De hoge sticky filterbalk op 320 px** moet nog op een echte telefoon worden
+  beoordeeld (neemt veel schermhoogte in).
+- **Dubbele turnovercijfers bij PARTIAL-segmenten**: bij segmenten met een
+  onvolledige lineup (PARTIAL) komen twee turnovercijfers voor die niet gelijk zijn;
+  nog te beoordelen of dit uitleg of een aparte regel nodig heeft.
+- **`classSum = 0` telt als ruimte** (allowed − classSum is dan het volle `allowed`):
+  segmenten zonder ingevulde klassesom komen daardoor in "ruimte over".
 
 ## J. Open vragen en risico's
 

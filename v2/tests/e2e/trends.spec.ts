@@ -486,8 +486,12 @@ test.describe('v2 Trends-weergaven (T2/T3)', () => {
     await setupTwoGames(page);
     await page.getByTestId('nav-trends').click();
     const btn = page.getByTestId('trends-quick-current');
-    await expect(btn).toBeDisabled();
+    await expect(btn).toHaveAttribute('aria-disabled', 'true');
     await expect(btn).toHaveAttribute('title', /geen lopende wedstrijd/);
+    await expect(page.getByTestId('trends-quick-current-hint')).toBeVisible();
+    await expect(page.getByTestId('trends-quick-current-hint')).toHaveText(
+      'Geen lopende wedstrijd',
+    );
     await expect(page.getByTestId('trends-quick-last5')).toBeEnabled();
   });
 

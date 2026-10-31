@@ -46,19 +46,20 @@ import {
  * `lang`, `games`, `gameIds`, `per10` en `lineups`.
  */
 export function OverviewView(props: TrendsViewProps) {
-  const { lang, games, gameIds, per10, minSec, useClassLimit, lineups } = props;
+  const { lang, games, gameIds, per10, minSec, lineups } = props;
   const team = lineups.team;
   const gameCount = useMemo(() => selectGames(games, gameIds).length, [games, gameIds]);
   const summary = useMemo(() => computeTurnoverSummary(games, gameIds), [games, gameIds]);
   const hasTime = team.seconds > 0;
+  // De kaarten hangen NIET af van de huidige instelling `useClassLimit`: het
+  // domein telt per wedstrijd (`AnalysisGame.useClassLimit`), dus ook oude
+  // wedstrijden met klassegrens blijven zichtbaar als de coach de grens later
+  // uitzet. Zonder wedstrijd met klassegrens is `classLimitGames` 0: geen kaart.
   const classProfile = useMemo(
-    () => (useClassLimit ? computeClassProfile(games, gameIds, minSec) : null),
-    [useClassLimit, games, gameIds, minSec],
+    () => computeClassProfile(games, gameIds, minSec),
+    [games, gameIds, minSec],
   );
-  const overLimit = useMemo(
-    () => (useClassLimit ? computeOverLimitTime(games, gameIds) : []),
-    [useClassLimit, games, gameIds],
-  );
+  const overLimit = useMemo(() => computeOverLimitTime(games, gameIds), [games, gameIds]);
   const warnings = useMemo(() => computeDataQualityWarnings(games, gameIds), [games, gameIds]);
 
   const unit = per10 ? t(lang, 'trendsUnitPer10') : t(lang, 'trendsUnitTotal');
@@ -110,7 +111,7 @@ export function OverviewView(props: TrendsViewProps) {
         )}
       </div>
 
-      {classProfile !== null && classProfile.classLimitGames > 0 ? (
+      {classProfile.classLimitGames > 0 ? (
         <>
           <ClassProfileCard
             profile={classProfile}

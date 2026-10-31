@@ -110,16 +110,22 @@ export function TrendsFilterBar({
           )}
           aria-pressed={currentPressed}
           aria-describedby={currentId === null ? 'trends-quick-current-hint' : undefined}
-          disabled={currentId === null}
-          onClick={() => toggleQuick(currentTarget, currentPressed)}
+          aria-disabled={currentId === null ? 'true' : undefined}
+          onClick={() => {
+            if (currentId !== null) toggleQuick(currentTarget, currentPressed);
+          }}
         >
           {t(lang, 'trendsFilterThisGame')}
         </button>
       </div>
       {currentId === null ? (
-        <span id="trends-quick-current-hint" className="sr-only">
-          {t(lang, 'trendsFilterThisGameDisabled')}
-        </span>
+        <p
+          id="trends-quick-current-hint"
+          className="xs mut2 trends-filterbar__note"
+          data-testid="trends-quick-current-hint"
+        >
+          {t(lang, 'trendsFilterNoCurrentHint')}
+        </p>
       ) : null}
       {gameIds !== null ? (
         <p className="xs mut2 trends-filterbar__note" data-testid="trends-filter-shared-note">

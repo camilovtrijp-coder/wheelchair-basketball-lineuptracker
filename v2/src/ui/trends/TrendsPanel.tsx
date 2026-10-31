@@ -6,6 +6,7 @@ import type { RosterPlayer } from '../../domain/roster/types';
 import { computeLineupInsights } from '../../domain/trends/lineupInsights';
 import type { Lang } from '../../i18n/strings';
 import { GamesFilterModal, toggleGameIdInSet } from '../shared/GamesFilterModal';
+import { useSanitizedGameIds } from '../shared/useSanitizedGameIds';
 import { LineupsView } from './LineupsView';
 import { OverviewView } from './OverviewView';
 import { PlayersView } from './PlayersView';
@@ -53,7 +54,7 @@ export function TrendsPanel({
   repository,
   activeGame,
   roster,
-  gameIds,
+  gameIds: gameIdsProp,
   onGameIdsChange,
   useClassLimit = false,
   initialView = 'overview',
@@ -61,6 +62,13 @@ export function TrendsPanel({
   const scope = useMemo(
     () => buildAnalysisScope(repository, activeGame, useClassLimit),
     [repository, activeGame, useClassLimit],
+  );
+  // Verouderde selectie (bijv. "Deze wedstrijd" na het afronden) opschonen.
+  const gameIds = useSanitizedGameIds(
+    gameIdsProp,
+    scope.games,
+    scope.historyRead.status === 'ok',
+    onGameIdsChange,
   );
   const [view, setView] = useState<TrendsViewId>(initialView);
   const [per10, setPer10] = useState(false);

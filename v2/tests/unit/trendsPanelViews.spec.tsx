@@ -357,13 +357,29 @@ describe('Trends: vaste filterbalk', () => {
     expect(q.queryByTestId('trends-filter-shared-note')).toBeNull();
   });
 
-  it('"Deze wedstrijd" is uitgeschakeld mét uitleg zonder lopende wedstrijd', () => {
-    const q = renderTrends();
+  it('"Deze wedstrijd" is niet beschikbaar mét zichtbare uitleg zonder lopende wedstrijd', () => {
+    const onChange = vi.fn();
+    const q = renderTrends(fixture(), { onGameIdsChange: onChange });
     const btn = q.getByTestId('trends-quick-current') as HTMLButtonElement;
-    expect(btn.disabled).toBe(true);
+    // aria-disabled i.p.v. disabled: de knop blijft focusbaar, de klik doet niets.
+    expect(btn.disabled).toBe(false);
+    expect(btn.getAttribute('aria-disabled')).toBe('true');
     expect(btn.getAttribute('title')).toBe('Er is geen lopende wedstrijd met gespeelde segmenten.');
+    fireEvent.click(btn);
+    expect(onChange).not.toHaveBeenCalled();
+    // zichtbare hint (niet sr-only), gekoppeld via aria-describedby
     const hint = document.getElementById(btn.getAttribute('aria-describedby')!);
-    expect(hint?.textContent).toBe('Er is geen lopende wedstrijd met gespeelde segmenten.');
+    expect(hint?.textContent).toBe('Geen lopende wedstrijd');
+    expect(hint?.classList.contains('sr-only')).toBe(false);
+  });
+
+  it('de hint bij "Deze wedstrijd" is Engels in EN en verdwijnt met een lopende wedstrijd', () => {
+    const en = renderTrends(fixture(), { lang: 'en' });
+    expect(en.getByTestId('trends-quick-current-hint').textContent).toBe('No game in progress');
+    cleanup();
+    const live = renderTrends(fixture(), { activeGame: activeGameWithSegment() });
+    expect(live.queryByTestId('trends-quick-current-hint')).toBeNull();
+    expect(live.getByTestId('trends-quick-current').getAttribute('aria-disabled')).toBeNull();
   });
 
   it('"Deze wedstrijd" kiest alleen de lopende wedstrijd (gedeeld filter)', () => {

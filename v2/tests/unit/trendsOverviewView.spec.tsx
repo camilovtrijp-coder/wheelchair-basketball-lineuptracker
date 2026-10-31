@@ -109,17 +109,17 @@ describe('OverviewView T6 — classificatieprofiel', () => {
     expect(text(q, 'trends-class-note')).toContain('Beschrijvend, geen oorzaak');
   });
 
-  it('ontbreekt zonder klassegrens (geen lege kaart), ook de tijd over de limiet', () => {
+  it('blijft zichtbaar voor oude wedstrijden met klassegrens als de huidige instelling uit staat', () => {
+    // M7: de fixture-wedstrijden hebben useClassLimit=true; de instelling staat nu uit.
     const q = renderOverview({ useClassLimit: false });
-    expect(q.queryByTestId('trends-class-card')).toBeNull();
-    expect(q.queryByTestId('trends-overlimit-card')).toBeNull();
-    // de bestaande teamkaart blijft staan
+    expect(q.getByTestId('trends-class-card')).toBeTruthy();
+    expect(q.getByTestId('trends-overlimit-card')).toBeTruthy();
     expect(q.getByTestId('trends-team-card')).toBeTruthy();
   });
 
-  it('ontbreekt als geen gekozen wedstrijd de klassegrens gebruikt', () => {
+  it('ontbreekt als geen gekozen wedstrijd de klassegrens gebruikte (ook met instelling aan)', () => {
     const noLimit = fixtureGames().map((g) => ({ ...g, useClassLimit: false }));
-    const q = renderOverview({ games: noLimit });
+    const q = renderOverview({ games: noLimit, useClassLimit: true });
     expect(q.queryByTestId('trends-class-card')).toBeNull();
     expect(q.queryByTestId('trends-overlimit-card')).toBeNull();
   });
@@ -211,7 +211,8 @@ describe('OverviewView T6 — datakwaliteit', () => {
   });
 
   it('staat er ook zonder klassegrens', () => {
-    const q = renderOverview({ useClassLimit: false });
+    const noLimit = fixtureGames().map((g) => ({ ...g, useClassLimit: false }));
+    const q = renderOverview({ games: noLimit, useClassLimit: false });
     expect(q.queryByTestId('trends-class-card')).toBeNull();
     expect(q.getByTestId('trends-quality')).toBeTruthy();
     expect(q.getAllByTestId('trends-quality-item')).toHaveLength(4);

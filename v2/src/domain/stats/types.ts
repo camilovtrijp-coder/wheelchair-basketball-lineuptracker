@@ -39,6 +39,14 @@ export interface AnalysisGame {
    * (dan zijn `classSum`/`allowed`/`over` ook niet betekenisvol).
    */
   useClassLimit?: boolean;
+
+  /**
+   * Optioneel (additief): bij een afgeronde wedstrijd het id van de actieve
+   * wedstrijd waaruit ze is afgerond (`CompletedGame.sourceGameId`). Alleen
+   * gebruikt om een verouderde filterselectie te vertalen (zie
+   * `sanitizeGameSelection`); niet voor berekeningen.
+   */
+  sourceGameId?: string;
 }
 
 /**

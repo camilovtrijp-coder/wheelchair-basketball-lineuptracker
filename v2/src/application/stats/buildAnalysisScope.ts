@@ -99,5 +99,6 @@ function toAnalysisGame(game: CompletedGame): AnalysisGame {
     isCurrent: false,
     quarterCount: game.quarterCount,
     useClassLimit: game.useClassLimit === true,
+    ...(typeof game.sourceGameId === 'string' ? { sourceGameId: game.sourceGameId } : {}),
   };
 }
