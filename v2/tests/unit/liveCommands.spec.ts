@@ -283,12 +283,12 @@ describe('liveCommands — commitSegment', () => {
     );
     expect(commitSegment(g, { endSec: 300, scoreFor: 7, classification: CLASS_OFF })).toEqual({
       ok: false,
-      error: 'invalid-score',
+      error: 'score-below-segment-start',
     });
     g = withActions(g, scoreDeltaAction('against', -1));
     expect(commitSegment(g, { endSec: 300, classification: CLASS_OFF })).toEqual({
       ok: false,
-      error: 'invalid-score',
+      error: 'score-below-segment-start',
     });
   });
 
@@ -432,6 +432,20 @@ describe('liveCommands — closeQuarter, discardSwaps, setScore', () => {
   });
 });
 
+function draftOfSegment(g: ActiveGame, i: number, patch = {}) {
+  const s = deriveGameHistory(g).segments[i]!;
+  return {
+    quarter: s.quarter,
+    beginSec: s.beginSec,
+    endSec: s.endSec,
+    lineup: s.lineup,
+    pf: s.pf,
+    pa: s.pa,
+    tov: s.tov ?? 0,
+    ...patch,
+  };
+}
+
 describe('liveCommands — segment bewerken (besluit 1 en 2)', () => {
   function twoSegments() {
     let g = ok(
@@ -483,6 +497,22 @@ describe('liveCommands — segment bewerken (besluit 1 en 2)', () => {
     expect(editSegment(g, id, draftOf(g, 0, { pf: 150 }), CLASS_OFF)).toEqual({
       ok: false,
       error: 'invalid-score',
+    });
+  });
+
+  it('staat het bestaande kwart van een segment toe, ook boven een verlaagd periodeaantal', () => {
+    let g = makeGame({ curQuarter: 4 });
+    g = ok(
+      commitSegment(g, { endSec: 390, scoreFor: 8, scoreAgainst: 6, classification: CLASS_OFF }),
+    );
+    const id = deriveGameHistory(g).segments[0]!.id;
+    const draft = draftOfSegment(g, 0, { pf: 9 });
+    // periodeaantal inmiddels 2: kwart 4 van dit segment blijft bewerkbaar...
+    expect(editSegment(g, id, draft, CLASS_OFF, 2).ok).toBe(true);
+    // ...maar een ander kwart boven het aantal blijft geweigerd.
+    expect(editSegment(g, id, { ...draft, quarter: 3 }, CLASS_OFF, 2)).toEqual({
+      ok: false,
+      error: 'invalid-quarter',
     });
   });
 

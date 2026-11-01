@@ -43,6 +43,8 @@ export type LiveCommandError =
   | 'invalid-lineup'
   /** Score buiten 0..`MAX_SCORE`, niet geheel, of eindstand onder de beginstand. */
   | 'invalid-score'
+  /** Eindstand van het segment zou onder de beginstand van dat segment liggen (besluit 2). */
+  | 'score-below-segment-start'
   /** Kwartnummer is geen geheel getal binnen het toegestane bereik. */
   | 'invalid-quarter'
   /** Wissel op 0 s terwijl de stand is gewijzigd (besluit 3). */
@@ -192,7 +194,7 @@ export function commitSegment(game: ActiveGame, input: CommitSegmentInput): Live
   const pf = scored.history.scoreFor - scored.history.segStartFor;
   const pa = scored.history.scoreAgainst - scored.history.segStartAgainst;
   // Besluit 2: eindstand mag niet onder de beginstand van het segment liggen.
-  if (pf < 0 || pa < 0) return fail('invalid-score');
+  if (pf < 0 || pa < 0) return fail('score-below-segment-start');
   const tov = scored.history.turnovers - scored.history.segStartTurnovers;
 
   const segment = buildSegment(
@@ -336,8 +338,8 @@ export interface SegmentEditDraft {
 /**
  * Valideert en legt een segmentbewerking vast (segment-edited-actie). Weigert:
  * klok buiten 0..10:00, duur <= 0, lineup <> 5, punten die geen geheel getal
- * 0..150 zijn of waarvan de eindstand (beginstand + punten) onder de beginstand
- * valt of de totale stand boven 150 brengt. Turnovers blijven mild: negatief of
+ * 0..150 zijn (negatief = eindstand onder de beginstand van het segment) of de
+ * totale stand boven 150 brengen. Turnovers blijven mild: negatief of
  * ontbrekend telt als 0 (bestaande semantiek).
  */
 export function editSegment(
@@ -352,10 +354,12 @@ export function editSegment(
   const old = history.segments[index];
   if (index < 0 || old === undefined) return fail('unknown-segment');
 
+  // Het bestaande kwart van het segment blijft altijd toegestaan, ook als het
+  // periodeaantal na registratie is verlaagd.
   if (
     !isInt(draft.quarter) ||
     draft.quarter < 1 ||
-    (quarterCount !== undefined && draft.quarter > quarterCount)
+    (draft.quarter !== old.quarter && quarterCount !== undefined && draft.quarter > quarterCount)
   ) {
     return fail('invalid-quarter');
   }
@@ -369,20 +373,9 @@ export function editSegment(
   for (const pts of [draft.pf, draft.pa]) {
     if (!isInt(pts) || pts < 0 || pts > MAX_SCORE) return fail('invalid-score');
   }
-  const bounds = segmentScoreBounds(history.segments)[index];
-  if (bounds === undefined) return fail('unknown-segment');
-  const endFor = bounds.beginFor + draft.pf;
-  const endAgainst = bounds.beginAgainst + draft.pa;
   const totalFor = history.scoreFor + (draft.pf - old.pf);
   const totalAgainst = history.scoreAgainst + (draft.pa - old.pa);
-  if (
-    endFor < bounds.beginFor ||
-    endAgainst < bounds.beginAgainst ||
-    totalFor > MAX_SCORE ||
-    totalAgainst > MAX_SCORE
-  ) {
-    return fail('invalid-score');
-  }
+  if (totalFor > MAX_SCORE || totalAgainst > MAX_SCORE) return fail('invalid-score');
 
   const { sum, allowed, over } = isOverLimit(game, draft.lineup, classification);
   const updated: Segment = {

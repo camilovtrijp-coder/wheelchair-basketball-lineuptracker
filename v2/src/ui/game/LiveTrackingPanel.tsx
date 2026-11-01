@@ -6,6 +6,7 @@ import {
   type Segment,
 } from '../../domain/game/types';
 import {
+  segmentScoreBounds,
   commitSegment,
   confirmSwap,
   discardSwaps,
@@ -90,6 +91,8 @@ export function liveErrorKey(error: LiveCommandError): StringKey | null {
       return 'needFiveOnCourt';
     case 'invalid-score':
       return 'correctErrorInvalidScore';
+    case 'score-below-segment-start':
+      return 'liveErrorScoreBelowSegmentStart';
     case 'invalid-quarter':
       return 'correctErrorInvalidQuarter';
     case 'score-changed':
@@ -139,6 +142,9 @@ export function TimeSelect({
   onChange: (v: number) => void;
 }) {
   const options = Array.from({ length: max + 1 }, (_, i) => i);
+  // Een opgeslagen waarde buiten het bereik (bv. 10:59 uit oudere data) blijft
+  // zichtbaar; kiezen van de minuten herstelt de klok naar maximaal 10:00.
+  if (!options.includes(value)) options.push(value);
   return (
     <select
       className="time-select"
@@ -221,9 +227,11 @@ export function LiveTrackingPanel({
   // de toestand waarin ze ontstond (`key`) en verdwijnt vanzelf zodra tijd of
   // log verandert, zodat een verouderde fout nooit blijft staan.
   const [liveError, setLiveError] = useState<{ code: LiveCommandError; key: string } | null>(null);
-  const [swapError, setSwapError] = useState<{ code: LiveCommandError; endSec: number } | null>(
-    null,
-  );
+  const [swapError, setSwapError] = useState<{
+    code: LiveCommandError;
+    endSec: number;
+    actionCount: number;
+  } | null>(null);
   const [editError, setEditError] = useState<{ code: LiveCommandError; draft: EditDraft } | null>(
     null,
   );
@@ -253,11 +261,21 @@ export function LiveTrackingPanel({
   const liveErrorKeyNow =
     liveError != null && liveError.key === stateKey ? liveErrorKey(liveError.code) : null;
   const swapErrorKey =
-    swapError != null && swapError.endSec === swapConfirmEndSec
+    swapError != null &&
+    swapError.endSec === swapConfirmEndSec &&
+    swapError.actionCount === game.actions.length
       ? liveErrorKey(swapError.code)
       : null;
   const editErrorKey =
     editError != null && editError.draft === editDraft ? liveErrorKey(editError.code) : null;
+  // Beginstand van het open segment resp. van het te bewerken segment, voor de
+  // melding "stand niet onder de beginstand".
+  const openStart = `${history.segStartFor}-${history.segStartAgainst}`;
+  const editBounds = segmentScoreBounds(history.segments)[
+    history.segments.findIndex((s) => s.id === editSegmentId)
+  ];
+  const editStart = editBounds ? `${editBounds.beginFor}-${editBounds.beginAgainst}` : openStart;
+  const withStart = (key: StringKey, start: string) => t(lang, key).replace('{start}', start);
   const bench = game.players.filter((p) => p.participate && !game.onCourt.includes(p.id));
 
   function handleTapPlayer(id: string) {
@@ -291,11 +309,20 @@ export function LiveTrackingPanel({
     onGameChange(discardSwaps(game));
   }
 
+  function closeSwapConfirm() {
+    setSwapError(null);
+    setSwapConfirmEndSec(null);
+  }
+
   function handleConfirmSwapBatch() {
     if (pendingSwapLineup == null || swapConfirmEndSec == null) return;
     const result = confirmSwap(game, { endSec: swapConfirmEndSec, classification });
     if (!result.ok) {
-      setSwapError({ code: result.error, endSec: swapConfirmEndSec });
+      setSwapError({
+        code: result.error,
+        endSec: swapConfirmEndSec,
+        actionCount: game.actions.length,
+      });
       return;
     }
     onGameChange(result.game);
@@ -361,7 +388,12 @@ export function LiveTrackingPanel({
       quarterCount,
     );
     if (!result.ok) {
-      setEditError({ code: result.error, draft: editDraft });
+      const negative = Number(editDraft.pf) < 0 || Number(editDraft.pa) < 0;
+      setEditError({
+        code:
+          result.error === 'invalid-score' && negative ? 'score-below-segment-start' : result.error,
+        draft: editDraft,
+      });
       return;
     }
     onGameChange(result.game);
@@ -595,7 +627,10 @@ export function LiveTrackingPanel({
             type="button"
             className="btn-primary"
             data-testid="swap-done-btn"
-            onClick={() => setSwapConfirmEndSec(game.endSec)}
+            onClick={() => {
+              setSwapError(null);
+              setSwapConfirmEndSec(game.endSec);
+            }}
           >
             {t(lang, 'swapDoneBtn')}
           </button>
@@ -722,7 +757,7 @@ export function LiveTrackingPanel({
         )}
         {liveErrorKeyNow != null ? (
           <p className="settings-error" role="alert" data-testid="live-command-error">
-            {t(lang, liveErrorKeyNow)}
+            {withStart(liveErrorKeyNow, openStart)}
           </p>
         ) : null}
       </div>
@@ -786,7 +821,7 @@ export function LiveTrackingPanel({
             type="button"
             className="modal-overlay__backdrop"
             aria-label={t(lang, 'backBtn')}
-            onClick={() => setSwapConfirmEndSec(null)}
+            onClick={closeSwapConfirm}
           />
           <div
             className="modal"
@@ -833,7 +868,7 @@ export function LiveTrackingPanel({
             })()}
             {swapErrorKey != null ? (
               <p className="settings-error" role="alert" data-testid="swap-confirm-error">
-                {t(lang, swapErrorKey)}
+                {withStart(swapErrorKey, openStart)}
               </p>
             ) : null}
             <div className="modal__actions">
@@ -841,7 +876,7 @@ export function LiveTrackingPanel({
                 type="button"
                 className="btn-outline"
                 data-testid="swap-confirm-back"
-                onClick={() => setSwapConfirmEndSec(null)}
+                onClick={closeSwapConfirm}
               >
                 {t(lang, 'backBtn')}
               </button>
@@ -1042,7 +1077,7 @@ export function LiveTrackingPanel({
             </label>
             {editErrorKey != null ? (
               <p className="settings-error" role="alert" data-testid="edit-segment-error">
-                {t(lang, editErrorKey)}
+                {withStart(editErrorKey, editStart)}
               </p>
             ) : null}
             <button
