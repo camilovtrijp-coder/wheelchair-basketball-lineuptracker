@@ -9,6 +9,8 @@ import {
   storeTheme,
   type Theme,
 } from '../../infrastructure/theme/theme';
+import { storeGameScreen, type GameScreen } from '../../infrastructure/game/gameScreenPreference';
+import { useGameScreenLocks, useGameScreenPreference } from '../../application/game/useGameScreen';
 
 export interface SessionBarProps {
   lang: Lang;
@@ -60,6 +62,9 @@ export function SessionBar({
   const [confirmingRevoke, setConfirmingRevoke] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
   const [theme, setTheme] = useState<Theme>(() => readStoredTheme());
+  const gameScreen = useGameScreenPreference();
+  const screenLocks = useGameScreenLocks();
+  const screenLocked = screenLocks.swap || screenLocks.dialog;
   const wrapperRef = useRef<HTMLDivElement>(null);
   const triggerRef = useRef<HTMLButtonElement>(null);
 
@@ -114,6 +119,12 @@ export function SessionBar({
     setTheme(next);
     applyTheme(next);
     storeTheme(next);
+  }
+
+  function handleGameScreenChange(next: GameScreen) {
+    // Schermwisselguard: niet wisselen met een onbevestigde wissel of open venster.
+    if (screenLocked || next === gameScreen) return;
+    storeGameScreen(next);
   }
 
   const initial = email ? email.trim().charAt(0).toUpperCase() : '•';
@@ -190,6 +201,35 @@ export function SessionBar({
             />
             {translate(lang, 'themeDarkLabel')}
           </label>
+          <fieldset className="session-bar__game-screen" data-testid="game-screen-setting">
+            <legend>{translate(lang, 'gameScreenLabel')}</legend>
+            {(['classic', 'compact'] as const).map((value) => (
+              <label key={value} className="session-bar__trusted-device">
+                <input
+                  type="radio"
+                  name="game-screen"
+                  value={value}
+                  data-testid={`game-screen-${value}`}
+                  checked={gameScreen === value}
+                  disabled={screenLocked}
+                  onChange={() => handleGameScreenChange(value)}
+                />
+                {translate(lang, value === 'classic' ? 'gameScreenClassic' : 'gameScreenCompact')}
+              </label>
+            ))}
+            {screenLocked ? (
+              <p
+                className="session-bar__game-screen-locked"
+                role="status"
+                data-testid="game-screen-locked"
+              >
+                {translate(
+                  lang,
+                  screenLocks.swap ? 'gameScreenLockedSwap' : 'gameScreenLockedDialog',
+                )}
+              </p>
+            ) : null}
+          </fieldset>
           <button
             type="button"
             className="btn-outline session-bar__menu-item session-bar__sign-out"

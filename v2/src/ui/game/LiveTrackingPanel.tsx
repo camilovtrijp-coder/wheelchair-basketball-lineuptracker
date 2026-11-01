@@ -1,25 +1,42 @@
 import { useState } from 'preact/hooks';
-import type { ActiveGame, GamePlayer, Segment } from '../../domain/game/types';
+import {
+  MAX_CLOCK_SECONDS,
+  type ActiveGame,
+  type GamePlayer,
+  type Segment,
+} from '../../domain/game/types';
+import {
+  segmentScoreBounds,
+  commitSegment,
+  confirmSwap,
+  discardSwaps,
+  editSegment,
+  maxSecondsForMinutes,
+  openSegmentSummary,
+  setScore,
+  type LiveCommandError,
+} from '../../domain/game/liveCommands';
 import { canFinishGame } from '../../domain/game/finish';
 import {
-  buildSegment,
   canSaveSegment,
   deriveGameHistory,
   isOverLimit,
   segDur,
   segmentDeletedAction,
-  segmentEditedAction,
-  segmentSavedAction,
   scoreDeltaAction,
   segmentTurnovers,
   turnoverDeltaAction,
-  scoreSetAction,
   selectQuarter,
   swapOnCourt,
   type ClassificationConfig,
 } from '../../domain/game/tracking';
 import { translate, type Lang, type StringKey } from '../../i18n/strings';
 import { useFocusTrap } from '../../application/a11y/useFocusTrap';
+import { useGameScreenLock } from '../../application/game/useGameScreen';
+import { fmtSec, liveErrorKey } from './liveFormat';
+import { FinishGameDialog } from './FinishGameDialog';
+
+export { fmtSec, liveErrorKey };
 
 export interface LiveTrackingPanelProps {
   lang: Lang;
@@ -31,20 +48,14 @@ export interface LiveTrackingPanelProps {
   tag1Label: string;
   tag2Label: string;
   onGameChange: (next: ActiveGame) => void;
-  onFinishGame: () => void;
+  /** Met `latestGame` rondt App af met die actuele stand (direct na `onGameChange`). */
+  onFinishGame: (latestGame?: ActiveGame) => void;
   canWrite: boolean;
   saveError: boolean;
 }
 
 function t(lang: Lang, key: StringKey): string {
   return translate(lang, key);
-}
-
-/** v1: `fmt()` — "-1:05"/"1:05" (min:ss, met minteken bij negatieve duur). */
-export function fmtSec(sec: number): string {
-  const neg = sec < 0;
-  const abs = Math.abs(sec);
-  return `${neg ? '-' : ''}${Math.floor(abs / 60)}:${String(abs % 60).padStart(2, '0')}`;
 }
 
 export function minutesOf(totalSec: number): number {
@@ -55,12 +66,18 @@ export function secondsOf(totalSec: number): number {
   return totalSec % 60;
 }
 
+/** Klok is hard begrensd op 10:00 (`MAX_CLOCK_SECONDS`), besluit 1 van het compact-bouwplan. */
 export function withMinutes(totalSec: number, min: number): number {
-  return min * 60 + secondsOf(totalSec);
+  return Math.min(MAX_CLOCK_SECONDS, min * 60 + secondsOf(totalSec));
 }
 
 export function withSeconds(totalSec: number, sec: number): number {
-  return minutesOf(totalSec) * 60 + sec;
+  return Math.min(MAX_CLOCK_SECONDS, minutesOf(totalSec) * 60 + sec);
+}
+
+/** Hoogste te kiezen seconde bij de minuten van `totalSec` (bij 10 minuten alleen 0). */
+export function secondsMaxOf(totalSec: number): number {
+  return maxSecondsForMinutes(minutesOf(totalSec));
 }
 
 interface Selected {
@@ -101,6 +118,9 @@ export function TimeSelect({
   onChange: (v: number) => void;
 }) {
   const options = Array.from({ length: max + 1 }, (_, i) => i);
+  // Een opgeslagen waarde buiten het bereik (bv. 10:59 uit oudere data) blijft
+  // zichtbaar; kiezen van de minuten herstelt de klok naar maximaal 10:00.
+  if (!options.includes(value)) options.push(value);
   return (
     <select
       className="time-select"
@@ -179,8 +199,22 @@ export function LiveTrackingPanel({
   const pendingSwapLineup = game.pendingSwapLineup;
   const [swapConfirmEndSec, setSwapConfirmEndSec] = useState<number | null>(null);
   const [endTouched, setEndTouched] = useState(false);
+  // Geweigerd livecommando (domain/game/liveCommands.ts). De melding hoort bij
+  // de toestand waarin ze ontstond (`key`) en verdwijnt vanzelf zodra tijd of
+  // log verandert, zodat een verouderde fout nooit blijft staan.
+  const [liveError, setLiveError] = useState<{ code: LiveCommandError; key: string } | null>(null);
+  const [swapError, setSwapError] = useState<{
+    code: LiveCommandError;
+    endSec: number;
+    actionCount: number;
+  } | null>(null);
+  const [editError, setEditError] = useState<{ code: LiveCommandError; draft: EditDraft } | null>(
+    null,
+  );
   const [editSegmentId, setEditSegmentId] = useState<string | null>(null);
   const [editDraft, setEditDraft] = useState<EditDraft | null>(null);
+  // C3: afrondkeuze bij open punten/turnovers (besluit 4 van het compact-bouwplan).
+  const [finishDialogOpen, setFinishDialogOpen] = useState(false);
   // PR 8.2a (docs/pr-8.2-plan.md §C 8.2a werk 4): deze twee modals zijn
   // echte live-wedstrijdmodals (wissel-kloktijd-bevestiging, segment
   // bewerken) met hun eigen `modal-overlay`/`modal`-structuur — geen
@@ -192,6 +226,16 @@ export function LiveTrackingPanel({
     editDraft != null && editSegmentId != null,
   );
 
+  // Schermwisselguard (apparaatmenu Klassiek/Compact): een onbevestigde wissel
+  // of open venster blokkeert het wisselen van scherm.
+  useGameScreenLock(
+    canWrite && pendingSwapLineup != null
+      ? 'swap'
+      : swapConfirmEndSec != null || editDraft != null || finishDialogOpen
+        ? 'dialog'
+        : null,
+  );
+
   const history = deriveGameHistory(game);
   const courtLimit = isOverLimit(game, game.onCourt, classification);
   const segDeltaFor = history.scoreFor - history.segStartFor;
@@ -201,6 +245,25 @@ export function LiveTrackingPanel({
   const dur = segDur(game);
   const durValid = dur > 0;
   const lineupValid = game.onCourt.length === 5;
+  const stateKey = `${game.beginSec}|${game.endSec}|${game.actions.length}|${game.curQuarter}`;
+  const liveErrorKeyNow =
+    liveError != null && liveError.key === stateKey ? liveErrorKey(liveError.code) : null;
+  const swapErrorKey =
+    swapError != null &&
+    swapError.endSec === swapConfirmEndSec &&
+    swapError.actionCount === game.actions.length
+      ? liveErrorKey(swapError.code)
+      : null;
+  const editErrorKey =
+    editError != null && editError.draft === editDraft ? liveErrorKey(editError.code) : null;
+  // Beginstand van het open segment resp. van het te bewerken segment, voor de
+  // melding "stand niet onder de beginstand".
+  const openStart = `${history.segStartFor}-${history.segStartAgainst}`;
+  const editBounds = segmentScoreBounds(history.segments)[
+    history.segments.findIndex((s) => s.id === editSegmentId)
+  ];
+  const editStart = editBounds ? `${editBounds.beginFor}-${editBounds.beginAgainst}` : openStart;
+  const withStart = (key: StringKey, start: string) => t(lang, key).replace('{start}', start);
   const bench = game.players.filter((p) => p.participate && !game.onCourt.includes(p.id));
 
   function handleTapPlayer(id: string) {
@@ -231,46 +294,26 @@ export function LiveTrackingPanel({
 
   function handleDiscardSwaps() {
     if (pendingSwapLineup == null) return;
-    onGameChange({ ...game, onCourt: pendingSwapLineup, pendingSwapLineup: null });
+    onGameChange(discardSwaps(game));
   }
 
-  function buildAndAppendSegment(
-    quarter: number,
-    beginSec: number,
-    endSec: number,
-    lineup: string[],
-  ) {
-    const segment = buildSegment(
-      game,
-      quarter,
-      beginSec,
-      endSec,
-      lineup,
-      segDeltaFor,
-      segDeltaAgainst,
-      classification,
-      segTurnovers,
-    );
-    onGameChange({
-      ...game,
-      beginSec: endSec,
-      endSec,
-      pendingSwapLineup: null,
-      actions: [...game.actions, segmentSavedAction(segment)],
-    });
+  function closeSwapConfirm() {
+    setSwapError(null);
+    setSwapConfirmEndSec(null);
   }
 
   function handleConfirmSwapBatch() {
     if (pendingSwapLineup == null || swapConfirmEndSec == null) return;
-    const swapDur = game.clockDown
-      ? game.beginSec - swapConfirmEndSec
-      : swapConfirmEndSec - game.beginSec;
-    if (swapDur < 0) return;
-    if (swapDur > 0) {
-      buildAndAppendSegment(game.curQuarter, game.beginSec, swapConfirmEndSec, pendingSwapLineup);
-    } else {
-      onGameChange({ ...game, pendingSwapLineup: null });
+    const result = confirmSwap(game, { endSec: swapConfirmEndSec, classification });
+    if (!result.ok) {
+      setSwapError({
+        code: result.error,
+        endSec: swapConfirmEndSec,
+        actionCount: game.actions.length,
+      });
+      return;
     }
+    onGameChange(result.game);
     setSwapConfirmEndSec(null);
   }
 
@@ -278,7 +321,12 @@ export function LiveTrackingPanel({
     if (!canWrite) return;
     const lineup = pendingSwapLineup ?? game.onCourt;
     if (!canSaveSegment(dur, lineup)) return;
-    buildAndAppendSegment(game.curQuarter, game.beginSec, game.endSec, lineup);
+    const result = commitSegment(game, { endSec: game.endSec, lineup, classification });
+    if (!result.ok) {
+      setLiveError({ code: result.error, key: stateKey });
+      return;
+    }
+    onGameChange(result.game);
     setEndTouched(false);
   }
 
@@ -312,25 +360,31 @@ export function LiveTrackingPanel({
       ? editDraft.beginSec - editDraft.endSec
       : editDraft.endSec - editDraft.beginSec;
     if (!(editDur > 0) || editDraft.lineup.length !== 5) return;
-    const { sum, allowed, over } = isOverLimit(game, editDraft.lineup, classification);
-    const updated: Segment = {
-      id: editSegmentId,
-      quarter: editDraft.quarter,
-      beginSec: editDraft.beginSec,
-      endSec: editDraft.endSec,
-      durSec: editDur,
-      lineup: [...editDraft.lineup],
-      pf: Number(editDraft.pf) || 0,
-      pa: Number(editDraft.pa) || 0,
-      classSum: sum,
-      allowed,
-      over,
-      tov: Math.max(0, Math.floor(Number(editDraft.tov) || 0)),
-    };
-    onGameChange({
-      ...game,
-      actions: [...game.actions, segmentEditedAction(editSegmentId, updated)],
-    });
+    const result = editSegment(
+      game,
+      editSegmentId,
+      {
+        quarter: editDraft.quarter,
+        beginSec: editDraft.beginSec,
+        endSec: editDraft.endSec,
+        lineup: editDraft.lineup,
+        pf: Number(editDraft.pf),
+        pa: Number(editDraft.pa),
+        tov: Number(editDraft.tov),
+      },
+      classification,
+      quarterCount,
+    );
+    if (!result.ok) {
+      const negative = Number(editDraft.pf) < 0 || Number(editDraft.pa) < 0;
+      setEditError({
+        code:
+          result.error === 'invalid-score' && negative ? 'score-below-segment-start' : result.error,
+        draft: editDraft,
+      });
+      return;
+    }
+    onGameChange(result.game);
     closeEditSegment();
   }
 
@@ -345,6 +399,12 @@ export function LiveTrackingPanel({
 
   function handleFinishClick() {
     if (!canWrite || !canFinish) return;
+    // C3: staan er nog punten of turnovers buiten een segment, dan eerst de
+    // afrondkeuze (waarschuwing). Anders blijft de bestaande bevestiging gelden.
+    if (openSegmentSummary(game).hasOpen) {
+      setFinishDialogOpen(true);
+      return;
+    }
     if (!window.confirm(t(lang, 'confirmFinishGame'))) return;
     onFinishGame();
   }
@@ -373,15 +433,10 @@ export function LiveTrackingPanel({
             disabled={!canWrite}
             data-testid={`score-select-${team}`}
             aria-label={t(lang, 'scoreSelectLabel').replace('{team}', name)}
-            onChange={(e) =>
-              onGameChange({
-                ...game,
-                actions: [
-                  ...game.actions,
-                  scoreSetAction(team, Number((e.target as HTMLSelectElement).value)),
-                ],
-              })
-            }
+            onChange={(e) => {
+              const result = setScore(game, team, Number((e.target as HTMLSelectElement).value));
+              if (result.ok && result.game !== game) onGameChange(result.game);
+            }}
           >
             {Array.from({ length: 151 }, (_, n) => n).map((n) => (
               <option key={n} value={n}>
@@ -566,7 +621,10 @@ export function LiveTrackingPanel({
             type="button"
             className="btn-primary"
             data-testid="swap-done-btn"
-            onClick={() => setSwapConfirmEndSec(game.endSec)}
+            onClick={() => {
+              setSwapError(null);
+              setSwapConfirmEndSec(game.endSec);
+            }}
           >
             {t(lang, 'swapDoneBtn')}
           </button>
@@ -630,7 +688,7 @@ export function LiveTrackingPanel({
           <span>:</span>
           <TimeSelect
             value={secondsOf(game.beginSec)}
-            max={59}
+            max={secondsMaxOf(game.beginSec)}
             pad
             disabled={!canWrite}
             testId="begin-sec"
@@ -655,7 +713,7 @@ export function LiveTrackingPanel({
           <span>:</span>
           <TimeSelect
             value={secondsOf(game.endSec)}
-            max={59}
+            max={secondsMaxOf(game.endSec)}
             pad
             disabled={!canWrite}
             testId="end-sec"
@@ -691,6 +749,11 @@ export function LiveTrackingPanel({
             {t(lang, 'needFiveOnCourt')}
           </p>
         )}
+        {liveErrorKeyNow != null ? (
+          <p className="settings-error" role="alert" data-testid="live-command-error">
+            {withStart(liveErrorKeyNow, openStart)}
+          </p>
+        ) : null}
       </div>
 
       {history.segments.length > 0 ? (
@@ -746,13 +809,25 @@ export function LiveTrackingPanel({
         {t(lang, 'finishGameBtn')}
       </button>
 
+      {finishDialogOpen ? (
+        <FinishGameDialog
+          lang={lang}
+          game={game}
+          classification={classification}
+          canWrite={canWrite}
+          onGameChange={onGameChange}
+          onFinishGame={onFinishGame}
+          onClose={() => setFinishDialogOpen(false)}
+        />
+      ) : null}
+
       {swapConfirmEndSec != null ? (
         <div className="modal-overlay">
           <button
             type="button"
             className="modal-overlay__backdrop"
             aria-label={t(lang, 'backBtn')}
-            onClick={() => setSwapConfirmEndSec(null)}
+            onClick={closeSwapConfirm}
           />
           <div
             className="modal"
@@ -777,7 +852,7 @@ export function LiveTrackingPanel({
               <span>:</span>
               <TimeSelect
                 value={secondsOf(swapConfirmEndSec)}
-                max={59}
+                max={secondsMaxOf(swapConfirmEndSec)}
                 pad
                 disabled={!canWrite}
                 testId="swap-confirm-sec"
@@ -797,12 +872,17 @@ export function LiveTrackingPanel({
                 </p>
               );
             })()}
+            {swapErrorKey != null ? (
+              <p className="settings-error" role="alert" data-testid="swap-confirm-error">
+                {withStart(swapErrorKey, openStart)}
+              </p>
+            ) : null}
             <div className="modal__actions">
               <button
                 type="button"
                 className="btn-outline"
                 data-testid="swap-confirm-back"
-                onClick={() => setSwapConfirmEndSec(null)}
+                onClick={closeSwapConfirm}
               >
                 {t(lang, 'backBtn')}
               </button>
@@ -883,7 +963,7 @@ export function LiveTrackingPanel({
               <span>:</span>
               <TimeSelect
                 value={secondsOf(editDraft.beginSec)}
-                max={59}
+                max={secondsMaxOf(editDraft.beginSec)}
                 pad
                 disabled={false}
                 testId="edit-begin-sec"
@@ -909,7 +989,7 @@ export function LiveTrackingPanel({
               <span>:</span>
               <TimeSelect
                 value={secondsOf(editDraft.endSec)}
-                max={59}
+                max={secondsMaxOf(editDraft.endSec)}
                 pad
                 disabled={false}
                 testId="edit-end-sec"
@@ -1001,6 +1081,11 @@ export function LiveTrackingPanel({
                 }
               />
             </label>
+            {editErrorKey != null ? (
+              <p className="settings-error" role="alert" data-testid="edit-segment-error">
+                {withStart(editErrorKey, editStart)}
+              </p>
+            ) : null}
             <button
               type="button"
               className="btn-primary"

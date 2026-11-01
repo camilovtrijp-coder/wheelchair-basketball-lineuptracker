@@ -42,6 +42,8 @@ import {
 } from '../domain/game/writerClaim';
 import { GameSetupPanel } from '../ui/game/GameSetupPanel';
 import { LiveTrackingPanel } from '../ui/game/LiveTrackingPanel';
+import { CompactLivePanel } from '../ui/game/CompactLivePanel';
+import { useGameScreenPreference } from '../application/game/useGameScreen';
 import { TakeoverConfirmDialog } from '../ui/game/TakeoverConfirmDialog';
 import { useGameCloudViewer } from '../ui/game/useGameCloudViewer';
 import { downloadPendingGameActions } from '../infrastructure/game/exportPendingGameActions';
@@ -246,6 +248,10 @@ export function App({
     onLangChange?.(lang);
   }, [lang, onLangChange]);
   const [tab, setTab] = useState<Tab>('settings');
+  // Apparaatvoorkeur Klassiek/Compact (nooit onderdeel van de wedstrijd): beide
+  // schermen krijgen exact dezelfde props en dezelfde ActiveGame.
+  const gameScreen = useGameScreenPreference();
+  const GameScreenPanel = gameScreen === 'compact' ? CompactLivePanel : LiveTrackingPanel;
   const [settings, setSettings] = useState<(Settings & Record<string, unknown>) | null>(null);
   const [roster, setRoster] = useState<Roster | null>(null);
   const [settingsUpdatedAt, setSettingsUpdatedAt] = useState<number | undefined>(undefined);
@@ -1179,13 +1185,18 @@ export function App({
    *    archiveren en die impliciete reset de zojuist afgeronde wedstrijd nog
    *    als 'tracking' laten staan onder de actieve-gamesleutel.
    */
-  function handleFinishGame() {
-    if (game === null || settings === null || roster === null) return;
+  function handleFinishGame(latestGame?: ActiveGame) {
+    // C3: een scherm dat eerst `onGameChange(next)` en direct daarna afronden
+    // aanroept (laatste segment vastleggen en afronden) levert die actuele stand
+    // mee; `game` hieronder is dan nog de stand van de laatste render. Alleen
+    // dezelfde wedstrijd wordt geaccepteerd; alle andere logica is ongewijzigd.
+    const currentGame = latestGame !== undefined && latestGame.id === game?.id ? latestGame : game;
+    if (currentGame === null || settings === null || roster === null) return;
 
-    const alreadyArchived = completedGames.find((g) => g.sourceGameId === game.id);
+    const alreadyArchived = completedGames.find((g) => g.sourceGameId === currentGame.id);
     let archived = alreadyArchived ?? null;
     if (archived === null) {
-      const completed = finishGame(game, {
+      const completed = finishGame(currentGame, {
         quarterCount: settings.quarterCount as number,
         periodLabel: settings.periodLabel as string,
         useClassLimit: settings.useClassLimit === true,
@@ -1214,13 +1225,16 @@ export function App({
     // precondition zou de reset hieronder de enige retrybron alsnog kunnen
     // vernietigen terwijl de outbox 'm niet duurzaam heeft overgenomen.
     // Alleen relevant in cloud-modus — lokale modus heeft niets om te syncen.
-    if (repositories.gameSync && !pendingFinalizeRepo.add({ game, completed: archived })) {
+    if (
+      repositories.gameSync &&
+      !pendingFinalizeRepo.add({ game: currentGame, completed: archived })
+    ) {
       setGameSaveError(true);
       return;
     }
     // Fire-and-forget cloud-finalize; `runFinalize` is zelf een no-op in
     // lokale modus.
-    runFinalize(game, archived);
+    runFinalize(currentGame, archived);
 
     const fresh = createGameFromRoster(roster, organizationId, teamId, settings.classBaseLimit);
     const resetOk = gameRepo.write(fresh);
@@ -1231,7 +1245,7 @@ export function App({
     // afgeronde. (De panelen schonen verouderde selecties daarnaast zelf op,
     // zie `useSanitizedGameIds`, o.a. voor weggegooide/verwijderde wedstrijden.)
     const finishedId = archived.id;
-    const runningId = game.id;
+    const runningId = currentGame.id;
     setStatsGameIds((prev) =>
       prev !== null && prev.has(runningId)
         ? new Set([...prev].map((id) => (id === runningId ? finishedId : id)))
@@ -1954,7 +1968,7 @@ export function App({
                 onCancel={handleCancelTakeoverConfirm}
               />
             ) : null}
-            <LiveTrackingPanel
+            <GameScreenPanel
               lang={lang}
               game={game}
               quarterCount={settings.quarterCount as number}

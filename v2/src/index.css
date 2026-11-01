@@ -9,6 +9,7 @@
 @import './styles/trends-overview.css';
 @import './styles/trends-lineups-extra.css';
 @import './styles/trends-quarters.css';
+@import './styles/compact-live.css';
 
 /* Zonder deze reset telt content-box de padding bovenop een expliciete
    width op (bijv. .app-main), wat op smalle viewports horizontale
@@ -1682,4 +1683,23 @@ button:focus-visible {
     animation: none !important;
     transition: none !important;
   }
+}
+
+.session-bar__game-screen {
+  margin: 0;
+  padding: var(--lt-space-1) 0;
+  border: 0;
+  min-width: 0;
+}
+
+.session-bar__game-screen legend {
+  padding: 0;
+  font-size: var(--lt-font-size-sm);
+  font-weight: 600;
+}
+
+.session-bar__game-screen-locked {
+  margin: 0;
+  font-size: var(--lt-font-size-xs);
+  color: var(--lt-color-muted);
 }

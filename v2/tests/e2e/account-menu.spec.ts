@@ -32,6 +32,10 @@ test.describe('v2 accountmenu in de header (stap 3/5)', () => {
     await expect(page.getByTestId('trusted-device-setting-toggle')).toBeFocused();
     await page.keyboard.press('Tab');
     await expect(page.getByTestId('theme-toggle')).toBeFocused();
+    // Wedstrijdscherm (Klassiek/Compact): een radiogroep is één Tab-stop, op de
+    // gekozen waarde (standaard Klassiek).
+    await page.keyboard.press('Tab');
+    await expect(page.getByTestId('game-screen-classic')).toBeFocused();
     await page.keyboard.press('Tab');
     await expect(page.getByTestId('sign-out')).toBeFocused();
 
