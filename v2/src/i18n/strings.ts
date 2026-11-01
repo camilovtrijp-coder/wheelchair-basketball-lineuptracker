@@ -241,6 +241,8 @@ const nl = {
   correctErrorInvalidScore:
     'De score is ongeldig (hele getallen, niet negatief, binnen het maximum).',
   correctErrorInvalidTurnovers: 'Turnovers moeten een geheel getal van 0 of hoger zijn.',
+  liveErrorScoreChangedAtZero:
+    'De stand is gewijzigd terwijl er geen speeltijd is verstreken. Kies een latere tijd, of zet de stand terug.',
   lineupChosenSuffix: 'gekozen',
   deleteBtn: 'Verwijderen',
   confirmDeleteSegment: 'Dit segment verwijderen? De score wordt automatisch herberekend.',
@@ -1123,6 +1125,8 @@ const en = {
   correctErrorInvalidScore:
     'The score is invalid (whole numbers, not negative, within the maximum).',
   correctErrorInvalidTurnovers: 'Turnovers must be a whole number of 0 or more.',
+  liveErrorScoreChangedAtZero:
+    'The score changed while no playing time has passed. Choose a later time, or restore the score.',
   lineupChosenSuffix: 'chosen',
   deleteBtn: 'Delete',
   confirmDeleteSegment: 'Delete this segment? The score will be recalculated automatically.',
