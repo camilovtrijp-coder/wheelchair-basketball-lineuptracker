@@ -491,3 +491,124 @@
   border: var(--lt-border-thin);
   border-radius: var(--lt-radius-md);
 }
+
+/* Compact wedstrijdscherm (C3): segmentoverzicht, segmenteditor, afronden. */
+.compact-segments {
+  display: flex;
+  flex-direction: column;
+  gap: var(--lt-space-2);
+  min-width: 0;
+}
+
+.compact-segments__toggle {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: var(--lt-space-2);
+  min-height: 2.75rem;
+  padding: 0 var(--lt-space-3);
+  border: var(--lt-border-thin);
+  border-radius: var(--lt-radius-md);
+  background: var(--lt-color-surface);
+  color: var(--lt-color-fg);
+  font: inherit;
+  font-weight: 700;
+  text-align: left;
+}
+
+.compact-segments__list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--lt-space-2);
+}
+
+.compact-seg {
+  display: flex;
+  flex-direction: column;
+  gap: var(--lt-space-1);
+  min-width: 0;
+  padding: var(--lt-space-3);
+  border: var(--lt-border-thin);
+  border-radius: var(--lt-radius-md);
+  background: var(--lt-color-surface);
+}
+
+/* Kopregel: kwart en tijden, Bewerken direct ernaast, duur; loopt om op smalle schermen. */
+.compact-seg__head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  column-gap: var(--lt-space-3);
+  row-gap: var(--lt-space-1);
+  min-width: 0;
+}
+
+.compact-seg__when {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.compact-seg__edit {
+  min-height: 2.75rem;
+  min-width: 2.75rem;
+  padding: 0 var(--lt-space-3);
+}
+
+.compact-seg__dur {
+  margin-left: auto;
+  font-size: var(--lt-font-size-sm);
+  color: var(--lt-color-muted);
+}
+
+.compact-seg__lineup,
+.compact-seg__stats {
+  margin: 0;
+  font-size: var(--lt-font-size-sm);
+  overflow-wrap: anywhere;
+}
+
+.compact-seg__stats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--lt-space-1) var(--lt-space-3);
+  color: var(--lt-color-muted);
+}
+
+.compact-finish {
+  min-height: 3rem;
+  width: 100%;
+}
+
+.compact-finish__choices {
+  display: flex;
+  flex-direction: column;
+  gap: var(--lt-space-2);
+}
+
+.compact-finish__choices button {
+  min-height: 2.75rem;
+}
+
+.compact-edit__quarter {
+  min-height: 2.75rem;
+  width: 100%;
+}
+
+.compact-edit__lineup-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: var(--lt-space-2);
+}
+
+.compact-edit__actions {
+  flex-wrap: wrap;
+}
+
+.compact-edit__actions button {
+  min-height: 2.75rem;
+  min-width: 0;
+}

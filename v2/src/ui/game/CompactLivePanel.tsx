@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'preact/hooks';
 import type { GamePlayer } from '../../domain/game/types';
 import { discardSwaps, setScore } from '../../domain/game/liveCommands';
+import { canFinishGame } from '../../domain/game/finish';
 import {
   deriveGameHistory,
   isOverLimit,
@@ -15,14 +16,17 @@ import { translate, type StringKey } from '../../i18n/strings';
 import { useGameScreenLock } from '../../application/game/useGameScreen';
 import { fmtSec, type LiveTrackingPanelProps } from './LiveTrackingPanel';
 import { CompactLiveDialog, type CompactDialogMode } from './CompactLiveDialog';
+import { CompactSegmentList } from './CompactSegmentList';
+import { CompactSegmentEditor } from './CompactSegmentEditor';
+import { FinishGameDialog } from './FinishGameDialog';
 
 /**
  * Compact wedstrijdscherm (bouwplan C2a/C2b). Zelfde props en dezelfde
  * `ActiveGame` als `LiveTrackingPanel`. Wisselen, Segment opslaan en
  * Kwart/periode afsluiten lopen via een concept-dialoog (alleen UI-state) en
  * leggen bij bevestigen één coherente overgang vast via `liveCommands`.
- * Segmentlijst, bewerken en afronden volgen in C3; hier staan daarvoor bewust
- * geen (halve) knoppen.
+ * C3: inklapbaar segmentoverzicht met bewerken/verwijderen op segment-ID en
+ * Wedstrijd afronden (met afrondkeuze) onder het overzicht.
  */
 export type CompactLivePanelProps = LiveTrackingPanelProps;
 
@@ -50,15 +54,23 @@ export function CompactLivePanel({
   tag1Label,
   tag2Label,
   onGameChange,
+  onFinishGame,
   canWrite,
   saveError,
 }: CompactLivePanelProps) {
   const t = (key: StringKey) => translate(lang, key);
   const [dialog, setDialog] = useState<CompactDialogMode | null>(null);
+  const [segmentsOpen, setSegmentsOpen] = useState(false);
+  const [editSegmentId, setEditSegmentId] = useState<string | null>(null);
+  const [finishOpen, setFinishOpen] = useState(false);
   // Schermwisselguard: een opgeslagen onbevestigde wissel of een open concept
   // blokkeert de schakelaar Klassiek/Compact (alleen als er geschreven mag worden).
   useGameScreenLock(
-    canWrite && game.pendingSwapLineup != null ? 'swap' : dialog != null ? 'dialog' : null,
+    canWrite && game.pendingSwapLineup != null
+      ? 'swap'
+      : dialog != null || editSegmentId != null || finishOpen
+        ? 'dialog'
+        : null,
   );
 
   // Uitwedstrijd: lokale voorkeur per apparaat en wedstrijd-ID, nooit op ActiveGame.
@@ -352,9 +364,54 @@ export function CompactLivePanel({
         </button>
       </div>
 
-      <p className="compact-panel__note" data-testid="compact-finish-note">
-        {t('compactFinishInClassicNote')}
-      </p>
+      <CompactSegmentList
+        lang={lang}
+        game={game}
+        periodLabel={periodLabel}
+        expanded={segmentsOpen}
+        canWrite={canWrite}
+        onToggle={() => setSegmentsOpen((open) => !open)}
+        onEdit={(id) => setEditSegmentId(id)}
+      />
+
+      <button
+        type="button"
+        className="btn-primary compact-finish"
+        disabled={!canWrite || !canFinishGame(game)}
+        data-testid="compact-finish-game"
+        onClick={() => canWrite && canFinishGame(game) && setFinishOpen(true)}
+      >
+        {t('finishGameBtn')}
+      </button>
+
+      {editSegmentId != null ? (
+        <CompactSegmentEditor
+          lang={lang}
+          game={game}
+          segmentId={editSegmentId}
+          quarterCount={quarterCount}
+          periodLabel={periodLabel}
+          classification={classification}
+          teamName={teamName}
+          tag1Label={tag1Label}
+          tag2Label={tag2Label}
+          canWrite={canWrite}
+          onCommit={onGameChange}
+          onClose={() => setEditSegmentId(null)}
+        />
+      ) : null}
+
+      {finishOpen ? (
+        <FinishGameDialog
+          lang={lang}
+          game={game}
+          classification={classification}
+          canWrite={canWrite}
+          onGameChange={onGameChange}
+          onFinishGame={onFinishGame}
+          onClose={() => setFinishOpen(false)}
+        />
+      ) : null}
 
       {dialog != null ? (
         <CompactLiveDialog

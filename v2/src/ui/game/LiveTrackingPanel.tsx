@@ -12,6 +12,7 @@ import {
   discardSwaps,
   editSegment,
   maxSecondsForMinutes,
+  openSegmentSummary,
   setScore,
   type LiveCommandError,
 } from '../../domain/game/liveCommands';
@@ -32,6 +33,10 @@ import {
 import { translate, type Lang, type StringKey } from '../../i18n/strings';
 import { useFocusTrap } from '../../application/a11y/useFocusTrap';
 import { useGameScreenLock } from '../../application/game/useGameScreen';
+import { fmtSec, liveErrorKey } from './liveFormat';
+import { FinishGameDialog } from './FinishGameDialog';
+
+export { fmtSec, liveErrorKey };
 
 export interface LiveTrackingPanelProps {
   lang: Lang;
@@ -43,20 +48,14 @@ export interface LiveTrackingPanelProps {
   tag1Label: string;
   tag2Label: string;
   onGameChange: (next: ActiveGame) => void;
-  onFinishGame: () => void;
+  /** Met `latestGame` rondt App af met die actuele stand (direct na `onGameChange`). */
+  onFinishGame: (latestGame?: ActiveGame) => void;
   canWrite: boolean;
   saveError: boolean;
 }
 
 function t(lang: Lang, key: StringKey): string {
   return translate(lang, key);
-}
-
-/** v1: `fmt()` — "-1:05"/"1:05" (min:ss, met minteken bij negatieve duur). */
-export function fmtSec(sec: number): string {
-  const neg = sec < 0;
-  const abs = Math.abs(sec);
-  return `${neg ? '-' : ''}${Math.floor(abs / 60)}:${String(abs % 60).padStart(2, '0')}`;
 }
 
 export function minutesOf(totalSec: number): number {
@@ -79,30 +78,6 @@ export function withSeconds(totalSec: number, sec: number): number {
 /** Hoogste te kiezen seconde bij de minuten van `totalSec` (bij 10 minuten alleen 0). */
 export function secondsMaxOf(totalSec: number): number {
   return maxSecondsForMinutes(minutesOf(totalSec));
-}
-
-/** Bestaande tekstsleutel voor een geweigerd livecommando; `null` = geen melding. */
-export function liveErrorKey(error: LiveCommandError): StringKey | null {
-  switch (error) {
-    case 'invalid-clock':
-      return 'correctErrorInvalidTime';
-    case 'invalid-duration':
-      return 'endAfterBegin';
-    case 'invalid-lineup':
-      return 'needFiveOnCourt';
-    case 'invalid-score':
-      return 'correctErrorInvalidScore';
-    case 'score-below-segment-start':
-      return 'liveErrorScoreBelowSegmentStart';
-    case 'invalid-quarter':
-      return 'correctErrorInvalidQuarter';
-    case 'score-changed':
-      return 'liveErrorScoreChangedAtZero';
-    case 'unknown-segment':
-      return 'correctErrorUnknownSegment';
-    case 'no-pending-swap':
-      return null;
-  }
 }
 
 interface Selected {
@@ -238,6 +213,8 @@ export function LiveTrackingPanel({
   );
   const [editSegmentId, setEditSegmentId] = useState<string | null>(null);
   const [editDraft, setEditDraft] = useState<EditDraft | null>(null);
+  // C3: afrondkeuze bij open punten/turnovers (besluit 4 van het compact-bouwplan).
+  const [finishDialogOpen, setFinishDialogOpen] = useState(false);
   // PR 8.2a (docs/pr-8.2-plan.md §C 8.2a werk 4): deze twee modals zijn
   // echte live-wedstrijdmodals (wissel-kloktijd-bevestiging, segment
   // bewerken) met hun eigen `modal-overlay`/`modal`-structuur — geen
@@ -254,7 +231,7 @@ export function LiveTrackingPanel({
   useGameScreenLock(
     canWrite && pendingSwapLineup != null
       ? 'swap'
-      : swapConfirmEndSec != null || editDraft != null
+      : swapConfirmEndSec != null || editDraft != null || finishDialogOpen
         ? 'dialog'
         : null,
   );
@@ -422,6 +399,12 @@ export function LiveTrackingPanel({
 
   function handleFinishClick() {
     if (!canWrite || !canFinish) return;
+    // C3: staan er nog punten of turnovers buiten een segment, dan eerst de
+    // afrondkeuze (waarschuwing). Anders blijft de bestaande bevestiging gelden.
+    if (openSegmentSummary(game).hasOpen) {
+      setFinishDialogOpen(true);
+      return;
+    }
     if (!window.confirm(t(lang, 'confirmFinishGame'))) return;
     onFinishGame();
   }
@@ -825,6 +808,18 @@ export function LiveTrackingPanel({
       >
         {t(lang, 'finishGameBtn')}
       </button>
+
+      {finishDialogOpen ? (
+        <FinishGameDialog
+          lang={lang}
+          game={game}
+          classification={classification}
+          canWrite={canWrite}
+          onGameChange={onGameChange}
+          onFinishGame={onFinishGame}
+          onClose={() => setFinishDialogOpen(false)}
+        />
+      ) : null}
 
       {swapConfirmEndSec != null ? (
         <div className="modal-overlay">

@@ -142,13 +142,20 @@ describe('CompactLivePanel: hoofdscherm', () => {
     expect(text(getByTestId('compact-begin'))).toContain('gespeelde tijd');
   });
 
-  it('heeft (C2b) wissel-, segment- en kwartknoppen maar nog geen afrondknop', () => {
-    const { container } = setup();
-    for (const id of ['save-segment-btn', 'swap-done-btn', 'finish-game-btn']) {
+  it('heeft wissel-, segment-, kwart-, overzicht- en afrondknop en geen Klassieke ids of C2b-notitie', () => {
+    const { container, getByTestId } = setup();
+    for (const id of [
+      'save-segment-btn',
+      'swap-done-btn',
+      'finish-game-btn',
+      'compact-finish-note',
+    ]) {
       expect(container.querySelector(`[data-testid="${id}"]`)).toBeNull();
     }
-    // 4 scoreknoppen per kant, 2 turnoverknoppen, 3 acties (Wisselen, Segment, Kwart).
-    expect(container.querySelectorAll('button')).toHaveLength(13);
+    // 4 scoreknoppen per kant, 2 turnoverknoppen, 3 acties (Wisselen, Segment, Kwart),
+    // 1 overzichtsknop (Segmenten) en 1 knop Wedstrijd afronden.
+    expect(container.querySelectorAll('button')).toHaveLength(15);
+    expect(getByTestId('compact-finish-game').textContent).toBe('Wedstrijd afronden');
   });
 });
 
@@ -341,8 +348,11 @@ describe('CompactLivePanel: alleen-lezen', () => {
     const { container, getByTestId, onChange } = setup({ canWrite: false });
     expect(getByTestId('game-read-only')).toBeTruthy();
     const buttons = Array.from(container.querySelectorAll('button'));
-    expect(buttons).toHaveLength(13);
-    expect(buttons.every((b) => b.disabled)).toBe(true);
+    expect(buttons).toHaveLength(15);
+    // Alle schrijfacties zijn uit; alleen het in-/uitklappen van het overzicht (lezen) blijft bruikbaar.
+    expect(buttons.filter((b) => !b.disabled).map((b) => b.getAttribute('data-testid'))).toEqual([
+      'compact-segments-toggle',
+    ]);
     expect((getByTestId('compact-score-select-for') as HTMLSelectElement).disabled).toBe(true);
     expect((getByTestId('compact-score-select-against') as HTMLSelectElement).disabled).toBe(true);
     fireEvent.click(getByTestId('compact-turnover-plus'));
@@ -403,7 +413,7 @@ describe('CompactLivePanel: classificatie', () => {
     const game: ActiveGame = { ...trackingGame(), pendingSwapLineup: trackingGame().onCourt };
     const { getByTestId, container } = setup({ game });
     expect(getByTestId('compact-swap-pending')).toBeTruthy();
-    // 10 basisknoppen + 3 acties (disabled) + bevestigen/annuleren van de openstaande wissel.
-    expect(container.querySelectorAll('button')).toHaveLength(15);
+    // 12 basisknoppen + 3 acties (disabled) + bevestigen/annuleren van de openstaande wissel.
+    expect(container.querySelectorAll('button')).toHaveLength(17);
   });
 });

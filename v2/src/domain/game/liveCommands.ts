@@ -114,6 +114,36 @@ export function segmentScoreBounds(segments: Segment[]): SegmentScoreBounds[] {
   });
 }
 
+// ---------- open (nog niet vastgelegd) segment ----------
+
+export interface OpenSegmentSummary {
+  /** Punten sinds het laatste vastgelegde segment (eigen team / tegenstander). */
+  pointsFor: number;
+  pointsAgainst: number;
+  /** Eigen turnovers sinds het laatste vastgelegde segment. */
+  turnovers: number;
+  /** Staat er iets open (punten of turnovers) dat in geen enkel segment zit? */
+  hasOpen: boolean;
+}
+
+/**
+ * Wat er nog buiten elk segment staat. Bewust alleen de punt- en
+ * turnoverdelta's: een gelijke stand zegt niets over ongeregistreerde speeltijd
+ * (bouwplan, Segmenten en afronden).
+ */
+export function openSegmentSummary(game: ActiveGame): OpenSegmentSummary {
+  const h = deriveGameHistory(game);
+  const pointsFor = h.scoreFor - h.segStartFor;
+  const pointsAgainst = h.scoreAgainst - h.segStartAgainst;
+  const turnovers = h.turnovers - h.segStartTurnovers;
+  return {
+    pointsFor,
+    pointsAgainst,
+    turnovers,
+    hasOpen: pointsFor !== 0 || pointsAgainst !== 0 || turnovers !== 0,
+  };
+}
+
 // ---------- score ----------
 
 function foldActions(game: ActiveGame, from: number, history: DerivedGameHistory) {
