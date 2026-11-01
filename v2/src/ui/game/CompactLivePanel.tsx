@@ -425,6 +425,7 @@ export function CompactLivePanel({
           tag1Label={tag1Label}
           tag2Label={tag2Label}
           canWrite={canWrite}
+          away={away}
           onCommit={onGameChange}
           onClose={() => setDialog(null)}
         />

@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'preact/hooks';
+import { useEffect, useRef, useState } from 'preact/hooks';
 import { MAX_SCORE, type ActiveGame, type GamePlayer } from '../../domain/game/types';
 import {
   clockDuration,
@@ -48,6 +48,8 @@ export interface CompactLiveDialogProps {
   tag1Label: string;
   tag2Label: string;
   canWrite: boolean;
+  /** Uitwedstrijd (lokale presentatievoorkeur): tegenstander links. Alleen volgorde. */
+  away?: boolean;
   onCommit: (next: ActiveGame) => void;
   onClose: () => void;
 }
@@ -73,8 +75,9 @@ export function CompactLiveDialog({
   tag1Label,
   tag2Label,
   canWrite,
+  away = false,
   onCommit,
-  onClose,
+  onClose: onCloseProp,
 }: CompactLiveDialogProps) {
   const t = (key: StringKey) => translate(lang, key);
   const trapRef = useFocusTrap<HTMLDivElement>(true);
@@ -87,13 +90,24 @@ export function CompactLiveDialog({
   const [scoreAgainst, setScoreAgainst] = useState(() => String(history.scoreAgainst));
   const [error, setError] = useState<LiveCommandError | null>(null);
 
+  const onClose = onCloseProp;
+  const [touched, setTouched] = useState(false);
+  const submittedRef = useRef(false);
+  const [submitted, setSubmitted] = useState(false);
+  // Escape/achtergrond: een concept met invoer niet stil weggooien.
+  const hasDraft = touched || (mode === 'swap' ? step !== 'select' : step === 'review');
+  function requestClose() {
+    if (submittedRef.current) return;
+    if (hasDraft && !window.confirm(t('compactDiscardDraftConfirm'))) return;
+    onClose();
+  }
   useEffect(() => {
     function onKeyDown(e: KeyboardEvent) {
-      if (e.key === 'Escape') onClose();
+      if (e.key === 'Escape') requestClose();
     }
     document.addEventListener('keydown', onKeyDown);
     return () => document.removeEventListener('keydown', onKeyDown);
-  }, [onClose]);
+  });
 
   const ownName = teamName || t('teamFallbackLabel');
   const opponentName = t('teamOpponent');
@@ -157,6 +171,7 @@ export function CompactLiveDialog({
 
   function touch<T>(setter: (v: T) => void) {
     return (v: T) => {
+      setTouched(true);
       setError(null);
       setter(v);
     };
@@ -173,13 +188,15 @@ export function CompactLiveDialog({
   }
 
   function handleConfirm() {
-    if (!canWrite) return;
+    if (!canWrite || submittedRef.current) return;
     const result = attempt();
     if (!result.ok) {
       setError(result.error);
       setStep('time');
       return;
     }
+    submittedRef.current = true;
+    setSubmitted(true);
     onCommit(result.game);
     onClose();
   }
@@ -239,6 +256,11 @@ export function CompactLiveDialog({
     );
   }
 
+  // Uitwedstrijd: alleen de weergavevolgorde draait om; for/against blijven eigen team/tegenstander.
+  const sides: Team[] = away ? ['against', 'for'] : ['for', 'against'];
+
+  const pair = (own: number, opp: number) => (away ? `${opp}–${own}` : `${own}–${opp}`);
+
   function scoreField(team: Team) {
     const name = team === 'for' ? ownName : opponentName;
     const label = t('compactScoreOfTeam').replace('{team}', name);
@@ -279,7 +301,7 @@ export function CompactLiveDialog({
         type="button"
         className="modal-overlay__backdrop"
         aria-label={t('cancelBtn')}
-        onClick={onClose}
+        onClick={requestClose}
       />
       <div
         className="modal compact-dialog"
@@ -361,10 +383,7 @@ export function CompactLiveDialog({
                 {t('compactLineupSince')} {fmtSec(game.beginSec)}
               </p>
             </div>
-            <div className="compact-dialog__scores">
-              {scoreField('for')}
-              {scoreField('against')}
-            </div>
+            <div className="compact-dialog__scores">{sides.map((team) => scoreField(team))}</div>
             {mode === 'quarter' ? (
               <p className="compact-dialog__hint" data-testid="compact-quarter-note">
                 {lastPeriod
@@ -421,16 +440,16 @@ export function CompactLiveDialog({
               <dl className="compact-review" data-testid="compact-review">
                 <dt>{t('compactReviewStartScore')}</dt>
                 <dd data-testid="compact-review-start">
-                  {history.segStartFor}–{history.segStartAgainst}
+                  {pair(history.segStartFor, history.segStartAgainst)}
                 </dd>
                 <dt>{t('compactReviewEndScore')}</dt>
-                <dd data-testid="compact-review-end">
-                  {input.scoreFor}–{input.scoreAgainst}
-                </dd>
+                <dd data-testid="compact-review-end">{pair(input.scoreFor, input.scoreAgainst)}</dd>
                 <dt>{t('compactReviewPoints')}</dt>
                 <dd data-testid="compact-review-points">
-                  {input.scoreFor - history.segStartFor}–
-                  {input.scoreAgainst - history.segStartAgainst}
+                  {pair(
+                    input.scoreFor - history.segStartFor,
+                    input.scoreAgainst - history.segStartAgainst,
+                  )}
                 </dd>
                 <dt>{t('compactReviewTurnovers')}</dt>
                 <dd data-testid="compact-review-turnovers">{segTurnovers}</dd>
@@ -505,7 +524,7 @@ export function CompactLiveDialog({
               <button
                 type="button"
                 className="btn-primary"
-                disabled={!canWrite}
+                disabled={!canWrite || submitted}
                 data-testid="compact-dialog-confirm"
                 onClick={handleConfirm}
               >

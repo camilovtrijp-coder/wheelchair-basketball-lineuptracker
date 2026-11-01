@@ -4,7 +4,8 @@ import { maxSecondsForMinutes } from '../../domain/game/liveCommands';
 /**
  * Numeriek veld met typen én een dropdown rechts met scrollbare waarden
  * (compact-bouwplan, Wisselen punt 3/4). De waarde is een tekstconcept: de
- * aanroeper valideert bij bevestigen (geen stille klem op ongeldige invoer).
+ * aanroeper valideert bij bevestigen (geen stille klem op getypte invoer).
+ * Alleen een keuze uit de dropdown mag via `onPick` een gekoppelde waarde bijstellen.
  */
 export function NumberDropdownField({
   value,
@@ -17,6 +18,7 @@ export function NumberDropdownField({
   pickLabel,
   disabled,
   onChange,
+  onPick,
 }: {
   value: string;
   min: number;
@@ -28,6 +30,8 @@ export function NumberDropdownField({
   pickLabel: string;
   disabled: boolean;
   onChange: (next: string) => void;
+  /** Alleen bij een keuze uit de dropdown; standaard `onChange`. */
+  onPick?: (next: string) => void;
 }) {
   const fmt = (n: number) => (pad ? String(n).padStart(2, '0') : String(n));
   const parsed = /^\d+$/.test(value) ? Number(value) : null;
@@ -65,7 +69,7 @@ export function NumberDropdownField({
           aria-label={pickLabel}
           onChange={(e) => {
             const v = (e.target as HTMLSelectElement).value;
-            if (v !== '') onChange(fmt(Number(v)));
+            if (v !== '') (onPick ?? onChange)(fmt(Number(v)));
           }}
         >
           {selected == null ? <option value="" /> : null}
@@ -139,9 +143,10 @@ export function ClockFields({
         label={`${label} ${minutesLabel}`}
         pickLabel={pickLabel(`${label} ${minutesLabel}`)}
         disabled={disabled}
-        onChange={(min) =>
-          // Kiezen van het maximum (10 min) zet de seconden terug op 00, zodat
-          // de klok nooit boven 10:00 uitkomt.
+        onChange={(min) => onChange({ min, sec: draft.sec })}
+        // Alleen bij kiezen uit de dropdown: 10 min zet de seconden op 00. Typen
+        // wordt niet stil aangepast; de validatie meldt een klok boven 10:00.
+        onPick={(min) =>
           onChange({ min, sec: Number(min) >= MAX_CLOCK_MINUTES ? '00' : draft.sec })
         }
       />

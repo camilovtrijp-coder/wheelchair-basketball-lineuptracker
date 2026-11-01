@@ -217,6 +217,8 @@ describe('Compact wissel: acceptatie A-D (handmatig narekenbaar)', () => {
     expect([third.pf, third.pa, third.pf - third.pa]).toEqual([4, 2, 2]);
     expect(segmentTurnovers(third)).toBe(0);
     expect(hist.segments.reduce((n, s) => n + s.durSec, 0)).toBe(600);
+    expect(hist.segments.reduce((n, s) => n + s.durSec * 5, 0)).toBe(3000);
+    expect(nrs(g, third.lineup)).toEqual(['6', '12', '9', '15', '13']);
     expect(hist.scoreFor - hist.scoreAgainst).toBe(4);
     expect(hist.turnovers).toBe(3);
     expect(g.curQuarter).toBe(2);
@@ -547,5 +549,97 @@ describe('Pariteit Klassiek en Compact (scenario B via dezelfde props)', () => {
     expect(b.onCourt).toEqual(a.onCourt);
     expect(b.beginSec).toBe(a.beginSec);
     expect(b.pendingSwapLineup).toBeNull();
+  });
+});
+
+describe('Compact dialoog: Uitwedstrijd, geen stille klem, bevestiging bij sluiten', () => {
+  function fieldOrder(h: H) {
+    return Array.from(h.container.querySelectorAll('.compact-dialog__scores input')).map((el) =>
+      el.getAttribute('data-testid'),
+    );
+  }
+
+  it('uit: eigen team links; ingevoerde waarden belanden in for/against', () => {
+    const h = setup();
+    h.click('compact-save-segment');
+    expect(fieldOrder(h)).toEqual(['compact-dialog-score-for', 'compact-dialog-score-against']);
+    h.setClock('5', '00');
+    h.setScores('7', '3');
+    h.click('compact-dialog-review');
+    expect(h.$('compact-review-end').textContent).toBe('7–3');
+    h.click('compact-dialog-confirm');
+    const hist = deriveGameHistory(h.latest());
+    expect([hist.scoreFor, hist.scoreAgainst]).toEqual([7, 3]);
+  });
+
+  it('aan: tegenstander links, waarden blijven aan het juiste team gekoppeld, plus/min identiek', () => {
+    const h = setup();
+    h.click('compact-away');
+    h.click('compact-save-segment');
+    expect(fieldOrder(h)).toEqual(['compact-dialog-score-against', 'compact-dialog-score-for']);
+    expect(h.container.querySelector('.compact-dialog__scores')!.textContent).toContain('Eigen');
+    h.setClock('5', '00');
+    // linker veld = tegenstander
+    h.type('compact-dialog-score-against', '3');
+    h.type('compact-dialog-score-for', '7');
+    h.click('compact-dialog-review');
+    expect(h.$('compact-review-start').textContent).toBe('0–0');
+    expect(h.$('compact-review-end').textContent).toBe('3–7');
+    expect(h.$('compact-review-points').textContent).toBe('3–7');
+    h.click('compact-dialog-confirm');
+    const seg = deriveGameHistory(h.latest()).segments[0]!;
+    expect([seg.pf, seg.pa, seg.pf - seg.pa]).toEqual([7, 3, 4]);
+  });
+
+  it('typen van 10 minuten laat seconden ongemoeid; validatie meldt de fout', () => {
+    const h = setup({ game: q1Game({ beginSec: 600, endSec: 600 }) });
+    h.click('compact-save-segment');
+    h.type('compact-dialog-clock-sec', '30');
+    h.type('compact-dialog-clock-min', '10');
+    expect((h.$('compact-dialog-clock-sec') as HTMLInputElement).value).toBe('30');
+    h.click('compact-dialog-review');
+    expect(h.$('compact-dialog-error').getAttribute('role')).toBe('alert');
+    expect(h.onChange).not.toHaveBeenCalled();
+  });
+
+  it('Bevestigen kan maar een keer onChange geven', () => {
+    const h = setup();
+    h.click('compact-save-segment');
+    h.setClock('5', '00');
+    h.click('compact-dialog-review');
+    const btn = h.$('compact-dialog-confirm');
+    fireEvent.click(btn);
+    fireEvent.click(btn);
+    expect(h.onChange).toHaveBeenCalledTimes(1);
+  });
+
+  it('Escape en achtergrond vragen bevestiging zodra er invoer is; weigeren houdt het concept', () => {
+    const confirm = vi.spyOn(window, 'confirm').mockReturnValue(false);
+    const h = setup();
+    h.click('compact-save-segment');
+    h.setClock('5', '00');
+    fireEvent.keyDown(document, { key: 'Escape' });
+    expect(confirm).toHaveBeenCalledTimes(1);
+    expect(h.q('compact-dialog')).not.toBeNull();
+    fireEvent.click(h.container.querySelector('.modal-overlay__backdrop')!);
+    expect(confirm).toHaveBeenCalledTimes(2);
+    expect(h.q('compact-dialog')).not.toBeNull();
+    confirm.mockReturnValue(true);
+    fireEvent.keyDown(document, { key: 'Escape' });
+    expect(h.q('compact-dialog')).toBeNull();
+    expect(h.onChange).not.toHaveBeenCalled();
+  });
+
+  it('zonder invoer sluit Escape zonder vraag; Engelse tekst', () => {
+    const confirm = vi.spyOn(window, 'confirm').mockReturnValue(false);
+    const h = setup({ lang: 'en' });
+    h.click('compact-swap-open');
+    fireEvent.keyDown(document, { key: 'Escape' });
+    expect(confirm).not.toHaveBeenCalled();
+    expect(h.q('compact-dialog')).toBeNull();
+    h.click('compact-save-segment');
+    h.setClock('5', '00');
+    fireEvent.keyDown(document, { key: 'Escape' });
+    expect(confirm).toHaveBeenCalledWith('Your input will be lost. Close the window anyway?');
   });
 });

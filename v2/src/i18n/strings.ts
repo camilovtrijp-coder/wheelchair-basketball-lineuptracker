@@ -924,6 +924,7 @@ const nl = {
   compactTurnoversTotalLabel: 'Totaal wedstrijd:',
   // Compact wedstrijdscherm (C2b): wisselen, segment opslaan, kwart afsluiten, schakelaar.
   compactSwapBtn: 'Wisselen',
+  compactDiscardDraftConfirm: 'Je invoer gaat verloren. Venster toch sluiten?',
   compactSaveSegmentBtn: 'Segment opslaan',
   compactCloseQuarterBtn: 'Kwart/periode afsluiten',
   compactPendingConfirmBtn: 'Openstaande wissel bevestigen',
@@ -1849,6 +1850,7 @@ const en = {
   compactTurnoversTotalLabel: 'Game total:',
   // Compact game screen (C2b): substituting, saving a segment, closing a period, switch.
   compactSwapBtn: 'Substitute',
+  compactDiscardDraftConfirm: 'Your input will be lost. Close the window anyway?',
   compactSaveSegmentBtn: 'Save segment',
   compactCloseQuarterBtn: 'Close quarter/period',
   compactPendingConfirmBtn: 'Confirm open substitution',

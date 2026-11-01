@@ -1,6 +1,6 @@
 // Preact-hooks rond `infrastructure/game/gameScreenPreference` (zelfde
 // plaats-in-de-laag-conventie als `application/a11y/useFocusTrap.ts`).
-import { useEffect, useRef, useState } from 'preact/hooks';
+import { useEffect, useLayoutEffect, useRef, useState } from 'preact/hooks';
 import {
   getGameScreenLocks,
   readGameScreen,
@@ -35,7 +35,8 @@ let nextOwner = 0;
 export function useGameScreenLock(kind: GameScreenLockKind | null): void {
   const ownerRef = useRef<string>('');
   if (ownerRef.current === '') ownerRef.current = `game-screen-${nextOwner++}`;
-  useEffect(() => {
+  // Layout-effect: de blokkade staat al vóór de paint geregistreerd.
+  useLayoutEffect(() => {
     setGameScreenLock(ownerRef.current, kind);
   }, [kind]);
   useEffect(() => {
