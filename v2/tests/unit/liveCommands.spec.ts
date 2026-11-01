@@ -562,3 +562,109 @@ describe('liveCommands — klokhulpen (Klassiek TimeSelect)', () => {
     expect(withMinutes(545, 9)).toBe(545);
   });
 });
+
+describe('liveCommands — closeQuarter met lineup voor het volgende kwart', () => {
+  // Q1 aftellend: segment 600 -> 0 (600 s) met 4/7/9/11/13, stand 16-12 bij het afsluiten.
+  const input = (extra: Record<string, unknown> = {}) => ({
+    endSec: 0,
+    scoreFor: 16,
+    scoreAgainst: 12,
+    nextQuarter: 2,
+    quarterCount: 4,
+    classification: CLASS_OFF,
+    ...extra,
+  });
+
+  it('wissel 7->12 voor Q2: segment Q1 met de OUDE lineup, onCourt daarna met de nieuwe (positie behouden), geen extra segment', () => {
+    const g = makeGame();
+    const next = ok(closeQuarter(g, input({ nextOnCourt: swapOnCourt(g.onCourt, 'p7', 'p12') })));
+    const h = deriveGameHistory(next);
+    expect(h.segments).toHaveLength(1);
+    expect(h.segments[0]).toMatchObject({
+      quarter: 1,
+      beginSec: 600,
+      endSec: 0,
+      durSec: 600,
+      lineup: ['p4', 'p7', 'p9', 'p11', 'p13'],
+      pf: 16,
+      pa: 12,
+    });
+    expect(next.onCourt).toEqual(['p4', 'p12', 'p9', 'p11', 'p13']);
+    expect(next.curQuarter).toBe(2);
+    expect(next.beginSec).toBe(600);
+    expect(next.endSec).toBe(600);
+    expect(next.pendingSwapLineup).toBeNull();
+    expect(next.phase).toBe('tracking');
+    // Eén segment-actie plus de score-sets: er is geen segment van 0 s bij gekomen.
+    expect(next.actions.filter((a) => a.type === 'segment-saved')).toHaveLength(1);
+  });
+
+  it('zelfde lineup (geen nextOnCourt) laat onCourt ongewijzigd', () => {
+    const g = makeGame();
+    const next = ok(closeQuarter(g, input()));
+    expect(next.onCourt).toEqual(START);
+    expect(next.curQuarter).toBe(2);
+  });
+
+  it('ook zonder open segment (duur 0, niets open) krijgt Q2 de nieuwe lineup zonder leeg segment', () => {
+    const g = makeGame();
+    const next = ok(
+      closeQuarter(g, {
+        endSec: 600,
+        nextQuarter: 2,
+        classification: CLASS_OFF,
+        nextOnCourt: swapOnCourt(g.onCourt, 'p4', 'p6'),
+      }),
+    );
+    expect(next.actions).toHaveLength(0);
+    expect(next.onCourt).toEqual(['p6', 'p7', 'p9', 'p11', 'p13']);
+    expect(next.curQuarter).toBe(2);
+  });
+
+  it('weigert een ongeldige lineup zonder partiële commit (invoer ongemoeid)', () => {
+    const g = makeGame();
+    const before = JSON.stringify(g);
+    const four = closeQuarter(g, input({ nextOnCourt: ['p4', 'p7', 'p9', 'p11'] }));
+    expect(four).toEqual({ ok: false, error: 'invalid-lineup' });
+    const six = closeQuarter(g, input({ nextOnCourt: [...START, 'p6'] }));
+    expect(six).toEqual({ ok: false, error: 'invalid-lineup' });
+    const duplicate = closeQuarter(g, input({ nextOnCourt: ['p4', 'p4', 'p9', 'p11', 'p13'] }));
+    expect(duplicate).toEqual({ ok: false, error: 'invalid-lineup' });
+    const unknown = closeQuarter(g, input({ nextOnCourt: ['p4', 'p7', 'p9', 'p11', 'p99'] }));
+    expect(unknown).toEqual({ ok: false, error: 'invalid-lineup' });
+    expect(JSON.stringify(g)).toBe(before);
+    expect(g.actions).toHaveLength(0);
+  });
+
+  it('weigert een speler die niet meedoet', () => {
+    const players = PLAYERS.map((pl) => (pl.id === 'p6' ? { ...pl, participate: false } : pl));
+    const g = makeGame({ players });
+    expect(closeQuarter(g, input({ nextOnCourt: ['p4', 'p7', 'p9', 'p11', 'p6'] }))).toEqual({
+      ok: false,
+      error: 'invalid-lineup',
+    });
+  });
+
+  it('in het laatste kwart (geen volgend kwart) geen lineupkeuze en nooit afronden', () => {
+    const g = makeGame({ curQuarter: 4 });
+    expect(
+      closeQuarter(g, input({ nextQuarter: 4, nextOnCourt: swapOnCourt(START, 'p7', 'p12') })),
+    ).toEqual({ ok: false, error: 'invalid-quarter' });
+    const plain = ok(closeQuarter(g, input({ nextQuarter: 4 })));
+    expect(plain.phase).toBe('tracking');
+    expect(plain.onCourt).toEqual(START);
+  });
+
+  it('foutieve klok/score weigert ook met geldige lineup (geen partiële commit)', () => {
+    const g = makeGame();
+    const lineup = swapOnCourt(START, 'p7', 'p12');
+    expect(closeQuarter(g, input({ endSec: 601, nextOnCourt: lineup }))).toEqual({
+      ok: false,
+      error: 'invalid-clock',
+    });
+    expect(closeQuarter(g, input({ scoreFor: 151, nextOnCourt: lineup }))).toEqual({
+      ok: false,
+      error: 'invalid-score',
+    });
+  });
+});

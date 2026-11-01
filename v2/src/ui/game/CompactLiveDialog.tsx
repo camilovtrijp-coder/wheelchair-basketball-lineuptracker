@@ -15,6 +15,7 @@ import {
 } from '../../domain/game/liveCommands';
 import {
   deriveGameHistory,
+  isOverLimit,
   swapOnCourt,
   type ClassificationConfig,
 } from '../../domain/game/tracking';
@@ -39,7 +40,7 @@ import {
  */
 export type CompactDialogMode = 'swap' | 'segment' | 'quarter' | 'confirm-pending';
 
-type Step = 'select' | 'time' | 'review';
+type Step = 'select' | 'time' | 'review' | 'lineup';
 type Team = 'for' | 'against';
 
 export interface CompactLiveDialogProps {
@@ -100,13 +101,16 @@ export function CompactLiveDialog({
   const [scoreFor, setScoreFor] = useState(() => String(history.scoreFor));
   const [scoreAgainst, setScoreAgainst] = useState(() => String(history.scoreAgainst));
   const [error, setError] = useState<LiveCommandError | null>(null);
+  // Kwart afsluiten: gekozen lineup voor het volgende kwart (`null` = zelfde lineup houden).
+  const [nextLineup, setNextLineup] = useState<string[] | null>(null);
   const [clockEmpty, setClockEmpty] = useState(false);
 
   const [touched, setTouched] = useState(false);
   const submittedRef = useRef(false);
   const [submitted, setSubmitted] = useState(false);
   // Escape/achtergrond: een concept met invoer niet stil weggooien.
-  const hasDraft = touched || (mode === 'swap' ? step !== 'select' : step === 'review');
+  const hasDraft =
+    touched || (mode === 'swap' ? step !== 'select' : step === 'review' || step === 'lineup');
   function requestClose() {
     if (submittedRef.current) return;
     if (hasDraft && !window.confirm(t('compactDiscardDraftConfirm'))) return;
@@ -146,7 +150,7 @@ export function CompactLiveDialog({
   // Nieuwe opstelling uit de LAATSTE game: i-de eruit-speler wordt vervangen
   // door de i-de erin-speler (swapOnCourt-semantiek: positie behouden).
   function proposedLineup(): string[] | null {
-    if (mode !== 'swap') return null;
+    if (mode !== 'swap' && mode !== 'quarter') return null;
     if (outIds.length === 0 || outIds.length !== inIds.length) return null;
     if (!outIds.every((id) => game.onCourt.includes(id))) return null;
     if (!inIds.every((id) => bench.some((p) => p.id === id))) return null;
@@ -183,7 +187,12 @@ export function CompactLiveDialog({
     }
     if (mode === 'confirm-pending') return confirmSwap(game, common);
     if (mode === 'segment') return commitSegment(game, common);
-    return closeQuarter(game, { ...common, nextQuarter, quarterCount });
+    return closeQuarter(game, {
+      ...common,
+      nextQuarter,
+      quarterCount,
+      ...(!lastPeriod && nextLineup != null ? { nextOnCourt: nextLineup } : {}),
+    });
   }
 
   function touch<T>(setter: (v: T) => void) {
@@ -237,6 +246,26 @@ export function CompactLiveDialog({
     setError(null);
     if (side === 'out') setOutIds((list) => toggled(list, id));
     else setInIds((list) => toggled(list, id));
+  }
+
+  function startLineupEdit() {
+    setError(null);
+    setOutIds([]);
+    setInIds([]);
+    setStep('lineup');
+  }
+
+  function leaveLineupEdit(apply: boolean) {
+    if (apply) {
+      const proposal = proposedLineup();
+      if (proposal == null) return;
+      setTouched(true);
+      setNextLineup(proposal);
+    }
+    setError(null);
+    setOutIds([]);
+    setInIds([]);
+    setStep('review');
   }
 
   function clearSelection() {
@@ -323,7 +352,9 @@ export function CompactLiveDialog({
   const endSec = input.ok ? input.endSec : null;
   const dur = endSec != null ? clockDuration(game.clockDown, game.beginSec, endSec) : null;
   const lineup = proposedLineup();
-  const reviewLineup = lineup ?? game.onCourt;
+  const reviewLineup = mode === 'swap' ? (lineup ?? game.onCourt) : game.onCourt;
+  const nextLineupIds = nextLineup ?? game.onCourt;
+  const nextLimit = isOverLimit(game, nextLineupIds, classification);
   const segTurnovers = history.turnovers - history.segStartTurnovers;
 
   const selectReady = outIds.length > 0 && outIds.length === inIds.length;
@@ -346,8 +377,13 @@ export function CompactLiveDialog({
       >
         <h2 className="compact-dialog__title">{title}</h2>
 
-        {step === 'select' ? (
+        {step === 'select' || step === 'lineup' ? (
           <>
+            {step === 'lineup' ? (
+              <p className="compact-dialog__hint" data-testid="compact-quarter-lineup-hint">
+                {t('compactQuarterLineupHint')}
+              </p>
+            ) : null}
             <div className="compact-dialog__section">
               <h3 className="compact-dialog__subtitle">{t('compactSwapOutTitle')}</h3>
               {playerGrid('out', game.onCourt, outIds)}
@@ -375,23 +411,47 @@ export function CompactLiveDialog({
               >
                 {t('compactSwapClearSelection')}
               </button>
-              <button
-                type="button"
-                className="btn-outline"
-                data-testid="compact-dialog-cancel"
-                onClick={onClose}
-              >
-                {t('cancelBtn')}
-              </button>
-              <button
-                type="button"
-                className="btn-primary"
-                disabled={!canWrite || !selectReady}
-                data-testid="compact-swap-next"
-                onClick={() => setStep('time')}
-              >
-                {t('compactSwapNext')}
-              </button>
+              {step === 'lineup' ? (
+                <>
+                  <button
+                    type="button"
+                    className="btn-outline"
+                    data-testid="compact-quarter-lineup-cancel"
+                    onClick={() => leaveLineupEdit(false)}
+                  >
+                    {t('cancelBtn')}
+                  </button>
+                  <button
+                    type="button"
+                    className="btn-primary"
+                    disabled={!canWrite || !selectReady || lineup == null}
+                    data-testid="compact-quarter-lineup-apply"
+                    onClick={() => leaveLineupEdit(true)}
+                  >
+                    {t('compactQuarterLineupApply')}
+                  </button>
+                </>
+              ) : (
+                <>
+                  <button
+                    type="button"
+                    className="btn-outline"
+                    data-testid="compact-dialog-cancel"
+                    onClick={onClose}
+                  >
+                    {t('cancelBtn')}
+                  </button>
+                  <button
+                    type="button"
+                    className="btn-primary"
+                    disabled={!canWrite || !selectReady}
+                    data-testid="compact-swap-next"
+                    onClick={() => setStep('time')}
+                  >
+                    {t('compactSwapNext')}
+                  </button>
+                </>
+              )}
             </div>
           </>
         ) : null}
@@ -523,6 +583,67 @@ export function CompactLiveDialog({
                     );
                   })}
                 </ul>
+              </div>
+            ) : null}
+            {mode === 'quarter' && !lastPeriod ? (
+              <div className="compact-dialog__section" data-testid="compact-quarter-lineup">
+                <h3 className="compact-dialog__subtitle">{t('compactQuarterLineupTitle')}</h3>
+                <ul className="compact-review__lineup">
+                  {nextLineupIds.map((id) => {
+                    const p = playerById(id);
+                    if (!p) return null;
+                    return (
+                      <li
+                        key={id}
+                        className="compact-review__player"
+                        data-testid={`compact-quarter-lineup-player-${id}`}
+                      >
+                        <span className="compact-pick__nr">{p.nr}</span>
+                        <span className="compact-pick__name">{p.naam}</span>
+                      </li>
+                    );
+                  })}
+                </ul>
+                {classification.useClassLimit ? (
+                  <p className="compact-dialog__hint" data-testid="compact-quarter-lineup-class">
+                    {t('compactQuarterLineupClass')}: {nextLimit.sum.toFixed(1)} /{' '}
+                    {nextLimit.allowed.toFixed(1)}
+                  </p>
+                ) : null}
+                {classification.useClassLimit && nextLimit.over ? (
+                  <p
+                    className="tracking-warning"
+                    role="alert"
+                    data-testid="compact-quarter-lineup-warning"
+                  >
+                    {t('tooManyClassPointsPrefix')} ({nextLimit.sum.toFixed(1)} &gt;{' '}
+                    {nextLimit.allowed.toFixed(1)})
+                  </p>
+                ) : null}
+                <div className="modal__actions">
+                  <button
+                    type="button"
+                    className={nextLineup == null ? 'btn-primary' : 'btn-outline'}
+                    aria-pressed={nextLineup == null}
+                    data-testid="compact-quarter-keep"
+                    onClick={() => {
+                      setNextLineup(null);
+                      setError(null);
+                    }}
+                  >
+                    {t('compactQuarterKeepLineup')}
+                  </button>
+                  <button
+                    type="button"
+                    className={nextLineup != null ? 'btn-primary' : 'btn-outline'}
+                    aria-pressed={nextLineup != null}
+                    disabled={!canWrite}
+                    data-testid="compact-quarter-adjust"
+                    onClick={startLineupEdit}
+                  >
+                    {t('compactQuarterAdjustLineup')}
+                  </button>
+                </div>
               </div>
             ) : null}
             {mode === 'quarter' ? (

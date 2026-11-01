@@ -953,6 +953,22 @@ const nl = {
   compactNextPeriodNote: 'Daarna start {period} {n}.',
   compactLastPeriodNote:
     'Laatste periode: er start geen nieuwe periode en de wedstrijd wordt niet afgerond.',
+  // Kwart afsluiten met lineupkeuze voor het volgende kwart; afrondterugkoppeling.
+  compactQuarterLineupTitle: 'Lineup volgend kwart',
+  compactQuarterKeepLineup: 'Zelfde lineup houden',
+  compactQuarterAdjustLineup: 'Lineup aanpassen',
+  compactQuarterLineupApply: 'Lineup overnemen',
+  compactQuarterLineupHint:
+    'Kies wie eruit gaat en wie erin komt voor het volgende kwart. Het afgesloten kwart wordt vastgelegd met de huidige lineup.',
+  compactQuarterLineupClass: 'Classificatiesom volgend kwart',
+  finishSaveFailed:
+    'Afronden is niet gelukt: de wedstrijd kon niet worden opgeslagen. Controleer de opslagruimte van je browser en probeer het opnieuw. Er wordt niets dubbel afgerond.',
+  finishedNoticeLocal: 'Wedstrijd afgerond en lokaal op dit apparaat opgeslagen.',
+  finishedNoticeCloudSynced: 'Cloudsynchronisatie is bevestigd.',
+  finishedNoticeCloudPending:
+    'Cloudsynchronisatie is nog niet bevestigd; de wedstrijd wordt gesynchroniseerd zodra dat kan.',
+  finishedNoticeCloudActionNeeded:
+    'Cloudsynchronisatie is nog niet gelukt. De wedstrijd staat wel lokaal opgeslagen; zie de status hieronder.',
   // Compact wedstrijdscherm (C3): segmentoverzicht, segmenteditor en afronden.
   compactSegmentsTitle: 'Segmenten',
   compactSegmentsEmpty: 'Nog geen segmenten vastgelegd.',
@@ -1877,6 +1893,22 @@ const en = {
   compactReviewNoSegment: 'No playing time: no segment is added.',
   compactNextPeriodNote: '{period} {n} starts afterwards.',
   compactLastPeriodNote: 'Last period: no new period starts and the game is not finished.',
+  // Closing a period with a lineup choice for the next period; finish feedback.
+  compactQuarterLineupTitle: 'Lineup for the next period',
+  compactQuarterKeepLineup: 'Keep the same lineup',
+  compactQuarterAdjustLineup: 'Change lineup',
+  compactQuarterLineupApply: 'Use this lineup',
+  compactQuarterLineupHint:
+    'Choose who goes out and who comes in for the next period. The closed period is recorded with the current lineup.',
+  compactQuarterLineupClass: 'Classification total next period',
+  finishSaveFailed:
+    'Finishing failed: the game could not be saved. Check your browser storage and try again. Nothing is finished twice.',
+  finishedNoticeLocal: 'Game finished and saved locally on this device.',
+  finishedNoticeCloudSynced: 'Cloud sync is confirmed.',
+  finishedNoticeCloudPending:
+    'Cloud sync is not confirmed yet; the game will sync as soon as possible.',
+  finishedNoticeCloudActionNeeded:
+    'Cloud sync has not succeeded yet. The game is saved locally; see the status below.',
   // Compact game screen (C3): segment overview, segment editor and finishing.
   compactSegmentsTitle: 'Segments',
   compactSegmentsEmpty: 'No segments recorded yet.',

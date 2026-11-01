@@ -309,6 +309,20 @@ export interface CloseQuarterInput extends CommitSegmentInput {
   nextQuarter: number;
   /** Optioneel: bovengrens voor `nextQuarter`. */
   quarterCount?: number;
+  /**
+   * Optioneel: opstelling waarmee het VOLGENDE kwart begint. Het afgesloten
+   * kwart wordt vastgelegd met de huidige (oude) opstelling; pas daarna wordt
+   * `onCourt` vervangen. Precies 5 verschillende, deelnemende spelers, en alleen
+   * zinvol als er een volgend kwart is (`nextQuarter` ≠ huidig kwart); anders
+   * `invalid-lineup` / `invalid-quarter`, zonder gedeeltelijke commit.
+   */
+  nextOnCourt?: string[];
+}
+
+/** Precies 5 verschillende spelers uit `game.players` die meedoen (`participate`). */
+function isValidNextLineup(game: ActiveGame, lineup: string[]): boolean {
+  if (lineup.length !== 5 || new Set(lineup).size !== 5) return false;
+  return lineup.every((id) => game.players.some((p) => p.id === id && p.participate));
 }
 
 /**
@@ -316,7 +330,8 @@ export interface CloseQuarterInput extends CommitSegmentInput {
  * `selectQuarter(nextQuarter)` in één overgang. Rondt de wedstrijd NOOIT af,
  * ook niet in het laatste kwart. Is er niets open (duur 0 en geen open
  * punten/turnovers), dan wordt geen leeg segment gemaakt en wordt alleen het
- * kwart gekozen.
+ * kwart gekozen. Met `nextOnCourt` begint het volgende kwart met die opstelling
+ * (zelfde overgang, geen extra segment van 0 s); `pendingSwapLineup` eindigt `null`.
  */
 export function closeQuarter(game: ActiveGame, input: CloseQuarterInput): LiveCommandResult {
   const { nextQuarter, quarterCount } = input;
@@ -332,6 +347,11 @@ export function closeQuarter(game: ActiveGame, input: CloseQuarterInput): LiveCo
   }
   if (!validScoreInput(input.scoreFor) || !validScoreInput(input.scoreAgainst)) {
     return fail('invalid-score');
+  }
+  if (input.nextOnCourt !== undefined) {
+    // Geen volgend kwart (laatste periode) => geen lineupkeuze.
+    if (nextQuarter === game.curQuarter) return fail('invalid-quarter');
+    if (!isValidNextLineup(game, input.nextOnCourt)) return fail('invalid-lineup');
   }
 
   const dur = clockDuration(game.clockDown, game.beginSec, input.endSec);
@@ -350,7 +370,14 @@ export function closeQuarter(game: ActiveGame, input: CloseQuarterInput): LiveCo
     if (!result.ok) return result;
     committed = result.game;
   }
-  return { ok: true, game: { ...committed, ...selectQuarter(committed, nextQuarter) } };
+  return {
+    ok: true,
+    game: {
+      ...committed,
+      ...selectQuarter(committed, nextQuarter),
+      ...(input.nextOnCourt !== undefined ? { onCourt: [...input.nextOnCourt] } : {}),
+    },
+  };
 }
 
 // ---------- segment bewerken ----------
