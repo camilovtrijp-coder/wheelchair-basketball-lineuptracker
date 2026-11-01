@@ -45,8 +45,9 @@ test.describe('Trends en Statistieken: wedstrijdfilter na afronden (H1)', () => 
 
     // Afronden (nieuwe id voor de afgeronde wedstrijd).
     await page.getByTestId('nav-game').click();
-    page.once('dialog', (dialog) => dialog.accept());
     await page.getByTestId('finish-game-btn').click();
+    // Afronden loopt altijd via de afrondkeuze (geen window.confirm meer).
+    await page.getByTestId('finish-choose-without').click();
     await expect(page.getByTestId('history-back-btn')).toBeVisible();
 
     // Trends: nog steeds 1 wedstrijd, niet 0, en geen lege staat.

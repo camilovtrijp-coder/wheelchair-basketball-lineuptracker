@@ -95,8 +95,9 @@ export async function finishGameWithOneSegment(page: Page): Promise<void> {
   await waitForGameSyncStatus(page, 'gesynchroniseerd');
 
   await expect(page.getByTestId('finish-game-btn')).toBeEnabled();
-  page.once('dialog', (dialog) => dialog.accept());
   await page.getByTestId('finish-game-btn').click();
+  // Afronden loopt altijd via de afrondkeuze (geen window.confirm meer).
+  await page.getByTestId('finish-choose-without').click();
   // 'Afronden' schakelt automatisch naar Historie met het net afgeronde item open.
   await expect(page.getByTestId('history-back-btn')).toBeVisible();
 }

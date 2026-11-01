@@ -78,7 +78,8 @@ test.describe('PR 7.1c: lokale modus veroorzaakt nul Firestore/Auth-netwerkreque
     await page.waitForTimeout(1_500);
 
     await page.getByTestId('finish-game-btn').click();
-    await page.waitForSelector('[data-testid="nav-history"]', { timeout: 10_000 });
+    await page.getByTestId('finish-choose-without').click();
+    await expect(page.getByTestId('history-back-btn')).toBeVisible();
     await page.waitForTimeout(500);
 
     expect(offendingRequests).toEqual([]);

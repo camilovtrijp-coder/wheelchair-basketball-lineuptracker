@@ -658,17 +658,58 @@ describe('Klassiek: dezelfde afrondwaarschuwing', () => {
     expect(deriveGameHistory(h.latest()).segments).toHaveLength(4);
   });
 
-  it('zonder open punten of turnovers blijft de bestaande bevestiging (window.confirm) gelden', () => {
+  it('zonder open punten of turnovers opent Klassiek ook de afrondkeuze (geen window.confirm meer)', () => {
     const confirm = vi.spyOn(window, 'confirm').mockReturnValue(true);
     const h = setup({ game: afterAtoD(), panel: 'classic' });
     h.click('finish-game-btn');
-    expect(confirm).toHaveBeenCalledTimes(1);
+    expect(confirm).not.toHaveBeenCalled();
+    expect(h.q('finish-open-warning')).toBeNull();
+    expect(text(h.$('finish-nothing-open'))).toContain('gelijke stand zegt niets');
+    // Dezelfde keuzes als Compact: laatste segment vastleggen of bewust afronden.
+    expect(h.q('finish-choose-last')).not.toBeNull();
+    expect(text(h.$('finish-choose-without'))).toBe('Alle gespeelde tijd ligt al vast, afronden');
+    h.click('finish-cancel');
     expect(h.q('finish-dialog')).toBeNull();
+    expect(h.onFinishGame).not.toHaveBeenCalled();
+    h.click('finish-game-btn');
+    h.click('finish-choose-without');
     expect(h.onFinishGame).toHaveBeenCalledTimes(1);
     expect(h.onFinishGame).toHaveBeenCalledWith();
-    confirm.mockReturnValue(false);
+    expect(h.q('finish-dialog')).toBeNull();
+    expect(confirm).not.toHaveBeenCalled();
+  });
+
+  it('mislukt afronden (onFinishGame geeft false): dialoog blijft open met melding, opnieuw proberen kan, geen dubbele afronding', () => {
+    const h = setup({ game: afterAtoD(), panel: 'classic' });
+    h.onFinishGame.mockReturnValueOnce(false);
     h.click('finish-game-btn');
+    h.click('finish-choose-without');
+    expect(h.q('finish-dialog')).not.toBeNull();
+    expect(text(h.$('finish-save-error'))).toContain('Afronden is niet gelukt');
+    expect(h.$('finish-save-error').getAttribute('role')).toBe('alert');
     expect(h.onFinishGame).toHaveBeenCalledTimes(1);
+    h.click('finish-choose-without');
+    expect(h.onFinishGame).toHaveBeenCalledTimes(2);
+    expect(h.q('finish-dialog')).toBeNull();
+  });
+
+  it('mislukt afronden na laatste segment vastleggen: opnieuw proberen legt het segment niet nogmaals vast', () => {
+    const h = setup({ game: withOpenQ2() });
+    h.onFinishGame.mockReturnValueOnce(false);
+    h.click('compact-finish-game');
+    h.click('finish-choose-last');
+    h.type('finish-clock-min', '0');
+    h.type('finish-clock-sec', '00');
+    h.click('finish-last-confirm');
+    expect(h.onChange).toHaveBeenCalledTimes(1);
+    const committed = h.onChange.mock.calls[0]![0] as ActiveGame;
+    expect(h.$('finish-dialog').getAttribute('data-step')).toBe('choose');
+    expect(h.q('finish-save-error')).not.toBeNull();
+    h.click('finish-choose-without');
+    expect(h.onChange).toHaveBeenCalledTimes(1);
+    expect(h.onFinishGame).toHaveBeenCalledTimes(2);
+    expect(h.onFinishGame.mock.calls[1]![0]).toBe(committed);
+    expect(h.q('finish-dialog')).toBeNull();
   });
 
   it('alleen-lezen: afronden blijft uitgeschakeld', () => {

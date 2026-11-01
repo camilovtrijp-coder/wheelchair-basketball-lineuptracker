@@ -350,6 +350,11 @@ export function App({
   );
   const [completedGames, setCompletedGames] = useState<CompletedGame[]>([]);
   const [historyOpenId, setHistoryOpenId] = useState<string | null>(null);
+  // Kortstondige afrondbevestiging in Historie (alleen voor de zojuist afgeronde wedstrijd).
+  const [finishedNoticeId, setFinishedNoticeId] = useState<string | null>(null);
+  useEffect(() => {
+    if (tab !== 'history') setFinishedNoticeId(null);
+  }, [tab]);
   // PR 7.2a, P1-fix (externe review PR #61, derde ronde): zie
   // `handleDeleteCompletedGame` hieronder — toont waarom een verwijderpoging
   // is geblokkeerd (nog geen serverbevestiging) zonder de eerder gestelde
@@ -1185,13 +1190,13 @@ export function App({
    *    archiveren en die impliciete reset de zojuist afgeronde wedstrijd nog
    *    als 'tracking' laten staan onder de actieve-gamesleutel.
    */
-  function handleFinishGame(latestGame?: ActiveGame) {
+  function handleFinishGame(latestGame?: ActiveGame): boolean {
     // C3: een scherm dat eerst `onGameChange(next)` en direct daarna afronden
     // aanroept (laatste segment vastleggen en afronden) levert die actuele stand
     // mee; `game` hieronder is dan nog de stand van de laatste render. Alleen
     // dezelfde wedstrijd wordt geaccepteerd; alle andere logica is ongewijzigd.
     const currentGame = latestGame !== undefined && latestGame.id === game?.id ? latestGame : game;
-    if (currentGame === null || settings === null || roster === null) return;
+    if (currentGame === null || settings === null || roster === null) return false;
 
     const alreadyArchived = completedGames.find((g) => g.sourceGameId === currentGame.id);
     let archived = alreadyArchived ?? null;
@@ -1201,10 +1206,10 @@ export function App({
         periodLabel: settings.periodLabel as string,
         useClassLimit: settings.useClassLimit === true,
       });
-      if (completed === null) return;
+      if (completed === null) return false;
       if (!completedGameRepo.add(completed)) {
         setGameSaveError(true);
-        return;
+        return false;
       }
       archived = completed;
       setCompletedGames((prev) => [completed, ...prev]);
@@ -1230,7 +1235,7 @@ export function App({
       !pendingFinalizeRepo.add({ game: currentGame, completed: archived })
     ) {
       setGameSaveError(true);
-      return;
+      return false;
     }
     // Fire-and-forget cloud-finalize; `runFinalize` is zelf een no-op in
     // lokale modus.
@@ -1252,7 +1257,9 @@ export function App({
         : prev,
     );
     setHistoryOpenId(archived.id);
+    setFinishedNoticeId(archived.id);
     setTab('history');
+    return true;
   }
 
   /**
@@ -1828,8 +1835,10 @@ export function App({
             games={completedGames}
             teamName={(settings.teamName as string) || ''}
             openId={historyOpenId}
+            finishedNoticeId={finishedNoticeId}
             onOpenChange={(id) => {
               setHistoryOpenId(id);
+              setFinishedNoticeId(null);
               setDeleteBlocked(false);
               setDeleteError(false);
             }}
