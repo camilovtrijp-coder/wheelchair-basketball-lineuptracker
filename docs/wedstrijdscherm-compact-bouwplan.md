@@ -137,6 +137,15 @@ Aanvullend verplicht: nulsecondeswissel, annuleren na meerdere keuzes, minuten/s
 
 Gebruik de actuele scripts uit `v2/package.json`: unit, lint, format:check, build en relevante Playwright-suites; voer emulatorafhankelijke checks met de bestaande testinfrastructuur uit. Op Windows vereist `SW_BUILD_TARGET=classic` in de build een geschikte shell/ondersteunde aanpak; een shellfout is geen geslaagde build. Leg niet-uitgevoerde controles expliciet vast.
 
+## Voortgang en merge-volgorde (1 november 2026)
+
+C1, C2a, C2b en C3 zijn op eigenaarsverzoek gebundeld in één integratie-PR (afwijking van "één werkpakket per PR", om Netlify-preview-builds te sparen). Elke merge naar `main` start een Netlify-build; houd daarom het aantal merges klein.
+
+- De CI draait alleen op PR's die naar `main` gericht zijn; de deploy-preview van Netlify idem. Richt een PR dus op `main`, ook als hij op een andere branch is gestapeld.
+- Lokale controle van de e2e-suites vereist de Firebase Auth-/Firestore-emulator met seed (`firebase emulators:exec ... "npm run seed && ..."`, zie `.github/workflows/ci.yml`); zonder emulator toont de app het inlogscherm en falen vrijwel alle e2e-tests.
+- C4 (acceptatie) is nog open: praktijkproef op Android telefoon en tablet (320/375 px, dropdowns, touchdoelen, offline en herladen, afronden met cloudsync).
+- Merge-volgorde: eerst de docs-PR met dit bouwplan, daarna de integratie-PR nadat de CI op de bijgewerkte basis groen is en de preview is beoordeeld. Compact standaard maken of Klassiek verwijderen blijft een afzonderlijk eigenaarbesluit.
+
 ## Startprompt voor Claude
 
 > Lees AGENTS.md, README.md, docs/IMPLEMENTATION_PLAN.md en docs/wedstrijdscherm-compact-bouwplan.md. Open de gelinkte testsite of de vaste lokale demo als gedragsreferentie. Vergelijk eerst de actuele v2-code met het plan. Stel de concrete uitvoering van alleen werkpakket C1 (gedeelde functies, geen zichtbare wijziging) voor en benoem de afhankelijkheid van C2b voordat Compact selecteerbaar wordt. Behoud domein-, opslag-, CSV-, offline- en synccontracten. Bouw nog geen andere werkpakketten en merge of deploy niets. Rapporteer eventuele verschillen of noodzakelijke besluiten vóór implementatie.
