@@ -77,7 +77,7 @@ export function CompactLiveDialog({
   canWrite,
   away = false,
   onCommit,
-  onClose: onCloseProp,
+  onClose,
 }: CompactLiveDialogProps) {
   const t = (key: StringKey) => translate(lang, key);
   const trapRef = useFocusTrap<HTMLDivElement>(true);
@@ -90,7 +90,6 @@ export function CompactLiveDialog({
   const [scoreAgainst, setScoreAgainst] = useState(() => String(history.scoreAgainst));
   const [error, setError] = useState<LiveCommandError | null>(null);
 
-  const onClose = onCloseProp;
   const [touched, setTouched] = useState(false);
   const submittedRef = useRef(false);
   const [submitted, setSubmitted] = useState(false);
@@ -202,12 +201,14 @@ export function CompactLiveDialog({
   }
 
   function pickPlayer(side: 'out' | 'in', id: string) {
+    setTouched(true);
     setError(null);
     if (side === 'out') setOutIds((list) => toggled(list, id));
     else setInIds((list) => toggled(list, id));
   }
 
   function clearSelection() {
+    setTouched(true);
     setError(null);
     setOutIds([]);
     setInIds([]);

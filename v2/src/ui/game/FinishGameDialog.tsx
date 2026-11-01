@@ -38,6 +38,8 @@ export interface FinishGameDialogProps {
   game: ActiveGame;
   classification: ClassificationConfig;
   canWrite: boolean;
+  /** Uitwedstrijd: alleen de weergavevolgorde van de stand (tegenstander links). */
+  away?: boolean;
   onGameChange: (next: ActiveGame) => void;
   onFinishGame: (latestGame?: ActiveGame) => void;
   onClose: () => void;
@@ -48,6 +50,7 @@ export function FinishGameDialog({
   game,
   classification,
   canWrite,
+  away = false,
   onGameChange,
   onFinishGame,
   onClose,
@@ -59,13 +62,27 @@ export function FinishGameDialog({
   const [clock, setClock] = useState<ClockDraft>(() => clockDraftFromSeconds(game.endSec));
   const [error, setError] = useState<LiveCommandError | null>(null);
 
+  const [touched, setTouched] = useState(false);
+
+  // Escape/achtergrond: een gewijzigde kloktijd in stap 'last' niet stil weggooien.
+  function requestClose() {
+    if (submitted.current) return;
+    if (step === 'last' && touched && !window.confirm(t('compactDiscardDraftConfirm'))) return;
+    onClose();
+  }
   useEffect(() => {
     function onKeyDown(e: KeyboardEvent) {
-      if (e.key === 'Escape') onClose();
+      if (e.key === 'Escape') requestClose();
     }
     document.addEventListener('keydown', onKeyDown);
     return () => document.removeEventListener('keydown', onKeyDown);
-  }, [onClose]);
+  });
+
+  // Weergave: eigen team links, bij uitwedstrijd de tegenstander.
+  const fill = (template: string, own: number, opp: number) =>
+    template
+      .replace('{for}', String(away ? opp : own))
+      .replace('{against}', String(away ? own : opp));
 
   const open = openSegmentSummary(game);
   const history = deriveGameHistory(game);
@@ -107,7 +124,7 @@ export function FinishGameDialog({
         type="button"
         className="modal-overlay__backdrop"
         aria-label={t('cancelBtn')}
-        onClick={onClose}
+        onClick={requestClose}
       />
       <div
         className="modal compact-dialog"
@@ -128,9 +145,7 @@ export function FinishGameDialog({
                 <ul>
                   {open.pointsFor !== 0 || open.pointsAgainst !== 0 ? (
                     <li data-testid="finish-open-points">
-                      {t('finishOpenPoints')
-                        .replace('{for}', String(open.pointsFor))
-                        .replace('{against}', String(open.pointsAgainst))}
+                      {fill(t('finishOpenPoints'), open.pointsFor, open.pointsAgainst)}
                     </li>
                   ) : null}
                   {open.turnovers !== 0 ? (
@@ -193,6 +208,7 @@ export function FinishGameDialog({
                 pickLabel={(what) => t('compactPickValue').replace('{label}', what)}
                 disabled={!canWrite}
                 onChange={(next) => {
+                  setTouched(true);
                   setError(null);
                   setClock(next);
                 }}
@@ -209,12 +225,13 @@ export function FinishGameDialog({
               </p>
             </div>
             <p className="compact-dialog__hint" data-testid="finish-last-score">
-              {t('finishLastScoreNote')
-                .replace('{for}', String(history.scoreFor))
-                .replace('{against}', String(history.scoreAgainst))}
+              {fill(t('finishLastScoreNote'), history.scoreFor, history.scoreAgainst)}
               {' · '}
-              {t('compactReviewPoints')} {open.pointsFor}–{open.pointsAgainst} ·{' '}
-              {t('turnoversLabel')} {open.turnovers}
+              {t('compactReviewPoints')}{' '}
+              {away
+                ? `${open.pointsAgainst}–${open.pointsFor}`
+                : `${open.pointsFor}–${open.pointsAgainst}`}{' '}
+              · {t('turnoversLabel')} {open.turnovers}
             </p>
             {errorKey != null ? (
               <p className="settings-error" role="alert" data-testid="finish-error">

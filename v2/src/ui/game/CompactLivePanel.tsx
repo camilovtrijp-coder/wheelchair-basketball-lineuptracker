@@ -370,6 +370,7 @@ export function CompactLivePanel({
         periodLabel={periodLabel}
         expanded={segmentsOpen}
         canWrite={canWrite}
+        away={away}
         onToggle={() => setSegmentsOpen((open) => !open)}
         onEdit={(id) => setEditSegmentId(id)}
       />
@@ -407,6 +408,7 @@ export function CompactLivePanel({
           game={game}
           classification={classification}
           canWrite={canWrite}
+          away={away}
           onGameChange={onGameChange}
           onFinishGame={onFinishGame}
           onClose={() => setFinishOpen(false)}

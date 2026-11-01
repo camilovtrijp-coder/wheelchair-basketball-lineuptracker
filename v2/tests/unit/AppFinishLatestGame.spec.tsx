@@ -27,7 +27,7 @@ import type { ActiveGame, CompletedGame, GamePlayer } from '../../src/domain/gam
 import type { SyncState } from '../../src/domain/syncState';
 import type { LiveTrackingPanelProps } from '../../src/ui/game/LiveTrackingPanel';
 
-const stub = vi.hoisted(() => ({ passLatest: false, finishCalls: 0 }));
+const stub = vi.hoisted(() => ({ passLatest: false, passForeign: false, finishCalls: 0 }));
 
 vi.mock('../../src/ui/game/LiveTrackingPanel', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../../src/ui/game/LiveTrackingPanel')>();
@@ -47,7 +47,8 @@ vi.mock('../../src/ui/game/LiveTrackingPanel', async (importOriginal) => {
             if (!result.ok) throw new Error(result.error);
             props.onGameChange(result.game);
             stub.finishCalls += 1;
-            if (stub.passLatest) props.onFinishGame(result.game);
+            if (stub.passForeign) props.onFinishGame({ ...result.game, id: 'game-other' });
+            else if (stub.passLatest) props.onFinishGame(result.game);
             else props.onFinishGame();
           },
         },
@@ -61,6 +62,7 @@ afterEach(() => {
   window.localStorage.clear();
   vi.restoreAllMocks();
   stub.passLatest = false;
+  stub.passForeign = false;
   stub.finishCalls = 0;
 });
 
@@ -133,7 +135,7 @@ const PLAYERS: GamePlayer[] = [
 
 const LINEUP = PLAYERS.map((p) => p.id);
 
-/** Q1 afgetikt tot 8:00 met één vastgelegd segment (8-6); daarna open: +3 eigen punten, 1 TO. */
+/** Q1 afgetikt tot 8:00 met één vastgelegd segment (8-6); daarna open: +3 eigen punten. */
 function gameWithOpenPoints(): ActiveGame {
   return {
     id: 'game-latest',
@@ -253,5 +255,15 @@ describe('app/App: afronden direct na onGameChange (C3 closure-onderzoek)', () =
     expect(active.id).not.toBe('game-latest');
     expect(deriveGameHistory(active).segments).toHaveLength(0);
     expect(stub.finishCalls).toBe(1);
+  });
+
+  it('een latestGame met een andere id wordt genegeerd: de actieve wedstrijd wordt afgerond (terugval op game)', async () => {
+    stub.passForeign = true;
+    const completed = await recordAndFinish();
+    expect(completed.sourceGameId).toBe('game-latest');
+    expect(storedCompleted()).toHaveLength(1);
+    expect(storedCompleted().some((c) => c.sourceGameId === 'game-other')).toBe(false);
+    // Terugval op de stand van de render: het zojuist vastgelegde segment ontbreekt (zoals zonder argument).
+    expect(completed.segments.map((seg) => seg.id)).toEqual(['seg-1']);
   });
 });

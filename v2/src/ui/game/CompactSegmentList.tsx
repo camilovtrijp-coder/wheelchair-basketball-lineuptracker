@@ -16,6 +16,8 @@ export interface CompactSegmentListProps {
   periodLabel: string;
   expanded: boolean;
   canWrite: boolean;
+  /** Uitwedstrijd: alleen de weergavevolgorde van de standen (tegenstander links). */
+  away?: boolean;
   onToggle: () => void;
   onEdit: (segmentId: string) => void;
 }
@@ -35,6 +37,7 @@ export function CompactSegmentList({
   periodLabel,
   expanded,
   canWrite,
+  away = false,
   onToggle,
   onEdit,
 }: CompactSegmentListProps) {
@@ -42,6 +45,7 @@ export function CompactSegmentList({
   const segments: Segment[] = deriveGameHistory(game).segments;
   const bounds = segmentScoreBounds(segments);
   const period = periodLabel || t('quarterLabel');
+  const pair = (own: number, opp: number) => (away ? `${opp}–${own}` : `${own}–${opp}`);
   return (
     <div className="compact-segments" data-testid="compact-segments">
       <button
@@ -117,11 +121,11 @@ export function CompactSegmentList({
                     </p>
                     <p className="compact-seg__stats" data-testid={`compact-segment-stats-${s.id}`}>
                       <span>
-                        {t('compactSegScoreLabel')} {b.beginFor}–{b.beginAgainst} → {b.endFor}–
-                        {b.endAgainst}
+                        {t('compactSegScoreLabel')} {pair(b.beginFor, b.beginAgainst)} →{' '}
+                        {pair(b.endFor, b.endAgainst)}
                       </span>
                       <span>
-                        {t('compactSegPointsLabel')} {s.pf}–{s.pa}
+                        {t('compactSegPointsLabel')} {pair(s.pf, s.pa)}
                       </span>
                       <span>
                         {t('compactSegPmLabel')}{' '}

@@ -642,4 +642,17 @@ describe('Compact dialoog: Uitwedstrijd, geen stille klem, bevestiging bij sluit
     fireEvent.keyDown(document, { key: 'Escape' });
     expect(confirm).toHaveBeenCalledWith('Your input will be lost. Close the window anyway?');
   });
+
+  it('gekozen Eruit/Erin-spelers tellen als concept bij Escape', () => {
+    const confirm = vi.spyOn(window, 'confirm').mockReturnValue(false);
+    const h = setup();
+    h.click('compact-swap-open');
+    h.click('compact-swap-out-gp-4');
+    fireEvent.keyDown(document, { key: 'Escape' });
+    expect(confirm).toHaveBeenCalledTimes(1);
+    expect(h.q('compact-dialog')).not.toBeNull();
+    confirm.mockReturnValue(true);
+    fireEvent.keyDown(document, { key: 'Escape' });
+    expect(h.q('compact-dialog')).toBeNull();
+  });
 });

@@ -87,14 +87,20 @@ export function CompactSegmentEditor({
   const [tov, setTov] = useState(() => String(segment ? segmentTurnovers(segment) : 0));
   const [error, setError] = useState<LiveCommandError | null>(null);
   const [confirmingDelete, setConfirmingDelete] = useState(false);
+  const [touched, setTouched] = useState(false);
 
+  // Escape/achtergrond: gewijzigde invoer niet stil weggooien.
+  function requestClose() {
+    if (touched && !window.confirm(t('compactDiscardDraftConfirm'))) return;
+    onClose();
+  }
   useEffect(() => {
     function onKeyDown(e: KeyboardEvent) {
-      if (e.key === 'Escape') onClose();
+      if (e.key === 'Escape') requestClose();
     }
     document.addEventListener('keydown', onKeyDown);
     return () => document.removeEventListener('keydown', onKeyDown);
-  }, [onClose]);
+  });
 
   const ownName = teamName || t('teamFallbackLabel');
   const opponentName = t('teamOpponent');
@@ -111,6 +117,7 @@ export function CompactSegmentEditor({
 
   function touch<T>(setter: (v: T) => void) {
     return (v: T) => {
+      setTouched(true);
       setError(null);
       setConfirmingDelete(false);
       setter(v);
@@ -152,6 +159,7 @@ export function CompactSegmentEditor({
   }
 
   function toggleLineup(id: string) {
+    setTouched(true);
     setError(null);
     setConfirmingDelete(false);
     setLineup((list) => (list.includes(id) ? list.filter((x) => x !== id) : [...list, id]));
@@ -188,7 +196,7 @@ export function CompactSegmentEditor({
         type="button"
         className="modal-overlay__backdrop"
         aria-label={t('cancelBtn')}
-        onClick={onClose}
+        onClick={requestClose}
       />
       <div
         className="modal compact-dialog"

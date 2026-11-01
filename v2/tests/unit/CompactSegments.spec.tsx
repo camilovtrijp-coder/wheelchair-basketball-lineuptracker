@@ -711,3 +711,108 @@ describe('Stap H: afronden met het laatste segment', () => {
     expect(c.sourceGameId).toBe(before.id);
   });
 });
+
+describe('Compact C3-vervolg: Uitwedstrijd in lijst en afrondkeuze, sluitbevestiging, herberekende stand', () => {
+  it('lijst: na bewerken van segment 1 naar 9-6 begint segment 2 op 9-6 en eindigt op 13-10', () => {
+    const h = setup();
+    openEditor(h, 0);
+    h.type('compact-edit-pf', '9');
+    h.click('compact-edit-save');
+    const segs = deriveGameHistory(h.latest()).segments;
+    expect(
+      segmentScoreBounds(segs).map((b) => [b.beginFor, b.beginAgainst, b.endFor, b.endAgainst]),
+    ).toEqual([
+      [0, 0, 9, 6],
+      [9, 6, 13, 10],
+      [13, 10, 17, 12],
+    ]);
+    if (!h.q('compact-segments-body')) h.click('compact-segments-toggle');
+    expect(text(h.$(`compact-segment-stats-${segs[1]!.id}`))).toBe(
+      'Stand 9–6 → 13–10Punten 4–4Plus/min 0TO 1',
+    );
+  });
+
+  it('lijst: bij Uitwedstrijd staat de tegenstander links; plus/min blijft eigen team', () => {
+    const h = setup();
+    h.click('compact-away');
+    h.click('compact-segments-toggle');
+    const segs = deriveGameHistory(h.latest()).segments;
+    expect(text(h.$(`compact-segment-stats-${segs[0]!.id}`))).toBe(
+      'Stand 0–0 → 6–8Punten 6–8Plus/min +2TO 2',
+    );
+    expect(text(h.$(`compact-segment-stats-${segs[2]!.id}`))).toBe(
+      'Stand 10–12 → 12–16Punten 2–4Plus/min +2TO 0',
+    );
+  });
+
+  it('afrondkeuze: bij Uitwedstrijd staat de tegenstander links in de standen', () => {
+    const h = setup({ game: withOpenQ2() });
+    h.click('compact-away');
+    h.click('compact-finish-game');
+    expect(text(h.$('finish-open-points'))).toBe('Punten buiten een segment: 0–2');
+    h.click('finish-choose-last');
+    const note = text(h.$('finish-last-score'));
+    expect(note).toContain('Eindstand: 12–18');
+    expect(note).toContain('Punten segment 0–2');
+  });
+
+  it('afrondkeuze: zonder Uitwedstrijd eigen team links', () => {
+    const h = setup({ game: withOpenQ2() });
+    h.click('compact-finish-game');
+    expect(text(h.$('finish-open-points'))).toBe('Punten buiten een segment: 2–0');
+    h.click('finish-choose-last');
+    expect(text(h.$('finish-last-score'))).toContain('Eindstand: 18–12');
+  });
+
+  it('editor: Escape/achtergrond vragen pas na wijziging; weigeren houdt het concept, accepteren sluit', () => {
+    const confirm = vi.spyOn(window, 'confirm').mockReturnValue(false);
+    const h = setup();
+    openEditor(h, 0);
+    fireEvent.keyDown(document, { key: 'Escape' });
+    expect(confirm).not.toHaveBeenCalled();
+    expect(h.q('compact-edit-dialog')).toBeNull();
+
+    openEditor(h, 0);
+    h.type('compact-edit-pf', '9');
+    fireEvent.keyDown(document, { key: 'Escape' });
+    expect(confirm).toHaveBeenCalledTimes(1);
+    expect(confirm).toHaveBeenCalledWith('Je invoer gaat verloren. Venster toch sluiten?');
+    expect(h.q('compact-edit-dialog')).not.toBeNull();
+    fireEvent.click(h.container.querySelector('.modal-overlay__backdrop')!);
+    expect(confirm).toHaveBeenCalledTimes(2);
+    expect(h.q('compact-edit-dialog')).not.toBeNull();
+    confirm.mockReturnValue(true);
+    fireEvent.click(h.container.querySelector('.modal-overlay__backdrop')!);
+    expect(h.q('compact-edit-dialog')).toBeNull();
+    expect(h.onChange).not.toHaveBeenCalled();
+  });
+
+  it('afrondkeuze stap 2: Escape vraagt pas na een gewijzigde kloktijd', () => {
+    const confirm = vi.spyOn(window, 'confirm').mockReturnValue(false);
+    const h = setup({ game: withOpenQ2() });
+    h.click('compact-finish-game');
+    fireEvent.keyDown(document, { key: 'Escape' }); // stap 1: direct sluiten
+    expect(confirm).not.toHaveBeenCalled();
+    expect(h.q('finish-dialog')).toBeNull();
+
+    h.click('compact-finish-game');
+    h.click('finish-choose-last');
+    fireEvent.keyDown(document, { key: 'Escape' }); // nog geen invoer
+    expect(confirm).not.toHaveBeenCalled();
+    expect(h.q('finish-dialog')).toBeNull();
+
+    h.click('compact-finish-game');
+    h.click('finish-choose-last');
+    h.type('finish-clock-min', '8');
+    fireEvent.keyDown(document, { key: 'Escape' });
+    expect(confirm).toHaveBeenCalledTimes(1);
+    expect(h.q('finish-dialog')).not.toBeNull();
+    fireEvent.click(h.container.querySelector('.modal-overlay__backdrop')!);
+    expect(confirm).toHaveBeenCalledTimes(2);
+    expect(h.q('finish-dialog')).not.toBeNull();
+    confirm.mockReturnValue(true);
+    fireEvent.keyDown(document, { key: 'Escape' });
+    expect(h.q('finish-dialog')).toBeNull();
+    expect(h.onFinishGame).not.toHaveBeenCalled();
+  });
+});
