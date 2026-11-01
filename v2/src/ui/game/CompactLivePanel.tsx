@@ -1,13 +1,8 @@
 import { useEffect, useState } from 'preact/hooks';
 import type { GamePlayer } from '../../domain/game/types';
-import { discardSwaps, setScore } from '../../domain/game/liveCommands';
+import { discardSwaps } from '../../domain/game/liveCommands';
 import { canFinishGame } from '../../domain/game/finish';
-import {
-  deriveGameHistory,
-  isOverLimit,
-  scoreDeltaAction,
-  turnoverDeltaAction,
-} from '../../domain/game/tracking';
+import { deriveGameHistory, isOverLimit, turnoverDeltaAction } from '../../domain/game/tracking';
 import {
   readAwayPreference,
   storeAwayPreference,
@@ -31,8 +26,6 @@ import { FinishGameDialog } from './FinishGameDialog';
 export type CompactLivePanelProps = LiveTrackingPanelProps;
 
 type Team = 'for' | 'against';
-
-const SCORE_DELTAS = [1, 2, 3, -1] as const;
 
 function playerTag(player: GamePlayer, tag1Label: string, tag2Label: string): string {
   const tag1 = tag1Label.charAt(0).toUpperCase();
@@ -105,11 +98,14 @@ export function CompactLivePanel({
     .replace('{n}', String(game.curQuarter))
     .replace('{total}', String(quarterCount));
 
-  function addAction(action: ReturnType<typeof scoreDeltaAction>) {
+  function addAction(action: ReturnType<typeof turnoverDeltaAction>) {
     if (!canWrite) return;
     onGameChange({ ...game, actions: [...game.actions, action] });
   }
 
+  // Compact: de stand is alleen-lezen; ze wordt uitsluitend bijgewerkt via de
+  // dialogen (Segment opslaan, Wisselen, Kwart afsluiten). Uitwedstrijd draait
+  // alleen de weergavevolgorde om.
   function scoreSide(team: Team) {
     const name = team === 'for' ? ownName : opponentName;
     const score = team === 'for' ? history.scoreFor : history.scoreAgainst;
@@ -119,44 +115,13 @@ export function CompactLivePanel({
         data-testid={`compact-score-${team}`}
       >
         <span className="compact-score__name">{name}</span>
-        <select
-          className="compact-score__select"
-          value={score}
-          disabled={!canWrite}
-          data-testid={`compact-score-select-${team}`}
-          aria-label={t('scoreSelectLabel').replace('{team}', name)}
-          onChange={(e) => {
-            const result = setScore(game, team, Number((e.target as HTMLSelectElement).value));
-            if (result.ok && result.game !== game && canWrite) onGameChange(result.game);
-          }}
+        <output
+          className="compact-score__value"
+          data-testid={`compact-score-value-${team}`}
+          aria-label={t('compactScoreOfTeam').replace('{team}', name)}
         >
-          {Array.from({ length: 151 }, (_, n) => n).map((n) => (
-            <option key={n} value={n}>
-              {n}
-            </option>
-          ))}
-        </select>
-        <div className="compact-score__buttons">
-          {SCORE_DELTAS.map((delta) => (
-            <button
-              key={delta}
-              type="button"
-              className={
-                delta > 0
-                  ? `compact-score__btn compact-score__btn--${team}`
-                  : 'btn-outline compact-score__btn'
-              }
-              disabled={!canWrite}
-              data-testid={`compact-score-${delta > 0 ? `plus${delta}` : 'minus1'}-${team}`}
-              aria-label={t('compactScoreAdjustAria')
-                .replace('{team}', name)
-                .replace('{delta}', delta > 0 ? `+${delta}` : '−1')}
-              onClick={() => addAction(scoreDeltaAction(team, delta))}
-            >
-              {delta > 0 ? `+${delta}` : '−1'}
-            </button>
-          ))}
-        </div>
+          {score}
+        </output>
       </div>
     );
   }
@@ -295,18 +260,19 @@ export function CompactLivePanel({
           {scoreSide(leftTeam)}
           {scoreSide(rightTeam)}
         </div>
-        <p className="compact-score__pm" data-testid="compact-segment-pm">
-          {scoreTouched ? (
-            <>
-              {t('compactSegmentPm')}{' '}
-              <strong className={segPM > 0 ? 'live-pm--pos' : segPM < 0 ? 'live-pm--neg' : ''}>
-                {signed(segPM)}
-              </strong>
-            </>
-          ) : (
-            t('compactScoreNotUpdated')
-          )}
-        </p>
+        {scoreTouched ? (
+          <p className="compact-score__pm" data-testid="compact-segment-pm">
+            <span data-testid="compact-open-points">
+              {t('finishOpenPoints')
+                .replace('{for}', String(away ? segDeltaAgainst : segDeltaFor))
+                .replace('{against}', String(away ? segDeltaFor : segDeltaAgainst))}
+            </span>{' '}
+            {t('compactSegmentPm')}{' '}
+            <strong className={segPM > 0 ? 'live-pm--pos' : segPM < 0 ? 'live-pm--neg' : ''}>
+              {signed(segPM)}
+            </strong>
+          </p>
+        ) : null}
       </div>
 
       {game.pendingSwapLineup != null ? (

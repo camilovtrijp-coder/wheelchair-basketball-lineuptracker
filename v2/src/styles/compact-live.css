@@ -612,3 +612,15 @@
   min-height: 2.75rem;
   min-width: 0;
 }
+
+.compact-score__value {
+  display: block;
+  font-size: 2.5rem;
+  font-weight: 800;
+  line-height: 1;
+  text-align: center;
+  padding: var(--lt-space-2);
+  border: 2px solid var(--score-color);
+  border-radius: var(--lt-radius-lg);
+  background: color-mix(in srgb, var(--score-color) 22%, var(--lt-color-bg));
+}

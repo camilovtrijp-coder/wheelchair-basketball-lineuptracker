@@ -31,6 +31,8 @@ De demo is een interactieprototype. Onderstaande bestaande mogelijkheden zijn ge
 - Alleen-lezenbediening en zichtbare foutmelding bij mislukte opslag.
 - Toetsenbordbediening, focusbeheer en bruikbaarheid op telefoon en tablet.
 
+> Notitie (eigenaarsbesluit 9/10, bouwplan): in het Compact-scherm van v2 vervallen de score-knoppen +1/+2/+3/−1 en de score-dropdowns van het hoofdscherm; de stand wordt alleen via de dialogen (Segment opslaan, Wisselen, Kwart afsluiten) bijgewerkt. De lijst 'Verplicht behouden' geldt daarom voor Klassiek; Compact dekt de scoreinvoer via de dialogen (typen en dropdown, grenzen 0–150).
+
 ## Acceptatie voor een toekomstige v2-PR
 
 Gebruik de bestaande v2-tests als regressiebasis. Voeg handmatig narekenbare scenario's toe voor meerdere gelijktijdige wissels, nulsecondeswissel, scorecorrectie vóór/na opslaan, segmentbewerking en -verwijdering met open scoredelta, op-/aftellen, kwartovergang, classificatie, NL/EN, thuis/uit en offline herladen. Valideer dezelfde score, turnovers, speeltijd, plus/min en CSV vóór en na de wijziging.

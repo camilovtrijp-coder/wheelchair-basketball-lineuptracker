@@ -301,7 +301,6 @@ describe('Compact wissel: concept, annuleren en weigeringen', () => {
     ['11', '00'],
     ['0', '75'],
     ['10', '30'],
-    ['', '10'],
   ])('tijd %s:%s buiten bereik geeft zichtbare melding zonder commit', (min, sec) => {
     const h = setup();
     h.click('compact-swap-open');
@@ -329,6 +328,7 @@ describe('Compact wissel: concept, annuleren en weigeringen', () => {
   it('invalid-duration: eindtijd gelijk aan begintijd bij Segment opslaan', () => {
     const h = setup();
     h.click('compact-save-segment');
+    h.setClock('10', '00');
     h.click('compact-dialog-review');
     expect(h.$('compact-dialog-error').textContent).toBe('Eind moet ná begin liggen.');
     expect(h.onChange).not.toHaveBeenCalled();
@@ -341,6 +341,7 @@ describe('Compact wissel: concept, annuleren en weigeringen', () => {
     h.click('compact-swap-out-gp-7');
     h.click('compact-swap-in-gp-12');
     h.click('compact-swap-next');
+    h.setClock('10', '00');
     h.click('compact-dialog-review');
     expect(h.$('compact-review-nosegment')).not.toBeNull();
     h.click('compact-dialog-confirm');
@@ -358,6 +359,7 @@ describe('Compact wissel: concept, annuleren en weigeringen', () => {
     h.click('compact-swap-out-gp-7');
     h.click('compact-swap-in-gp-12');
     h.click('compact-swap-next');
+    h.setClock('10', '00');
     h.setScores('2', '0');
     h.click('compact-dialog-review');
     const alert = h.$('compact-dialog-error');
@@ -383,6 +385,7 @@ describe('Compact wissel: concept, annuleren en weigeringen', () => {
   it('melding in het Engels', () => {
     const h = setup({ lang: 'en' });
     h.click('compact-save-segment');
+    h.setClock('10', '00');
     h.click('compact-dialog-review');
     expect(h.$('compact-dialog-error').textContent).toBe('End must be after start.');
     expect(h.$('compact-swap-open').textContent).toBe('Substitute');
@@ -394,12 +397,82 @@ describe('Compact tijd- en scorevelden: typen en dropdown', () => {
     h.click('compact-save-segment');
   }
 
-  it('begint met de eindtijd van het open segment; seconden altijd twee cijfers', () => {
+  it('Wisselen en Segment opslaan openen met lege klokvelden; scores blijven vooringevuld', () => {
     const h = setup({ game: q1Game({ beginSec: 395, endSec: 395 }) });
     openTime(h);
+    expect((h.$('compact-dialog-clock-min') as HTMLInputElement).value).toBe('');
+    expect((h.$('compact-dialog-clock-sec') as HTMLInputElement).value).toBe('');
+    expect((h.$('compact-dialog-score-for') as HTMLInputElement).value).toBe('0');
+    cleanup();
+    const sw = setup();
+    sw.click('compact-swap-open');
+    sw.click('compact-swap-out-gp-4');
+    sw.click('compact-swap-in-gp-6');
+    sw.click('compact-swap-next');
+    expect((sw.$('compact-dialog-clock-min') as HTMLInputElement).value).toBe('');
+    expect((sw.$('compact-dialog-clock-sec') as HTMLInputElement).value).toBe('');
+    expect(sw.$('compact-dialog-clock-min').getAttribute('inputmode')).toBe('numeric');
+  });
+
+  it.each([
+    ['', '30'],
+    ['5', ''],
+    ['', ''],
+  ])(
+    'leeg klokveld (%s:%s) wordt niet als 0 gelezen: zichtbare melding, geen commit',
+    (min, sec) => {
+      const h = setup();
+      h.click('compact-save-segment');
+      h.type('compact-dialog-clock-min', min);
+      h.type('compact-dialog-clock-sec', sec);
+      h.click('compact-dialog-review');
+      const alert = h.$('compact-dialog-error');
+      expect(alert.getAttribute('role')).toBe('alert');
+      expect(alert.textContent).toBe('Vul zowel minuten als seconden in.');
+      expect(h.onChange).not.toHaveBeenCalled();
+      h.type('compact-dialog-clock-min', '5');
+      h.type('compact-dialog-clock-sec', '0');
+      expect(h.q('compact-dialog-error')).toBeNull();
+    },
+  );
+
+  it('leeg klokveld: melding in het Engels', () => {
+    const h = setup({ lang: 'en' });
+    h.click('compact-save-segment');
+    h.click('compact-dialog-review');
+    expect(h.$('compact-dialog-error').textContent).toBe('Fill in both minutes and seconds.');
+  });
+
+  it('Kwart afsluiten: standaard 0:00 aftellend en 10:00 optellend, aanpasbaar', () => {
+    const down = setup();
+    down.click('compact-close-quarter');
+    expect((down.$('compact-dialog-clock-min') as HTMLInputElement).value).toBe('0');
+    expect((down.$('compact-dialog-clock-sec') as HTMLInputElement).value).toBe('00');
+    down.click('compact-dialog-review');
+    down.click('compact-dialog-confirm');
+    expect(deriveGameHistory(down.latest()).segments[0]!.durSec).toBe(600);
+    cleanup();
+    const up = setup({ game: q1Game({ clockDown: false, beginSec: 0, endSec: 0 }) });
+    up.click('compact-close-quarter');
+    expect((up.$('compact-dialog-clock-min') as HTMLInputElement).value).toBe('10');
+    expect((up.$('compact-dialog-clock-sec') as HTMLInputElement).value).toBe('00');
+    up.setClock('9', '30');
+    up.click('compact-dialog-review');
+    up.click('compact-dialog-confirm');
+    expect(deriveGameHistory(up.latest()).segments[0]!.durSec).toBe(570);
+  });
+
+  it('typen en dropdown werken vanuit lege velden', () => {
+    const h = setup();
+    h.click('compact-save-segment');
+    fireEvent.change(h.$('compact-dialog-clock-min-pick'), { target: { value: '6' } });
+    h.type('compact-dialog-clock-sec', '5');
+    fireEvent.blur(h.$('compact-dialog-clock-sec'));
     expect((h.$('compact-dialog-clock-min') as HTMLInputElement).value).toBe('6');
-    expect((h.$('compact-dialog-clock-sec') as HTMLInputElement).value).toBe('35');
-    expect(h.$('compact-dialog-clock-min').getAttribute('inputmode')).toBe('numeric');
+    expect((h.$('compact-dialog-clock-sec') as HTMLInputElement).value).toBe('05');
+    h.click('compact-dialog-review');
+    h.click('compact-dialog-confirm');
+    expect(deriveGameHistory(h.latest()).segments[0]!.durSec).toBe(235);
   });
 
   it('typen: cijfers worden gefilterd en seconden worden bij verlaten opgevuld', () => {

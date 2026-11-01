@@ -12,16 +12,18 @@ De eigenaar heeft het compacte ontwerp interactief beoordeeld en vraagt nu om di
 
 Na een Opus-review tegen de code (`3ff1aa5`) heeft de eigenaar onderstaande besluiten genomen. Waar de rest van dit document hiervan afwijkt, gelden deze besluiten.
 
-| # | Onderwerp | Besluit |
-| --- | --- | --- |
-| 1 | Klokgrens | Maximaal 10:00 (0–600 s) afdwingen in de gedeelde functies en Compact. Klassiek wordt in dezelfde PR gelijkgetrokken (nu staat live 10:59 toe). |
-| 2 | Segmentpunten | Weigeren: punten per kant 0–150 en eindstand niet onder de beginstand van het segment. Geldt ook voor bewerken. |
-| 3 | Wissel op 0 s | Weigeren met melding als de stand is gewijzigd; anders blijft de bestaande semantiek (geen leeg segment). Open turnovers gaan bij zo'n wissel naar de nieuwe lineup (bewuste keuze, te testen in C2b). |
-| 4 | Afronden met open punten/turnovers | Waarschuwen en keuze laten: laatste segment vastleggen of bewust afronden. Geldt voor Klassiek en Compact. |
-| 5 | Uitwedstrijd | Lokaal per wedstrijd-ID, per apparaat, onder één nieuwe foutbestendige key. Geen wijziging van wedstrijdobject, datacontract of sync. |
-| 6 | Wisselconcept | Alleen UI-state. Bij herladen vervalt het concept; de huidige lineup blijft actief. Klassiek houdt zijn bestaande opgeslagen `pendingSwapLineup`. |
-| 7 | Schakelaar Klassiek/Compact | Apparaatmenu (SessionBar, patroon van `infrastructure/theme/theme.ts`), ook voor scorers; alleen-lezen blijft alleen-lezen. Niet in het opgeslagen formulier van `SettingsPanel`. |
-| 8 | Werkpakketten | Herindeling C1, C2a, C2b, C3, C4 (zie onder). |
+| #   | Onderwerp                          | Besluit                                                                                                                                                                                                                                                                                                                                                                                                                  |
+| --- | ---------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| 1   | Klokgrens                          | Maximaal 10:00 (0–600 s) afdwingen in de gedeelde functies en Compact. Klassiek wordt in dezelfde PR gelijkgetrokken (nu staat live 10:59 toe).                                                                                                                                                                                                                                                                          |
+| 2   | Segmentpunten                      | Weigeren: punten per kant 0–150 en eindstand niet onder de beginstand van het segment. Geldt ook voor bewerken.                                                                                                                                                                                                                                                                                                          |
+| 3   | Wissel op 0 s                      | Weigeren met melding als de stand is gewijzigd; anders blijft de bestaande semantiek (geen leeg segment). Open turnovers gaan bij zo'n wissel naar de nieuwe lineup (bewuste keuze, te testen in C2b).                                                                                                                                                                                                                   |
+| 4   | Afronden met open punten/turnovers | Waarschuwen en keuze laten: laatste segment vastleggen of bewust afronden. Geldt voor Klassiek en Compact.                                                                                                                                                                                                                                                                                                               |
+| 5   | Uitwedstrijd                       | Lokaal per wedstrijd-ID, per apparaat, onder één nieuwe foutbestendige key. Geen wijziging van wedstrijdobject, datacontract of sync.                                                                                                                                                                                                                                                                                    |
+| 6   | Wisselconcept                      | Alleen UI-state. Bij herladen vervalt het concept; de huidige lineup blijft actief. Klassiek houdt zijn bestaande opgeslagen `pendingSwapLineup`.                                                                                                                                                                                                                                                                        |
+| 7   | Schakelaar Klassiek/Compact        | Apparaatmenu (SessionBar, patroon van `infrastructure/theme/theme.ts`), ook voor scorers; alleen-lezen blijft alleen-lezen. Niet in het opgeslagen formulier van `SettingsPanel`.                                                                                                                                                                                                                                        |
+| 8   | Werkpakketten                      | Herindeling C1, C2a, C2b, C3, C4 (zie onder).                                                                                                                                                                                                                                                                                                                                                                            |
+| 9   | Score op het Compact-hoofdscherm   | Geen +1/+2/+3/−1 en geen score-dropdowns in Compact. De stand staat groot en alleen-lezen onder 'Laatst vastgelegde stand' (Uitwedstrijd draait alleen de weergavevolgorde om) en wordt alleen bijgewerkt via de dialogen Segment opslaan, Wisselen en Kwart/periode afsluiten. Open punten in het open segment (bijv. gestart in Klassiek) worden alleen-lezen getoond. Turnover +1/−1 blijft. Klassiek is ongewijzigd. |
+| 10  | Kloktijd in de dialogen            | Kwart/periode afsluiten: standaard het einde van het kwart (aftellend 0:00, optellend 10:00 = MAX_CLOCK_SECONDS), aanpasbaar. Wisselen en Segment opslaan: minuten- en secondenvelden zijn leeg bij openen; een leeg veld wordt nooit als 0 gelezen maar geeft een zichtbare melding zonder commit. Scorevelden blijven vooringevuld met de laatst vastgelegde stand.                                                    |
 
 Reviewbevindingen die het plan corrigeert:
 
@@ -62,7 +64,7 @@ Belangrijkste risico's: score aan de verkeerde lineup toekennen; open wijziginge
 2. Toon kwart/periode en begintijd van de actieve lineup. Gebruik de ingestelde periodenaam, periodeaantal en klokrichting.
 3. Toon turnovers van het open segment prominent; wedstrijdtotaal secundair. +1 en correctie blijven direct bereikbaar.
 4. Toon compacte stand met een kleine checkbox/schakelaar Uitwedstrijd. Uit: eigen team links. Aan: tegenstander links. Draai uitsluitend presentatie/invoervolgorde om; `for`/`against`, CSV en plus/min blijven aan het eigen team gekoppeld.
-5. Stand bijwerken, Wisselen, Kwart/periode afsluiten en Segment opslaan zonder wissel zijn beschikbaar. Behoud bestaande +1/+2/+3/−1-scorebediening, eventueel via een compact uitklapbaar bedieningsdeel.
+5. Stand bijwerken, Wisselen, Kwart/periode afsluiten en Segment opslaan zonder wissel zijn beschikbaar. ~~Behoud bestaande +1/+2/+3/−1-scorebediening~~: in Compact vervallen op eigenaarsbesluit (besluit 9); Klassiek behoudt ze. De stand wordt in Compact alleen via de dialogen bijgewerkt.
 6. Omdat stand ook pas bij een segmentgrens wordt ingevoerd: label tussentijdse stand als laatst vastgelegd; presenteer een afgeleide plus/min niet als actueel als de score niet is bijgewerkt. Geen automatisch lopende stopwatch toevoegen.
 
 ### Wisselen
@@ -122,16 +124,16 @@ Begin elke sessie met huidige werking, risico's en klein plan. Eindig met gewijz
 
 Fictieve spelers: #4 Alex, #7 Sam, #9 Robin, #11 Kim, #13 Dani; bank #6 Bo, #12 Noa, #15 Jules. Vergelijk scenario onafhankelijk in Klassiek en Compact, niet door beide schrijvers tegelijk dezelfde wedstrijd te laten aanpassen.
 
-| Stap | Actie | Verwachting |
-| --- | --- | --- |
-| A | Start Q1 aftellend 10:00, lineup 4/7/9/11/13, stand 0–0 | Zelfde uitgangstoestand |
-| B | Registreer 2 turnovers; bij 6:30 stand 8–6; wissel 7→12 | Oud segment: 210 s, 8–6, +2, TO 2; nieuwe lineup 4/9/11/13/12, TO 0 |
-| C | Bij 3:00 stand 12–10, TO 1; wissel 4→6 en 11→15 samen | Segment: 210 s, 4–4, 0, TO 1; één segment voor beide wissels |
-| D | Sluit Q1 op 0:00, stand 16–12, TO 0 | Segment: 180 s, 4–2, +2, TO 0; totaal 600 lineupseconden, 3000 spelerseconden, +4, TO 3 |
-| E | Open Q2: voeg 2 eigen punten en 1 TO toe; bewerk eerste segment naar 9–6, TO 3 | Totaal 19–12, TO 5; open delta +2 en open TO 1 blijven behouden |
-| F | Verwijder in afzonderlijke test het eerste segment na D | Totaal 8–6, +2, TO 1; resterende tijden/lineups ongewijzigd |
-| G | Uitwedstrijd aan/uit, NL/EN, beide invoermethoden | Alleen presentatie omgedraaid; eigen plus/min, CSV en opslag identiek |
-| H | Rond af met laatste segment; open de details in Historie en corrigeer achteraf via de correctieflow (PR 7.5/7.6) | Geen ontbrekend/dubbel segment; identieke score, tijden, TO en stats |
+| Stap | Actie                                                                                                            | Verwachting                                                                             |
+| ---- | ---------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------- |
+| A    | Start Q1 aftellend 10:00, lineup 4/7/9/11/13, stand 0–0                                                          | Zelfde uitgangstoestand                                                                 |
+| B    | Registreer 2 turnovers; bij 6:30 stand 8–6; wissel 7→12                                                          | Oud segment: 210 s, 8–6, +2, TO 2; nieuwe lineup 4/9/11/13/12, TO 0                     |
+| C    | Bij 3:00 stand 12–10, TO 1; wissel 4→6 en 11→15 samen                                                            | Segment: 210 s, 4–4, 0, TO 1; één segment voor beide wissels                            |
+| D    | Sluit Q1 op 0:00, stand 16–12, TO 0                                                                              | Segment: 180 s, 4–2, +2, TO 0; totaal 600 lineupseconden, 3000 spelerseconden, +4, TO 3 |
+| E    | Open Q2: voeg 2 eigen punten en 1 TO toe; bewerk eerste segment naar 9–6, TO 3                                   | Totaal 19–12, TO 5; open delta +2 en open TO 1 blijven behouden                         |
+| F    | Verwijder in afzonderlijke test het eerste segment na D                                                          | Totaal 8–6, +2, TO 1; resterende tijden/lineups ongewijzigd                             |
+| G    | Uitwedstrijd aan/uit, NL/EN, beide invoermethoden                                                                | Alleen presentatie omgedraaid; eigen plus/min, CSV en opslag identiek                   |
+| H    | Rond af met laatste segment; open de details in Historie en corrigeer achteraf via de correctieflow (PR 7.5/7.6) | Geen ontbrekend/dubbel segment; identieke score, tijden, TO en stats                    |
 
 Aanvullend verplicht: nulsecondeswissel, annuleren na meerdere keuzes, minuten/seconden buiten bereik, absolute scorecorrectie, opgetelde klok, classificatieoverschrijding, ontbrekende `tov` als 0, toetsenbord/focus, opslagfout en read-only. Test 375×667 en circa 320px breed, plus tablet; geen horizontale scroll of onbereikbare acties. Test offline volledige wedstrijd en herladen vóór/na wisselbevestiging; reconnect mag geen dubbele acties/afronding geven. Test terugschakelen na Compact-wijzigingen en opnieuw laden.
 

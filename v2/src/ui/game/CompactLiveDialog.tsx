@@ -1,5 +1,10 @@
 import { useEffect, useRef, useState } from 'preact/hooks';
-import { MAX_SCORE, type ActiveGame, type GamePlayer } from '../../domain/game/types';
+import {
+  MAX_CLOCK_SECONDS,
+  MAX_SCORE,
+  type ActiveGame,
+  type GamePlayer,
+} from '../../domain/game/types';
 import {
   clockDuration,
   closeQuarter,
@@ -85,10 +90,17 @@ export function CompactLiveDialog({
   const [step, setStep] = useState<Step>(mode === 'swap' ? 'select' : 'time');
   const [outIds, setOutIds] = useState<string[]>([]);
   const [inIds, setInIds] = useState<string[]>([]);
-  const [clock, setClock] = useState<ClockDraft>(() => clockDraftFromSeconds(game.endSec));
+  const [clock, setClock] = useState<ClockDraft>(() => {
+    // Kwart afsluiten: standaard het einde van het kwart (aftellend 0:00, optellend 10:00).
+    if (mode === 'quarter') return clockDraftFromSeconds(game.clockDown ? 0 : MAX_CLOCK_SECONDS);
+    // Wisselen en Segment opslaan: lege velden, de gebruiker vult ze zelf in.
+    if (mode === 'swap' || mode === 'segment') return { min: '', sec: '' };
+    return clockDraftFromSeconds(game.endSec);
+  });
   const [scoreFor, setScoreFor] = useState(() => String(history.scoreFor));
   const [scoreAgainst, setScoreAgainst] = useState(() => String(history.scoreAgainst));
   const [error, setError] = useState<LiveCommandError | null>(null);
+  const [clockEmpty, setClockEmpty] = useState(false);
 
   const [touched, setTouched] = useState(false);
   const submittedRef = useRef(false);
@@ -171,12 +183,22 @@ export function CompactLiveDialog({
   function touch<T>(setter: (v: T) => void) {
     return (v: T) => {
       setTouched(true);
+      setClockEmpty(false);
       setError(null);
       setter(v);
     };
   }
 
+  // Een leeg minuten- of secondenveld wordt nooit stil als 0 gelezen.
+  function hasEmptyClock(): boolean {
+    if (clock.min.trim() !== '' && clock.sec.trim() !== '') return false;
+    setClockEmpty(true);
+    setError(null);
+    return true;
+  }
+
   function goReview() {
+    if (hasEmptyClock()) return;
     const result = attempt();
     if (!result.ok) {
       setError(result.error);
@@ -188,6 +210,10 @@ export function CompactLiveDialog({
 
   function handleConfirm() {
     if (!canWrite || submittedRef.current) return;
+    if (hasEmptyClock()) {
+      setStep('time');
+      return;
+    }
     const result = attempt();
     if (!result.ok) {
       setError(result.error);
@@ -392,6 +418,11 @@ export function CompactLiveDialog({
                   : t('compactNextPeriodNote')
                       .replace('{period}', period)
                       .replace('{n}', String(nextQuarter))}
+              </p>
+            ) : null}
+            {clockEmpty ? (
+              <p className="settings-error" role="alert" data-testid="compact-dialog-error">
+                {t('compactClockEmpty')}
               </p>
             ) : null}
             {errorKey != null ? (

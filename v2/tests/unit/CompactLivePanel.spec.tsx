@@ -5,7 +5,11 @@ import { describe, it, expect, afterEach, beforeEach, vi } from 'vitest';
 import { useState } from 'preact/hooks';
 import { render, cleanup, fireEvent } from '@testing-library/preact';
 import { CompactLivePanel } from '../../src/ui/game/CompactLivePanel';
-import { deriveGameHistory, segmentTurnovers } from '../../src/domain/game/tracking';
+import {
+  deriveGameHistory,
+  scoreDeltaAction,
+  segmentTurnovers,
+} from '../../src/domain/game/tracking';
 import {
   COMPACT_AWAY_STORAGE_KEY,
   parseAwayGameIds,
@@ -152,9 +156,12 @@ describe('CompactLivePanel: hoofdscherm', () => {
     ]) {
       expect(container.querySelector(`[data-testid="${id}"]`)).toBeNull();
     }
-    // 4 scoreknoppen per kant, 2 turnoverknoppen, 3 acties (Wisselen, Segment, Kwart),
-    // 1 overzichtsknop (Segmenten) en 1 knop Wedstrijd afronden.
-    expect(container.querySelectorAll('button')).toHaveLength(15);
+    // Geen +1/+2/+3/-1 en geen score-dropdowns meer (besluit 9): 2 turnoverknoppen,
+    // 3 acties (Wisselen, Segment, Kwart), 1 overzichtsknop en 1 knop Wedstrijd afronden.
+    expect(container.querySelectorAll('button')).toHaveLength(7);
+    expect(container.querySelectorAll('[data-testid^="compact-score-plus"]')).toHaveLength(0);
+    expect(container.querySelectorAll('[data-testid^="compact-score-minus"]')).toHaveLength(0);
+    expect(container.querySelectorAll('select')).toHaveLength(0);
     expect(getByTestId('compact-finish-game').textContent).toBe('Wedstrijd afronden');
   });
 });
@@ -215,48 +222,34 @@ describe('CompactLivePanel: turnovers', () => {
   });
 });
 
-describe('CompactLivePanel: stand', () => {
-  it('+1/+2/+3/−1 werken via de bestaande score-acties', () => {
-    const { getByTestId, latest } = setup();
-    fireEvent.click(getByTestId('compact-score-plus1-for'));
-    fireEvent.click(getByTestId('compact-score-plus2-for'));
-    fireEvent.click(getByTestId('compact-score-plus3-against'));
-    fireEvent.click(getByTestId('compact-score-minus1-for'));
-    const h = deriveGameHistory(latest());
-    expect(h.scoreFor).toBe(2);
-    expect(h.scoreAgainst).toBe(3);
-    expect((getByTestId('compact-score-select-for') as HTMLSelectElement).value).toBe('2');
-    expect((getByTestId('compact-score-select-against') as HTMLSelectElement).value).toBe('3');
-    expect(latest().actions.map((a) => a.type)).toEqual([
-      'score-delta',
-      'score-delta',
-      'score-delta',
-      'score-delta',
-    ]);
-  });
+const withOpenPoints = (): ActiveGame => ({
+  ...trackingGame(),
+  actions: [scoreDeltaAction('for', 3), scoreDeltaAction('against', 1)],
+});
 
-  it('selectie van een stand gebruikt setScore (score-set) en slaat ongewijzigde waarde over', () => {
-    const { getByTestId, latest, onChange } = setup();
-    const select = getByTestId('compact-score-select-for') as HTMLSelectElement;
-    fireEvent.change(select, { target: { value: '8' } });
-    expect(deriveGameHistory(latest()).scoreFor).toBe(8);
-    expect(latest().actions.at(-1)?.type).toBe('score-set');
-    const calls = onChange.mock.calls.length;
-    fireEvent.change(select, { target: { value: '8' } });
-    expect(onChange.mock.calls.length).toBe(calls);
-  });
-
-  it('labelt de stand als laatst vastgelegd en toont plus/min pas als de stand is bijgewerkt', () => {
-    const { getByTestId } = setup();
+describe('CompactLivePanel: stand (alleen-lezen, besluit 9)', () => {
+  it('toont beide scores groot en alleen-lezen, zonder invoer', () => {
+    const { getByTestId, container, onChange } = setup({ game: withOpenPoints() });
     expect(text(getByTestId('compact-score-caption'))).toBe('Laatst vastgelegde stand');
-    expect(text(getByTestId('compact-segment-pm'))).toBe(
-      'Stand nog niet bijgewerkt in dit segment',
-    );
-    expect(text(getByTestId('compact-segment-pm'))).not.toContain('+0');
-    fireEvent.click(getByTestId('compact-score-plus3-for'));
-    fireEvent.click(getByTestId('compact-score-plus1-against'));
-    expect(text(getByTestId('compact-segment-pm'))).toContain('Plus/min dit segment');
+    expect(text(getByTestId('compact-score-value-for'))).toBe('3');
+    expect(text(getByTestId('compact-score-value-against'))).toBe('1');
+    expect(container.querySelectorAll('[data-testid="compact-score"] button')).toHaveLength(0);
+    expect(container.querySelectorAll('[data-testid="compact-score"] select')).toHaveLength(0);
+    expect(
+      container.querySelectorAll('[data-testid="compact-score"] input[type="text"]'),
+    ).toHaveLength(0);
+    expect(onChange).not.toHaveBeenCalled();
+  });
+
+  it('toont open punten alleen-lezen met plus/min; zonder open punten geen hint', () => {
+    const { getByTestId, queryByTestId } = setup({ game: withOpenPoints() });
+    expect(text(getByTestId('compact-open-points'))).toBe('Punten buiten een segment: 3–1');
     expect(text(getByTestId('compact-segment-pm'))).toContain('+2');
+    cleanup();
+    const empty = setup();
+    expect(empty.queryByTestId('compact-segment-pm')).toBeNull();
+    expect(empty.container.textContent).not.toContain('nog niet bijgewerkt');
+    expect(queryByTestId('compact-open-points')).toBeNull();
   });
 });
 
@@ -275,17 +268,20 @@ describe('CompactLivePanel: Uitwedstrijd', () => {
     expect(onChange).not.toHaveBeenCalled();
     expect(latest()).toEqual(trackingGame());
 
-    // Rechts staat nu het eigen team; +2 daar blijft een 'for'-actie.
-    fireEvent.click(getByTestId('compact-score-plus2-for'));
-    const action = latest().actions[0];
-    expect(action).toMatchObject({ type: 'score-delta', team: 'for', delta: 2 });
-    const h = deriveGameHistory(latest());
-    expect(h.scoreFor).toBe(2);
-    expect(h.scoreAgainst).toBe(0);
-    expect(text(getByTestId('compact-segment-pm'))).toContain('+2');
-
     fireEvent.click(getByTestId('compact-away'));
     expect(order(container)).toEqual(['compact-score-for', 'compact-score-against']);
+  });
+
+  it('toont de stand alleen-lezen in omgedraaide volgorde; open punten en plus/min blijven eigen team', () => {
+    const { getByTestId, container, onChange } = setup({ game: withOpenPoints() });
+    fireEvent.click(getByTestId('compact-away'));
+    const values = Array.from(
+      container.querySelectorAll('[data-testid="compact-score-sides"] output'),
+    ).map((el) => el.textContent);
+    expect(values).toEqual(['1', '3']);
+    expect(text(getByTestId('compact-open-points'))).toBe('Punten buiten een segment: 1–3');
+    expect(text(getByTestId('compact-segment-pm'))).toContain('+2');
+    expect(onChange).not.toHaveBeenCalled();
   });
 
   it('bewaart de keuze per wedstrijd-ID onder één key en herstelt die', () => {
@@ -348,15 +344,12 @@ describe('CompactLivePanel: alleen-lezen', () => {
     const { container, getByTestId, onChange } = setup({ canWrite: false });
     expect(getByTestId('game-read-only')).toBeTruthy();
     const buttons = Array.from(container.querySelectorAll('button'));
-    expect(buttons).toHaveLength(15);
+    expect(buttons).toHaveLength(7);
     // Alle schrijfacties zijn uit; alleen het in-/uitklappen van het overzicht (lezen) blijft bruikbaar.
     expect(buttons.filter((b) => !b.disabled).map((b) => b.getAttribute('data-testid'))).toEqual([
       'compact-segments-toggle',
     ]);
-    expect((getByTestId('compact-score-select-for') as HTMLSelectElement).disabled).toBe(true);
-    expect((getByTestId('compact-score-select-against') as HTMLSelectElement).disabled).toBe(true);
     fireEvent.click(getByTestId('compact-turnover-plus'));
-    fireEvent.click(getByTestId('compact-score-plus1-for'));
     expect(onChange).not.toHaveBeenCalled();
     expect((getByTestId('compact-away') as HTMLInputElement).disabled).toBe(false);
   });
@@ -377,12 +370,11 @@ describe('CompactLivePanel: NL en EN', () => {
     expect(text(getByTestId('compact-turnovers'))).toContain('Game total:');
     expect(text(container.querySelector('.compact-away') as HTMLElement)).toContain('Away game');
     expect(text(getByTestId('compact-score-caption'))).toBe('Last recorded score');
-    expect(text(getByTestId('compact-segment-pm'))).toBe('Score not updated in this segment yet');
     expect(
       container
-        .querySelector('[data-testid="compact-score-plus2-against"]')
+        .querySelector('[data-testid="compact-score-value-against"]')
         ?.getAttribute('aria-label'),
-    ).toBe('Score Opponent: +2');
+    ).toBe('Score Opponent');
   });
 });
 
@@ -413,7 +405,7 @@ describe('CompactLivePanel: classificatie', () => {
     const game: ActiveGame = { ...trackingGame(), pendingSwapLineup: trackingGame().onCourt };
     const { getByTestId, container } = setup({ game });
     expect(getByTestId('compact-swap-pending')).toBeTruthy();
-    // 12 basisknoppen + 3 acties (disabled) + bevestigen/annuleren van de openstaande wissel.
-    expect(container.querySelectorAll('button')).toHaveLength(17);
+    // 4 basisknoppen + 3 acties (disabled) + bevestigen/annuleren van de openstaande wissel.
+    expect(container.querySelectorAll('button')).toHaveLength(9);
   });
 });
