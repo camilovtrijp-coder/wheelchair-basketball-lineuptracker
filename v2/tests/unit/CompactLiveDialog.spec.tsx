@@ -728,4 +728,48 @@ describe('Compact dialoog: Uitwedstrijd, geen stille klem, bevestiging bij sluit
     fireEvent.keyDown(document, { key: 'Escape' });
     expect(h.q('compact-dialog')).toBeNull();
   });
+
+  it.each([
+    ['segment', 'compact-save-segment'],
+    ['quarter', 'compact-close-quarter'],
+    ['swap', 'compact-swap-open'],
+  ])('invoerstap (%s): scorevelden staan vóór de kloktijd en krijgen eerst focus', (mode, open) => {
+    const h = setup();
+    h.click(open);
+    if (mode === 'swap') {
+      h.click('compact-swap-out-gp-4');
+      h.click('compact-swap-in-gp-6');
+      h.click('compact-swap-next');
+    }
+    const order = Array.from(
+      h.container.querySelectorAll<HTMLElement>('[data-testid^="compact-dialog-"]'),
+    )
+      .map((el) => el.getAttribute('data-testid'))
+      .filter((id) => /^compact-dialog-(score-(for|against)|clock-(min|sec))$/.test(id ?? ''));
+    expect(order).toEqual([
+      'compact-dialog-score-for',
+      'compact-dialog-score-against',
+      'compact-dialog-clock-min',
+      'compact-dialog-clock-sec',
+    ]);
+    expect(document.activeElement).toBe(h.$('compact-dialog-score-for'));
+  });
+
+  it('Uitwedstrijd: eerste en focusveld is het tegenstanderveld, daarna eigen team, dan klok', () => {
+    const h = setup();
+    h.click('compact-away');
+    h.click('compact-save-segment');
+    const order = Array.from(
+      h.container.querySelectorAll<HTMLElement>('[data-testid^="compact-dialog-"]'),
+    )
+      .map((el) => el.getAttribute('data-testid'))
+      .filter((id) => /^compact-dialog-(score-(for|against)|clock-(min|sec))$/.test(id ?? ''));
+    expect(order).toEqual([
+      'compact-dialog-score-against',
+      'compact-dialog-score-for',
+      'compact-dialog-clock-min',
+      'compact-dialog-clock-sec',
+    ]);
+    expect(document.activeElement).toBe(h.$('compact-dialog-score-against'));
+  });
 });

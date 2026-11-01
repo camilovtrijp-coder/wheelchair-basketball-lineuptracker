@@ -120,6 +120,12 @@ export function CompactLiveDialog({
     return () => document.removeEventListener('keydown', onKeyDown);
   });
 
+  // Invoerstap: focus op het eerste scoreveld (ook na Volgende vanuit de wisselkeuze).
+  useEffect(() => {
+    if (step !== 'time') return;
+    trapRef.current?.querySelector<HTMLInputElement>('.compact-dialog__scores input')?.focus();
+  }, [step, trapRef]);
+
   const ownName = teamName || t('teamFallbackLabel');
   const opponentName = t('teamOpponent');
   const period = periodLabel || t('quarterLabel');
@@ -392,6 +398,7 @@ export function CompactLiveDialog({
 
         {step === 'time' ? (
           <>
+            <div className="compact-dialog__scores">{sides.map((team) => scoreField(team))}</div>
             <div className="compact-dialog__section">
               <span className="compact-dialog__field-label">
                 {t(game.clockDown ? 'compactClockDownTitle' : 'compactClockUpTitle')}
@@ -410,7 +417,6 @@ export function CompactLiveDialog({
                 {t('compactLineupSince')} {fmtSec(game.beginSec)}
               </p>
             </div>
-            <div className="compact-dialog__scores">{sides.map((team) => scoreField(team))}</div>
             {mode === 'quarter' ? (
               <p className="compact-dialog__hint" data-testid="compact-quarter-note">
                 {lastPeriod
