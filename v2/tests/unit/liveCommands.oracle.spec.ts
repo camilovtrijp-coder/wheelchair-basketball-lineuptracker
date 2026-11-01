@@ -351,11 +351,11 @@ describe('grensgevallen volgens de besluiten', () => {
     g = good(confirmSwap(g, { endSec: 390, scoreFor: 8, scoreAgainst: 6, classification: CLASS }));
     expect(commitSegment(g, { endSec: 300, scoreFor: 7, classification: CLASS })).toEqual({
       ok: false,
-      error: 'invalid-score',
+      error: 'score-below-segment-start',
     });
     expect(commitSegment(g, { endSec: 300, scoreAgainst: 5, classification: CLASS })).toEqual({
       ok: false,
-      error: 'invalid-score',
+      error: 'score-below-segment-start',
     });
     // Gelijk aan de beginstand (0 punten in het segment) mag wel.
     const ok = good(commitSegment(g, { endSec: 300, scoreFor: 8, classification: CLASS }));
