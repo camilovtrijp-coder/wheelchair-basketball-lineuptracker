@@ -12,7 +12,6 @@ import {
   discardSwaps,
   editSegment,
   maxSecondsForMinutes,
-  openSegmentSummary,
   setScore,
   type LiveCommandError,
 } from '../../domain/game/liveCommands';
@@ -49,7 +48,8 @@ export interface LiveTrackingPanelProps {
   tag2Label: string;
   onGameChange: (next: ActiveGame) => void;
   /** Met `latestGame` rondt App af met die actuele stand (direct na `onGameChange`). */
-  onFinishGame: (latestGame?: ActiveGame) => void;
+  /** `false` = afronden mislukt (de afrondingsdialoog blijft dan open); anders gelukt. */
+  onFinishGame: (latestGame?: ActiveGame) => boolean | void;
   canWrite: boolean;
   saveError: boolean;
 }
@@ -399,14 +399,9 @@ export function LiveTrackingPanel({
 
   function handleFinishClick() {
     if (!canWrite || !canFinish) return;
-    // C3: staan er nog punten of turnovers buiten een segment, dan eerst de
-    // afrondkeuze (waarschuwing). Anders blijft de bestaande bevestiging gelden.
-    if (openSegmentSummary(game).hasOpen) {
-      setFinishDialogOpen(true);
-      return;
-    }
-    if (!window.confirm(t(lang, 'confirmFinishGame'))) return;
-    onFinishGame();
+    // Altijd de afrondkeuze (zoals Compact): met waarschuwing bij open
+    // punten/turnovers, anders met de keuze dat alle gespeelde tijd al vastligt.
+    setFinishDialogOpen(true);
   }
 
   const pmColor = (n: number) =>

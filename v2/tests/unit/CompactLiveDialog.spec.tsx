@@ -80,6 +80,7 @@ interface SetupOptions {
   game?: ActiveGame;
   quarterCount?: number;
   panel?: 'compact' | 'classic';
+  classification?: typeof CLASSIFICATION;
 }
 
 function setup(opts: SetupOptions = {}) {
@@ -97,7 +98,7 @@ function setup(opts: SetupOptions = {}) {
         game={game}
         quarterCount={opts.quarterCount ?? 4}
         periodLabel="Kwart"
-        classification={CLASSIFICATION}
+        classification={opts.classification ?? CLASSIFICATION}
         teamName="Eigen"
         tag1Label=""
         tag2Label=""
@@ -771,5 +772,124 @@ describe('Compact dialoog: Uitwedstrijd, geen stille klem, bevestiging bij sluit
       'compact-dialog-clock-sec',
     ]);
     expect(document.activeElement).toBe(h.$('compact-dialog-score-against'));
+  });
+});
+
+describe('Kwart afsluiten: lineup volgend kwart kiezen', () => {
+  function toReview(h: H, min = '0', sec = '00', own = '16', opp = '12') {
+    h.click('compact-close-quarter');
+    h.setClock(min, sec);
+    h.setScores(own, opp);
+    h.click('compact-dialog-review');
+  }
+
+  it('standaard "Zelfde lineup houden": controle toont de vijf spelers, één tik op Bevestigen sluit het kwart', () => {
+    const h = setup();
+    toReview(h);
+    const text = h.$('compact-quarter-lineup').textContent ?? '';
+    for (const naam of ['Alex', 'Sam', 'Robin', 'Kim', 'Dani']) expect(text).toContain(naam);
+    expect(text).toContain('Lineup volgend kwart');
+    expect(h.$('compact-quarter-keep').getAttribute('aria-pressed')).toBe('true');
+    h.click('compact-dialog-confirm');
+    const g = h.latest();
+    expect(nrs(g, g.onCourt)).toEqual(['4', '7', '9', '11', '13']);
+    expect(g.curQuarter).toBe(2);
+    expect(deriveGameHistory(g).segments).toHaveLength(1);
+    expect(h.onChange).toHaveBeenCalledTimes(1);
+  });
+
+  it('Lineup aanpassen 7->12: segment Q1 met oude lineup, Q2 start met 4/12/9/11/13, één onCommit, geen extra segment', () => {
+    const h = setup();
+    toReview(h);
+    h.click('compact-quarter-adjust');
+    h.click('compact-swap-out-gp-7');
+    h.click('compact-swap-in-gp-12');
+    h.click('compact-quarter-lineup-apply');
+    // Terug in de controle met de nieuwe lineup zichtbaar vóór bevestigen.
+    expect(h.$('compact-dialog').getAttribute('data-step')).toBe('review');
+    expect(
+      Array.from(
+        h.container.querySelectorAll('[data-testid^="compact-quarter-lineup-player-"]'),
+      ).map((el) => el.textContent),
+    ).toEqual(['4Alex', '12Noa', '9Robin', '11Kim', '13Dani']);
+    expect(h.$('compact-quarter-adjust').getAttribute('aria-pressed')).toBe('true');
+    expect(h.onChange).not.toHaveBeenCalled();
+    h.click('compact-dialog-confirm');
+    const g = h.latest();
+    const hist = deriveGameHistory(g);
+    expect(hist.segments).toHaveLength(1);
+    expect(nrs(g, hist.segments[0]!.lineup)).toEqual(['4', '7', '9', '11', '13']);
+    expect(hist.segments[0]!.durSec).toBe(600);
+    expect(nrs(g, g.onCourt)).toEqual(['4', '12', '9', '11', '13']);
+    expect(g.curQuarter).toBe(2);
+    expect(g.beginSec).toBe(600);
+    expect(g.pendingSwapLineup).toBeNull();
+    expect(h.onChange).toHaveBeenCalledTimes(1);
+    expect(h.q('compact-dialog')).toBeNull();
+  });
+
+  it('annuleren in de lineupkeuze keert terug naar de controle zonder wijziging', () => {
+    const h = setup();
+    toReview(h);
+    h.click('compact-quarter-adjust');
+    h.click('compact-swap-out-gp-7');
+    h.click('compact-swap-in-gp-12');
+    h.click('compact-quarter-lineup-cancel');
+    expect(h.$('compact-dialog').getAttribute('data-step')).toBe('review');
+    expect(h.$('compact-quarter-keep').getAttribute('aria-pressed')).toBe('true');
+    h.click('compact-dialog-confirm');
+    expect(nrs(h.latest(), h.latest().onCourt)).toEqual(['4', '7', '9', '11', '13']);
+  });
+
+  it('terug naar "Zelfde lineup houden" na een aanpassing herstelt de huidige lineup', () => {
+    const h = setup();
+    toReview(h);
+    h.click('compact-quarter-adjust');
+    h.click('compact-swap-out-gp-7');
+    h.click('compact-swap-in-gp-12');
+    h.click('compact-quarter-lineup-apply');
+    h.click('compact-quarter-keep');
+    h.click('compact-dialog-confirm');
+    expect(nrs(h.latest(), h.latest().onCourt)).toEqual(['4', '7', '9', '11', '13']);
+  });
+
+  it('toont de classificatiesom en overschrijding van de NIEUWE lineup vóór bevestigen', () => {
+    const players = ROSTER.map((r) => ({
+      ...player(r),
+      kl: r[0] === 12 || r[0] === 15 ? '4.5' : '2.5',
+    }));
+    const h = setup({
+      game: q1Game({ players }),
+      classification: { ...CLASSIFICATION, useClassLimit: true },
+    });
+    toReview(h);
+    // Huidige lineup: 5 x 2.5 = 12.5, limiet 14.5.
+    expect(h.$('compact-quarter-lineup-class').textContent).toContain('12.5 / 14.5');
+    expect(h.q('compact-quarter-lineup-warning')).toBeNull();
+    h.click('compact-quarter-adjust');
+    h.click('compact-swap-out-gp-7');
+    h.click('compact-swap-out-gp-4');
+    h.click('compact-swap-in-gp-12');
+    h.click('compact-swap-in-gp-15');
+    h.click('compact-quarter-lineup-apply');
+    // Nieuwe lineup: 3 x 2.5 + 2 x 4.5 = 16.5 > 14.5: waarschuwing vóór bevestigen.
+    expect(h.$('compact-quarter-lineup-class').textContent).toContain('16.5 / 14.5');
+    expect(h.$('compact-quarter-lineup-warning').textContent).toContain('16.5 > 14.5');
+    expect(h.onChange).not.toHaveBeenCalled();
+  });
+
+  it('in het laatste kwart geen lineupkeuze', () => {
+    const h = setup({
+      game: q1Game({ curQuarter: 4, beginSec: 120, endSec: 120 }),
+      quarterCount: 4,
+    });
+    toReview(h, '0', '00', '2', '0');
+    expect(h.q('compact-quarter-lineup')).toBeNull();
+    expect(h.q('compact-quarter-adjust')).toBeNull();
+  });
+
+  it('Klassiek ongewijzigd: de wisselbevestiging kent geen kwartlineupkeuze', () => {
+    const h = setup({ panel: 'classic' });
+    expect(h.q('compact-quarter-lineup')).toBeNull();
   });
 });

@@ -25,8 +25,9 @@ async function playAndFinishOneSegment(page: Page, lang: 'nl' | 'en'): Promise<v
   await page.getByTestId('turnover-plus').click();
   await page.getByTestId('end-min').selectOption('5');
   await page.getByTestId('save-segment-btn').click();
-  page.once('dialog', (dialog) => dialog.accept());
   await page.getByTestId('finish-game-btn').click();
+  // Afronden loopt altijd via de afrondkeuze (geen window.confirm meer).
+  await page.getByTestId('finish-choose-without').click();
   await expect(page.getByTestId('history-back-btn')).toBeVisible();
 }
 

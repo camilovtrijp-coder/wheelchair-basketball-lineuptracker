@@ -47,8 +47,11 @@ test.describe('v2 turnovers (live-rij, segment, Historie)', () => {
     await expect(page.getByTestId('segment-turnovers')).toContainText('0');
     await expect(page.getByTestId('turnover-count')).toHaveText('2');
 
-    page.once('dialog', (dialog) => dialog.accept());
     await page.getByTestId('finish-game-btn').click();
+
+    // Afronden loopt altijd via de afrondkeuze (geen window.confirm meer).
+
+    await page.getByTestId('finish-choose-without').click();
 
     await expect(page.getByTestId('history-back-btn')).toBeVisible();
     await expect(page.getByTestId('history-turnovers-total')).toContainText('2');

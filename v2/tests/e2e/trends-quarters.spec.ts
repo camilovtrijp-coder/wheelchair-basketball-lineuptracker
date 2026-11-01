@@ -39,8 +39,9 @@ async function finishGameAndOpenQuarters(page: Page): Promise<void> {
   await page.getByTestId('end-min').selectOption('5');
   await page.getByTestId('save-segment-btn').click();
   await expect(page.locator('[data-testid^="segment-item-"]')).toHaveCount(1);
-  page.once('dialog', (dialog) => dialog.accept());
   await page.getByTestId('finish-game-btn').click();
+  // Afronden loopt altijd via de afrondkeuze (geen window.confirm meer).
+  await page.getByTestId('finish-choose-without').click();
   await expect(page.getByTestId('history-back-btn')).toBeVisible();
 
   await page.getByTestId('nav-trends').click();

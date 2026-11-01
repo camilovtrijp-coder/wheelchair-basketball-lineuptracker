@@ -53,8 +53,9 @@ test.describe('v2 afronden, historie en export (PR 6.3)', () => {
     await expect(page.locator('[data-testid^="segment-item-"]')).toHaveCount(1);
 
     await expect(page.getByTestId('finish-game-btn')).toBeEnabled();
-    page.once('dialog', (dialog) => dialog.accept());
     await page.getByTestId('finish-game-btn').click();
+    // Afronden loopt altijd via de afrondkeuze (geen window.confirm meer).
+    await page.getByTestId('finish-choose-without').click();
 
     // Historie-tab wordt automatisch geopend met de net afgeronde wedstrijd (v1-pariteit).
     await expect(page.getByTestId('history-back-btn')).toBeVisible();
@@ -94,8 +95,9 @@ test.describe('v2 afronden, historie en export (PR 6.3)', () => {
     await page.getByTestId('score-plus2-for').click();
     await page.getByTestId('end-min').selectOption('5');
     await page.getByTestId('save-segment-btn').click();
-    page.once('dialog', (dialog) => dialog.accept());
     await page.getByTestId('finish-game-btn').click();
+    // Afronden loopt altijd via de afrondkeuze (geen window.confirm meer).
+    await page.getByTestId('finish-choose-without').click();
     await expect(page.getByTestId('history-back-btn')).toBeVisible();
 
     const [download] = await Promise.all([
@@ -117,8 +119,11 @@ test.describe('v2 afronden, historie en export (PR 6.3)', () => {
     // terugzetten alsof de reset-write na het archiveren nooit is gelukt.
     const staleActiveGame = await readJson(page, ACTIVE_GAME_KEY);
 
-    page.once('dialog', (dialog) => dialog.accept());
     await page.getByTestId('finish-game-btn').click();
+
+    // Afronden loopt altijd via de afrondkeuze (geen window.confirm meer).
+
+    await page.getByTestId('finish-choose-without').click();
     await expect(page.getByTestId('history-back-btn')).toBeVisible();
 
     const afterFinish = (await readJson(page, COMPLETED_GAMES_KEY)) as unknown[];
@@ -150,8 +155,9 @@ test.describe('v2 afronden, historie en export (PR 6.3)', () => {
     await page.getByTestId('score-plus2-for').click();
     await page.getByTestId('end-min').selectOption('5');
     await page.getByTestId('save-segment-btn').click();
-    page.once('dialog', (dialog) => dialog.accept());
     await page.getByTestId('finish-game-btn').click();
+    // Afronden loopt altijd via de afrondkeuze (geen window.confirm meer).
+    await page.getByTestId('finish-choose-without').click();
     await expect(page.getByTestId('history-back-btn')).toBeVisible();
 
     page.once('dialog', (dialog) => dialog.accept());

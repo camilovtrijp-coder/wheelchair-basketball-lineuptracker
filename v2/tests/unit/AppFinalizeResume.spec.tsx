@@ -421,7 +421,7 @@ describe('app/App — een mislukte outbox-write is een echte precondition (PR 7.
         deletionRequestGateway: null,
       };
 
-      const { getByTestId } = render(
+      const { getByTestId, queryByTestId } = render(
         <App
           repositories={repositories}
           syncStatus={fakeSyncStatusApi()}
@@ -438,9 +438,18 @@ describe('app/App — een mislukte outbox-write is een echte precondition (PR 7.
       const finishBtn = await waitFor(() => getByTestId('finish-game-btn') as HTMLButtonElement);
       expect(finishBtn.disabled).toBe(false);
       finishBtn.click();
+      // Afronden loopt altijd via de afrondkeuze (geen window.confirm meer).
+      (await waitFor(() => getByTestId('finish-choose-without'))).click();
 
       // De foutmelding wordt getoond...
       await waitFor(() => expect(getByTestId('game-save-error')).toBeTruthy());
+      // ...ook bij de actie zelf: de afrondkeuze blijft open met een melding, zodat
+      // opnieuw proberen duidelijk is (en er geen navigatie naar Historie volgt).
+      expect(getByTestId('finish-dialog')).toBeTruthy();
+      await waitFor(() =>
+        expect(getByTestId('finish-save-error').textContent).toContain('Finishing failed'),
+      );
+      expect(queryByTestId('history-finished-notice')).toBeNull();
 
       // ...en de bronwedstrijd blijft EXACT zoals ze was: geen reset naar een
       // verse opzet. Dit is de kern van de fix — zonder deze precondition zou
@@ -515,6 +524,7 @@ describe('app/App — verwijderen van een nog niet cloud-bevestigde afronding bl
     getByTestId('nav-game').click();
     const finishBtn = await waitFor(() => getByTestId('finish-game-btn') as HTMLButtonElement);
     finishBtn.click();
+    (await waitFor(() => getByTestId('finish-choose-without'))).click();
 
     // "Afronden" schakelt automatisch naar Historie met het net afgeronde item
     // open — de status staat hier nog niet op `gesynchroniseerd` (in eerste
@@ -713,6 +723,7 @@ describe('app/App — runFinalize() start nooit twee gelijktijdige gatewaycycli 
     getByTestId('nav-game').click();
     const finishBtn = await waitFor(() => getByTestId('finish-game-btn') as HTMLButtonElement);
     finishBtn.click();
+    (await waitFor(() => getByTestId('finish-choose-without'))).click();
 
     // De eerste `finalizeCompletedGame()`-aanroep blijft bewust hangen.
     await waitFor(() => expect(finalizeCalls).toHaveLength(1));

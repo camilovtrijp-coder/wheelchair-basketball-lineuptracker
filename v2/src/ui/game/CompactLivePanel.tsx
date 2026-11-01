@@ -153,7 +153,7 @@ export function CompactLivePanel({
         </p>
       )}
 
-      <div className="compact-court">
+      <div className="compact-court" data-testid="compact-court">
         <div className="compact-court__header">
           <span className="compact-court__title">{t('onCourtLabel')}</span>
           {classification.useClassLimit ? (

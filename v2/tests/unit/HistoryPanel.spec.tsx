@@ -378,3 +378,70 @@ describe('ui/game/HistoryPanel (PR 7.2c: tombstoneNotice-banner)', () => {
     expect(queryByTestId('history-tombstone-notice')).toBeNull();
   });
 });
+
+describe('ui/game/HistoryPanel (afrondbevestiging na Afronden)', () => {
+  const base = {
+    lang: 'nl' as const,
+    games: [completedGame()],
+    teamName: 'Team',
+    openId: 'g1',
+    onOpenChange: vi.fn(),
+    onDeleteGame: vi.fn(),
+    canWrite: true,
+    saveError: false,
+  };
+
+  it('lokale modus: alleen de lokale-opslagregel, geen cloudclaim', () => {
+    const { getByTestId, queryByTestId } = render(<HistoryPanel {...base} finishedNoticeId="g1" />);
+    expect(getByTestId('history-finished-notice').getAttribute('role')).toBe('status');
+    expect(getByTestId('history-finished-notice-local').textContent).toBe(
+      'Wedstrijd afgerond en lokaal op dit apparaat opgeslagen.',
+    );
+    expect(queryByTestId('history-finished-notice-cloud')).toBeNull();
+  });
+
+  it.each([
+    ['wacht-op-synchronisatie', 'nog niet bevestigd'],
+    ['actie-nodig', 'nog niet gelukt'],
+    ['gesynchroniseerd', 'is bevestigd'],
+  ] as const)(
+    'cloudmodus, status %s: cloudregel volgt exact de bestaande status',
+    (status, part) => {
+      const { getByTestId } = render(
+        <HistoryPanel {...base} finishedNoticeId="g1" syncStatuses={{ g1: status }} />,
+      );
+      expect(getByTestId('history-finished-notice-cloud').textContent).toContain(part);
+    },
+  );
+
+  it('wachtend betekent nooit "Cloudsynchronisatie is bevestigd"', () => {
+    const { getByTestId } = render(
+      <HistoryPanel
+        {...base}
+        finishedNoticeId="g1"
+        syncStatuses={{ g1: 'wacht-op-synchronisatie' }}
+      />,
+    );
+    expect(getByTestId('history-finished-notice').textContent).not.toContain('is bevestigd');
+  });
+
+  it('cloudmodus met status lokaal-beschikbaar: geen cloudregel', () => {
+    const { queryByTestId } = render(
+      <HistoryPanel {...base} finishedNoticeId="g1" syncStatuses={{ g1: 'lokaal-beschikbaar' }} />,
+    );
+    expect(queryByTestId('history-finished-notice-cloud')).toBeNull();
+  });
+
+  it('Engels, en geen bevestiging voor een andere of niet-zojuist-afgeronde wedstrijd', () => {
+    const en = render(<HistoryPanel {...base} lang="en" finishedNoticeId="g1" />);
+    expect(en.getByTestId('history-finished-notice-local').textContent).toBe(
+      'Game finished and saved locally on this device.',
+    );
+    en.unmount();
+    const other = render(<HistoryPanel {...base} finishedNoticeId="g2" />);
+    expect(other.queryByTestId('history-finished-notice')).toBeNull();
+    other.unmount();
+    const none = render(<HistoryPanel {...base} />);
+    expect(none.queryByTestId('history-finished-notice')).toBeNull();
+  });
+});

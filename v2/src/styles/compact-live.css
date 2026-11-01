@@ -303,6 +303,17 @@
   gap: var(--lt-space-3);
 }
 
+/* Smalle schermen (320px): de knoppenrij loopt om i.p.v. horizontaal te scrollen. */
+.compact-dialog .modal__actions {
+  flex-wrap: wrap;
+}
+
+.compact-dialog .modal__actions > .btn-primary,
+.compact-dialog .modal__actions > .btn-outline {
+  flex: 1 1 7rem;
+  min-width: 0;
+}
+
 .compact-dialog__title,
 .compact-dialog__subtitle {
   margin: 0;

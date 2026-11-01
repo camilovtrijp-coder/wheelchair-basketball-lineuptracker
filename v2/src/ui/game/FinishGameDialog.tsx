@@ -41,7 +41,12 @@ export interface FinishGameDialogProps {
   /** Uitwedstrijd: alleen de weergavevolgorde van de stand (tegenstander links). */
   away?: boolean;
   onGameChange: (next: ActiveGame) => void;
-  onFinishGame: (latestGame?: ActiveGame) => void;
+  /**
+   * Geeft `false` terug als afronden is mislukt (bijv. opslagfout): de dialoog
+   * blijft dan open met een melding en opnieuw proberen kan. Elke andere
+   * waarde (ook `undefined`) geldt als gelukt.
+   */
+  onFinishGame: (latestGame?: ActiveGame) => boolean | void;
   onClose: () => void;
 }
 
@@ -63,6 +68,11 @@ export function FinishGameDialog({
   const [error, setError] = useState<LiveCommandError | null>(null);
 
   const [touched, setTouched] = useState(false);
+  // Afronden mislukte (opslagfout): de melding blijft bij de actie staan.
+  const [finishFailed, setFinishFailed] = useState(false);
+  // Is het laatste segment al vastgelegd (onGameChange aangeroepen) maar het afronden
+  // mislukt? Dan wordt bij opnieuw proberen niet nogmaals vastgelegd.
+  const committedRef = useRef<ActiveGame | null>(null);
 
   // Escape/achtergrond: een gewijzigde kloktijd in stap 'last' niet stil weggooien.
   function requestClose() {
@@ -95,7 +105,15 @@ export function FinishGameDialog({
   function finishWithout() {
     if (!canWrite || submitted.current) return;
     submitted.current = true;
-    onFinishGame();
+    setFinishFailed(false);
+    const committed = committedRef.current;
+    const outcome = committed != null ? onFinishGame(committed) : onFinishGame();
+    if (outcome === false) {
+      submitted.current = false;
+      setStep('choose');
+      setFinishFailed(true);
+      return;
+    }
     onClose();
   }
 
@@ -111,8 +129,15 @@ export function FinishGameDialog({
       return;
     }
     submitted.current = true;
+    setFinishFailed(false);
+    committedRef.current = result.game;
     onGameChange(result.game);
-    onFinishGame(result.game);
+    if (onFinishGame(result.game) === false) {
+      submitted.current = false;
+      setStep('choose');
+      setFinishFailed(true);
+      return;
+    }
     onClose();
   }
 
@@ -161,6 +186,11 @@ export function FinishGameDialog({
                 {t('finishDialogHint')}
               </p>
             )}
+            {finishFailed ? (
+              <p className="settings-error" role="alert" data-testid="finish-save-error">
+                {t('finishSaveFailed')}
+              </p>
+            ) : null}
             <div className="compact-finish__choices">
               <button
                 type="button"

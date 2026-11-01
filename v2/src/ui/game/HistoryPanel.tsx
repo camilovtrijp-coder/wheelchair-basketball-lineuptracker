@@ -23,6 +23,11 @@ export interface HistoryPanelProps {
   /** Gecontroleerd door de aanroeper (v1: module-level `historyOpenId`), zodat
    * "Afronden" direct de net afgeronde wedstrijd kan openen (v1-pariteit). */
   openId: string | null;
+  /**
+   * Zojuist afgeronde wedstrijd: toont boven het detail een korte bevestiging
+   * (lokaal opgeslagen; cloudstatus alleen voor zover `syncStatuses` die kent).
+   */
+  finishedNoticeId?: string | null;
   onOpenChange: (id: string | null) => void;
   onDeleteGame: (id: string) => void;
   canWrite: boolean;
@@ -173,6 +178,7 @@ export function HistoryPanel({
   games,
   teamName,
   openId,
+  finishedNoticeId,
   onOpenChange,
   onDeleteGame,
   canWrite,
@@ -307,6 +313,17 @@ export function HistoryPanel({
         ? open.segments.find((seg) => seg.id === correctingId)
         : undefined;
     const corrections = open.corrections ?? [];
+    // Cloudregel alleen als de bestaande afrondstatus er is (cloudmodus); 'lokaal-
+    // beschikbaar' zegt niets over de cloud en krijgt dus geen eigen regel.
+    const finishedStatus = syncStatuses?.[open.id];
+    const finishedCloudKey: StringKey | null =
+      finishedStatus === 'gesynchroniseerd'
+        ? 'finishedNoticeCloudSynced'
+        : finishedStatus === 'wacht-op-synchronisatie'
+          ? 'finishedNoticeCloudPending'
+          : finishedStatus === 'actie-nodig'
+            ? 'finishedNoticeCloudActionNeeded'
+            : null;
     return (
       <section className="history-panel" aria-label={t(lang, 'historyTitle')}>
         {errorBanner}
@@ -314,6 +331,23 @@ export function HistoryPanel({
         {deleteErrorBanner}
         {tombstoneNoticeBanner}
         {cloudReadErrorBanner}
+        {finishedNoticeId != null && finishedNoticeId === open.id ? (
+          <p
+            className="history-correction-saved"
+            role="status"
+            data-testid="history-finished-notice"
+          >
+            <span data-testid="history-finished-notice-local">
+              {t(lang, 'finishedNoticeLocal')}
+            </span>
+            {finishedCloudKey != null ? (
+              <>
+                {' '}
+                <span data-testid="history-finished-notice-cloud">{t(lang, finishedCloudKey)}</span>
+              </>
+            ) : null}
+          </p>
+        ) : null}
         {correctionSaved ? (
           <p
             className="history-correction-saved"
