@@ -41,7 +41,7 @@ export type LiveCommandError =
   | 'invalid-duration'
   /** Er staan niet precies 5 spelers in de opstelling. */
   | 'invalid-lineup'
-  /** Score buiten 0..`MAX_SCORE`, niet geheel, of eindstand onder de beginstand. */
+  /** Score buiten 0..`MAX_SCORE` of niet geheel. */
   | 'invalid-score'
   /** Eindstand van het segment zou onder de beginstand van dat segment liggen (besluit 2). */
   | 'score-below-segment-start'

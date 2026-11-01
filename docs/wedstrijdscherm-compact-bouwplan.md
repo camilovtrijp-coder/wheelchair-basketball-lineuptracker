@@ -16,7 +16,7 @@ Na een Opus-review tegen de code (`3ff1aa5`) heeft de eigenaar onderstaande besl
 | --- | --- | --- |
 | 1 | Klokgrens | Maximaal 10:00 (0–600 s) afdwingen in de gedeelde functies en Compact. Klassiek wordt in dezelfde PR gelijkgetrokken (nu staat live 10:59 toe). |
 | 2 | Segmentpunten | Weigeren: punten per kant 0–150 en eindstand niet onder de beginstand van het segment. Geldt ook voor bewerken. |
-| 3 | Wissel op 0 s | Weigeren met melding als de stand is gewijzigd; anders blijft de bestaande semantiek (geen leeg segment). |
+| 3 | Wissel op 0 s | Weigeren met melding als de stand is gewijzigd; anders blijft de bestaande semantiek (geen leeg segment). Open turnovers gaan bij zo'n wissel naar de nieuwe lineup (bewuste keuze, te testen in C2b). |
 | 4 | Afronden met open punten/turnovers | Waarschuwen en keuze laten: laatste segment vastleggen of bewust afronden. Geldt voor Klassiek en Compact. |
 | 5 | Uitwedstrijd | Lokaal per wedstrijd-ID, per apparaat, onder één nieuwe foutbestendige key. Geen wijziging van wedstrijdobject, datacontract of sync. |
 | 6 | Wisselconcept | Alleen UI-state. Bij herladen vervalt het concept; de huidige lineup blijft actief. Klassiek houdt zijn bestaande opgeslagen `pendingSwapLineup`. |
