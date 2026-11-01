@@ -142,13 +142,13 @@ describe('CompactLivePanel: hoofdscherm', () => {
     expect(text(getByTestId('compact-begin'))).toContain('gespeelde tijd');
   });
 
-  it('heeft geen knoppen voor wisselen, segment opslaan, kwart sluiten of afronden', () => {
+  it('heeft (C2b) wissel-, segment- en kwartknoppen maar nog geen afrondknop', () => {
     const { container } = setup();
     for (const id of ['save-segment-btn', 'swap-done-btn', 'finish-game-btn']) {
       expect(container.querySelector(`[data-testid="${id}"]`)).toBeNull();
     }
-    // Alleen: 4 scoreknoppen per kant, 2 turnoverknoppen, 1 checkbox.
-    expect(container.querySelectorAll('button')).toHaveLength(10);
+    // 4 scoreknoppen per kant, 2 turnoverknoppen, 3 acties (Wisselen, Segment, Kwart).
+    expect(container.querySelectorAll('button')).toHaveLength(13);
   });
 });
 
@@ -341,7 +341,7 @@ describe('CompactLivePanel: alleen-lezen', () => {
     const { container, getByTestId, onChange } = setup({ canWrite: false });
     expect(getByTestId('game-read-only')).toBeTruthy();
     const buttons = Array.from(container.querySelectorAll('button'));
-    expect(buttons).toHaveLength(10);
+    expect(buttons).toHaveLength(13);
     expect(buttons.every((b) => b.disabled)).toBe(true);
     expect((getByTestId('compact-score-select-for') as HTMLSelectElement).disabled).toBe(true);
     expect((getByTestId('compact-score-select-against') as HTMLSelectElement).disabled).toBe(true);
@@ -399,10 +399,11 @@ describe('CompactLivePanel: classificatie', () => {
     expect(none.queryByTestId('class-warning')).toBeNull();
   });
 
-  it('meldt een openstaand wisselconcept zonder knoppen toe te voegen', () => {
+  it('meldt een openstaand wisselconcept en biedt bevestigen/annuleren (C2b)', () => {
     const game: ActiveGame = { ...trackingGame(), pendingSwapLineup: trackingGame().onCourt };
     const { getByTestId, container } = setup({ game });
     expect(getByTestId('compact-swap-pending')).toBeTruthy();
-    expect(container.querySelectorAll('button')).toHaveLength(10);
+    // 10 basisknoppen + 3 acties (disabled) + bevestigen/annuleren van de openstaande wissel.
+    expect(container.querySelectorAll('button')).toHaveLength(15);
   });
 });

@@ -269,3 +269,225 @@
   font-size: var(--lt-font-size-sm);
   color: var(--lt-color-muted);
 }
+
+/* Compact wedstrijdscherm (C2b): acties, dialoog, numerieke velden. */
+.compact-actions {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--lt-space-2);
+}
+
+.compact-actions__swap {
+  grid-column: 1 / -1;
+  min-height: 3rem;
+}
+
+.compact-actions__btn,
+.compact-pending button {
+  min-height: 2.75rem;
+  min-width: 0;
+}
+
+.compact-pending {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(10rem, 1fr));
+  gap: var(--lt-space-2);
+}
+
+.compact-dialog {
+  max-height: calc(100dvh - 2 * var(--lt-space-3));
+  overflow-y: auto;
+  width: min(100%, 34rem);
+  display: flex;
+  flex-direction: column;
+  gap: var(--lt-space-3);
+}
+
+.compact-dialog__title,
+.compact-dialog__subtitle {
+  margin: 0;
+}
+
+.compact-dialog__subtitle {
+  font-size: var(--lt-font-size-sm);
+}
+
+.compact-dialog__section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--lt-space-2);
+}
+
+.compact-dialog__hint {
+  margin: 0;
+  font-size: var(--lt-font-size-sm);
+  color: var(--lt-color-muted);
+}
+
+.compact-dialog__scores {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--lt-space-2);
+}
+
+.compact-dialog__field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--lt-space-1);
+  min-width: 0;
+}
+
+.compact-dialog__field-label {
+  font-size: var(--lt-font-size-sm);
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.compact-pick__grid {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: var(--lt-space-1);
+}
+
+.compact-pick__player {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.1rem;
+  min-width: 0;
+  min-height: 3.25rem;
+  padding: var(--lt-space-2) 2px;
+  border: var(--lt-border-thin);
+  border-radius: var(--lt-radius-md);
+  background: var(--lt-color-surface);
+  color: var(--lt-color-fg);
+}
+
+.compact-pick__player--on {
+  border: 2px solid var(--lt-color-primary);
+  background: color-mix(in srgb, var(--lt-color-primary) 22%, var(--lt-color-bg));
+}
+
+.compact-pick__player:focus-visible {
+  outline: var(--lt-focus-ring);
+  outline-offset: var(--lt-focus-offset);
+}
+
+.compact-pick__nr {
+  font-weight: 700;
+  font-size: var(--lt-font-size-lg);
+  line-height: var(--lt-line-height-tight);
+}
+
+.compact-pick__name {
+  max-width: 100%;
+  font-size: var(--lt-font-size-xs);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.compact-pick__class {
+  font-size: var(--lt-font-size-xs);
+  color: var(--lt-color-muted);
+}
+
+.compact-pick__order {
+  position: absolute;
+  top: 1px;
+  right: 3px;
+  font-size: var(--lt-font-size-xs);
+  font-weight: 700;
+}
+
+.numfield {
+  display: flex;
+  align-items: stretch;
+  min-width: 0;
+  border: var(--lt-border-thin);
+  border-radius: var(--lt-radius-md);
+  background: var(--lt-color-surface);
+}
+
+.numfield__input {
+  flex: 1 1 auto;
+  min-width: 0;
+  width: 100%;
+  min-height: 2.75rem;
+  padding: 0 var(--lt-space-2);
+  border: 0;
+  background: transparent;
+  color: var(--lt-color-fg);
+  font: inherit;
+  font-size: var(--lt-font-size-lg);
+  text-align: center;
+}
+
+.numfield__pick {
+  position: relative;
+  flex: 0 0 2.25rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-left: var(--lt-border-thin);
+}
+
+.numfield__select {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  opacity: 0;
+  cursor: pointer;
+}
+
+.numfield:focus-within {
+  outline: var(--lt-focus-ring);
+  outline-offset: var(--lt-focus-offset);
+}
+
+.clockfields {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  align-items: center;
+  gap: var(--lt-space-2);
+}
+
+.compact-review {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: var(--lt-space-1) var(--lt-space-3);
+  margin: 0;
+  font-size: var(--lt-font-size-sm);
+}
+
+.compact-review dt {
+  color: var(--lt-color-muted);
+}
+
+.compact-review dd {
+  margin: 0;
+  font-weight: 700;
+}
+
+.compact-review__lineup {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: var(--lt-space-1);
+}
+
+.compact-review__player {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  min-width: 0;
+  padding: var(--lt-space-1) 2px;
+  border: var(--lt-border-thin);
+  border-radius: var(--lt-radius-md);
+}

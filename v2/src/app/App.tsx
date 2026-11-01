@@ -42,6 +42,8 @@ import {
 } from '../domain/game/writerClaim';
 import { GameSetupPanel } from '../ui/game/GameSetupPanel';
 import { LiveTrackingPanel } from '../ui/game/LiveTrackingPanel';
+import { CompactLivePanel } from '../ui/game/CompactLivePanel';
+import { useGameScreenPreference } from '../application/game/useGameScreen';
 import { TakeoverConfirmDialog } from '../ui/game/TakeoverConfirmDialog';
 import { useGameCloudViewer } from '../ui/game/useGameCloudViewer';
 import { downloadPendingGameActions } from '../infrastructure/game/exportPendingGameActions';
@@ -246,6 +248,10 @@ export function App({
     onLangChange?.(lang);
   }, [lang, onLangChange]);
   const [tab, setTab] = useState<Tab>('settings');
+  // Apparaatvoorkeur Klassiek/Compact (nooit onderdeel van de wedstrijd): beide
+  // schermen krijgen exact dezelfde props en dezelfde ActiveGame.
+  const gameScreen = useGameScreenPreference();
+  const GameScreenPanel = gameScreen === 'compact' ? CompactLivePanel : LiveTrackingPanel;
   const [settings, setSettings] = useState<(Settings & Record<string, unknown>) | null>(null);
   const [roster, setRoster] = useState<Roster | null>(null);
   const [settingsUpdatedAt, setSettingsUpdatedAt] = useState<number | undefined>(undefined);
@@ -1954,7 +1960,7 @@ export function App({
                 onCancel={handleCancelTakeoverConfirm}
               />
             ) : null}
-            <LiveTrackingPanel
+            <GameScreenPanel
               lang={lang}
               game={game}
               quarterCount={settings.quarterCount as number}

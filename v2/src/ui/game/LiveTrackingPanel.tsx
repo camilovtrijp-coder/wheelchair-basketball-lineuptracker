@@ -31,6 +31,7 @@ import {
 } from '../../domain/game/tracking';
 import { translate, type Lang, type StringKey } from '../../i18n/strings';
 import { useFocusTrap } from '../../application/a11y/useFocusTrap';
+import { useGameScreenLock } from '../../application/game/useGameScreen';
 
 export interface LiveTrackingPanelProps {
   lang: Lang;
@@ -246,6 +247,16 @@ export function LiveTrackingPanel({
   const swapConfirmTrapRef = useFocusTrap<HTMLDivElement>(swapConfirmEndSec != null);
   const editSegmentTrapRef = useFocusTrap<HTMLDivElement>(
     editDraft != null && editSegmentId != null,
+  );
+
+  // Schermwisselguard (apparaatmenu Klassiek/Compact): een onbevestigde wissel
+  // of open venster blokkeert het wisselen van scherm.
+  useGameScreenLock(
+    canWrite && pendingSwapLineup != null
+      ? 'swap'
+      : swapConfirmEndSec != null || editDraft != null
+        ? 'dialog'
+        : null,
   );
 
   const history = deriveGameHistory(game);

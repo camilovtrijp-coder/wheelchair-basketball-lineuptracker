@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'preact/hooks';
 import type { GamePlayer } from '../../domain/game/types';
-import { setScore } from '../../domain/game/liveCommands';
+import { discardSwaps, setScore } from '../../domain/game/liveCommands';
 import {
   deriveGameHistory,
   isOverLimit,
@@ -12,13 +12,17 @@ import {
   storeAwayPreference,
 } from '../../infrastructure/game/compactAwayPreference';
 import { translate, type StringKey } from '../../i18n/strings';
+import { useGameScreenLock } from '../../application/game/useGameScreen';
 import { fmtSec, type LiveTrackingPanelProps } from './LiveTrackingPanel';
+import { CompactLiveDialog, type CompactDialogMode } from './CompactLiveDialog';
 
 /**
- * Compact wedstrijdscherm (bouwplan C2a): alleen het hoofdscherm. Zelfde props
- * en dezelfde `ActiveGame` als `LiveTrackingPanel`. Wisselen, segment opslaan,
- * kwart sluiten, segmentlijst en afronden volgen in C2b/C3; hier staan daarvoor
- * bewust geen (halve) knoppen. Het component is nog niet selecteerbaar.
+ * Compact wedstrijdscherm (bouwplan C2a/C2b). Zelfde props en dezelfde
+ * `ActiveGame` als `LiveTrackingPanel`. Wisselen, Segment opslaan en
+ * Kwart/periode afsluiten lopen via een concept-dialoog (alleen UI-state) en
+ * leggen bij bevestigen één coherente overgang vast via `liveCommands`.
+ * Segmentlijst, bewerken en afronden volgen in C3; hier staan daarvoor bewust
+ * geen (halve) knoppen.
  */
 export type CompactLivePanelProps = LiveTrackingPanelProps;
 
@@ -50,6 +54,12 @@ export function CompactLivePanel({
   saveError,
 }: CompactLivePanelProps) {
   const t = (key: StringKey) => translate(lang, key);
+  const [dialog, setDialog] = useState<CompactDialogMode | null>(null);
+  // Schermwisselguard: een opgeslagen onbevestigde wissel of een open concept
+  // blokkeert de schakelaar Klassiek/Compact (alleen als er geschreven mag worden).
+  useGameScreenLock(
+    canWrite && game.pendingSwapLineup != null ? 'swap' : dialog != null ? 'dialog' : null,
+  );
 
   // Uitwedstrijd: lokale voorkeur per apparaat en wedstrijd-ID, nooit op ActiveGame.
   const [awayState, setAwayState] = useState(() => ({
@@ -286,6 +296,82 @@ export function CompactLivePanel({
           )}
         </p>
       </div>
+
+      {game.pendingSwapLineup != null ? (
+        <div className="compact-pending" data-testid="compact-pending-actions">
+          <button
+            type="button"
+            className="btn-primary"
+            disabled={!canWrite}
+            data-testid="compact-pending-confirm"
+            onClick={() => canWrite && setDialog('confirm-pending')}
+          >
+            {t('compactPendingConfirmBtn')}
+          </button>
+          <button
+            type="button"
+            className="btn-outline"
+            disabled={!canWrite}
+            data-testid="compact-pending-discard"
+            onClick={() => {
+              if (canWrite) onGameChange(discardSwaps(game));
+            }}
+          >
+            {t('compactPendingDiscardBtn')}
+          </button>
+        </div>
+      ) : null}
+
+      <div className="compact-actions" data-testid="compact-actions">
+        <button
+          type="button"
+          className="btn-primary compact-actions__swap"
+          disabled={!canWrite || game.pendingSwapLineup != null}
+          data-testid="compact-swap-open"
+          onClick={() => canWrite && setDialog('swap')}
+        >
+          {t('compactSwapBtn')}
+        </button>
+        <button
+          type="button"
+          className="btn-outline compact-actions__btn"
+          disabled={!canWrite || game.pendingSwapLineup != null}
+          data-testid="compact-save-segment"
+          onClick={() => canWrite && setDialog('segment')}
+        >
+          {t('compactSaveSegmentBtn')}
+        </button>
+        <button
+          type="button"
+          className="btn-outline compact-actions__btn"
+          disabled={!canWrite || game.pendingSwapLineup != null}
+          data-testid="compact-close-quarter"
+          onClick={() => canWrite && setDialog('quarter')}
+        >
+          {t('compactCloseQuarterBtn')}
+        </button>
+      </div>
+
+      <p className="compact-panel__note" data-testid="compact-finish-note">
+        {t('compactFinishInClassicNote')}
+      </p>
+
+      {dialog != null ? (
+        <CompactLiveDialog
+          lang={lang}
+          game={game}
+          mode={dialog}
+          quarterCount={quarterCount}
+          periodLabel={periodLabel}
+          classification={classification}
+          teamName={teamName}
+          tag1Label={tag1Label}
+          tag2Label={tag2Label}
+          canWrite={canWrite}
+          onCommit={onGameChange}
+          onClose={() => setDialog(null)}
+        />
+      ) : null}
     </section>
   );
 }
