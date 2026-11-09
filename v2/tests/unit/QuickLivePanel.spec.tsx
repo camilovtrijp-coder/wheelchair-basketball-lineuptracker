@@ -119,6 +119,14 @@ describe('QuickLivePanel: hoofdscherm', () => {
     expect(text(getByTestId('quick-begin'))).toContain('10:00');
   });
 
+  it('Wedstrijd afronden staat helemaal onderaan, onder de vaste opslagbalk', () => {
+    const { getByTestId } = setup();
+    const dock = getByTestId('quick-dock');
+    const finish = getByTestId('quick-finish-game');
+    expect(dock.compareDocumentPosition(finish) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(dock.contains(finish)).toBe(false);
+  });
+
   it('+2 en −1 leggen score-acties vast en tonen het open segment', () => {
     const { getByTestId, latest } = setup();
     fireEvent.click(getByTestId('quick-score-plus-for-2'));

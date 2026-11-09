@@ -612,16 +612,6 @@ export function QuickLivePanel({
         onEdit={(id) => setEditSegmentId(id)}
       />
 
-      <button
-        type="button"
-        className="btn-primary quick-finish"
-        disabled={!canWrite || !canFinishGame(game)}
-        data-testid="quick-finish-game"
-        onClick={() => canWrite && canFinishGame(game) && setFinishOpen(true)}
-      >
-        {t('finishGameBtn')}
-      </button>
-
       <div className="quick-dock" data-testid="quick-dock">
         <button
           type="button"
@@ -645,6 +635,16 @@ export function QuickLivePanel({
           </span>
         </button>
       </div>
+
+      <button
+        type="button"
+        className="btn-primary quick-finish"
+        disabled={!canWrite || !canFinishGame(game)}
+        data-testid="quick-finish-game"
+        onClick={() => canWrite && canFinishGame(game) && setFinishOpen(true)}
+      >
+        {t('finishGameBtn')}
+      </button>
 
       {sheet?.kind === 'score' ? (
         <QuickScoreSheet
