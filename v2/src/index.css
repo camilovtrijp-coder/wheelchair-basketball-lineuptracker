@@ -10,6 +10,7 @@
 @import './styles/trends-lineups-extra.css';
 @import './styles/trends-quarters.css';
 @import './styles/compact-live.css';
+@import './styles/quick-live.css';
 
 /* Zonder deze reset telt content-box de padding bovenop een expliciete
    width op (bijv. .app-main), wat op smalle viewports horizontale

@@ -1,5 +1,5 @@
 /**
- * Keuze van het wedstrijdscherm (Klassiek of Compact; bouwplan besluit 7).
+ * Keuze van het wedstrijdscherm (Klassiek, Compact of Snel; bouwplan besluit 7).
  * Uitsluitend een voorkeur van dit apparaat, onder één eigen key (nieuwe key;
  * geen bestaande key of gebruikersdata geraakt). Nooit onderdeel van
  * `ActiveGame`, het datacontract, CSV of cloudsync. Patroon van
@@ -11,12 +11,12 @@
  * in het apparaatmenu niet midden in een bewerking van scherm wisselt. Dit is
  * puur UI-toestand en wordt nergens opgeslagen.
  */
-export type GameScreen = 'classic' | 'compact';
+export type GameScreen = 'classic' | 'compact' | 'quick';
 
 export const GAME_SCREEN_STORAGE_KEY = 'lineup-tracker-v2-game-screen';
 
 export function parseGameScreen(raw: string | null | undefined): GameScreen {
-  return raw === 'compact' ? 'compact' : 'classic';
+  return raw === 'compact' ? 'compact' : raw === 'quick' ? 'quick' : 'classic';
 }
 
 export function readGameScreen(): GameScreen {

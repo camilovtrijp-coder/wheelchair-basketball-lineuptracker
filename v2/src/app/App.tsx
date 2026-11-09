@@ -43,6 +43,7 @@ import {
 import { GameSetupPanel } from '../ui/game/GameSetupPanel';
 import { LiveTrackingPanel } from '../ui/game/LiveTrackingPanel';
 import { CompactLivePanel } from '../ui/game/CompactLivePanel';
+import { QuickLivePanel } from '../ui/game/QuickLivePanel';
 import { useGameScreenPreference } from '../application/game/useGameScreen';
 import { TakeoverConfirmDialog } from '../ui/game/TakeoverConfirmDialog';
 import { useGameCloudViewer } from '../ui/game/useGameCloudViewer';
@@ -251,7 +252,12 @@ export function App({
   // Apparaatvoorkeur Klassiek/Compact (nooit onderdeel van de wedstrijd): beide
   // schermen krijgen exact dezelfde props en dezelfde ActiveGame.
   const gameScreen = useGameScreenPreference();
-  const GameScreenPanel = gameScreen === 'compact' ? CompactLivePanel : LiveTrackingPanel;
+  const GameScreenPanel =
+    gameScreen === 'compact'
+      ? CompactLivePanel
+      : gameScreen === 'quick'
+        ? QuickLivePanel
+        : LiveTrackingPanel;
   const [settings, setSettings] = useState<(Settings & Record<string, unknown>) | null>(null);
   const [roster, setRoster] = useState<Roster | null>(null);
   const [settingsUpdatedAt, setSettingsUpdatedAt] = useState<number | undefined>(undefined);

@@ -172,6 +172,30 @@ describe('voorkeur Klassiek/Compact', () => {
   });
 });
 
+describe('derde optie Snel', () => {
+  it('Snel wordt herkend, bewaard en in het apparaatmenu getoond (NL en EN)', () => {
+    expect(parseGameScreen('quick')).toBe('quick');
+    storeGameScreen('quick');
+    expect(window.localStorage.getItem(GAME_SCREEN_STORAGE_KEY)).toBe('quick');
+    expect(readGameScreen()).toBe('quick');
+    const { unmount } = render(<Bar />);
+    openMenu();
+    expect((screen.getByTestId('game-screen-quick') as HTMLInputElement).checked).toBe(true);
+    expect(screen.getByTestId('game-screen-quick').parentElement?.textContent).toContain('Snel');
+    unmount();
+    render(<Bar lang="en" />);
+    openMenu();
+    expect(screen.getByTestId('game-screen-quick').parentElement?.textContent).toContain('Quick');
+  });
+
+  it('wisselen van Compact naar Snel via het menu bewaart de keuze', () => {
+    render(<Bar />);
+    openMenu();
+    fireEvent.click(screen.getByTestId('game-screen-quick'));
+    expect(readGameScreen()).toBe('quick');
+  });
+});
+
 describe('schakelaar in het apparaatmenu', () => {
   it('toont NL- en EN-labels en staat standaard op Klassiek', () => {
     render(<Bar />);
