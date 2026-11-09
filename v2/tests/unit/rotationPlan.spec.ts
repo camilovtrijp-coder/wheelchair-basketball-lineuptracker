@@ -12,6 +12,7 @@ import {
   lockedBlockCount,
   moveBlockTime,
   nextPlannedLineup,
+  playedBlockCount,
   parseRotationPlan,
   plannedEndSec,
   propagateDeviation,
@@ -253,6 +254,25 @@ describe('afwijking van het schema', () => {
     expect(next.quarters['1']?.[1]?.lineup).toEqual([15, 8, 13, 5, 14]);
     expect(next.quarters['1']?.[0]?.lineup).toEqual(START);
     expect(plan.quarters['1']?.[1]?.lineup).toEqual(SECOND);
+  });
+});
+
+describe('lopend blok blijft aanpasbaar', () => {
+  it('playedBlockCount telt alleen helemaal gespeelde blokken (niet het lopende)', () => {
+    const g = game({ curQuarter: 2 });
+    expect(playedBlockCount(g, 1, 2)).toBe(2);
+    expect(playedBlockCount(g, 2, 2)).toBe(0);
+    expect(playedBlockCount(g, 3, 2)).toBe(0);
+    expect(playedBlockCount(withSegment(game(), 180), 1, 2)).toBe(1);
+  });
+
+  it('addBlock splitst vanaf de opgegeven kloktijd als het laatste blok al loopt', () => {
+    const single: RotationPlan = { quarters: { '1': [{ toSec: 0, lineup: START }] } };
+    // Zonder begintijd: midden van het hele kwart. Met 6:00 als begintijd: midden van de rest.
+    expect(addBlock(single, 1, true)?.quarters['1']?.[0]?.toSec).toBe(300);
+    expect(addBlock(single, 1, true, 360)?.quarters['1']?.[0]?.toSec).toBe(180);
+    // Te weinig tijd over vanaf de opgegeven kloktijd.
+    expect(addBlock(single, 1, true, 40)).toBeNull();
   });
 });
 

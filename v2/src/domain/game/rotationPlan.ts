@@ -170,6 +170,17 @@ export function lockedBlockCount(game: ActiveGame, q: number, blockCount: number
   return Math.min(blockCount, currentBlockIndex(game, blockCount) + 1);
 }
 
+/**
+ * Aantal blokken van kwart `q` dat helemaal gespeeld is en dus niet meer te bewerken valt. Het lopende
+ * blok telt NIET mee: zijn opstelling staat op de vloer, maar zijn wisseltijd en de blokken erna
+ * (ook een nieuw wisselmoment) blijven aan te passen.
+ */
+export function playedBlockCount(game: ActiveGame, q: number, blockCount: number): number {
+  if (q < game.curQuarter) return blockCount;
+  if (q > game.curQuarter) return 0;
+  return Math.min(blockCount, currentBlockIndex(game, blockCount));
+}
+
 /** Geplande eindtijd van het lopende blok; `null` als er in dit kwart geen wissel meer gepland is. */
 export function plannedEndSec(game: ActiveGame, plan: RotationPlan): number | null {
   const blocks = plan.quarters[String(game.curQuarter)];
@@ -337,12 +348,18 @@ export function moveBlockTime(
 }
 
 /** Splitst het laatste blok van een kwart in twee (zelfde opstelling); `null` als er geen ruimte is. */
-export function addBlock(plan: RotationPlan, q: number, clockDown: boolean): RotationPlan | null {
+export function addBlock(
+  plan: RotationPlan,
+  q: number,
+  clockDown: boolean,
+  /** Splits pas vanaf dit moment (bijv. de huidige kloktijd als het laatste blok al loopt). */
+  fromSec?: number,
+): RotationPlan | null {
   const blocks = plan.quarters[String(q)];
   if (blocks == null || blocks.length >= PLAN_MAX_BLOCKS_PER_QUARTER) return null;
   const last = blocks[blocks.length - 1];
   if (last == null) return null;
-  const from = blockStartSec(plan, q, blocks.length - 1, clockDown);
+  const from = fromSec ?? blockStartSec(plan, q, blocks.length - 1, clockDown);
   const until = quarterEndSec(clockDown);
   const mid = Math.round((from + until) / 2 / PLAN_TIME_STEP_SEC) * PLAN_TIME_STEP_SEC;
   const lo = Math.min(from, until) + PLAN_TIME_STEP_SEC;

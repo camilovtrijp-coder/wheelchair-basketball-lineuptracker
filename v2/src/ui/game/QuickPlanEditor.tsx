@@ -9,7 +9,8 @@ import {
   addBlock,
   blockStartSec,
   blockTimeBounds,
-  lockedBlockCount,
+  currentBlockIndex,
+  playedBlockCount,
   moveBlockTime,
   PLAN_TIME_STEP_SEC,
   removeBlock,
@@ -111,7 +112,9 @@ export function QuickPlanEditor({
   }
 
   const blocks = plan.quarters[String(quarter)] ?? [];
-  const locked = lockedBlockCount(game, quarter, blocks.length);
+  // Gespeelde blokken zijn dicht. Het lopende blok blijft qua tijd aan te passen (zijn opstelling staat op de vloer).
+  const played = playedBlockCount(game, quarter, blocks.length);
+  const currentIdx = quarter === game.curQuarter ? currentBlockIndex(game, blocks.length) : -1;
 
   function previousLineup(i: number): number[] | null {
     if (i > 0) return blocks[i - 1]?.lineup ?? null;
@@ -152,11 +155,17 @@ export function QuickPlanEditor({
 
   function handleAdd() {
     if (!canWrite || plan == null) return;
-    if (blocks.length - 1 < locked) {
+    if (blocks.length - 1 < played) {
       setNotice('quickPlanAddLocked');
       return;
     }
-    const next = addBlock(plan, quarter, game.clockDown);
+    // Loopt het laatste blok al, dan splitst het pas vanaf de huidige kloktijd.
+    const next = addBlock(
+      plan,
+      quarter,
+      game.clockDown,
+      currentIdx === blocks.length - 1 ? game.beginSec : undefined,
+    );
     if (next == null) {
       setNotice('quickPlanNoRoom');
       return;
@@ -198,6 +207,8 @@ export function QuickPlanEditor({
   }
 
   const editing = editIndex != null ? blocks[editIndex] : undefined;
+  // De opstelling van het lopende blok staat op de vloer en is hier niet aan te passen.
+  const lineupLocked = editIndex != null && editIndex === currentIdx;
   const editBounds =
     editIndex != null ? blockTimeBounds(plan, quarter, editIndex, game.clockDown) : null;
   // "Eerder" = eerder in de wedstrijd: bij een aflopende klok een hogere kloktijd.
@@ -247,8 +258,8 @@ export function QuickPlanEditor({
 
       <ol className="quick-plan__blocks">
         {blocks.map((block, i) => {
-          const isLocked = i < locked;
-          const now = quarter === game.curQuarter && i === locked - 1;
+          const isLocked = i < played;
+          const now = i === currentIdx;
           const prev = previousLineup(i);
           const ins = prev != null ? block.lineup.filter((r) => !prev.includes(r)) : [];
           const invalid = resolveLineup(game, block.lineup) == null;
@@ -275,7 +286,7 @@ export function QuickPlanEditor({
                   </strong>
                   <span className="quick-plan__tag">
                     {now
-                      ? t('quickPlanBlockNow')
+                      ? t('quickPlanBlockNowEdit')
                       : isLocked
                         ? t('quickPlanBlockPlayed')
                         : t('quickPlanBlockEditHint')}
@@ -379,6 +390,7 @@ export function QuickPlanEditor({
                     type="button"
                     className={`chip quick-chip${sel ? ' chip--selected' : ''}`}
                     aria-pressed={sel}
+                    disabled={lineupLocked}
                     data-testid={`quick-plan-court-${idx}`}
                     onClick={() => tapEditChip({ kind: 'court', index: idx })}
                   >
@@ -400,6 +412,7 @@ export function QuickPlanEditor({
                       type="button"
                       className={`chip quick-chip${sel ? ' chip--selected' : ''}`}
                       aria-pressed={sel}
+                      disabled={lineupLocked}
                       data-testid={`quick-plan-bench-${p.rosterId}`}
                       onClick={() => tapEditChip({ kind: 'bench', rosterId: p.rosterId })}
                     >
@@ -410,7 +423,9 @@ export function QuickPlanEditor({
                 })}
             </div>
           </div>
-          <p className="quick-sheet__meta">{t('quickPlanSwapHint')}</p>
+          <p className="quick-sheet__meta" data-testid="quick-plan-sheet-note">
+            {lineupLocked ? t('quickPlanCurrentBlockNote') : t('quickPlanSwapHint')}
+          </p>
 
           <button
             type="button"
@@ -420,7 +435,7 @@ export function QuickPlanEditor({
           >
             {t('quickPlanDoneBtn')}
           </button>
-          {blocks.length > 1 ? (
+          {blocks.length > 1 && !lineupLocked ? (
             <button
               type="button"
               className="btn-outline"

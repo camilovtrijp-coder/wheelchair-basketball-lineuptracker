@@ -176,7 +176,7 @@ describe('Wisselschema: maken en bewerken', () => {
     expect(readPlanForGame('game-1')?.quarters['1']?.[0]).toEqual(plan().quarters['1']?.[0]);
   });
 
-  it('gespeelde blokken zijn niet meer te bewerken', () => {
+  it('gespeelde blokken zijn dicht; het lopende blok blijft qua wisseltijd aan te passen', () => {
     storePlanForGame('game-1', plan());
     const { getByTestId } = setup({ game: trackingGame({ curQuarter: 2, beginSec: 600 }) });
     fireEvent.click(getByTestId('quick-view-plan'));
@@ -184,9 +184,54 @@ describe('Wisselschema: maken en bewerken', () => {
     expect((getByTestId('quick-plan-block-1-0') as HTMLButtonElement).disabled).toBe(true);
     expect((getByTestId('quick-plan-block-1-1') as HTMLButtonElement).disabled).toBe(true);
     fireEvent.click(getByTestId('quick-plan-tab-2'));
-    // Kwart 2: het lopende blok is dicht, het volgende blok is te bewerken.
-    expect((getByTestId('quick-plan-block-2-0') as HTMLButtonElement).disabled).toBe(true);
+    // Kwart 2: het lopende blok is te openen (tijd), het volgende blok is ook te bewerken.
+    expect((getByTestId('quick-plan-block-2-0') as HTMLButtonElement).disabled).toBe(false);
     expect((getByTestId('quick-plan-block-2-1') as HTMLButtonElement).disabled).toBe(false);
+  });
+
+  it('aan het begin van kwart 1 zijn wisselmomenten toe te voegen en de wisseltijd aan te passen', () => {
+    // Schema maken vanuit niets: één blok in kwart 1, dat meteen het lopende blok is.
+    const { getByTestId, queryByTestId } = setup();
+    fireEvent.click(getByTestId('quick-view-plan'));
+    fireEvent.click(getByTestId('quick-plan-create'));
+    expect(getByTestId('quick-plan-block-1-0').textContent).toContain('nu bezig');
+    expect((getByTestId('quick-plan-block-1-0') as HTMLButtonElement).disabled).toBe(false);
+    // Wisselmoment toevoegen splitst het lopende blok vanaf de huidige kloktijd (10:00 → 5:00).
+    fireEvent.click(getByTestId('quick-plan-add-block'));
+    expect(queryByTestId('quick-plan-notice')).toBeNull();
+    expect(readPlanForGame('game-1')?.quarters['1']).toEqual([
+      { toSec: 300, lineup: [4, 7, 9, 11, 13] },
+      { toSec: 0, lineup: [4, 7, 9, 11, 13] },
+    ]);
+    // Het lopende blok: wisseltijd aan te passen, opstelling dicht en niet te verwijderen.
+    fireEvent.click(getByTestId('quick-plan-block-1-0'));
+    expect(getByTestId('quick-plan-time').textContent).toBe('5:00');
+    fireEvent.click(getByTestId('quick-plan-later'));
+    expect(getByTestId('quick-plan-time').textContent).toBe('4:30');
+    expect((getByTestId('quick-plan-court-0') as HTMLButtonElement).disabled).toBe(true);
+    expect((getByTestId('quick-plan-bench-12') as HTMLButtonElement).disabled).toBe(true);
+    expect(queryByTestId('quick-plan-delete-block')).toBeNull();
+    fireEvent.click(getByTestId('quick-plan-done'));
+    expect(readPlanForGame('game-1')?.quarters['1']?.[0]?.toSec).toBe(270);
+    // Het volgende blok is volledig te bewerken: speler eruit/erin en verwijderen.
+    fireEvent.click(getByTestId('quick-plan-block-1-1'));
+    expect((getByTestId('quick-plan-court-0') as HTMLButtonElement).disabled).toBe(false);
+    fireEvent.click(getByTestId('quick-plan-court-0'));
+    fireEvent.click(getByTestId('quick-plan-bench-12'));
+    fireEvent.click(getByTestId('quick-plan-done'));
+    expect(readPlanForGame('game-1')?.quarters['1']?.[1]?.lineup).toEqual([12, 7, 9, 11, 13]);
+    // De geplande wissel verschijnt in het wedstrijdscherm.
+    fireEvent.click(getByTestId('quick-view-game'));
+    expect(getByTestId('quick-plan-card').textContent).toContain('rond 4:30');
+  });
+
+  it('het laatste blok van een kwart dat al helemaal gespeeld is, krijgt geen extra wisselmoment', () => {
+    storePlanForGame('game-1', plan());
+    const { getByTestId } = setup({ game: trackingGame({ curQuarter: 2, beginSec: 600 }) });
+    fireEvent.click(getByTestId('quick-view-plan'));
+    fireEvent.click(getByTestId('quick-plan-tab-1'));
+    fireEvent.click(getByTestId('quick-plan-add-block'));
+    expect(getByTestId('quick-plan-notice').textContent).toContain('al gespeeld');
   });
 
   it('zonder schrijfrechten zijn de knoppen uitgeschakeld', () => {

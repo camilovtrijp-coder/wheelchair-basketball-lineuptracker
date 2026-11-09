@@ -53,6 +53,9 @@ export const quickNl = {
   quickPlanBlockWhen: '{begin} – {end}',
   quickPlanBlockEditHint: 'tik om aan te passen',
   quickPlanBlockNow: 'nu bezig',
+  quickPlanBlockNowEdit: 'nu bezig · tik om de wisseltijd aan te passen',
+  quickPlanCurrentBlockNote:
+    'Deze opstelling staat nu op de vloer. Pas hier alleen de wisseltijd aan.',
   quickPlanBlockPlayed: '✓ gespeeld',
   quickPlanBlockEditAria: 'Blok {n} aanpassen: {when}',
   quickPlanStarters: 'Starters',
@@ -131,6 +134,8 @@ export const quickEn = {
   quickPlanBlockWhen: '{begin} – {end}',
   quickPlanBlockEditHint: 'tap to edit',
   quickPlanBlockNow: 'in progress',
+  quickPlanBlockNowEdit: 'in progress · tap to adjust the substitution time',
+  quickPlanCurrentBlockNote: 'This lineup is on court now. Only adjust the substitution time here.',
   quickPlanBlockPlayed: '✓ played',
   quickPlanBlockEditAria: 'Edit block {n}: {when}',
   quickPlanStarters: 'Starters',
