@@ -78,6 +78,7 @@ describe('ui/context/ContextSwitcher — race tussen verouderde en actuele teamr
         teamOnlyContexts={[]}
         organizationGateway={gateway}
         onSelect={() => {}}
+        onCreateOrganization={() => {}}
       />,
     );
 

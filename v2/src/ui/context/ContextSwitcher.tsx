@@ -16,6 +16,7 @@ export interface ContextSwitcherProps {
   teamOnlyContexts: TeamOnlyContext[];
   organizationGateway: OrganizationGateway;
   onSelect: (context: SelectedContext) => void;
+  onCreateOrganization: () => void;
 }
 
 function t(lang: Lang, key: StringKey): string {
@@ -28,6 +29,7 @@ export function ContextSwitcher({
   teamOnlyContexts,
   organizationGateway,
   onSelect,
+  onCreateOrganization,
 }: ContextSwitcherProps) {
   const [expandedOrgId, setExpandedOrgId] = useState<string | null>(null);
   const [teams, setTeams] = useState<TeamSummary[] | null>(null);
@@ -126,6 +128,13 @@ export function ContextSwitcher({
             </li>
           ))}
         </ul>
+        <button
+          type="button"
+          data-testid="context-create-organization"
+          onClick={onCreateOrganization}
+        >
+          {t(lang, 'contextSwitcherCreateOrganizationBtn')}
+        </button>
       </main>
     </div>
   );
