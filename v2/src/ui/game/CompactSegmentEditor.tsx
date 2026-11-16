@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'preact/hooks';
-import { MAX_SCORE, type ActiveGame, type GamePlayer } from '../../domain/game/types';
+import { MAX_SCORE, type ActiveGame } from '../../domain/game/types';
 import {
   clockDuration,
   editSegment,
@@ -25,6 +25,7 @@ import {
   type ClockDraft,
 } from './CompactNumberFields';
 import { SegmentDeleteZone } from './SegmentDeleteZone';
+import { playerTag } from './playerTag';
 
 /**
  * Segmenteditor van het compacte scherm (bouwplan C3, modal). Werkt op het
@@ -50,12 +51,6 @@ export interface CompactSegmentEditorProps {
 }
 
 const MAX_TURNOVERS = 99;
-
-function tagOf(player: GamePlayer, tag1Label: string, tag2Label: string): string {
-  const tag1 = tag1Label.charAt(0).toUpperCase();
-  const tag2 = tag2Label.charAt(0).toUpperCase();
-  return player.vrouw ? (player.jeugd ? `${tag1}${tag2}` : tag1) : player.jeugd ? tag2 : '';
-}
 
 export function CompactSegmentEditor({
   lang,
@@ -294,7 +289,7 @@ export function CompactSegmentEditor({
               <div className="compact-pick__grid" role="group" aria-label={t('lineupLabel')}>
                 {game.players.map((p) => {
                   const on = lineup.includes(p.id);
-                  const tag = tagOf(p, tag1Label, tag2Label);
+                  const tag = playerTag(p, tag1Label, tag2Label);
                   return (
                     <button
                       key={p.id}

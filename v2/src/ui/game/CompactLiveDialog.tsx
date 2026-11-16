@@ -1,10 +1,5 @@
 import { useEffect, useRef, useState } from 'preact/hooks';
-import {
-  MAX_CLOCK_SECONDS,
-  MAX_SCORE,
-  type ActiveGame,
-  type GamePlayer,
-} from '../../domain/game/types';
+import { MAX_CLOCK_SECONDS, MAX_SCORE, type ActiveGame } from '../../domain/game/types';
 import {
   clockDuration,
   closeQuarter,
@@ -30,6 +25,7 @@ import {
   parseScoreDraft,
   type ClockDraft,
 } from './CompactNumberFields';
+import { playerTag } from './playerTag';
 
 /**
  * Concept-dialoog van het compacte wedstrijdscherm (bouwplan C2b). Alles hier
@@ -58,12 +54,6 @@ export interface CompactLiveDialogProps {
   away?: boolean;
   onCommit: (next: ActiveGame) => void;
   onClose: () => void;
-}
-
-function tagOf(player: GamePlayer, tag1Label: string, tag2Label: string): string {
-  const tag1 = tag1Label.charAt(0).toUpperCase();
-  const tag2 = tag2Label.charAt(0).toUpperCase();
-  return player.vrouw ? (player.jeugd ? `${tag1}${tag2}` : tag1) : player.jeugd ? tag2 : '';
 }
 
 function toggled(list: string[], id: string): string[] {
@@ -286,7 +276,7 @@ export function CompactLiveDialog({
           const p = playerById(id);
           if (!p) return null;
           const order = chosen.indexOf(id);
-          const tag = tagOf(p, tag1Label, tag2Label);
+          const tag = playerTag(p, tag1Label, tag2Label);
           return (
             <button
               key={id}

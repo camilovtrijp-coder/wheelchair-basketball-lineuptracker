@@ -35,6 +35,7 @@ import { useGameScreenLock } from '../../application/game/useGameScreen';
 import { fmtSec, liveErrorKey } from './liveFormat';
 import { FinishGameDialog } from './FinishGameDialog';
 import { SegmentDeleteZone } from './SegmentDeleteZone';
+import { playerTag } from './playerTag';
 
 export { fmtSec, liveErrorKey };
 
@@ -157,9 +158,7 @@ function PlayerChip({
   testId: string;
   onClick: () => void;
 }) {
-  const tag1 = tag1Label.charAt(0).toUpperCase();
-  const tag2 = tag2Label.charAt(0).toUpperCase();
-  const tag = player.vrouw ? (player.jeugd ? `${tag1}${tag2}` : tag1) : player.jeugd ? tag2 : '';
+  const tag = playerTag(player, tag1Label, tag2Label);
   return (
     <button
       type="button"
