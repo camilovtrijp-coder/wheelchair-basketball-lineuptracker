@@ -1704,3 +1704,54 @@ button:focus-visible {
   font-size: var(--lt-font-size-xs);
   color: var(--lt-color-muted);
 }
+
+/* R6 (bouwplan Rustig): "Segment verwijderen" staat in een eigen vak onder
+   Opslaan/Annuleren, met scheidingslijn en bevestiging in dat vak, zodat een
+   misser naast Opslaan niet meteen een segment weghaalt. Gedeeld door
+   Klassiek en Compact/Snel. */
+.segment-delete-zone {
+  display: flex;
+  flex-direction: column;
+  gap: var(--lt-space-2);
+  margin-top: var(--lt-space-3);
+  padding-top: var(--lt-space-3);
+  border-top: 1px solid var(--lt-color-border);
+}
+
+.segment-delete-zone__trigger {
+  align-self: flex-start;
+  min-height: 2.75rem;
+  padding: var(--lt-space-2) var(--lt-space-3);
+  background: transparent;
+  border: 1px solid var(--lt-color-negative);
+  border-radius: var(--lt-radius-md);
+  color: var(--lt-color-negative);
+  font-weight: 600;
+}
+
+.segment-delete-zone__trigger:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.segment-delete-zone__confirm {
+  display: flex;
+  flex-direction: column;
+  gap: var(--lt-space-2);
+}
+
+.segment-delete-zone__confirm .tracking-warning {
+  margin: 0;
+}
+
+.segment-delete-zone__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--lt-space-2);
+}
+
+.segment-delete-zone__actions > button {
+  flex: 1 1 7rem;
+  min-width: 0;
+  min-height: 2.75rem;
+}

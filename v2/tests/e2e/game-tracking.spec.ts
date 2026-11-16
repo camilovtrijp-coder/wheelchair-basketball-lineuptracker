@@ -162,8 +162,10 @@ test.describe('v2 live wedstrijd (PR 6.2)', () => {
     await expect(page.getByTestId('score-select-for')).toHaveValue('6'); // 5 (nieuw) + 1 (live behouden)
 
     await page.locator('[data-testid^="segment-item-"]').first().click();
-    page.once('dialog', (dialog) => dialog.accept());
+    // R6: verwijderen vraagt inline om bevestiging (geen window.confirm).
     await page.getByTestId('edit-segment-delete').click();
+    await expect(page.getByTestId('edit-segment-delete-confirm')).toBeVisible();
+    await page.getByTestId('edit-segment-delete-confirm-btn').click();
 
     await expect(page.locator('[data-testid^="segment-item-"]')).toHaveCount(0);
     await expect(page.getByTestId('score-select-for')).toHaveValue('1'); // alleen de live-delta blijft over

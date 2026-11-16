@@ -857,3 +857,105 @@ describe('Compact C3-vervolg: Uitwedstrijd in lijst en afrondkeuze, sluitbevesti
     expect(h.onFinishGame).not.toHaveBeenCalled();
   });
 });
+
+describe('R6: segment verwijderen staat apart en vraagt inline om bevestiging', () => {
+  it('Compact/Snel: verwijderknop zit niet in de rij Opslaan/Annuleren maar in een eigen vak eronder', () => {
+    const h = setup();
+    openEditor(h, 0);
+    const actions = h.$('compact-edit-save').parentElement!;
+    expect(actions.contains(h.$('compact-edit-cancel'))).toBe(true);
+    expect(actions.contains(h.$('compact-edit-delete'))).toBe(false);
+    const zone = h.$('compact-edit-delete-zone');
+    expect(zone.contains(h.$('compact-edit-delete'))).toBe(true);
+    // Het vak volgt ná de knoppenrij in de dialoog.
+    expect(actions.compareDocumentPosition(zone) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
+  it('Compact: een wijziging trekt een openstaande verwijderbevestiging in', () => {
+    const h = setup();
+    openEditor(h, 0);
+    h.click('compact-edit-delete');
+    expect(h.q('compact-edit-delete-confirm')).not.toBeNull();
+    h.click('compact-edit-player-gp-7');
+    expect(h.q('compact-edit-delete-confirm')).toBeNull();
+    expect(h.onChange).not.toHaveBeenCalled();
+  });
+
+  it('Klassiek: verwijderen gebruikt geen window.confirm; eerst bevestigen, dan pas weg', () => {
+    const confirmSpy = vi.spyOn(window, 'confirm');
+    const before = afterAtoD();
+    const id = deriveGameHistory(before).segments[0]!.id;
+    const h = setup({ game: before, panel: 'classic' });
+    h.click(`segment-item-${id}`);
+    const save = h.$('edit-segment-save');
+    const zone = h.$('edit-segment-delete-zone');
+    expect(zone.contains(save)).toBe(false);
+    expect(text(h.$('edit-segment-delete'))).toBe('Segment verwijderen');
+
+    h.click('edit-segment-delete');
+    expect(text(h.$('edit-segment-delete-confirm'))).toContain('Dit segment verwijderen?');
+    expect(h.onChange).not.toHaveBeenCalled();
+
+    // Behouden: terug naar de knop, niets gewijzigd.
+    h.click('edit-segment-delete-cancel');
+    expect(h.q('edit-segment-delete-confirm')).toBeNull();
+    expect(h.q('edit-segment-modal')).not.toBeNull();
+    expect(h.onChange).not.toHaveBeenCalled();
+
+    h.click('edit-segment-delete');
+    h.click('edit-segment-delete-confirm-btn');
+    expect(confirmSpy).not.toHaveBeenCalled();
+    expect(h.latest().actions.at(-1)?.type).toBe('segment-deleted');
+    expect(deriveGameHistory(h.latest()).segments.map((s) => s.id)).not.toContain(id);
+    expect(h.q('edit-segment-modal')).toBeNull();
+    confirmSpy.mockRestore();
+  });
+
+  it('Klassiek: de bevestiging is weg als de editor opnieuw opent', () => {
+    const before = afterAtoD();
+    const id = deriveGameHistory(before).segments[0]!.id;
+    const h = setup({ game: before, panel: 'classic' });
+    h.click(`segment-item-${id}`);
+    h.click('edit-segment-delete');
+    h.click('edit-segment-close');
+    h.click(`segment-item-${id}`);
+    expect(h.q('edit-segment-delete-confirm')).toBeNull();
+    expect(h.q('edit-segment-delete')).not.toBeNull();
+  });
+
+  it('EN: knoppen en vraag zijn vertaald', () => {
+    const h = setup({ lang: 'en' });
+    openEditor(h, 0);
+    expect(text(h.$('compact-edit-delete'))).toBe('Delete segment');
+    h.click('compact-edit-delete');
+    expect(text(h.$('compact-edit-delete-confirm'))).toContain('Delete this segment?');
+    expect(text(h.$('compact-edit-delete-cancel'))).toBe('No, keep it');
+    expect(text(h.$('compact-edit-delete-confirm-btn'))).toBe('Yes, delete');
+  });
+
+  it('alleen-lezen: verwijderknop is uitgeschakeld', () => {
+    const g = afterAtoD();
+    const onCommit = vi.fn();
+    const view = render(
+      <CompactSegmentEditor
+        lang="nl"
+        game={g}
+        segmentId={deriveGameHistory(g).segments[0]!.id}
+        quarterCount={4}
+        periodLabel="Kwart"
+        classification={CLASSIFICATION}
+        teamName="Eigen"
+        tag1Label=""
+        tag2Label=""
+        canWrite={false}
+        onCommit={onCommit}
+        onClose={vi.fn()}
+      />,
+    );
+    const btn = view.getByTestId('compact-edit-delete') as HTMLButtonElement;
+    expect(btn.disabled).toBe(true);
+    fireEvent.click(btn);
+    expect(view.queryByTestId('compact-edit-delete-confirm')).toBeNull();
+    expect(onCommit).not.toHaveBeenCalled();
+  });
+});

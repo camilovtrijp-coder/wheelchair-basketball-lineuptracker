@@ -986,6 +986,7 @@ const nl = {
   compactEditTurnoversLabel: 'Eigen turnovers dit segment',
   compactDeleteSegmentBtn: 'Segment verwijderen',
   compactDeleteConfirmBtn: 'Ja, verwijderen',
+  segmentDeleteKeepBtn: 'Nee, behouden',
   finishDialogHint:
     'Een gelijke stand zegt niets over ongeregistreerde speeltijd. Leg het laatste segment vast of bevestig dat alle gespeelde tijd al vastligt.',
   finishOpenWarning: 'Er staat nog wedstrijdinformatie buiten een segment.',
@@ -1927,6 +1928,7 @@ const en = {
   compactEditTurnoversLabel: 'Own turnovers this segment',
   compactDeleteSegmentBtn: 'Delete segment',
   compactDeleteConfirmBtn: 'Yes, delete',
+  segmentDeleteKeepBtn: 'No, keep it',
   finishDialogHint:
     'An equal score says nothing about unrecorded playing time. Record the final segment or confirm that all played time is already recorded.',
   finishOpenWarning: 'Some game information is still outside a segment.',

@@ -34,6 +34,7 @@ import { useFocusTrap } from '../../application/a11y/useFocusTrap';
 import { useGameScreenLock } from '../../application/game/useGameScreen';
 import { fmtSec, liveErrorKey } from './liveFormat';
 import { FinishGameDialog } from './FinishGameDialog';
+import { SegmentDeleteZone } from './SegmentDeleteZone';
 
 export { fmtSec, liveErrorKey };
 
@@ -213,6 +214,7 @@ export function LiveTrackingPanel({
   );
   const [editSegmentId, setEditSegmentId] = useState<string | null>(null);
   const [editDraft, setEditDraft] = useState<EditDraft | null>(null);
+  const [confirmingDeleteSegment, setConfirmingDeleteSegment] = useState(false);
   // C3: afrondkeuze bij open punten/turnovers (besluit 4 van het compact-bouwplan).
   const [finishDialogOpen, setFinishDialogOpen] = useState(false);
   // PR 8.2a (docs/pr-8.2-plan.md §C 8.2a werk 4): deze twee modals zijn
@@ -338,6 +340,7 @@ export function LiveTrackingPanel({
 
   function openEditSegment(segment: Segment) {
     setEditSegmentId(segment.id);
+    setConfirmingDeleteSegment(false);
     setEditDraft({
       quarter: segment.quarter,
       beginSec: segment.beginSec,
@@ -352,6 +355,7 @@ export function LiveTrackingPanel({
   function closeEditSegment() {
     setEditSegmentId(null);
     setEditDraft(null);
+    setConfirmingDeleteSegment(false);
   }
 
   function handleSaveEditSegment() {
@@ -389,8 +393,8 @@ export function LiveTrackingPanel({
   }
 
   function handleDeleteEditSegment() {
+    // R6: bevestiging gebeurt inline in SegmentDeleteZone, niet via window.confirm.
     if (!canWrite || editSegmentId == null) return;
-    if (!window.confirm(t(lang, 'confirmDeleteSegment'))) return;
     onGameChange({ ...game, actions: [...game.actions, segmentDeletedAction(editSegmentId)] });
     closeEditSegment();
   }
@@ -1098,15 +1102,14 @@ export function LiveTrackingPanel({
             >
               {t(lang, 'saveBtn')}
             </button>
-            <button
-              type="button"
-              className="btn-outline"
-              disabled={!canWrite}
-              data-testid="edit-segment-delete"
-              onClick={handleDeleteEditSegment}
-            >
-              {t(lang, 'deleteBtn')}
-            </button>
+            <SegmentDeleteZone
+              lang={lang}
+              testIdPrefix="edit-segment"
+              canWrite={canWrite}
+              confirming={confirmingDeleteSegment}
+              onConfirmingChange={setConfirmingDeleteSegment}
+              onDelete={handleDeleteEditSegment}
+            />
           </div>
         </div>
       ) : null}

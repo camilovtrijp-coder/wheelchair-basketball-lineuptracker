@@ -24,12 +24,13 @@ import {
   parseScoreDraft,
   type ClockDraft,
 } from './CompactNumberFields';
+import { SegmentDeleteZone } from './SegmentDeleteZone';
 
 /**
  * Segmenteditor van het compacte scherm (bouwplan C3, modal). Werkt op het
  * segment-ID (nooit een arrayindex), valideert via `editSegment` en legt een
- * `segment-edited`-actie vast; verwijderen (na bevestiging) legt de bestaande
- * `segment-deleted`-actie vast. Score en turnovers van het open segment, de
+ * `segment-edited`-actie vast; verwijderen (na inline bevestiging in een apart
+ * vak onder Opslaan/Annuleren, R6) legt de bestaande `segment-deleted`-actie vast. Score en turnovers van het open segment, de
  * tijdgrenzen van andere segmenten en de actuele lineup blijven ongemoeid:
  * herberekening gebeurt door de bestaande reducer.
  */
@@ -355,61 +356,34 @@ export function CompactSegmentEditor({
               </p>
             ) : null}
 
-            {confirmingDelete ? (
-              <div className="compact-dialog__section" data-testid="compact-edit-delete-confirm">
-                <p className="tracking-warning" role="alert">
-                  {t('confirmDeleteSegment')}
-                </p>
-                <div className="modal__actions">
-                  <button
-                    type="button"
-                    className="btn-outline"
-                    data-testid="compact-edit-delete-cancel"
-                    onClick={() => setConfirmingDelete(false)}
-                  >
-                    {t('cancelBtn')}
-                  </button>
-                  <button
-                    type="button"
-                    className="btn-primary"
-                    disabled={!canWrite}
-                    data-testid="compact-edit-delete-confirm-btn"
-                    onClick={handleDelete}
-                  >
-                    {t('compactDeleteConfirmBtn')}
-                  </button>
-                </div>
-              </div>
-            ) : (
-              <div className="modal__actions compact-edit__actions">
-                <button
-                  type="button"
-                  className="btn-outline"
-                  disabled={!canWrite}
-                  data-testid="compact-edit-delete"
-                  onClick={() => canWrite && setConfirmingDelete(true)}
-                >
-                  {t('compactDeleteSegmentBtn')}
-                </button>
-                <button
-                  type="button"
-                  className="btn-outline"
-                  data-testid="compact-edit-cancel"
-                  onClick={onClose}
-                >
-                  {t('cancelBtn')}
-                </button>
-                <button
-                  type="button"
-                  className="btn-primary"
-                  disabled={!canWrite}
-                  data-testid="compact-edit-save"
-                  onClick={handleSave}
-                >
-                  {t('saveBtn')}
-                </button>
-              </div>
-            )}
+            <div className="modal__actions compact-edit__actions">
+              <button
+                type="button"
+                className="btn-outline"
+                data-testid="compact-edit-cancel"
+                onClick={onClose}
+              >
+                {t('cancelBtn')}
+              </button>
+              <button
+                type="button"
+                className="btn-primary"
+                disabled={!canWrite}
+                data-testid="compact-edit-save"
+                onClick={handleSave}
+              >
+                {t('saveBtn')}
+              </button>
+            </div>
+
+            <SegmentDeleteZone
+              lang={lang}
+              testIdPrefix="compact-edit"
+              canWrite={canWrite}
+              confirming={confirmingDelete}
+              onConfirmingChange={setConfirmingDelete}
+              onDelete={handleDelete}
+            />
           </>
         )}
       </div>
