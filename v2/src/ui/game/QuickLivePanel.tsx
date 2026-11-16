@@ -129,7 +129,12 @@ export function QuickLivePanel({
   const [segmentsOpen, setSegmentsOpen] = useState(false);
   const [editSegmentId, setEditSegmentId] = useState<string | null>(null);
   const [finishOpen, setFinishOpen] = useState(false);
-  const [view, setView] = useState<'game' | 'plan'>('game');
+  // Bouwplan Rustig, besluit 8: tot het eerste segment is vastgelegd opent het
+  // scherm op het wisselschema (voorbereiding); daarna, ook na herladen, op
+  // Wedstrijd. Alleen de beginweergave; afgeleid, niets opgeslagen.
+  const [view, setView] = useState<'game' | 'plan'>(() =>
+    deriveGameHistory(game).segments.length === 0 ? 'plan' : 'game',
+  );
   const [propagated, setPropagated] = useState(false);
   const { plan, savePlan, readPrevious } = useRotationPlan(game.id);
   const pending = game.pendingSwapLineup;
@@ -311,7 +316,7 @@ export function QuickLivePanel({
 
   const viewSwitch = (
     <div className="quick-view" role="group" aria-label={t('quickViewAria')}>
-      {(['game', 'plan'] as const).map((value) => (
+      {(['plan', 'game'] as const).map((value) => (
         <button
           key={value}
           type="button"

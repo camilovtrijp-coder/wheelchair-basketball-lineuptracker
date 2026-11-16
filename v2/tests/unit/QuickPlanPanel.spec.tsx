@@ -117,6 +117,9 @@ function setup(opts: { game?: ActiveGame; canWrite?: boolean } = {}) {
     );
   }
   const utils = render(<Harness />);
+  // Zonder segmenten opent Snel op het wisselschema (besluit 8); deze specs
+  // beginnen vanaf het wedstrijdscherm en kiezen zelf het schema.
+  fireEvent.click(utils.getByTestId('quick-view-game'));
   return { ...utils, latest: () => latest };
 }
 
