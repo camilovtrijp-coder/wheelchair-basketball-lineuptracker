@@ -385,34 +385,38 @@ export function CompactSegmentEditor({
                 </div>
               </div>
             ) : (
-              <div className="modal__actions compact-edit__actions">
-                <button
-                  type="button"
-                  className="btn-outline"
-                  disabled={!canWrite}
-                  data-testid="compact-edit-delete"
-                  onClick={() => canWrite && setConfirmingDelete(true)}
-                >
-                  {t('compactDeleteSegmentBtn')}
-                </button>
-                <button
-                  type="button"
-                  className="btn-outline"
-                  data-testid="compact-edit-cancel"
-                  onClick={onClose}
-                >
-                  {t('cancelBtn')}
-                </button>
-                <button
-                  type="button"
-                  className="btn-primary"
-                  disabled={!canWrite}
-                  data-testid="compact-edit-save"
-                  onClick={handleSave}
-                >
-                  {t('saveBtn')}
-                </button>
-              </div>
+              <>
+                <div className="modal__actions compact-edit__actions">
+                  <button
+                    type="button"
+                    className="btn-outline"
+                    data-testid="compact-edit-cancel"
+                    onClick={onClose}
+                  >
+                    {t('cancelBtn')}
+                  </button>
+                  <button
+                    type="button"
+                    className="btn-primary"
+                    disabled={!canWrite}
+                    data-testid="compact-edit-save"
+                    onClick={handleSave}
+                  >
+                    {t('saveBtn')}
+                  </button>
+                </div>
+                <div className="segment-delete-zone" data-testid="compact-edit-delete-zone">
+                  <button
+                    type="button"
+                    className="btn-outline segment-delete-btn"
+                    disabled={!canWrite}
+                    data-testid="compact-edit-delete"
+                    onClick={() => canWrite && setConfirmingDelete(true)}
+                  >
+                    {t('compactDeleteSegmentBtn')}
+                  </button>
+                </div>
+              </>
             )}
           </>
         )}
