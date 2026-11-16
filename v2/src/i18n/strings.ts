@@ -602,6 +602,13 @@ const nl = {
   turnoverPillPrefix: 'TO',
   historyTurnoversTotal: 'Turnovers totaal',
   historyTurnoversPer10: 'per 10 min',
+  lineupOverviewTitle: 'Lineups',
+  lineupOverviewHint: 'Op volgorde van eerste opkomst. Klassesom met F/J-tags en bonus.',
+  lineupOverviewStints: 'stints',
+  lineupOverviewPlayTime: 'Tijd',
+  lineupOverviewTurnovers: 'TO',
+  lineupOverviewAria: 'Lineup {lineup}',
+  lineupOverviewEmpty: 'Geen lineups om te tonen.',
 
   // PR 8.3c-1c: owner-only verwijderverzoek, opruimoverzicht en melding voor alle leden (NL).
   deletionTitle: 'Organisatie verwijderen',
@@ -1552,6 +1559,13 @@ const en = {
   turnoverPillPrefix: 'TO',
   historyTurnoversTotal: 'Turnovers total',
   historyTurnoversPer10: 'per 10 min',
+  lineupOverviewTitle: 'Lineups',
+  lineupOverviewHint: 'In order of first appearance. Class total with F/J tags and bonus.',
+  lineupOverviewStints: 'stints',
+  lineupOverviewPlayTime: 'Time',
+  lineupOverviewTurnovers: 'TO',
+  lineupOverviewAria: 'Lineup {lineup}',
+  lineupOverviewEmpty: 'No lineups to show.',
 
   // PR 8.3c-1c: owner-only deletion request, cleanup overview and notice for all members (EN, mirrors NL key-for-key).
   deletionTitle: 'Delete organization',

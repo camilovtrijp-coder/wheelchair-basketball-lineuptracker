@@ -325,3 +325,68 @@
 .correction-summary__tag {
   color: var(--lt-color-muted);
 }
+
+/* ---------- R8: lineup-overzicht ---------- */
+
+.lineup-overview {
+  display: flex;
+  flex-direction: column;
+  gap: var(--lt-space-2);
+  margin: var(--lt-space-3) 0;
+}
+
+.lineup-overview__title {
+  margin: 0;
+  font-size: var(--lt-font-size-lg);
+  font-weight: 700;
+}
+
+.lineup-overview__list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--lt-space-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.lineup-overview__item {
+  border-radius: var(--lt-radius-md);
+  padding: var(--lt-space-2) var(--lt-space-3);
+  background: var(--lt-color-surface);
+  font-variant-numeric: tabular-nums;
+}
+
+.lineup-overview__head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: var(--lt-space-2);
+  font-weight: 700;
+}
+
+.lineup-overview__players {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--lt-space-1) var(--lt-space-3);
+  margin: var(--lt-space-1) 0;
+  padding: 0;
+  list-style: none;
+}
+
+.lineup-overview__nr {
+  font-weight: 700;
+}
+
+.lineup-overview__class {
+  color: var(--lt-color-muted);
+}
+
+.lineup-overview__stats,
+.lineup-overview__quarters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--lt-space-3);
+  margin: 0;
+  color: var(--lt-color-muted);
+}
