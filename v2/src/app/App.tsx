@@ -249,6 +249,12 @@ export function App({
     onLangChange?.(lang);
   }, [lang, onLangChange]);
   const [tab, setTab] = useState<Tab>('settings');
+  // R6 (bouwplan Rustig): na een herlaad opent de app op Wedstrijd als er een
+  // lopende wedstrijd (fase 'tracking') wordt hervat; anders blijft Instellingen
+  // het startpunt. Afgeleid uit de bestaande opgeslagen wedstrijd, geen eigen
+  // opslag. Alleen bij de eerste load: een latere contextwissel of afronding
+  // verspringt het tabblad niet.
+  const initialTabResolvedRef = useRef(false);
   // Apparaatvoorkeur Klassiek/Compact (nooit onderdeel van de wedstrijd): beide
   // schermen krijgen exact dezelfde props en dezelfde ActiveGame.
   const gameScreen = useGameScreenPreference();
@@ -485,7 +491,12 @@ export function App({
     const stored = gameRepo.read();
     const alreadyArchived =
       stored !== null && completedGameRepo.list().some((g) => g.sourceGameId === stored.id);
-    if (stored && stored.phase === 'tracking' && !alreadyArchived) {
+    const resume = stored !== null && stored.phase === 'tracking' && !alreadyArchived;
+    if (!initialTabResolvedRef.current) {
+      initialTabResolvedRef.current = true;
+      if (resume) setTab('game');
+    }
+    if (resume) {
       setGame(stored);
       setV1MigrationCandidate(null);
     } else {
