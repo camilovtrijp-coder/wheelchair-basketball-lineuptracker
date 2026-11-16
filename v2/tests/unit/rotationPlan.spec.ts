@@ -7,19 +7,23 @@ import {
   blockTimeBounds,
   currentBlockIndex,
   deviationPairs,
+  diffPlans,
   emptyPlan,
+  isLineupEditable,
   lineupDiff,
   lockedBlockCount,
   moveBlockTime,
   nextPlannedLineup,
   playedBlockCount,
   parseRotationPlan,
+  planVersusActual,
   plannedEndSec,
   propagateDeviation,
   quarterStartLineup,
   removeBlock,
   resolveLineup,
   setBlockLineup,
+  startersEditable,
   withQuarterCount,
   type RotationPlan,
 } from '../../src/domain/game/rotationPlan';
@@ -344,6 +348,119 @@ describe('schema bewerken', () => {
     expect(removeBlock(plan, 1, 1).quarters['1']).toEqual([{ toSec: 0, lineup: START }]);
     const single = removeBlock(removeBlock(plan, 1, 1), 1, 0);
     expect(single.quarters['1']).toHaveLength(1);
+  });
+});
+
+describe('R4: starters aanpasbaar zolang er niet gespeeld is', () => {
+  it('startersEditable is waar tot het eerste segment is vastgelegd', () => {
+    const g = game();
+    expect(startersEditable(g)).toBe(true);
+    expect(startersEditable(withSegment(g, 400))).toBe(false);
+  });
+
+  it('het starters-blok is open voor het eerste segment; lopende en gespeelde blokken daarna niet', () => {
+    const g = game();
+    // Voor het spelen: starters (kwart 1, blok 1) open, blok 2 en latere kwarten ook.
+    expect(isLineupEditable(g, 1, 0, 2)).toBe(true);
+    expect(isLineupEditable(g, 1, 1, 2)).toBe(true);
+    expect(isLineupEditable(g, 2, 0, 2)).toBe(true);
+    // Na het eerste segment is blok 0 gespeeld (dicht), blok 1 is het lopende blok (dicht).
+    const played = withSegment(g, 400);
+    expect(isLineupEditable(played, 1, 0, 2)).toBe(false);
+    expect(isLineupEditable(played, 1, 1, 2)).toBe(false);
+    expect(isLineupEditable(played, 2, 0, 2)).toBe(true);
+  });
+
+  it('in kwart 2 zonder segmenten blijft het lopende blok van kwart 2 dicht (alleen kwart 1 blok 1 is uitzondering)', () => {
+    const g = game({ curQuarter: 2 });
+    expect(isLineupEditable(g, 2, 0, 2)).toBe(false);
+    // Kwart 1 is helemaal voorbij en daarmee dicht, ook al staat er nog geen segment.
+    expect(isLineupEditable(g, 1, 0, 2)).toBe(false);
+  });
+});
+
+describe('R4: overzicht van wijzigingen (diffPlans)', () => {
+  it('geeft geen verschillen voor twee gelijke schema’s', () => {
+    expect(diffPlans(samplePlan(), samplePlan())).toEqual([]);
+  });
+
+  it('meldt wie erin en eruit gaat, een verschoven wisselmoment en toegevoegde of verwijderde blokken', () => {
+    const before = samplePlan();
+    const after = samplePlan();
+    after.quarters['1']![1] = { toSec: 0, lineup: [15, 8, 13, 4, 20] }; // 14 eruit, 20 erin
+    after.quarters['1']![0] = { toSec: 150, lineup: [...START] };
+    delete after.quarters['2']; // beide blokken van kwart 2 vervallen
+    expect(diffPlans(before, after)).toEqual([
+      { kind: 'time', quarter: 1, block: 0, fromSec: 180, toSec: 150 },
+      { kind: 'lineup', quarter: 1, block: 1, ins: [20], outs: [14] },
+      { kind: 'removed', quarter: 2, block: 0 },
+      { kind: 'removed', quarter: 2, block: 1 },
+    ]);
+    // Omgekeerd komen de blokken erbij.
+    expect(diffPlans(after, before).filter((c) => c.kind === 'added')).toEqual([
+      { kind: 'added', quarter: 2, block: 0 },
+      { kind: 'added', quarter: 2, block: 1 },
+    ]);
+  });
+
+  it('bij doorvoeren van een afwijking is het overzicht precies de aangepaste latere blokken', () => {
+    // Gepland volgende blok: SECOND (15, 8, 13, 4, 14). Echt op de vloer: 5 i.p.v. 15 (en 8, 13, 4, 14).
+    const plan = samplePlan();
+    const g = game({
+      pendingSwapLineup: [...game().onCourt],
+      onCourt: ['gp-5', 'gp-8', 'gp-13', 'gp-4', 'gp-14'],
+    });
+    const changes = diffPlans(plan, propagateDeviation(g, plan));
+    // Kwart 1 (huidig kwart, blok 1 = eerstvolgende) blijft ongemoeid. Kwart 2 stond met 15 in THIRD:
+    // daar komt 5 voor 15 in.
+    expect(changes).toEqual([{ kind: 'lineup', quarter: 2, block: 0, ins: [5], outs: [15] }]);
+  });
+});
+
+describe('R4: plan naast uitvoering (planVersusActual)', () => {
+  it('toont alleen blokken met een vastgelegd segment', () => {
+    expect(planVersusActual(game(), samplePlan(), 1)).toEqual([]);
+  });
+
+  it('een blok dat zoals gepland is gespeeld, is gelijk', () => {
+    const played = withSegment(game(), 400);
+    const [exec] = planVersusActual(played, samplePlan(), 1);
+    expect(exec).toMatchObject({
+      block: 0,
+      planned: START,
+      beginSec: 600,
+      endSec: 400,
+      same: true,
+      extra: [],
+      missing: [],
+      pairs: [],
+    });
+    expect([...(exec?.actual ?? [])].sort()).toEqual([...START].sort());
+  });
+
+  it('een afwijkende uitvoering markeert wie extra speelde en wie gemist werd, als paren', () => {
+    // 14 speelde, 11 stond gepland.
+    const g = game({ onCourt: ['gp-9', 'gp-6', 'gp-8', 'gp-13', 'gp-14'] });
+    const played = withSegment(g, 400);
+    const [exec] = planVersusActual(played, samplePlan(), 1);
+    expect(exec?.same).toBe(false);
+    expect(exec?.extra).toEqual([14]);
+    expect(exec?.missing).toEqual([11]);
+    expect(exec?.pairs).toEqual([{ actual: 14, planned: 11 }]);
+  });
+
+  it('koppelt het n-de segment van een kwart aan blok n', () => {
+    // Tweede segment: wissel naar SECOND (15, 8, 13, 4, 14) wordt vastgelegd na de eerste.
+    const first = withSegment(game(), 180);
+    const second = withSegment(
+      { ...first, onCourt: ['gp-15', 'gp-8', 'gp-13', 'gp-4', 'gp-14'] },
+      60,
+    );
+    const execs = planVersusActual(second, samplePlan(), 1);
+    expect(execs.map((e) => e.block)).toEqual([0, 1]);
+    expect(execs[1]).toMatchObject({ planned: SECOND, same: true, beginSec: 180, endSec: 60 });
+    // Een kwart zonder segmenten levert niets op.
+    expect(planVersusActual(second, samplePlan(), 2)).toEqual([]);
   });
 });
 

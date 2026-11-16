@@ -10,25 +10,34 @@ import {
   blockStartSec,
   blockTimeBounds,
   currentBlockIndex,
+  diffPlans,
+  isLineupEditable,
+  planVersusActual,
   playedBlockCount,
   moveBlockTime,
   PLAN_TIME_STEP_SEC,
   removeBlock,
   resolveLineup,
   setBlockLineup,
+  withQuarterCount,
   type RotationPlan,
 } from '../../domain/game/rotationPlan';
 import { translate, type Lang, type StringKey } from '../../i18n/strings';
 import { useGameScreenLock } from '../../application/game/useGameScreen';
 import { fmtSec } from './LiveTrackingPanel';
 import { SheetFrame } from './QuickSheets';
+import { QuickPlanChangeList, QuickPlanConfirmSheet } from './QuickPlanConfirm';
 
 /**
  * Schermdeel "Wisselschema" van het Snel-wedstrijdscherm: per kwart de
  * geplande blokken (opstelling + wisselmoment) bekijken en aanpassen. Alles is
  * lokaal en alleen invoerhulp; de echte tijden en opstellingen legt de
  * gebruiker in het wedstrijdscherm vast. Gespeelde blokken en het lopende blok
- * zijn niet meer te bewerken.
+ * zijn niet meer te bewerken, met één uitzondering: het starters-blok (kwart 1,
+ * blok 1) blijft aanpasbaar zolang er nog niets is gespeeld. Gespeelde blokken
+ * tonen de werkelijk gespeelde opstelling naast de geplande (afgeleid uit de
+ * segmenten). Schema wissen en "Zelfde als vorige wedstrijd" vragen eerst een
+ * bevestiging in een Snel-sheet.
  */
 export interface QuickPlanEditorProps {
   lang: Lang;
@@ -37,11 +46,13 @@ export interface QuickPlanEditorProps {
   periodLabel: string;
   classification: ClassificationConfig;
   plan: RotationPlan | null;
-  hasPrevious: boolean;
+  /** Schema van de vorige wedstrijd (voor het overzicht bij bevestigen); `null` = geen. */
+  previousPlan: RotationPlan | null;
   canWrite: boolean;
   onPlanChange: (plan: RotationPlan) => void;
   onCreate: () => void;
   onLoadPrevious: () => void;
+  onClear: () => void;
 }
 
 function fill(template: string, values: Record<string, string | number>): string {
@@ -51,6 +62,7 @@ function fill(template: string, values: Record<string, string | number>): string
   );
 }
 
+type Confirm = 'clear' | 'load';
 type Selection = { kind: 'court'; index: number } | { kind: 'bench'; rosterId: number };
 
 export function QuickPlanEditor({
@@ -60,12 +72,14 @@ export function QuickPlanEditor({
   periodLabel,
   classification,
   plan,
-  hasPrevious,
+  previousPlan,
   canWrite,
   onPlanChange,
   onCreate,
   onLoadPrevious,
+  onClear,
 }: QuickPlanEditorProps) {
+  const hasPrevious = previousPlan != null;
   const t = (key: StringKey) => translate(lang, key);
   const period = periodLabel || t('quarterLabel');
   const [quarter, setQuarter] = useState(() =>
@@ -74,13 +88,62 @@ export function QuickPlanEditor({
   const [editIndex, setEditIndex] = useState<number | null>(null);
   const [selection, setSelection] = useState<Selection | null>(null);
   const [notice, setNotice] = useState<StringKey | null>(null);
-  useGameScreenLock(editIndex != null ? 'dialog' : null);
+  const [confirm, setConfirm] = useState<Confirm | null>(null);
+  useGameScreenLock(editIndex != null || confirm != null ? 'dialog' : null);
 
   const participants = game.players.filter((p) => p.participate);
   const byRoster = (rosterId: number): GamePlayer | undefined =>
     participants.find((p) => p.rosterId === rosterId);
   const label = (rosterId: number) => byRoster(rosterId)?.naam ?? t('quickPlanMissingPlayer');
   const noSegmentsYet = deriveGameHistory(game).segments.length === 0;
+
+  const loadedPreview =
+    previousPlan != null ? withQuarterCount(previousPlan, game, quarterCount) : null;
+  const confirmSheet =
+    confirm === 'clear' ? (
+      <QuickPlanConfirmSheet
+        lang={lang}
+        title={t('quickPlanClearTitle')}
+        testId="quick-plan-clear-sheet"
+        confirmLabel={t('quickPlanClearConfirm')}
+        danger
+        onConfirm={() => {
+          setConfirm(null);
+          setEditIndex(null);
+          setSelection(null);
+          onClear();
+        }}
+        onCancel={() => setConfirm(null)}
+      >
+        <p className="quick-sheet__meta">{t('quickPlanClearBody')}</p>
+      </QuickPlanConfirmSheet>
+    ) : confirm === 'load' && loadedPreview != null ? (
+      <QuickPlanConfirmSheet
+        lang={lang}
+        title={t('quickPlanLoadTitle')}
+        testId="quick-plan-load-sheet"
+        confirmLabel={t('quickPlanLoadConfirm')}
+        onConfirm={() => {
+          setConfirm(null);
+          onLoadPrevious();
+        }}
+        onCancel={() => setConfirm(null)}
+      >
+        {plan == null ? (
+          <p className="quick-sheet__meta">{t('quickPlanLoadBodyNew')}</p>
+        ) : (
+          <>
+            <p className="quick-sheet__meta">{t('quickPlanLoadBodyReplace')}</p>
+            <QuickPlanChangeList
+              lang={lang}
+              changes={diffPlans(plan, loadedPreview)}
+              period={period}
+              label={label}
+            />
+          </>
+        )}
+      </QuickPlanConfirmSheet>
+    ) : null;
 
   if (plan == null) {
     return (
@@ -102,11 +165,12 @@ export function QuickPlanEditor({
             className="btn-outline"
             disabled={!canWrite || !hasPrevious}
             data-testid="quick-plan-load-previous"
-            onClick={onLoadPrevious}
+            onClick={() => setConfirm('load')}
           >
             {t('quickPlanLoadPrevious')}
           </button>
         </div>
+        {confirmSheet}
       </section>
     );
   }
@@ -150,6 +214,13 @@ export function QuickPlanEditor({
     return fill(t('quickPlanBlockWhen'), {
       begin: fmtSec(blockStartSec(plan as RotationPlan, quarter, i, game.clockDown)),
       end: fmtSec(blocks[i]?.toSec ?? 0),
+    });
+  }
+
+  function actualWhen(exec: { beginSec: number; endSec: number }): string {
+    return fill(t('quickPlanBlockWhen'), {
+      begin: fmtSec(exec.beginSec),
+      end: fmtSec(exec.endSec),
     });
   }
 
@@ -208,7 +279,12 @@ export function QuickPlanEditor({
 
   const editing = editIndex != null ? blocks[editIndex] : undefined;
   // De opstelling van het lopende blok staat op de vloer en is hier niet aan te passen.
-  const lineupLocked = editIndex != null && editIndex === currentIdx;
+  // Uitzondering: het starters-blok van kwart 1 zolang er nog niets is gespeeld.
+  const lineupLocked =
+    editIndex != null && !isLineupEditable(game, quarter, editIndex, blocks.length);
+  const startersBlock =
+    editIndex === 0 && quarter === 1 && !lineupLocked && editIndex === currentIdx;
+  const executions = planVersusActual(game, plan, quarter);
   const editBounds =
     editIndex != null ? blockTimeBounds(plan, quarter, editIndex, game.clockDown) : null;
   // "Eerder" = eerder in de wedstrijd: bij een aflopende klok een hogere kloktijd.
@@ -230,7 +306,7 @@ export function QuickPlanEditor({
             className="btn-outline quick-plan__previous"
             disabled={!canWrite}
             data-testid="quick-plan-load-previous"
-            onClick={onLoadPrevious}
+            onClick={() => setConfirm('load')}
           >
             {t('quickPlanLoadPrevious')}
           </button>
@@ -264,6 +340,7 @@ export function QuickPlanEditor({
           const ins = prev != null ? block.lineup.filter((r) => !prev.includes(r)) : [];
           const invalid = resolveLineup(game, block.lineup) == null;
           const cls = classText(block.lineup);
+          const exec = executions.find((e) => e.block === i);
           return (
             <li key={`${quarter}-${i}`}>
               <button
@@ -311,6 +388,42 @@ export function QuickPlanEditor({
                   {cls != null ? ` · ${cls}` : ''}
                   {invalid ? ` · ${t('quickPlanInvalidBlock')}` : ''}
                 </span>
+                {exec != null ? (
+                  <span
+                    className={`quick-plan__actual${exec.same ? '' : ' quick-plan__actual--diff'}`}
+                    data-testid={`quick-plan-actual-${quarter}-${i}`}
+                  >
+                    <span className="quick-plan__minis">
+                      {exec.actual.map((r) => {
+                        const p = byRoster(r);
+                        return (
+                          <span
+                            key={r}
+                            className={`quick-plan__mini${exec.extra.includes(r) ? ' quick-plan__mini--diff' : ''}`}
+                          >
+                            <b>{p?.nr ?? '—'}</b>
+                            <span>{p?.naam ?? ''}</span>
+                          </span>
+                        );
+                      })}
+                    </span>
+                    <span className="quick-plan__diff">
+                      {exec.same
+                        ? fill(t('quickPlanActualSame'), { when: actualWhen(exec) })
+                        : fill(t('quickPlanActualDiff'), {
+                            when: actualWhen(exec),
+                            pairs: exec.pairs
+                              .map((pair) =>
+                                fill(t('quickPlanDeviationPair'), {
+                                  actual: label(pair.actual),
+                                  planned: pair.planned < 0 ? '?' : label(pair.planned),
+                                }),
+                              )
+                              .join(', '),
+                          })}
+                    </span>
+                  </span>
+                ) : null}
               </button>
             </li>
           );
@@ -332,6 +445,16 @@ export function QuickPlanEditor({
         </p>
       ) : null}
       <p className="quick-plan__note">{t('quickPlanHint')}</p>
+      <button
+        type="button"
+        className="btn-outline quick-plan__clear"
+        disabled={!canWrite}
+        data-testid="quick-plan-clear"
+        onClick={() => setConfirm('clear')}
+      >
+        {t('quickPlanClearBtn')}
+      </button>
+      {confirmSheet}
 
       {editIndex != null && editing != null ? (
         <SheetFrame
@@ -424,7 +547,11 @@ export function QuickPlanEditor({
             </div>
           </div>
           <p className="quick-sheet__meta" data-testid="quick-plan-sheet-note">
-            {lineupLocked ? t('quickPlanCurrentBlockNote') : t('quickPlanSwapHint')}
+            {lineupLocked
+              ? t('quickPlanCurrentBlockNote')
+              : startersBlock
+                ? t('quickPlanStartersNote')
+                : t('quickPlanSwapHint')}
           </p>
 
           <button
@@ -435,7 +562,7 @@ export function QuickPlanEditor({
           >
             {t('quickPlanDoneBtn')}
           </button>
-          {blocks.length > 1 && !lineupLocked ? (
+          {blocks.length > 1 && !lineupLocked && editIndex !== currentIdx ? (
             <button
               type="button"
               className="btn-outline"
