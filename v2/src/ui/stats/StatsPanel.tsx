@@ -4,10 +4,15 @@ import { buildAnalysisScope } from '../../application/stats/buildAnalysisScope';
 import {
   compareTurnoverRates,
   computeLineupStats,
+  isLowMinutes,
+  offPlusMinusPer10,
   offTurnoverShownValue,
+  onPlusMinusPer10,
   onTurnoverShownValue,
+  turnoverRatePer10,
   type TurnoverComparison,
 } from '../../domain/stats/computeLineupStats';
+import { deriveRunningLineup, type RunningLineup } from '../../domain/stats/runningLineup';
 import { fmtSeconds, fmtPlusMinus, pmClass } from '../../domain/stats/format';
 import type { ActiveGame } from '../../domain/game/types';
 import type { RosterPlayer } from '../../domain/roster/types';
@@ -100,6 +105,12 @@ export function StatsPanel({
     [scope.games],
   );
 
+  // R5: lopende lineup uit het open segment; alleen afgeleid, nooit opgeslagen.
+  const running = useMemo(
+    () => (activeGame !== null ? deriveRunningLineup(activeGame) : null),
+    [activeGame],
+  );
+
   const { status } = scope.historyRead;
   const showError = status === 'error';
   const showNoData = !showError && scope.games.length === 0;
@@ -123,6 +134,20 @@ export function StatsPanel({
         <p className="stats-empty stats-empty--partial" data-testid="stats-partial" role="status">
           {partialMessage}
         </p>
+      ) : null}
+
+      {running !== null ? (
+        <RunningCard
+          running={running}
+          lang={lang}
+          label={(id) => {
+            const fromRoster = roster.find((p) => p.id === id);
+            if (fromRoster) return `#${fromRoster.nr} ${fromRoster.naam}`;
+            const snap = activeGame?.players.find((p) => p.rosterId === id);
+            return snap ? `#${snap.nr} ${snap.naam}` : '#?';
+          }}
+          showTurnovers={showTurnovers || running.tov > 0}
+        />
       ) : null}
 
       <div className="stats-controls">
@@ -244,6 +269,68 @@ export function StatsPanel({
   );
 }
 
+/**
+ * R5: de lopende lineup, live bovenaan tijdens een actieve wedstrijd. Gemarkeerd
+ * als voorlopig: het open segment is nog niet vastgelegd, dus tijd en cijfers
+ * kunnen nog veranderen. Totaal en per 10 min staan naast elkaar.
+ */
+function RunningCard({
+  running,
+  lang,
+  label,
+  showTurnovers,
+}: {
+  running: RunningLineup;
+  lang: Lang;
+  label: (rosterId: number) => string;
+  showTurnovers: boolean;
+}) {
+  const pm = running.pf - running.pa;
+  return (
+    <div className="card stats-card stats-card--running" data-testid="stats-running">
+      <div className="row between">
+        <strong>{t(lang, 'statsRunningTitle')}</strong>
+        <span className="stats-chip stats-chip--running" data-testid="stats-running-badge">
+          {t(lang, 'statsRunningBadge')}
+        </span>
+      </div>
+      {running.lowMinutes ? (
+        <span className="stats-chip stats-chip--low" data-testid="stats-running-low">
+          {t(lang, 'statsLowMinutes')}
+        </span>
+      ) : null}
+      <div className="stats-card__lineup">
+        {running.rosterIds.map((id) => (
+          <div key={id}>{label(id)}</div>
+        ))}
+      </div>
+      <div className="statsgrid stats-card__grid">
+        <Stat label={t(lang, 'statsColTime')} value={fmtSeconds(running.durSec)} />
+        <Stat label={t(lang, 'statsColPts')} value={String(running.pf)} tone="pos" />
+        <Stat label={t(lang, 'statsColOpp')} value={String(running.pa)} tone="neg" />
+        <Stat
+          label={t(lang, 'statsBasisTotal')}
+          value={fmtPlusMinus(pm)}
+          tone={pmClass(pm)}
+          badge
+        />
+        <Stat
+          label={t(lang, 'statsBasisPer10')}
+          value={fmtRate(running.pmPer10)}
+          tone={pmClass(running.pmPer10 ?? 0)}
+          badge
+        />
+      </div>
+      {showTurnovers ? (
+        <div className="mut2 stats-tov__both" data-testid="stats-running-tov">
+          {t(lang, 'statsTovWith')}: {t(lang, 'statsBasisTotal')} {running.tov} ·{' '}
+          {t(lang, 'statsBasisPer10')} {fmtTovRate(running.tovPer10)}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
 function cyclePlayerFilter(prev: PlayerFilterEntry[], rosterId: number): PlayerFilterEntry[] {
   const idx = prev.findIndex((e) => e.rosterId === rosterId);
   const nextMode: PlayerFilterMode =
@@ -279,8 +366,19 @@ function ComboCard({
   const onShown = per10 && combo.onSec > 0 ? (onPMRaw * 600) / combo.onSec : onPMRaw;
   const offShown = per10 && combo.offSec > 0 ? (offPMRaw * 600) / combo.offSec : offPMRaw;
   const names = combo.rosterIds.map((id) => labelFor(id, games, currentRoster));
+  const key = combo.rosterIds.join('-');
+  const low = isLowMinutes(combo);
   return (
-    <div className="card stats-card" data-testid={`stats-combo-${combo.rosterIds.join('-')}`}>
+    <div
+      className={`card stats-card${low ? ' stats-card--low' : ''}`}
+      data-testid={`stats-combo-${key}`}
+      data-low-minutes={low ? 'true' : undefined}
+    >
+      {low ? (
+        <span className="stats-chip stats-chip--low" data-testid={`stats-low-${key}`}>
+          {t(lang, 'statsLowMinutes')}
+        </span>
+      ) : null}
       <div className="stats-card__lineup">
         {names.map((n, i) => (
           <div key={i}>{n}</div>
@@ -303,7 +401,42 @@ function ComboCard({
           badge
         />
       </div>
+      <PmBases combo={combo} lang={lang} />
       {showTurnovers ? <TurnoverPills combo={combo} per10={per10} lang={lang} /> : null}
+    </div>
+  );
+}
+
+function fmtRate(value: number | null): string {
+  return value === null ? '–' : fmtPlusMinus(value);
+}
+
+function fmtTovRate(value: number | null): string {
+  return value === null ? '–' : (Math.round(value * 10) / 10).toFixed(1);
+}
+
+/**
+ * R5: plus/min altijd in beide bases naast elkaar (totaal én per 10 min), ongeacht
+ * de schakelaar. "Zonder hen" heeft een eigen speeltijd en rekent per 10 min op die
+ * eigen tijd, zodat de twee kanten vergelijkbaar zijn.
+ */
+function PmBases({ combo, lang }: { combo: LineupCombinationStats; lang: Lang }) {
+  const key = combo.rosterIds.join('-');
+  const total = t(lang, 'statsBasisTotal');
+  const per10 = t(lang, 'statsBasisPer10');
+  const offHasTime = combo.offSec > 0;
+  return (
+    <div className="stats-bases mut2">
+      <div data-testid={`stats-bases-on-${key}`}>
+        {t(lang, 'statsColOn')}: {total} {fmtPlusMinus(combo.onPF - combo.onPA)} · {per10}{' '}
+        {fmtRate(onPlusMinusPer10(combo))}
+      </div>
+      <div data-testid={`stats-bases-off-${key}`}>
+        {t(lang, 'statsColOff')}: {t(lang, 'statsOffTime')}{' '}
+        {offHasTime ? fmtSeconds(combo.offSec) : '–'} · {total}{' '}
+        {offHasTime ? fmtPlusMinus(combo.offPF - combo.offPA) : '–'} · {per10}{' '}
+        {fmtRate(offPlusMinusPer10(combo))}
+      </div>
     </div>
   );
 }
@@ -346,6 +479,10 @@ function TurnoverPills({
         >
           {fmtTurnovers(onTurnoverShownValue(combo, per10), per10)}
         </span>
+        <div className="mut2 stats-tov__both" data-testid={`stats-tov-both-on-${key}`}>
+          {t(lang, 'statsBasisTotal')} {combo.onTov} · {t(lang, 'statsBasisPer10')}{' '}
+          {fmtTovRate(turnoverRatePer10(combo.onTov, combo.onSec))}
+        </div>
       </div>
       <div>
         <div className="mut2">{t(lang, 'statsTovWithout')}</div>
@@ -356,6 +493,10 @@ function TurnoverPills({
         >
           {fmtTurnovers(offTurnoverShownValue(combo, per10), per10)}
         </span>
+        <div className="mut2 stats-tov__both" data-testid={`stats-tov-both-off-${key}`}>
+          {t(lang, 'statsBasisTotal')} {combo.offSec > 0 ? combo.offTov : '–'} ·{' '}
+          {t(lang, 'statsBasisPer10')} {fmtTovRate(turnoverRatePer10(combo.offTov, combo.offSec))}
+        </div>
       </div>
     </div>
   );

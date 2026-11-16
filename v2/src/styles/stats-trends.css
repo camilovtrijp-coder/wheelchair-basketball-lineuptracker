@@ -99,6 +99,51 @@
   gap: var(--lt-space-1);
 }
 
+/* R5: chips, gedempte "weinig minuten"-kaart, lopende lineup en beide bases. */
+.stats-panel .stats-chip {
+  display: inline-block;
+  align-self: flex-start;
+  padding: 0.1rem var(--lt-space-2);
+  border-radius: 999px;
+  font-size: var(--lt-font-size-xs);
+  font-weight: 700;
+  border: 1px solid var(--lt-color-border);
+  background: var(--lt-color-surface-alt);
+  color: var(--lt-color-fg);
+}
+
+.stats-panel .stats-chip--running {
+  border-color: var(--lt-color-accent);
+}
+
+/* Gedempt zonder de leesbaarheid te verlagen: gestreepte rand en een rustiger vlak,
+   geen doorzichtigheid (contrast blijft behouden). */
+.stats-panel .stats-card--low {
+  border-style: dashed;
+  background: var(--lt-color-surface-alt);
+  box-shadow: none;
+}
+
+.stats-panel .stats-card--low .stats-card__lineup {
+  font-weight: 600;
+}
+
+.stats-panel .stats-card--running {
+  border-color: var(--lt-color-accent);
+  box-shadow: var(--lt-glow);
+  margin-bottom: var(--lt-space-3);
+}
+
+.stats-panel .stats-bases,
+.stats-panel .stats-tov__both {
+  font-size: var(--lt-font-size-xs);
+  font-variant-numeric: tabular-nums;
+}
+
+.stats-panel .stats-bases {
+  margin-top: var(--lt-space-2);
+}
+
 /* Tijd/Pnt/Teg als kleine kolommen op de eerste rij, 'Met hen'/'Zonder hen'
    als grote pillen op de tweede rij. De volgorde in de markup blijft gelijk. */
 .stats-panel .statsgrid {

@@ -308,6 +308,29 @@ export function offShownValue(combo: LineupCombinationStats, per10: boolean): nu
   return pm;
 }
 
+/** R5: onder deze speeltijd (5:00, besluit eigenaar) is een lineup "weinig minuten". */
+export const LOW_MINUTES_SEC = 300;
+
+/** Plus/min per 10 minuten (`pm * 600 / sec`); `null` zonder speeltijd. */
+export function plusMinusPer10(pm: number, sec: number): number | null {
+  return sec > 0 ? (pm * 600) / sec : null;
+}
+
+/** R5: ON-plus/min per 10 min, op de eigen ON-speeltijd. */
+export function onPlusMinusPer10(combo: LineupCombinationStats): number | null {
+  return plusMinusPer10(combo.onPF - combo.onPA, combo.onSec);
+}
+
+/** R5: OFF-plus/min per 10 min, op de eigen OFF-speeltijd (andere tijdsbasis dan ON). */
+export function offPlusMinusPer10(combo: LineupCombinationStats): number | null {
+  return plusMinusPer10(combo.offPF - combo.offPA, combo.offSec);
+}
+
+/** R5: weinig speeltijd MET de combinatie (< 5:00); weinig data, dus voorzichtig lezen. */
+export function isLowMinutes(combo: Pick<LineupCombinationStats, 'onSec'>): boolean {
+  return combo.onSec < LOW_MINUTES_SEC;
+}
+
 /**
  * Turnovers per 10 minuten (`tov * 600 / sec`); `null` zonder speeltijd (er is
  * dan niets om te normaliseren). Zelfde normalisatie als bij plus/min.
