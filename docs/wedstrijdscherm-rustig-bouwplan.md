@@ -163,3 +163,49 @@ dient als model voor de vorm, niet voor de namen.
 - Geen wijziging aan het CSV-contract, bestaande localStorage-keys of
   statistiekberekeningen zonder narekenbare tests.
 - Wisselschema blijft lokaal op het apparaat.
+
+## 7. Uitvoering: alles klaarzetten voor review
+
+Werkwijze: elke PR bouwt een eigen Sonnet-sessie in een eigen worktree en
+branch. De reviewsessie (Opus) controleert elke oplevering tegen dit bouwplan.
+Gevonden punten gaan terug naar dezelfde bouwsessie, die ze oplost. Daarna
+opent de bouwsessie een **draft-PR**. Er wordt niets gemerged of gedeployed
+zonder akkoord van de eigenaar.
+
+### Golven
+
+| Golf | PR's | Basis-branch | Waarom |
+|---|---|---|---|
+| 0 | R0b | `main` | Klein, door de reviewsessie zelf gebouwd |
+| 1 | R1, R4, R5, R6, R8 (parallel) | `main` | Raken verschillende bestanden |
+| 2 | R2 | branch van R1 (gestapeld) | Rustig gebruikt het domein van R1 |
+| 3 | R3, daarna R7 | branch van R2 (gestapeld) | R3 raakt alle varianten; R7 zit in Rustig |
+
+Gestapelde PR's (R2 op R1, R3/R7 op R2) wijzen in GitHub naar de branch eronder.
+Zo laat elke PR alleen zijn eigen wijziging zien. Na het mergen van de
+onderliggende PR wordt de basis `main`.
+
+### Afspraken per bouwsessie
+
+1. Lees `AGENTS.md`, `README.md` en dit bouwplan:
+   `git show origin/feature/wisselschema-eerst:docs/wedstrijdscherm-rustig-bouwplan.md`,
+   zolang R0b nog niet op `main` staat.
+2. Bouw alleen de eigen PR uit §3, met de besluiten uit §5 en de relevante
+   scenario's uit §5b als tests. Gebruik fictieve spelers.
+3. Raak geen bestaande localStorage-keys, het CSV-contract of
+   statistiekberekeningen zonder handmatig narekenbare tests. Teksten in NL en EN.
+4. Draai `tsc -b`, `eslint .`, `vitest run` en de relevante Playwright-specs
+   in `v2/`.
+5. Commit op de eigen branch en push. Rapporteer de gewijzigde bestanden,
+   testresultaten en open risico's. Open nog geen PR; dat gebeurt na de review.
+6. Twijfel over scope of een datacontract: stoppen en de vraag melden, niet
+   zelf beslissen.
+
+### Ochtendcheck voor de eigenaar
+
+- Overzicht in de reviewsessie: per PR de status (gebouwd, gereviewd,
+  draft-PR open, of vastgelopen) en de punten die een besluit nodig hebben.
+- Per draft-PR: de CI-status in GitHub, en een Netlify-preview als die voor
+  PR's aanstaat.
+- Golf 2 en 3 starten pas na de review van de golf ervoor. Afhankelijk van
+  de bouwtijd staan die 's ochtends mogelijk nog open.
