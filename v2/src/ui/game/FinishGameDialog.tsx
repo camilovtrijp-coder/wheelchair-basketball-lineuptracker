@@ -80,13 +80,17 @@ export function FinishGameDialog({
     if (step === 'last' && touched && !window.confirm(t('compactDiscardDraftConfirm'))) return;
     onClose();
   }
+  // Eén vaste listener die altijd de requestClose van de laatste render aanroept (zie
+  // CompactLiveDialog): anders kan Escape direct na invoer een verouderde closure raken.
+  const requestCloseRef = useRef(requestClose);
+  requestCloseRef.current = requestClose;
   useEffect(() => {
     function onKeyDown(e: KeyboardEvent) {
-      if (e.key === 'Escape') requestClose();
+      if (e.key === 'Escape') requestCloseRef.current();
     }
     document.addEventListener('keydown', onKeyDown);
     return () => document.removeEventListener('keydown', onKeyDown);
-  });
+  }, []);
 
   // Weergave: eigen team links, bij uitwedstrijd de tegenstander.
   const fill = (template: string, own: number, opp: number) =>
