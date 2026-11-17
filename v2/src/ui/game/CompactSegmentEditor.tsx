@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'preact/hooks';
+import { useEffect, useRef, useState } from 'preact/hooks';
 import { MAX_SCORE, type ActiveGame, type GamePlayer } from '../../domain/game/types';
 import {
   clockDuration,
@@ -94,13 +94,17 @@ export function CompactSegmentEditor({
     if (touched && !window.confirm(t('compactDiscardDraftConfirm'))) return;
     onClose();
   }
+  // Eén vaste listener die altijd de requestClose van de laatste render aanroept (zie
+  // CompactLiveDialog): anders kan Escape direct na invoer een verouderde closure raken.
+  const requestCloseRef = useRef(requestClose);
+  requestCloseRef.current = requestClose;
   useEffect(() => {
     function onKeyDown(e: KeyboardEvent) {
-      if (e.key === 'Escape') requestClose();
+      if (e.key === 'Escape') requestCloseRef.current();
     }
     document.addEventListener('keydown', onKeyDown);
     return () => document.removeEventListener('keydown', onKeyDown);
-  });
+  }, []);
 
   const ownName = teamName || t('teamFallbackLabel');
   const opponentName = t('teamOpponent');
