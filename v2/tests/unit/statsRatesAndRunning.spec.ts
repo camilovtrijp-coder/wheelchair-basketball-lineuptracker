@@ -147,7 +147,7 @@ describe('deriveRunningLineup', () => {
   });
 
   it('levert geen duur-, per-10- of weinig-minutenvelden (geen live klok)', () => {
-    const r = deriveRunningLineup(game()) as Record<string, unknown>;
+    const r = deriveRunningLineup(game()) as unknown as Record<string, unknown>;
     expect(Object.keys(r).sort()).toEqual(['pa', 'pf', 'rosterIds', 'sinceSec', 'tov']);
   });
 
