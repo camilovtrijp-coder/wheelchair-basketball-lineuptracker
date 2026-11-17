@@ -116,13 +116,18 @@ export function CompactLiveDialog({
     if (hasDraft && !window.confirm(t('compactDiscardDraftConfirm'))) return;
     onClose();
   }
+  // De listener staat één keer vast en roept altijd de requestClose van de laatste render
+  // aan. Een useEffect zonder deps registreert pas na het volgende animatieframe opnieuw,
+  // waardoor Escape direct na invoer nog de oude closure (zonder concept) kon raken.
+  const requestCloseRef = useRef(requestClose);
+  requestCloseRef.current = requestClose;
   useEffect(() => {
     function onKeyDown(e: KeyboardEvent) {
-      if (e.key === 'Escape') requestClose();
+      if (e.key === 'Escape') requestCloseRef.current();
     }
     document.addEventListener('keydown', onKeyDown);
     return () => document.removeEventListener('keydown', onKeyDown);
-  });
+  }, []);
 
   // Invoerstap: focus op het eerste scoreveld (ook na Volgende vanuit de wisselkeuze).
   useEffect(() => {
