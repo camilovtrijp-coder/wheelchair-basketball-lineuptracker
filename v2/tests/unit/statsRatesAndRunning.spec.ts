@@ -136,34 +136,24 @@ describe('deriveRunningLineup', () => {
     };
   }
 
-  it('open segment: pf 5, pa 2, tov 2, duur 150s (alleen na het opgeslagen segment)', () => {
+  it('open segment: pf 5, pa 2, tov 2, sinds 1:40 (alleen na het opgeslagen segment)', () => {
     const r = deriveRunningLineup(game());
     expect(r).not.toBeNull();
     expect(r!.rosterIds).toEqual([11, 12, 13, 14, 15]);
-    expect(r!.durSec).toBe(150); // 250 - 100
+    expect(r!.sinceSec).toBe(100); // beginSec van het open segment = 1:40
     expect(r!.pf).toBe(5); // 2 + 3 (de eerste 2 zit in het opgeslagen segment)
     expect(r!.pa).toBe(2); // 2 (de eerste 1 zit in het opgeslagen segment)
     expect(r!.tov).toBe(2);
-    // Per 10 min: +3 → 3 * 600 / 150 = 12; TO 2 * 600 / 150 = 8
-    expect(r!.pmPer10).toBe(12);
-    expect(r!.tovPer10).toBe(8);
   });
 
-  it('klok die aftelt: duur = begin − eind (600 → 450 = 150s)', () => {
+  it('levert geen duur-, per-10- of weinig-minutenvelden (geen live klok)', () => {
+    const r = deriveRunningLineup(game()) as Record<string, unknown>;
+    expect(Object.keys(r).sort()).toEqual(['pa', 'pf', 'rosterIds', 'sinceSec', 'tov']);
+  });
+
+  it('sinds-tijd is de beginklok, ook bij aftellende klok (600 → 10:00)', () => {
     const r = deriveRunningLineup(game({ clockDown: true, beginSec: 600, endSec: 450 }));
-    expect(r!.durSec).toBe(150);
-  });
-
-  it('nog geen speeltijd (begin = eind): duur 0 en per-10-waarden null', () => {
-    const r = deriveRunningLineup(game({ beginSec: 100, endSec: 100 }));
-    expect(r!.durSec).toBe(0);
-    expect(r!.pmPer10).toBeNull();
-    expect(r!.tovPer10).toBeNull();
-  });
-
-  it('lopende lineup is "weinig minuten" onder 5:00 (150s) en niet vanaf 300s', () => {
-    expect(deriveRunningLineup(game())!.lowMinutes).toBe(true);
-    expect(deriveRunningLineup(game({ beginSec: 0, endSec: 300 }))!.lowMinutes).toBe(false);
+    expect(r!.sinceSec).toBe(600);
   });
 
   it('bij een nog niet bevestigde wissel hoort het open segment bij de lineup van vóór de wissel', () => {

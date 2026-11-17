@@ -183,20 +183,23 @@ describe('StatsPanel R5 — lopende lineup', () => {
     expect(q.queryByTestId('stats-running')).toBeNull();
   });
 
-  it('toont tijd, punten, +/- totaal en per 10 min, gemarkeerd als voorlopig', () => {
+  it('toont sinds-tijd, punten voor/tegen en +/- totaal, gemarkeerd als voorlopig', () => {
     const q = renderPanel(activeGame());
     const card = q.getByTestId('stats-running');
     expect(q.getByTestId('stats-running-badge').textContent).toBe('lopend · voorlopig');
-    // Open segment: 150s, voor 5, tegen 2 → +3 totaal; 3 × 600 / 150 = +12.0 per 10 min.
-    expect(card.textContent).toContain('2:30');
+    // Open segment begon op 0 s → "sinds 0:00"; voor 5, tegen 2 → +3 totaal.
+    expect(q.getByTestId('stats-running-since').textContent).toBe('sinds 0:00');
     expect(card.textContent).toContain('+3.0');
-    expect(card.textContent).toContain('+12.0');
-    // Turnovers: 1 totaal; 1 × 600 / 150 = 4.0 per 10 min.
-    expect(q.getByTestId('stats-running-tov').textContent).toBe(
-      'TO met hen: totaal 1 · per 10′ 4.0',
-    );
-    // 150s < 300s → ook hier de weinig-minuten-markering.
-    expect(q.getByTestId('stats-running-low')).toBeTruthy();
+    // Turnovers: alleen het totaal (1).
+    expect(q.getByTestId('stats-running-tov').textContent).toBe('TO met hen: 1');
+  });
+
+  it('geen per-10-waarden en geen weinig-minuten-markering op de lopende kaart', () => {
+    const q = renderPanel(activeGame());
+    const card = q.getByTestId('stats-running');
+    expect(card.textContent).not.toContain('per 10');
+    expect(card.textContent).not.toContain('weinig minuten');
+    expect(q.queryByTestId('stats-running-low')).toBeNull();
   });
 
   it('staat boven de besturing en de lijst', () => {
@@ -209,5 +212,6 @@ describe('StatsPanel R5 — lopende lineup', () => {
   it('Engelse markering', () => {
     const q = renderPanel(activeGame(), 'en');
     expect(q.getByTestId('stats-running-badge').textContent).toBe('running · provisional');
+    expect(q.getByTestId('stats-running-since').textContent).toBe('since 0:00');
   });
 });

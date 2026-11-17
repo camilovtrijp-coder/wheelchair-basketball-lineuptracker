@@ -1,27 +1,22 @@
 import { openSegmentSummary } from '../game/liveCommands';
-import { segDur } from '../game/tracking';
 import type { ActiveGame } from '../game/types';
-import { LOW_MINUTES_SEC, plusMinusPer10, turnoverRatePer10 } from './computeLineupStats';
 
 /**
  * R5 — de lopende lineup van een actieve wedstrijd, afgeleid uit het open
- * segment (punten/turnovers sinds het laatste vastgelegde segment, duur uit de
- * begin-/eindklok). Alleen weergave: er wordt niets opgeslagen en het is altijd
- * voorlopig, want het segment is nog niet vastgelegd.
+ * segment (punten/turnovers sinds het laatste vastgelegde segment, begin uit de
+ * beginklok). Alleen weergave: er wordt niets opgeslagen en het is altijd
+ * voorlopig, want het segment is nog niet vastgelegd. Bewust zonder duur,
+ * per-10-waarden of weinig-minuten-markering: er is geen live klok, dus de duur
+ * van het lopende segment is meestal 0 en zulke cijfers zouden niet kloppen.
  */
 export interface RunningLineup {
   /** Gesorteerde `rosterId`'s van de vijf spelers. */
   rosterIds: number[];
-  durSec: number;
+  /** Klokstand (seconden) waarop het open segment begon: "sinds mm:ss". */
+  sinceSec: number;
   pf: number;
   pa: number;
   tov: number;
-  /** Plus/min per 10 min; `null` zonder speeltijd. */
-  pmPer10: number | null;
-  /** Turnovers per 10 min; `null` zonder speeltijd. */
-  tovPer10: number | null;
-  /** Minder dan 5:00 speeltijd in het open segment. */
-  lowMinutes: boolean;
 }
 
 /**
@@ -44,15 +39,11 @@ export function deriveRunningLineup(game: ActiveGame): RunningLineup | null {
   rosterIds.sort((a, b) => a - b);
 
   const open = openSegmentSummary(game);
-  const durSec = Math.max(0, segDur(game));
   return {
     rosterIds,
-    durSec,
+    sinceSec: game.beginSec,
     pf: open.pointsFor,
     pa: open.pointsAgainst,
     tov: open.turnovers,
-    pmPer10: plusMinusPer10(open.pointsFor - open.pointsAgainst, durSec),
-    tovPer10: turnoverRatePer10(open.turnovers, durSec),
-    lowMinutes: durSec < LOW_MINUTES_SEC,
   };
 }

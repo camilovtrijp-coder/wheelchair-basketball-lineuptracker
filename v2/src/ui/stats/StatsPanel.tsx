@@ -271,8 +271,9 @@ export function StatsPanel({
 
 /**
  * R5: de lopende lineup, live bovenaan tijdens een actieve wedstrijd. Gemarkeerd
- * als voorlopig: het open segment is nog niet vastgelegd, dus tijd en cijfers
- * kunnen nog veranderen. Totaal en per 10 min staan naast elkaar.
+ * als voorlopig: het open segment is nog niet vastgelegd, dus de cijfers kunnen
+ * nog veranderen. Alleen "sinds mm:ss" en totalen; geen per-10 of weinig-minuten
+ * (er is geen live klok, dus de duur is meestal 0).
  */
 function RunningCard({
   running,
@@ -294,37 +295,22 @@ function RunningCard({
           {t(lang, 'statsRunningBadge')}
         </span>
       </div>
-      {running.lowMinutes ? (
-        <span className="stats-chip stats-chip--low" data-testid="stats-running-low">
-          {t(lang, 'statsLowMinutes')}
-        </span>
-      ) : null}
+      <div className="mut2" data-testid="stats-running-since">
+        {t(lang, 'statsRunningSince').replace('{time}', fmtSeconds(running.sinceSec))}
+      </div>
       <div className="stats-card__lineup">
         {running.rosterIds.map((id) => (
           <div key={id}>{label(id)}</div>
         ))}
       </div>
       <div className="statsgrid stats-card__grid">
-        <Stat label={t(lang, 'statsColTime')} value={fmtSeconds(running.durSec)} />
         <Stat label={t(lang, 'statsColPts')} value={String(running.pf)} tone="pos" />
         <Stat label={t(lang, 'statsColOpp')} value={String(running.pa)} tone="neg" />
-        <Stat
-          label={t(lang, 'statsBasisTotal')}
-          value={fmtPlusMinus(pm)}
-          tone={pmClass(pm)}
-          badge
-        />
-        <Stat
-          label={t(lang, 'statsBasisPer10')}
-          value={fmtRate(running.pmPer10)}
-          tone={pmClass(running.pmPer10 ?? 0)}
-          badge
-        />
+        <Stat label={t(lang, 'trendsPmLabel')} value={fmtPlusMinus(pm)} tone={pmClass(pm)} badge />
       </div>
       {showTurnovers ? (
         <div className="mut2 stats-tov__both" data-testid="stats-running-tov">
-          {t(lang, 'statsTovWith')}: {t(lang, 'statsBasisTotal')} {running.tov} ·{' '}
-          {t(lang, 'statsBasisPer10')} {fmtTovRate(running.tovPer10)}
+          {t(lang, 'statsTovWith')}: {running.tov}
         </div>
       ) : null}
     </div>

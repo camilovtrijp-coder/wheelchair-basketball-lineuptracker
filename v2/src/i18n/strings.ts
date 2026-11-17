@@ -905,6 +905,7 @@ const nl = {
   // R5: lopende lineup, beide bases naast elkaar, weinig minuten.
   statsRunningTitle: 'Lopende lineup',
   statsRunningBadge: 'lopend · voorlopig',
+  statsRunningSince: 'sinds {time}',
   statsLowMinutes: 'weinig minuten',
   statsBasisTotal: 'totaal',
   statsBasisPer10: 'per 10′',
@@ -1854,6 +1855,7 @@ const en = {
   // R5: running lineup, both bases side by side, few minutes.
   statsRunningTitle: 'Running lineup',
   statsRunningBadge: 'running · provisional',
+  statsRunningSince: 'since {time}',
   statsLowMinutes: 'few minutes',
   statsBasisTotal: 'total',
   statsBasisPer10: 'per 10′',
