@@ -1849,14 +1849,6 @@ export function App({
               setDeleteError(false);
             }}
             onDeleteGame={handleDeleteCompletedGame}
-            classification={{
-              useClassLimit: settings.useClassLimit === true,
-              classBaseLimit: settings.classBaseLimit as number,
-              maxBonus: settings.maxBonus as number,
-              bonusTag1Only: settings.bonusTag1Only as number,
-              bonusTag2Only: settings.bonusTag2Only as number,
-              bonusBoth: settings.bonusBoth as number,
-            }}
             tag1Label={tag1Label}
             tag2Label={tag2Label}
             // PR 7.5b/7.6a: correctie lokaal altijd; in cloudmodus alleen met een

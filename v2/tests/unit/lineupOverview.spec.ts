@@ -3,28 +3,17 @@
 //
 // Spelers (klasse; V = vrouw, J = jeugd):
 //   p1 3.0 · p2 2.5 V · p3 3.5 J · p4 1.5 V+J · p5 4.0 · p6 1.0 · p7 2.0
-// Bonusconfig: max 2.5; alleen V 1.5; alleen J 1.0; beide 2.0.
-//
-// Lineups:
-//   A = p1 p2 p3 p4 p5 → klasse 3+2.5+3.5+1.5+4 = 14.5; bonus 1.5+1+2 = 4.5 → max 2.5 → "14.5 FJ +2.5"
-//   C = p1 p3 p5 p6 p7 → klasse 3+3.5+4+1+2 = 13.5; bonus 1.0 → "13.5 J +1"
-//   D = p1 p2 p5 p6 p7 → klasse 3+2.5+4+1+2 = 12.5; bonus 1.5 → "12.5 F +1.5"
+// De opgeslagen segmentvelden (classSum / allowed = limiet + bonus) bepalen de
+// notatie; er wordt niets met de huidige instellingen herberekend. Fixture:
+//   A = p1 p2 p3 p4 p5 → opgeslagen 14.5 / 16.5
+//   C = p1 p3 p5 p6 p7 → opgeslagen 13.5 / 15.0
+//   D = p1 p2 p5 p6 p7 → opgeslagen 12.5 / 15.5
 import { describe, it, expect } from 'vitest';
 import {
   buildLineupOverview,
   formatLineupClassNotation,
 } from '../../src/domain/game/lineupOverview';
-import type { ClassificationConfig } from '../../src/domain/game/tracking';
 import type { CompletedGame, GamePlayer, Segment } from '../../src/domain/game/types';
-
-const CONFIG: ClassificationConfig = {
-  useClassLimit: true,
-  classBaseLimit: 14,
-  maxBonus: 2.5,
-  bonusTag1Only: 1.5,
-  bonusTag2Only: 1.0,
-  bonusBoth: 2.0,
-};
 
 function player(n: number, kl: string, vrouw = false, jeugd = false): GamePlayer {
   return {
@@ -50,6 +39,12 @@ const PLAYERS: GamePlayer[] = [
   player(7, '2.0'),
 ];
 
+const STORED: Record<string, [number, number]> = {
+  '12345': [14.5, 16.5],
+  '13567': [13.5, 15],
+  '12567': [12.5, 15.5],
+};
+
 function seg(
   id: string,
   quarter: number,
@@ -68,8 +63,20 @@ function seg(
     lineup,
     pf,
     pa,
-    classSum: 0,
-    allowed: 0,
+    classSum:
+      STORED[
+        lineup
+          .map((x) => x.slice(1))
+          .sort()
+          .join('')
+      ]?.[0] ?? 0,
+    allowed:
+      STORED[
+        lineup
+          .map((x) => x.slice(1))
+          .sort()
+          .join('')
+      ]?.[1] ?? 0,
     over: false,
     ...(tov === undefined ? {} : { tov }),
   };
@@ -102,7 +109,7 @@ const SEGMENTS: Segment[] = [
 ];
 
 describe('buildLineupOverview', () => {
-  const rows = buildLineupOverview(game(SEGMENTS), CONFIG);
+  const rows = buildLineupOverview(game(SEGMENTS));
 
   it('geeft unieke lineups op volgorde van eerste opkomst (A, C, D)', () => {
     expect(rows.map((r) => r.players.map((p) => p.nr).join(''))).toEqual([
@@ -142,40 +149,56 @@ describe('buildLineupOverview', () => {
     expect(d.quarters).toEqual([{ quarter: 2, sec: 240 }]);
   });
 
-  it('klassesom, bonus (met maximum) en tags per lineup', () => {
+  it('neemt opgeslagen klassesom en toegestane som over, plus tags per lineup', () => {
     const [a, c, d] = rows;
-    expect([a!.classSum, a!.bonus, a!.hasWomen, a!.hasYouth]).toEqual([14.5, 2.5, true, true]);
-    expect([c!.classSum, c!.bonus, c!.hasWomen, c!.hasYouth]).toEqual([13.5, 1, false, true]);
-    expect([d!.classSum, d!.bonus, d!.hasWomen, d!.hasYouth]).toEqual([12.5, 1.5, true, false]);
+    expect([a!.classSum, a!.allowed, a!.hasWomen, a!.hasYouth]).toEqual([14.5, 16.5, true, true]);
+    expect([c!.classSum, c!.allowed, c!.hasWomen, c!.hasYouth]).toEqual([13.5, 15, false, true]);
+    expect([d!.classSum, d!.allowed, d!.hasWomen, d!.hasYouth]).toEqual([12.5, 15.5, true, false]);
   });
 
-  it('toont de game-plan-notatie', () => {
+  it('toont de notatie met opgeslagen waarden', () => {
     expect(rows.map((r) => formatLineupClassNotation(r, 'Vrouw', 'Jeugd'))).toEqual([
-      '14.5 VJ +2.5',
-      '13.5 J +1',
-      '12.5 V +1.5',
+      '14.5 VJ (max 16.5)',
+      '13.5 J (max 15.0)',
+      '12.5 V (max 15.5)',
     ]);
-    expect(formatLineupClassNotation(rows[0]!, 'Female', 'Junior')).toBe('14.5 FJ +2.5');
+    expect(formatLineupClassNotation(rows[0]!, 'Female', 'Junior')).toBe('14.5 FJ (max 16.5)');
   });
 
-  it('zonder tags en bonus alleen de klassesom', () => {
+  it('herberekent niet: een afwijkende opgeslagen classSum wint van de spelerklassen', () => {
+    // Spelerklassen tellen op tot 14.5, maar de wedstrijd sloeg 15.0 / 17.0 op
+    // (bv. gespeeld met andere klassen of instellingen).
+    const stored = { ...seg('s1', 1, A, 100, 2, 1), classSum: 15, allowed: 17 };
+    const [row] = buildLineupOverview(game([stored]));
+    expect([row!.classSum, row!.allowed]).toEqual([15, 17]);
+    expect(formatLineupClassNotation(row!, 'F', 'J')).toBe('15.0 FJ (max 17.0)');
+  });
+
+  it('zonder klassegrens (allowed 0) alleen de tags', () => {
     expect(
       formatLineupClassNotation(
-        { classSum: 13, bonus: 0, hasWomen: false, hasYouth: false },
+        { classSum: 0, allowed: 0, hasWomen: true, hasYouth: false },
         'F',
         'J',
       ),
-    ).toBe('13.0');
+    ).toBe('F');
+    expect(
+      formatLineupClassNotation(
+        { classSum: 0, allowed: 0, hasWomen: false, hasYouth: false },
+        'F',
+        'J',
+      ),
+    ).toBe('');
   });
 
   it('negeert een segment met een onbekende speler (PARTIAL)', () => {
     const partial = seg('sx', 1, ['p1', 'p2', 'p3', 'p4', 'pX'], 500, 9, 9);
-    const out = buildLineupOverview(game([partial, seg('s1', 1, A, 100, 2, 1)]), CONFIG);
+    const out = buildLineupOverview(game([partial, seg('s1', 1, A, 100, 2, 1)]));
     expect(out).toHaveLength(1);
     expect(out[0]!.sec).toBe(100);
   });
 
   it('geeft een lege lijst zonder segmenten', () => {
-    expect(buildLineupOverview(game([]), CONFIG)).toEqual([]);
+    expect(buildLineupOverview(game([]))).toEqual([]);
   });
 });

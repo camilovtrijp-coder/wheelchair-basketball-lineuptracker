@@ -13,7 +13,6 @@ import { translate, type Lang, type StringKey } from '../../i18n/strings';
 import { CorrectSegmentDialog, describeCorrectableFields } from './CorrectSegmentDialog';
 import { DiscardLocalCorrectionDialog } from './DiscardLocalCorrectionDialog';
 import { LineupOverview } from './LineupOverview';
-import type { ClassificationConfig } from '../../domain/game/tracking';
 import { SyncStatusIndicator } from '../sync/SyncStatusIndicator';
 import type { SyncState, SyncStatus } from '../../domain/syncState';
 import type { CorrectionSyncStatus } from '../../application/game/CompletedGameRepository';
@@ -130,11 +129,9 @@ export interface HistoryPanelProps {
    */
   onDiscardLocalCorrection?: (id: string) => boolean;
   /**
-   * R8: classificatie-instellingen en categorielabels voor het lineup-overzicht
-   * (klassesom + F/J-tags + bonus). Zonder `classification` wordt het
-   * overzicht niet getoond.
+   * R8: categorielabels voor de F/J-tags in het lineup-overzicht (alleen de
+   * eerste letter wordt getoond).
    */
-  classification?: ClassificationConfig;
   tag1Label?: string;
   tag2Label?: string;
 }
@@ -206,7 +203,6 @@ export function HistoryPanel({
   correctionBlockedIds,
   onRetryCorrectionUploads,
   onDiscardLocalCorrection,
-  classification,
   tag1Label = '',
   tag2Label = '',
 }: HistoryPanelProps) {
@@ -467,15 +463,7 @@ export function HistoryPanel({
           {t(lang, 'historyTurnoversPer10')}:{' '}
           <strong>{fmtTurnoversPer10(turnoversPer10(openTurnovers, openSeconds))}</strong>
         </p>
-        {classification ? (
-          <LineupOverview
-            lang={lang}
-            game={open}
-            classification={classification}
-            tag1Label={tag1Label}
-            tag2Label={tag2Label}
-          />
-        ) : null}
+        <LineupOverview lang={lang} game={open} tag1Label={tag1Label} tag2Label={tag2Label} />
         {canCorrect ? (
           <p className="segment-list__hint" data-testid="history-correct-hint">
             {t(lang, 'correctSegmentHint')}

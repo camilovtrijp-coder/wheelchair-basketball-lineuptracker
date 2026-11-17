@@ -1,12 +1,10 @@
 import type { CompletedGame } from '../../domain/game/types';
-import type { ClassificationConfig } from '../../domain/game/tracking';
 import { buildLineupOverview, formatLineupClassNotation } from '../../domain/game/lineupOverview';
 import { translate, type Lang, type StringKey } from '../../i18n/strings';
 
 export interface LineupOverviewProps {
   lang: Lang;
   game: CompletedGame;
-  classification: ClassificationConfig;
   tag1Label: string;
   tag2Label: string;
 }
@@ -20,14 +18,8 @@ function fmtSec(sec: number): string {
 }
 
 /** R8: per gespeelde lineup tijd, stints, +/-, TO en kwarten — alleen weergave. */
-export function LineupOverview({
-  lang,
-  game,
-  classification,
-  tag1Label,
-  tag2Label,
-}: LineupOverviewProps) {
-  const rows = buildLineupOverview(game, classification);
+export function LineupOverview({ lang, game, tag1Label, tag2Label }: LineupOverviewProps) {
+  const rows = buildLineupOverview(game);
   return (
     <section className="lineup-overview" data-testid="history-lineup-overview">
       <h3 className="lineup-overview__title">{t(lang, 'lineupOverviewTitle')}</h3>

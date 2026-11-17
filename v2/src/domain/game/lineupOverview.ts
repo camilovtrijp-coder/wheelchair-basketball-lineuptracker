@@ -1,6 +1,5 @@
 import { computeLineupStats, normalizeSegmentLineup } from '../stats/computeLineupStats';
 import type { StatsFilter } from '../stats/types';
-import { playerBonus, type ClassificationConfig } from './tracking';
 import type { CompletedGame, GamePlayer } from './types';
 
 /**
@@ -20,10 +19,14 @@ export interface LineupOverviewRow {
   key: string;
   /** Spelers in volgorde van het eerste segment waarin de lineup speelde. */
   players: GamePlayer[];
-  /** Som van de klassen (spelers zonder numerieke klasse tellen als 0). */
+  /**
+   * Opgeslagen `Segment.classSum` / `Segment.allowed` van het eerste segment van
+   * deze lineup: de classificatie zoals die tijdens de wedstrijd gold. Niets
+   * wordt met de huidige instellingen herberekend. `allowed` is limiet + bonus;
+   * de bonus los is niet opgeslagen. Beide 0 als de klassegrens uit stond.
+   */
   classSum: number;
-  /** Totale bonus, begrensd op `maxBonus`. 0 als er geen bonus is. */
-  bonus: number;
+  allowed: number;
   hasWomen: boolean;
   hasYouth: boolean;
   sec: number;
@@ -45,10 +48,7 @@ const ALL_GAMES_FILTER: StatsFilter = {
   playerFilters: [],
 };
 
-export function buildLineupOverview(
-  game: CompletedGame,
-  config: ClassificationConfig,
-): LineupOverviewRow[] {
+export function buildLineupOverview(game: CompletedGame): LineupOverviewRow[] {
   const stats = computeLineupStats(
     [
       {
@@ -67,8 +67,6 @@ export function buildLineupOverview(
   );
   const statsByKey = new Map(stats.combinations.map((c) => [c.rosterIds.join(','), c]));
   const playersById = new Map(game.players.map((p) => [p.id, p]));
-  // Bonus los van de klassegrens-schakelaar: het overzicht toont de notatie altijd.
-  const bonusConfig: ClassificationConfig = { ...config, useClassLimit: true };
 
   const rows = new Map<string, LineupOverviewRow>();
   let previousKey: string | null = null;
@@ -89,19 +87,11 @@ export function buildLineupOverview(
     let row = rows.get(key);
     if (!row) {
       const players = segment.lineup.map((id) => playersById.get(id)).filter((p) => p != null);
-      const classSum = players.reduce((sum, p) => {
-        const v = parseFloat(p.kl);
-        return sum + (Number.isNaN(v) ? 0 : v);
-      }, 0);
-      const bonus = Math.min(
-        bonusConfig.maxBonus,
-        players.reduce((sum, p) => sum + playerBonus(p, bonusConfig), 0),
-      );
       row = {
         key,
         players,
-        classSum,
-        bonus,
+        classSum: segment.classSum,
+        allowed: segment.allowed,
         hasWomen: players.some((p) => p.vrouw),
         hasYouth: players.some((p) => p.jeugd),
         sec: lineupStats.onSec,
@@ -129,18 +119,19 @@ export function buildLineupOverview(
 }
 
 /**
- * Game-plan-notatie: klassesom, F/J-tags (eerste letter van de labels, vrouw
- * vóór jeugd) en bonus — bv. `15.0 FJ +2`, `14.5 F +1.5`, `13.0` zonder tags.
+ * Notatie op basis van de opgeslagen segmentvelden: klassesom, F/J-tags (eerste
+ * letter van de labels, vrouw vóór jeugd) en de toegestane som — bv.
+ * `15.0 FJ (max 16.5)`. Zonder klassegrens (`allowed` 0) alleen de tags.
  */
 export function formatLineupClassNotation(
-  row: Pick<LineupOverviewRow, 'classSum' | 'bonus' | 'hasWomen' | 'hasYouth'>,
+  row: Pick<LineupOverviewRow, 'classSum' | 'allowed' | 'hasWomen' | 'hasYouth'>,
   tag1Label: string,
   tag2Label: string,
 ): string {
   const tags =
     (row.hasWomen ? tag1Label.charAt(0).toUpperCase() : '') +
     (row.hasYouth ? tag2Label.charAt(0).toUpperCase() : '');
-  const bonus =
-    row.bonus > 0 ? `+${Number.isInteger(row.bonus) ? row.bonus : row.bonus.toFixed(1)}` : '';
-  return [row.classSum.toFixed(1), tags, bonus].filter((s) => s !== '').join(' ');
+  const limited = row.allowed > 0;
+  const max = limited ? `(max ${row.allowed.toFixed(1)})` : '';
+  return [limited ? row.classSum.toFixed(1) : '', tags, max].filter((x) => x !== '').join(' ');
 }

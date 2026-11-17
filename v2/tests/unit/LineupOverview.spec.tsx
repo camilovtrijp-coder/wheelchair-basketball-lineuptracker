@@ -3,19 +3,9 @@
 import { describe, it, expect, afterEach, vi } from 'vitest';
 import { render, cleanup } from '@testing-library/preact';
 import { HistoryPanel } from '../../src/ui/game/HistoryPanel';
-import type { ClassificationConfig } from '../../src/domain/game/tracking';
 import type { CompletedGame, GamePlayer, Segment } from '../../src/domain/game/types';
 
 afterEach(() => cleanup());
-
-const CONFIG: ClassificationConfig = {
-  useClassLimit: true,
-  classBaseLimit: 14,
-  maxBonus: 2.5,
-  bonusTag1Only: 1.5,
-  bonusTag2Only: 1.0,
-  bonusBoth: 2.0,
-};
 
 const kl = ['3.0', '2.5', '3.5', '1.5', '4.0'];
 const players: GamePlayer[] = kl.map((k, i) => ({
@@ -39,8 +29,9 @@ const segment: Segment = {
   lineup: players.map((p) => p.id),
   pf: 5,
   pa: 3,
-  classSum: 0,
-  allowed: 0,
+  // Opgeslagen waarden wijken bewust af van de spelerklassen (som 14.5).
+  classSum: 15,
+  allowed: 17,
   over: false,
   tov: 2,
 };
@@ -57,7 +48,7 @@ const game = {
   corrections: [],
 } as unknown as CompletedGame;
 
-function renderPanel(withClassification: boolean) {
+function renderPanel() {
   return render(
     <HistoryPanel
       lang="nl"
@@ -68,7 +59,6 @@ function renderPanel(withClassification: boolean) {
       onDeleteGame={vi.fn()}
       canWrite={false}
       saveError={false}
-      classification={withClassification ? CONFIG : undefined}
       tag1Label="Female"
       tag2Label="Junior"
     />,
@@ -77,15 +67,10 @@ function renderPanel(withClassification: boolean) {
 
 describe('HistoryPanel — lineup-overzicht (R8)', () => {
   it('toont notatie, +/- en kwartentijd van de lineup', () => {
-    const { getByTestId } = renderPanel(true);
-    // klasse 3+2.5+3.5+1.5+4 = 14.5; bonus 1.5+1+2 = 4.5 → max 2.5
-    expect(getByTestId('history-lineup-class-0').textContent).toBe('14.5 FJ +2.5');
+    const { getByTestId } = renderPanel();
+    // Opgeslagen 15.0 / 17.0, niet de som van de spelerklassen (14.5).
+    expect(getByTestId('history-lineup-class-0').textContent).toBe('15.0 FJ (max 17.0)');
     expect(getByTestId('history-lineup-pm-0').textContent).toBe('+2');
     expect(getByTestId('history-lineup-quarters-0').textContent).toBe('Q1 2:05');
-  });
-
-  it('toont niets zonder classificatie-instellingen', () => {
-    const { queryByTestId } = renderPanel(false);
-    expect(queryByTestId('history-lineup-overview')).toBeNull();
   });
 });
