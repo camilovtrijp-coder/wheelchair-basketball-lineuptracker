@@ -33,6 +33,7 @@ import {
   plannedEndSec,
   propagateDeviation,
   quarterStartLineup,
+  resolveLineup,
   withQuarterCount,
 } from '../../domain/game/rotationPlan';
 
@@ -309,6 +310,19 @@ export function QuickLivePanel({
   const [leftTeam, rightTeam]: [Team, Team] = away ? ['against', 'for'] : ['for', 'against'];
   const bannerSelected = selected != null ? playerById(selected.id) : undefined;
 
+  // Starters in het schema aangepast vóór het eerste segment: zet ze ook op de vloer, zodat het
+  // live-scherm overeenkomt. Staat er een wissel open, dan zijn de starters de opstelling van vóór die wissel.
+  function handleStartersChange(rosterIds: number[]) {
+    if (!canWrite) return;
+    const ids = resolveLineup(game, rosterIds);
+    if (ids == null) return;
+    onGameChange(
+      game.pendingSwapLineup != null
+        ? { ...game, pendingSwapLineup: ids }
+        : { ...game, onCourt: ids },
+    );
+  }
+
   function handleCreatePlan() {
     const created = emptyPlan(game, quarterCount);
     if (created != null) savePlan(created);
@@ -353,6 +367,7 @@ export function QuickLivePanel({
           onCreate={handleCreatePlan}
           onLoadPrevious={handleLoadPrevious}
           onClear={clearPlan}
+          onStartersChange={handleStartersChange}
         />
       </section>
     );

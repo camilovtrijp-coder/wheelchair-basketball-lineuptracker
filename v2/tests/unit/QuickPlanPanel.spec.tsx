@@ -562,6 +562,38 @@ describe('R4: starters aanpasbaar', () => {
     expect(readPlanForGame('game-1')?.quarters['1']?.[0]?.lineup).toEqual([12, 7, 9, 11, 13]);
   });
 
+  it('een aangepaste starter komt ook op de vloer van het live-scherm', () => {
+    storePlanForGame('game-1', plan());
+    const { getByTestId, latest } = setup();
+    fireEvent.click(getByTestId('quick-view-plan'));
+    fireEvent.click(getByTestId('quick-plan-block-1-0'));
+    // Alex (4) eruit, Noa (12) erin.
+    fireEvent.click(getByTestId('quick-plan-court-0'));
+    fireEvent.click(getByTestId('quick-plan-bench-12'));
+    expect(latest().onCourt).toEqual(['gp-12', 'gp-7', 'gp-9', 'gp-11', 'gp-13']);
+    expect(latest().pendingSwapLineup).toBeNull();
+    // Een ander blok (niet de starters) laat de vloer ongemoeid.
+    fireEvent.click(getByTestId('quick-plan-done'));
+    fireEvent.click(getByTestId('quick-plan-block-1-1'));
+    fireEvent.click(getByTestId('quick-plan-court-1'));
+    fireEvent.click(getByTestId('quick-plan-bench-15'));
+    expect(latest().onCourt).toEqual(['gp-12', 'gp-7', 'gp-9', 'gp-11', 'gp-13']);
+  });
+
+  it('een extra wissel geeft een tweede uitvoeringsregel bij hetzelfde blok', () => {
+    storePlanForGame('game-1', plan());
+    const first = gameWithSegment(['gp-4', 'gp-7', 'gp-9', 'gp-11', 'gp-13'], 400);
+    const second = commitSegment(
+      { ...first, onCourt: ['gp-4', 'gp-7', 'gp-9', 'gp-11', 'gp-15'] },
+      { endSec: 300, classification: CLASSIFICATION },
+    );
+    if (!second.ok) throw new Error('segment mislukt');
+    const { getByTestId } = setup({ game: second.game });
+    fireEvent.click(getByTestId('quick-view-plan'));
+    expect(getByTestId('quick-plan-actual-1-0')).toBeTruthy();
+    expect(text(getByTestId('quick-plan-actual-1-0-1'))).toContain('Jules i.p.v. Dani');
+  });
+
   it('na het eerste segment is het starters-blok dicht', () => {
     storePlanForGame('game-1', plan());
     const { getByTestId } = setup({

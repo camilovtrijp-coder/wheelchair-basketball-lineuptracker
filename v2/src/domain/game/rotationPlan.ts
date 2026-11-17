@@ -476,19 +476,40 @@ export interface PlanExecution {
 }
 
 /**
- * Per gespeeld blok van kwart `q` de geplande opstelling naast de werkelijk gespeelde. De uitvoering is
- * afgeleid uit de segmenten (het n-de segment van het kwart hoort bij blok n); er wordt niets opgeslagen.
- * Alleen blokken met een vastgelegd segment komen terug; het lopende blok hoort er nog niet bij.
+ * Bij welk blok hoort een segment dat op `beginSec` begint? Een blok loopt van zijn begin tot
+ * `toSec` (het wisselmoment); een segment dat precies op die grens begint, hoort al bij het
+ * volgende blok. Het laatste blok vangt de rest van het kwart op.
+ */
+export function blockIndexForTime(
+  blocks: PlanBlock[],
+  beginSec: number,
+  clockDown: boolean,
+): number {
+  for (let i = 0; i < blocks.length - 1; i++) {
+    const to = blocks[i]?.toSec;
+    if (to === undefined) continue;
+    const beforeLimit = clockDown ? beginSec > to : beginSec < to;
+    if (beforeLimit) return i;
+  }
+  return Math.max(0, blocks.length - 1);
+}
+
+/**
+ * Per gespeeld segment van kwart `q` de geplande opstelling van het blok waarin het begon, naast de
+ * werkelijk gespeelde. De koppeling gaat op TIJD (het blok waarin `beginSec` valt), niet op volgorde:
+ * een extra wissel die niet in het schema staat geeft een tweede uitvoering bij hetzelfde blok, en een
+ * overgeslagen blok krijgt geen uitvoering. Afgeleid uit de segmenten; er wordt niets opgeslagen. Het
+ * lopende blok (nog geen segment) komt er niet in voor.
  */
 export function planVersusActual(game: ActiveGame, plan: RotationPlan, q: number): PlanExecution[] {
   const blocks = plan.quarters[String(q)] ?? [];
+  if (blocks.length === 0) return [];
   const segments = deriveGameHistory(game).segments.filter((s) => s.quarter === q);
   const result: PlanExecution[] = [];
-  const count = Math.min(blocks.length, segments.length);
-  for (let block = 0; block < count; block++) {
+  for (const segment of segments) {
+    const block = blockIndexForTime(blocks, segment.beginSec, game.clockDown);
     const planBlock = blocks[block];
-    const segment = segments[block];
-    if (planBlock == null || segment == null) continue;
+    if (planBlock == null) continue;
     const actual = rosterIdsOf(game, segment.lineup);
     if (actual == null) continue;
     const extra = actual.filter((r) => !planBlock.lineup.includes(r));

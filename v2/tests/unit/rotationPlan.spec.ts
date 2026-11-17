@@ -3,6 +3,7 @@ import { describe, it, expect, beforeEach } from 'vitest';
 import {
   addBlock,
   adoptActualLineup,
+  blockIndexForTime,
   blockStartSec,
   blockTimeBounds,
   currentBlockIndex,
@@ -461,6 +462,64 @@ describe('R4: plan naast uitvoering (planVersusActual)', () => {
     expect(execs[1]).toMatchObject({ planned: SECOND, same: true, beginSec: 180, endSec: 60 });
     // Een kwart zonder segmenten levert niets op.
     expect(planVersusActual(second, samplePlan(), 2)).toEqual([]);
+  });
+
+  it('een extra wissel die niet in het schema staat geeft een tweede uitvoering bij hetzelfde blok', () => {
+    // Schema: wissel om 3:00. Gespeeld: extra wissel om 6:40, daarna de geplande om 3:00.
+    const a = withSegment(game(), 400);
+    const b = withSegment({ ...a, onCourt: ['gp-9', 'gp-6', 'gp-8', 'gp-13', 'gp-14'] }, 180);
+    const c = withSegment({ ...b, onCourt: ['gp-15', 'gp-8', 'gp-13', 'gp-4', 'gp-14'] }, 60);
+    const execs = planVersusActual(c, samplePlan(), 1);
+    expect(execs.map((e) => e.block)).toEqual([0, 0, 1]);
+    expect(execs.map((e) => e.beginSec)).toEqual([600, 400, 180]);
+    // De extra wissel wijkt af van het geplande blok 0 (14 i.p.v. 11).
+    expect(execs[1]?.pairs).toEqual([{ actual: 14, planned: 11 }]);
+    expect(execs[2]?.same).toBe(true);
+  });
+
+  it('een overgeslagen blok krijgt geen uitvoering', () => {
+    const three: RotationPlan = {
+      quarters: {
+        '1': [
+          { toSec: 400, lineup: [...START] },
+          { toSec: 200, lineup: [...SECOND] },
+          { toSec: 0, lineup: [...THIRD] },
+        ],
+      },
+    };
+    // Eén segment van 10:00 tot 2:30 slaat de wissel van 6:40 en 3:20 over; daarna loopt blok 3.
+    const a = withSegment(game(), 150);
+    const b = withSegment({ ...a, onCourt: ['gp-15', 'gp-6', 'gp-11', 'gp-20', 'gp-14'] }, 30);
+    const execs = planVersusActual(b, three, 1);
+    expect(execs.map((e) => e.block)).toEqual([0, 2]);
+    expect(execs[1]).toMatchObject({ planned: THIRD, same: true, beginSec: 150 });
+  });
+
+  it('een segment dat precies op een bloklimiet begint, hoort bij het volgende blok', () => {
+    const a = withSegment(game(), 180);
+    const b = withSegment({ ...a, onCourt: ['gp-15', 'gp-8', 'gp-13', 'gp-4', 'gp-14'] }, 0);
+    expect(planVersusActual(b, samplePlan(), 1).map((e) => e.block)).toEqual([0, 1]);
+    // Een segment dat net vóór de limiet begint, hoort nog bij het eerste blok.
+    const early = withSegment(game(), 190);
+    const late = withSegment({ ...early, onCourt: ['gp-9', 'gp-6', 'gp-8', 'gp-13', 'gp-14'] }, 0);
+    expect(planVersusActual(late, samplePlan(), 1).map((e) => e.block)).toEqual([0, 0]);
+  });
+
+  it('bij een oplopende klok loopt de limiet de andere kant op', () => {
+    const up: RotationPlan = {
+      quarters: {
+        '1': [
+          { toSec: 180, lineup: [...START] },
+          { toSec: 600, lineup: [...SECOND] },
+        ],
+      },
+    };
+    const start = game({ clockDown: false, beginSec: 0, endSec: 0 });
+    const a = withSegment(start, 180);
+    const b = withSegment({ ...a, onCourt: ['gp-15', 'gp-8', 'gp-13', 'gp-4', 'gp-14'] }, 400);
+    expect(planVersusActual(b, up, 1).map((e) => e.block)).toEqual([0, 1]);
+    expect(blockIndexForTime(up.quarters['1'] ?? [], 179, false)).toBe(0);
+    expect(blockIndexForTime(up.quarters['1'] ?? [], 180, false)).toBe(1);
   });
 });
 

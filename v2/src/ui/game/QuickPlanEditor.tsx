@@ -14,6 +14,7 @@ import {
   isLineupEditable,
   planVersusActual,
   playedBlockCount,
+  startersEditable,
   moveBlockTime,
   PLAN_TIME_STEP_SEC,
   removeBlock,
@@ -53,6 +54,8 @@ export interface QuickPlanEditorProps {
   onCreate: () => void;
   onLoadPrevious: () => void;
   onClear: () => void;
+  /** Starters (`rosterId`'s) zijn voor het eerste segment aangepast; het live-scherm volgt. */
+  onStartersChange?: (lineup: number[]) => void;
 }
 
 function fill(template: string, values: Record<string, string | number>): string {
@@ -78,6 +81,7 @@ export function QuickPlanEditor({
   onCreate,
   onLoadPrevious,
   onClear,
+  onStartersChange,
 }: QuickPlanEditorProps) {
   const hasPrevious = previousPlan != null;
   const t = (key: StringKey) => translate(lang, key);
@@ -274,6 +278,8 @@ export function QuickPlanEditor({
       selection.kind === 'bench' ? selection : (next as { kind: 'bench'; rosterId: number });
     const replaced = lineup.map((r, idx) => (idx === court.index ? bench.rosterId : r));
     onPlanChange(setBlockLineup(plan, quarter, editIndex, replaced));
+    // Starters vóór het eerste segment: de opstelling op de vloer volgt het schema.
+    if (quarter === 1 && editIndex === 0 && startersEditable(game)) onStartersChange?.(replaced);
     setSelection(null);
   }
 
@@ -340,7 +346,7 @@ export function QuickPlanEditor({
           const ins = prev != null ? block.lineup.filter((r) => !prev.includes(r)) : [];
           const invalid = resolveLineup(game, block.lineup) == null;
           const cls = classText(block.lineup);
-          const exec = executions.find((e) => e.block === i);
+          const blockExecutions = executions.filter((e) => e.block === i);
           return (
             <li key={`${quarter}-${i}`}>
               <button
@@ -388,10 +394,11 @@ export function QuickPlanEditor({
                   {cls != null ? ` · ${cls}` : ''}
                   {invalid ? ` · ${t('quickPlanInvalidBlock')}` : ''}
                 </span>
-                {exec != null ? (
+                {blockExecutions.map((exec, k) => (
                   <span
+                    key={k}
                     className={`quick-plan__actual${exec.same ? '' : ' quick-plan__actual--diff'}`}
-                    data-testid={`quick-plan-actual-${quarter}-${i}`}
+                    data-testid={`quick-plan-actual-${quarter}-${i}${k > 0 ? `-${k}` : ''}`}
                   >
                     <span className="quick-plan__minis">
                       {exec.actual.map((r) => {
@@ -423,7 +430,7 @@ export function QuickPlanEditor({
                           })}
                     </span>
                   </span>
-                ) : null}
+                ))}
               </button>
             </li>
           );
