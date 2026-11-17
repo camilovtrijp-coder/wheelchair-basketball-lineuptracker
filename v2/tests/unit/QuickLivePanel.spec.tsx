@@ -78,6 +78,8 @@ interface SetupOptions {
   canWrite?: boolean;
   lang?: Lang;
   game?: ActiveGame;
+  /** Standaard tikt setup op Wedstrijd; `false` laat de beginweergave staan. */
+  openGameView?: boolean;
 }
 
 function setup(opts: SetupOptions = {}) {
@@ -105,10 +107,41 @@ function setup(opts: SetupOptions = {}) {
     );
   }
   const utils = render(<Harness />);
+  // Zonder segmenten opent Snel op het wisselschema (besluit 8); deze specs
+  // gaan over het wedstrijdscherm.
+  if (opts.openGameView !== false) fireEvent.click(utils.getByTestId('quick-view-game'));
   return { ...utils, latest: () => latest };
 }
 
 const text = (el: Element) => el.textContent ?? '';
+
+describe('QuickLivePanel: beginweergave', () => {
+  it('Wisselschema staat als eerste knop in de schakelaar', () => {
+    const { getByTestId } = setup({ openGameView: false });
+    const buttons = getByTestId('quick-view-plan').parentElement!.querySelectorAll('button');
+    expect(Array.from(buttons).map((b) => b.dataset.testid)).toEqual([
+      'quick-view-plan',
+      'quick-view-game',
+    ]);
+  });
+
+  it('opent op het wisselschema zolang er nog geen segment is', () => {
+    const { getByTestId } = setup({ openGameView: false });
+    expect(getByTestId('quick-view-plan').getAttribute('aria-pressed')).toBe('true');
+    expect(getByTestId('quick-view-game').getAttribute('aria-pressed')).toBe('false');
+  });
+
+  it('opent op Wedstrijd zodra er een segment is vastgelegd (ook na herladen)', () => {
+    const committed = commitSegment(trackingGame(), {
+      endSec: 480,
+      classification: CLASSIFICATION,
+    });
+    if (!committed.ok) throw new Error('commit faalde');
+    const { getByTestId } = setup({ openGameView: false, game: committed.game });
+    expect(getByTestId('quick-view-game').getAttribute('aria-pressed')).toBe('true');
+    expect(getByTestId('quick-view-plan').getAttribute('aria-pressed')).toBe('false');
+  });
+});
 
 describe('QuickLivePanel: hoofdscherm', () => {
   it('toont de vijf spelers op de vloer, de bank en de periode', () => {
