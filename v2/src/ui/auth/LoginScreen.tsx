@@ -6,6 +6,7 @@ export interface LoginScreenProps {
   lang: Lang;
   onSwitchLang: (lang: Lang) => void;
   onSubmit: (email: string, password: string) => Promise<AuthResult>;
+  onResetPassword: (email: string) => Promise<AuthResult>;
   onSwitchToSignup: () => void;
   banner?: string;
 }
@@ -14,6 +15,7 @@ export function LoginScreen({
   lang,
   onSwitchLang,
   onSubmit,
+  onResetPassword,
   onSwitchToSignup,
   banner,
 }: LoginScreenProps) {
@@ -23,6 +25,7 @@ export function LoginScreen({
       onSwitchLang={onSwitchLang}
       mode="login"
       onSubmit={onSubmit}
+      onResetPassword={onResetPassword}
       onSwitchMode={onSwitchToSignup}
       banner={banner}
     />

@@ -2,6 +2,7 @@ import {
   createUserWithEmailAndPassword,
   onAuthStateChanged,
   sendEmailVerification,
+  sendPasswordResetEmail,
   signInWithEmailAndPassword,
   signOut as firebaseSignOut,
   type Auth,
@@ -42,6 +43,19 @@ export class FirebaseAuthGateway implements AuthGateway {
       return { ok: true };
     } catch (error) {
       return { ok: false, errorCode: firebaseErrorCode(error) };
+    }
+  }
+
+  async sendPasswordReset(email: string): Promise<AuthResult> {
+    try {
+      await sendPasswordResetEmail(this.auth, email);
+      return { ok: true };
+    } catch (error) {
+      const errorCode = firebaseErrorCode(error);
+      // Ook zonder Firebase Email Enumeration Protection mag het scherm niet
+      // onthullen of dit e-mailadres een account heeft.
+      if (errorCode === 'auth/user-not-found') return { ok: true };
+      return { ok: false, errorCode };
     }
   }
 
