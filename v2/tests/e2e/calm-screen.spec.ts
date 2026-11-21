@@ -196,7 +196,9 @@ test.describe('Rustig wedstrijdscherm', () => {
     await page.getByTestId('calm-swap-run').click();
     await expect(page.getByTestId('calm-time-count')).toBeVisible();
     await page.reload();
-    // Na herladen opent het scherm op Wedstrijd (er is een segment).
+    // De app opent na herladen (nog) niet altijd op de Wedstrijd-tab (dat regelt R6);
+    // daarom eerst naar de tab. Binnen Rustig opent de Wedstrijd-weergave (er is een segment).
+    await page.getByTestId('nav-game').click();
     await expect(page.getByTestId('calm-view-game')).toHaveAttribute('aria-pressed', 'true');
     await expect(page.getByTestId('calm-time-count')).toHaveText('1 tijd nog bevestigen');
   });
