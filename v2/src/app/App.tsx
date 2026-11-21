@@ -249,6 +249,12 @@ export function App({
     onLangChange?.(lang);
   }, [lang, onLangChange]);
   const [tab, setTab] = useState<Tab>('settings');
+  // Een tabwissel begint bovenaan: anders erft het nieuwe tabblad de scrollstand
+  // van het vorige (bv. het langere wedstrijddetail in Geschiedenis), waardoor
+  // het scrollt onder een sticky kop.
+  useEffect(() => {
+    if (typeof window.scrollTo === 'function') window.scrollTo(0, 0);
+  }, [tab]);
   // Apparaatvoorkeur Klassiek/Compact (nooit onderdeel van de wedstrijd): beide
   // schermen krijgen exact dezelfde props en dezelfde ActiveGame.
   const gameScreen = useGameScreenPreference();
