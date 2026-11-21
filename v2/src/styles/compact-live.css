@@ -624,6 +624,22 @@
   min-width: 0;
 }
 
+/* "Segment verwijderen" staat bewust los van Opslaan/Annuleer, onder een
+   scheidingslijn, zodat een tik naast Opslaan nooit een segment wist. */
+.segment-delete-zone {
+  margin-top: var(--lt-space-4);
+  padding-top: var(--lt-space-3);
+  border-top: 1px solid var(--lt-color-border, currentColor);
+  display: flex;
+  justify-content: center;
+}
+
+.segment-delete-btn {
+  min-height: 2.75rem;
+  color: var(--lt-color-negative);
+  border-color: var(--lt-color-negative);
+}
+
 .compact-score__value {
   display: block;
   font-size: 2.5rem;

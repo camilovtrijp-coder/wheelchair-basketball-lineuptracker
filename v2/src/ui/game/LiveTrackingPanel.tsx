@@ -34,6 +34,7 @@ import { useFocusTrap } from '../../application/a11y/useFocusTrap';
 import { useGameScreenLock } from '../../application/game/useGameScreen';
 import { fmtSec, liveErrorKey } from './liveFormat';
 import { FinishGameDialog } from './FinishGameDialog';
+import { playerTag } from './playerTag';
 
 export { fmtSec, liveErrorKey };
 
@@ -156,9 +157,7 @@ function PlayerChip({
   testId: string;
   onClick: () => void;
 }) {
-  const tag1 = tag1Label.charAt(0).toUpperCase();
-  const tag2 = tag2Label.charAt(0).toUpperCase();
-  const tag = player.vrouw ? (player.jeugd ? `${tag1}${tag2}` : tag1) : player.jeugd ? tag2 : '';
+  const tag = playerTag(player, tag1Label, tag2Label);
   return (
     <button
       type="button"
@@ -213,6 +212,8 @@ export function LiveTrackingPanel({
   );
   const [editSegmentId, setEditSegmentId] = useState<string | null>(null);
   const [editDraft, setEditDraft] = useState<EditDraft | null>(null);
+  // Inline bevestiging voor "Segment verwijderen" (geen window.confirm).
+  const [confirmingEditDelete, setConfirmingEditDelete] = useState(false);
   // C3: afrondkeuze bij open punten/turnovers (besluit 4 van het compact-bouwplan).
   const [finishDialogOpen, setFinishDialogOpen] = useState(false);
   // PR 8.2a (docs/pr-8.2-plan.md §C 8.2a werk 4): deze twee modals zijn
@@ -352,6 +353,7 @@ export function LiveTrackingPanel({
   function closeEditSegment() {
     setEditSegmentId(null);
     setEditDraft(null);
+    setConfirmingEditDelete(false);
   }
 
   function handleSaveEditSegment() {
@@ -390,7 +392,7 @@ export function LiveTrackingPanel({
 
   function handleDeleteEditSegment() {
     if (!canWrite || editSegmentId == null) return;
-    if (!window.confirm(t(lang, 'confirmDeleteSegment'))) return;
+    setConfirmingEditDelete(false);
     onGameChange({ ...game, actions: [...game.actions, segmentDeletedAction(editSegmentId)] });
     closeEditSegment();
   }
@@ -1098,15 +1100,44 @@ export function LiveTrackingPanel({
             >
               {t(lang, 'saveBtn')}
             </button>
-            <button
-              type="button"
-              className="btn-outline"
-              disabled={!canWrite}
-              data-testid="edit-segment-delete"
-              onClick={handleDeleteEditSegment}
-            >
-              {t(lang, 'deleteBtn')}
-            </button>
+            <div className="segment-delete-zone" data-testid="edit-segment-delete-zone">
+              {confirmingEditDelete ? (
+                <div data-testid="edit-segment-delete-confirm">
+                  <p className="tracking-warning" role="alert">
+                    {t(lang, 'confirmDeleteSegment')}
+                  </p>
+                  <div className="modal__actions">
+                    <button
+                      type="button"
+                      className="btn-outline"
+                      data-testid="edit-segment-delete-cancel"
+                      onClick={() => setConfirmingEditDelete(false)}
+                    >
+                      {t(lang, 'cancelBtn')}
+                    </button>
+                    <button
+                      type="button"
+                      className="btn-primary"
+                      disabled={!canWrite}
+                      data-testid="edit-segment-delete-confirm-btn"
+                      onClick={handleDeleteEditSegment}
+                    >
+                      {t(lang, 'compactDeleteConfirmBtn')}
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <button
+                  type="button"
+                  className="btn-outline segment-delete-btn"
+                  disabled={!canWrite}
+                  data-testid="edit-segment-delete"
+                  onClick={() => canWrite && setConfirmingEditDelete(true)}
+                >
+                  {t(lang, 'compactDeleteSegmentBtn')}
+                </button>
+              )}
+            </div>
           </div>
         </div>
       ) : null}
