@@ -1,0 +1,419 @@
+/* Rustig wedstrijdscherm. Alles op één scherm zonder scrollen (ongeveer 400x800);
+   alleen tokens uit tokens.css; min-width: 0 op alle grid-kinderen (geen
+   horizontale scroll vanaf 320px). Het slot heeft een vaste hoogte zodat niets
+   verspringt. */
+.tracking-panel.calm-panel {
+  gap: var(--lt-space-1);
+  padding-bottom: var(--lt-space-2);
+}
+
+.calm-top {
+  display: flex;
+  align-items: center;
+  gap: var(--lt-space-2);
+}
+
+.calm-top .quick-view {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.calm-top__finish {
+  flex: none;
+  min-height: 2.25rem;
+  padding: 0 var(--lt-space-2);
+  font-size: var(--lt-font-size-xs);
+}
+
+/* ---------- stand ---------- */
+
+.calm-score {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--lt-space-2);
+}
+
+.calm-score__side {
+  --score-color: var(--team-primary, var(--lt-color-primary));
+  --score-fg: var(--team-primary-fg, var(--lt-color-primary-fg));
+  display: flex;
+  flex-direction: column;
+  gap: var(--lt-space-1);
+  min-width: 0;
+  padding: var(--lt-space-1) var(--lt-space-2);
+  border: var(--lt-border-thin);
+  border-radius: var(--lt-radius-lg);
+  background: var(--lt-color-surface);
+}
+
+.calm-score__side--against {
+  --score-color: var(--lt-color-opponent);
+  --score-fg: var(--lt-color-opponent-fg);
+}
+
+.calm-score__name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--lt-font-size-xs);
+  border-left: 4px solid var(--score-color);
+  padding-left: var(--lt-space-2);
+}
+
+.calm-score__value {
+  text-align: center;
+  font-size: 2rem;
+  font-weight: 800;
+  line-height: 1.1;
+  font-variant-numeric: tabular-nums;
+}
+
+.calm-score__buttons {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--lt-space-1);
+}
+
+.calm-score__btn {
+  min-height: 2.5rem;
+  min-width: 0;
+  padding: 0;
+  font-size: var(--lt-font-size-md);
+  font-weight: 800;
+  border-radius: var(--lt-radius-md);
+  background: var(--score-color);
+  color: var(--score-fg);
+  border-color: transparent;
+}
+
+.calm-score__btn:disabled {
+  opacity: 0.5;
+}
+
+/* ---------- turnover en ongedaan maken ---------- */
+
+.calm-actions {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--lt-space-2);
+}
+
+.calm-actions__btn {
+  min-height: 2.75rem;
+  min-width: 0;
+  white-space: nowrap;
+}
+
+.calm-notice {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--lt-space-2);
+  min-height: 1.5rem;
+  padding: 0 var(--lt-space-2);
+  border-radius: var(--lt-radius-md);
+  font-size: var(--lt-font-size-xs);
+}
+
+.calm-notice--ok {
+  background: color-mix(in srgb, var(--lt-color-success) 18%, var(--lt-color-bg));
+  border: 1px solid var(--lt-color-success);
+}
+
+.calm-notice--info {
+  background: var(--lt-color-surface-alt);
+  border: var(--lt-border-thin);
+}
+
+.calm-notice__text,
+.calm-notice__error {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.calm-notice__error {
+  color: var(--lt-color-danger);
+}
+
+.calm-notice__undo {
+  flex: none;
+  min-height: 1.75rem;
+  padding: 0 var(--lt-space-2);
+  border: 0;
+  background: transparent;
+  color: var(--lt-color-accent);
+  font-weight: 700;
+  text-decoration: underline;
+}
+
+/* ---------- huidige vijf ---------- */
+
+.calm-strip {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--lt-space-2);
+  font-size: var(--lt-font-size-xs);
+  color: var(--lt-color-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.calm-strip__title {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: 700;
+  color: var(--lt-color-fg);
+}
+
+.calm-strip__stats {
+  display: flex;
+  align-items: center;
+  gap: var(--lt-space-2);
+  flex: none;
+}
+
+.calm-grid {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: var(--lt-space-1);
+}
+
+.calm-chip {
+  min-height: 2.9rem;
+  min-width: 0;
+  padding: var(--lt-space-1) 0.15rem;
+  border: 2px solid transparent;
+}
+
+.calm-chip .chip__nr {
+  font-size: var(--lt-font-size-md);
+}
+
+.calm-chip .chip__name {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--lt-font-size-xs);
+}
+
+/* Geselecteerde speler: duidelijke blauwe rand. */
+.calm-chip--selected {
+  border-color: var(--lt-color-accent);
+  box-shadow: 0 0 0 2px var(--lt-color-accent);
+}
+
+/* Net ingevallen speler: kort groen omlijnd. */
+.calm-chip--in {
+  border-color: var(--lt-color-success);
+  box-shadow: 0 0 0 2px var(--lt-color-success);
+}
+
+/* ---------- vast slot ---------- */
+
+.calm-slot {
+  height: 6.5rem;
+  overflow: hidden;
+}
+
+.calm-card {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: var(--lt-space-1);
+  height: 100%;
+  box-sizing: border-box;
+  padding: var(--lt-space-2) var(--lt-space-3);
+  border: var(--lt-border-thin);
+  border-radius: var(--lt-radius-md);
+  background: var(--lt-color-surface);
+  font-size: var(--lt-font-size-sm);
+}
+
+.calm-card--help,
+.calm-card--time {
+  border-color: var(--lt-color-accent);
+}
+
+.calm-card--pending,
+.calm-card--plan {
+  border-color: var(--lt-color-success);
+}
+
+.calm-card__title {
+  margin: 0;
+  font-weight: 700;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.calm-card__meta,
+.calm-card__warn {
+  margin: 0;
+  font-size: var(--lt-font-size-xs);
+  color: var(--lt-color-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.calm-card__warn {
+  color: var(--lt-color-danger);
+  font-weight: 700;
+}
+
+.calm-card__actions {
+  display: flex;
+  align-items: stretch;
+  gap: var(--lt-space-2);
+}
+
+.calm-card__actions button {
+  min-height: 2.75rem;
+  min-width: 0;
+}
+
+.calm-card__primary {
+  flex: 1 1 auto;
+  font-weight: 800;
+}
+
+.calm-clock {
+  flex: 2 1 auto;
+  min-width: 0;
+}
+
+.calm-clock__row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.2fr) minmax(0, 1fr);
+  gap: var(--lt-space-1);
+}
+
+.calm-clock__btn {
+  min-height: 2.75rem;
+  min-width: 0;
+  padding: 0;
+  font-weight: 700;
+}
+
+.calm-clock__input {
+  min-height: 2.75rem;
+  min-width: 0;
+  box-sizing: border-box;
+  border: var(--lt-border-thin);
+  border-radius: var(--lt-radius-md);
+  background: var(--lt-color-surface-alt);
+  color: var(--lt-color-fg);
+  text-align: center;
+  font-size: var(--lt-font-size-md);
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+}
+
+.calm-clock__error {
+  margin: 0;
+  font-size: var(--lt-font-size-xs);
+  color: var(--lt-color-danger);
+}
+
+/* ---------- bank ---------- */
+
+.calm-bench__item {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.calm-bench__sum {
+  min-height: 1rem;
+  text-align: center;
+  font-size: var(--lt-font-size-xs);
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.calm-bench__sum--ok {
+  color: var(--lt-color-success);
+}
+
+.calm-bench__sum--over {
+  color: var(--lt-color-danger);
+}
+
+.calm-cancel {
+  min-height: 2.25rem;
+}
+
+.calm-cancel__btn {
+  width: 100%;
+  min-height: 2.25rem;
+}
+
+/* ---------- onderbalk ---------- */
+
+.calm-dock {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: var(--lt-space-2);
+  padding-top: var(--lt-space-1);
+  border-top: var(--lt-border-thin);
+}
+
+.calm-dock__btn {
+  min-height: 2.75rem;
+  min-width: 0;
+  font-weight: 800;
+}
+
+/* ---------- onderbladen ---------- */
+
+.calm-retro__list,
+.calm-confirm__list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: var(--lt-space-1);
+  max-height: 40vh;
+  overflow-y: auto;
+}
+
+.calm-retro__row {
+  width: 100%;
+  min-height: 2.5rem;
+  text-align: left;
+  padding: 0 var(--lt-space-3);
+  border: var(--lt-border-thin);
+  border-radius: var(--lt-radius-md);
+  background: var(--lt-color-surface);
+  color: var(--lt-color-fg);
+}
+
+.calm-retro__row--on {
+  border-color: var(--lt-color-accent);
+  box-shadow: 0 0 0 1px var(--lt-color-accent);
+}
+
+.calm-retro__divider {
+  text-align: center;
+  font-size: var(--lt-font-size-xs);
+  font-weight: 700;
+  color: var(--lt-color-accent);
+  border-top: 2px dashed var(--lt-color-accent);
+  padding-top: 2px;
+}
+
+.calm-confirm__row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--lt-space-2);
+}

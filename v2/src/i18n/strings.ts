@@ -6,6 +6,7 @@ import { trendsQuartersEn, trendsQuartersNl } from './trendsQuartersStrings';
 import { trendsFixBEn, trendsFixBNl } from './trendsFixBStrings';
 import { trendsFilterSummaryEn, trendsFilterSummaryNl } from './trendsFilterSummaryStrings';
 import { quickEn, quickNl } from './quickStrings';
+import { calmEn, calmNl } from './calmStrings';
 
 export const LANG_STORAGE_KEY = 'lineup-tracker-lang';
 
@@ -1032,6 +1033,7 @@ const nl = {
   ...trendsFixBNl,
   ...trendsFilterSummaryNl,
   ...quickNl,
+  ...calmNl,
 } as const;
 
 const en = {
@@ -1990,6 +1992,7 @@ const en = {
   ...trendsFixBEn,
   ...trendsFilterSummaryEn,
   ...quickEn,
+  ...calmEn,
 } as const;
 
 export const STRINGS = { nl, en } as const;
