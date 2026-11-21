@@ -249,6 +249,12 @@ export function App({
     onLangChange?.(lang);
   }, [lang, onLangChange]);
   const [tab, setTab] = useState<Tab>('settings');
+  // Een tabwissel begint bovenaan: anders erft het nieuwe tabblad de scrollstand
+  // van het vorige (bv. het langere wedstrijddetail in Geschiedenis), waardoor
+  // het scrollt onder een sticky kop.
+  useEffect(() => {
+    if (typeof window.scrollTo === 'function') window.scrollTo(0, 0);
+  }, [tab]);
   // Na een herlaad opent de app op Wedstrijd als er een lopende wedstrijd is (één keer,
   // afgeleid uit de opgeslagen wedstrijdfase, geen eigen opslag). Zie het laad-effect.
   const openedOnRunningGameRef = useRef(false);
@@ -1860,6 +1866,8 @@ export function App({
               setDeleteError(false);
             }}
             onDeleteGame={handleDeleteCompletedGame}
+            tag1Label={tag1Label}
+            tag2Label={tag2Label}
             // PR 7.5b/7.6a: correctie lokaal altijd; in cloudmodus alleen met een
             // `gameWriterContext` (de uid komt als `correctedBy` in het logitem).
             onCorrectGame={
