@@ -39,6 +39,9 @@ const nl = {
   tag1LabelLabel: 'Label categorie 1',
   tag1LabelHint: 'bijv. Vrouw',
   toggleTag2Default: 'Categorie 2',
+  // Standaardletters (V/J) op de wedstrijdschermen zolang de instellingen geen eigen label hebben.
+  tag1LetterDefault: 'Vrouw',
+  tag2LetterDefault: 'Jeugd',
   tag2LabelLabel: 'Label categorie 2',
   tag2LabelHint: 'bijv. Jeugd/U19',
   classBaseLimitSettingLabel: 'Basis classificatie (standaardwaarde)',
@@ -1041,6 +1044,9 @@ const en = {
   tag1LabelLabel: 'Category 1 label',
   tag1LabelHint: 'e.g. Female',
   toggleTag2Default: 'Category 2',
+  // Default letters (F/Y) on the game screens while settings have no custom label.
+  tag1LetterDefault: 'Female',
+  tag2LetterDefault: 'Youth',
   tag2LabelLabel: 'Category 2 label',
   tag2LabelHint: 'e.g. Youth/U19',
   classBaseLimitSettingLabel: 'Base classification (default value)',
