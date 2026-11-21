@@ -959,3 +959,19 @@ describe('R6: segment verwijderen staat apart en vraagt inline om bevestiging', 
     expect(onCommit).not.toHaveBeenCalled();
   });
 });
+
+describe('R6-onderzoek: Escape direct na een wijziging in de segmenteditor', () => {
+  it('vraagt bevestiging, ook als de effecten na de render nog niet gedraaid hebben', async () => {
+    const confirm = vi.spyOn(window, 'confirm').mockReturnValue(false);
+    const h = setup();
+    openEditor(h, 0);
+    // Bewust zonder fireEvent/act: die spoelen de effecten direct door.
+    h.$('compact-edit-player-gp-7').dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    await Promise.resolve();
+    await Promise.resolve();
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+    expect(confirm).toHaveBeenCalledTimes(1);
+    expect(h.q('compact-edit-dialog')).not.toBeNull();
+    confirm.mockRestore();
+  });
+});

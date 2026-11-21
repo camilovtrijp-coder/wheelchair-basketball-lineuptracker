@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'preact/hooks';
+import { useEffect, useRef, useState } from 'preact/hooks';
 import { MAX_SCORE, type ActiveGame } from '../../domain/game/types';
 import {
   clockDuration,
@@ -90,13 +90,19 @@ export function CompactSegmentEditor({
     if (touched && !window.confirm(t('compactDiscardDraftConfirm'))) return;
     onClose();
   }
+  // Eén listener; de ref wijst altijd naar de requestClose van de laatste render.
+  // Een per render opnieuw geregistreerde listener (useEffect zonder deps) loopt
+  // tot na de volgende frame achter, waardoor een Escape vlak na het typen een
+  // concept zonder bevestiging weggooide (R6-onderzoek).
+  const requestCloseRef = useRef(requestClose);
+  requestCloseRef.current = requestClose;
   useEffect(() => {
     function onKeyDown(e: KeyboardEvent) {
-      if (e.key === 'Escape') requestClose();
+      if (e.key === 'Escape') requestCloseRef.current();
     }
     document.addEventListener('keydown', onKeyDown);
     return () => document.removeEventListener('keydown', onKeyDown);
-  });
+  }, []);
 
   const ownName = teamName || t('teamFallbackLabel');
   const opponentName = t('teamOpponent');

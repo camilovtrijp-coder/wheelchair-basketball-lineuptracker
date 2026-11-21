@@ -106,13 +106,19 @@ export function CompactLiveDialog({
     if (hasDraft && !window.confirm(t('compactDiscardDraftConfirm'))) return;
     onClose();
   }
+  // Eén listener; de ref wijst altijd naar de requestClose van de laatste render.
+  // Een per render opnieuw geregistreerde listener (useEffect zonder deps) loopt
+  // tot na de volgende frame achter, waardoor een Escape vlak na het typen een
+  // concept zonder bevestiging weggooide (R6-onderzoek).
+  const requestCloseRef = useRef(requestClose);
+  requestCloseRef.current = requestClose;
   useEffect(() => {
     function onKeyDown(e: KeyboardEvent) {
-      if (e.key === 'Escape') requestClose();
+      if (e.key === 'Escape') requestCloseRef.current();
     }
     document.addEventListener('keydown', onKeyDown);
     return () => document.removeEventListener('keydown', onKeyDown);
-  });
+  }, []);
 
   // Invoerstap: focus op het eerste scoreveld (ook na Volgende vanuit de wisselkeuze).
   useEffect(() => {

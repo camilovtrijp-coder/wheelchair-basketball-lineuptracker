@@ -704,6 +704,25 @@ describe('Compact dialoog: Uitwedstrijd, geen stille klem, bevestiging bij sluit
     expect(h.onChange).not.toHaveBeenCalled();
   });
 
+  it('Escape direct na typen (render gedaan, effecten nog niet) vraagt toch bevestiging', async () => {
+    // R6-onderzoek: de Escape-listener werd per render opnieuw geregistreerd in
+    // een useEffect, dat pas na de volgende frame draait. Een Escape vlak na het
+    // typen las dan de oude stand (geen invoer) en gooide het concept stil weg.
+    // Bewust zonder fireEvent/act: die spoelen de effecten direct door.
+    const confirm = vi.spyOn(window, 'confirm').mockReturnValue(false);
+    const h = setup();
+    h.click('compact-save-segment');
+    const input = h.$('compact-dialog-score-for') as HTMLInputElement;
+    input.value = '4';
+    input.dispatchEvent(new Event('input', { bubbles: true }));
+    // Laat Preacts uitgestelde render lopen, maar niet de na-paint-effecten.
+    await Promise.resolve();
+    await Promise.resolve();
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+    expect(confirm).toHaveBeenCalledTimes(1);
+    expect(h.q('compact-dialog')).not.toBeNull();
+  });
+
   it('zonder invoer sluit Escape zonder vraag; Engelse tekst', () => {
     const confirm = vi.spyOn(window, 'confirm').mockReturnValue(false);
     const h = setup({ lang: 'en' });
