@@ -196,6 +196,38 @@ describe('derde optie Snel', () => {
   });
 });
 
+describe('vierde optie Rustig', () => {
+  it('Rustig wordt herkend, bewaard en in het apparaatmenu getoond (NL en EN)', () => {
+    expect(parseGameScreen('calm')).toBe('calm');
+    // Bestaande waarden blijven gelijk; onbekende vallen terug op Klassiek.
+    expect(parseGameScreen('quick')).toBe('quick');
+    expect(parseGameScreen('compact')).toBe('compact');
+    expect(parseGameScreen('Calm')).toBe('classic');
+    storeGameScreen('calm');
+    expect(window.localStorage.getItem(GAME_SCREEN_STORAGE_KEY)).toBe('calm');
+    expect(readGameScreen()).toBe('calm');
+    const { unmount } = render(<Bar />);
+    openMenu();
+    expect((screen.getByTestId('game-screen-calm') as HTMLInputElement).checked).toBe(true);
+    expect(screen.getByTestId('game-screen-calm').parentElement?.textContent).toContain('Rustig');
+    unmount();
+    render(<Bar lang="en" />);
+    openMenu();
+    expect(screen.getByTestId('game-screen-calm').parentElement?.textContent).toContain('Calm');
+  });
+
+  it('de schakelaar heeft vier opties in vaste volgorde', () => {
+    render(<Bar />);
+    openMenu();
+    const radios = screen
+      .getByTestId('game-screen-setting')
+      .querySelectorAll<HTMLInputElement>('input[type="radio"]');
+    expect(Array.from(radios).map((r) => r.value)).toEqual(['classic', 'compact', 'quick', 'calm']);
+    fireEvent.click(screen.getByTestId('game-screen-calm'));
+    expect(readGameScreen()).toBe('calm');
+  });
+});
+
 describe('schakelaar in het apparaatmenu', () => {
   it('toont NL- en EN-labels en staat standaard op Klassiek', () => {
     render(<Bar />);

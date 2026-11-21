@@ -203,7 +203,7 @@ export function SessionBar({
           </label>
           <fieldset className="session-bar__game-screen" data-testid="game-screen-setting">
             <legend>{translate(lang, 'gameScreenLabel')}</legend>
-            {(['classic', 'compact', 'quick'] as const).map((value) => (
+            {(['classic', 'compact', 'quick', 'calm'] as const).map((value) => (
               <label key={value} className="session-bar__trusted-device">
                 <input
                   type="radio"
@@ -220,7 +220,9 @@ export function SessionBar({
                     ? 'gameScreenClassic'
                     : value === 'compact'
                       ? 'gameScreenCompact'
-                      : 'gameScreenQuick',
+                      : value === 'quick'
+                        ? 'gameScreenQuick'
+                        : 'gameScreenCalm',
                 )}
               </label>
             ))}
