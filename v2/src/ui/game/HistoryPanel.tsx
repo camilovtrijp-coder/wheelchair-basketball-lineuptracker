@@ -12,6 +12,7 @@ import { shareOrDownloadCsv } from '../../infrastructure/game/shareOrDownloadCsv
 import { translate, type Lang, type StringKey } from '../../i18n/strings';
 import { CorrectSegmentDialog, describeCorrectableFields } from './CorrectSegmentDialog';
 import { DiscardLocalCorrectionDialog } from './DiscardLocalCorrectionDialog';
+import { LineupOverview } from './LineupOverview';
 import { SyncStatusIndicator } from '../sync/SyncStatusIndicator';
 import type { SyncState, SyncStatus } from '../../domain/syncState';
 import type { CorrectionSyncStatus } from '../../application/game/CompletedGameRepository';
@@ -127,6 +128,12 @@ export interface HistoryPanelProps {
    * pas na een bevestigingsdialoog. `undefined` = geen verwerp-actie.
    */
   onDiscardLocalCorrection?: (id: string) => boolean;
+  /**
+   * R8: categorielabels voor de F/J-tags in het lineup-overzicht (alleen de
+   * eerste letter wordt getoond).
+   */
+  tag1Label?: string;
+  tag2Label?: string;
 }
 
 /** PR 7.6a, plan §D.2: één indicator per wedstrijd. */
@@ -196,6 +203,8 @@ export function HistoryPanel({
   correctionBlockedIds,
   onRetryCorrectionUploads,
   onDiscardLocalCorrection,
+  tag1Label = '',
+  tag2Label = '',
 }: HistoryPanelProps) {
   const [correctingId, setCorrectingId] = useState<string | null>(null);
   const [correctionSaved, setCorrectionSaved] = useState(false);
@@ -454,6 +463,7 @@ export function HistoryPanel({
           {t(lang, 'historyTurnoversPer10')}:{' '}
           <strong>{fmtTurnoversPer10(turnoversPer10(openTurnovers, openSeconds))}</strong>
         </p>
+        <LineupOverview lang={lang} game={open} tag1Label={tag1Label} tag2Label={tag2Label} />
         {canCorrect ? (
           <p className="segment-list__hint" data-testid="history-correct-hint">
             {t(lang, 'correctSegmentHint')}
