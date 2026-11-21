@@ -329,3 +329,39 @@ describe('schermwisselguard', () => {
     );
   });
 });
+
+describe('vierde optie Rustig', () => {
+  it('Rustig wordt herkend, bewaard en in het apparaatmenu getoond (NL en EN)', () => {
+    expect(parseGameScreen('calm')).toBe('calm');
+    // Bestaande waarden en terugval ongewijzigd.
+    expect(parseGameScreen('quick')).toBe('quick');
+    expect(parseGameScreen('compact')).toBe('compact');
+    expect(parseGameScreen('onzin')).toBe('classic');
+    expect(parseGameScreen(null)).toBe('classic');
+    storeGameScreen('calm');
+    expect(window.localStorage.getItem(GAME_SCREEN_STORAGE_KEY)).toBe('calm');
+    expect(readGameScreen()).toBe('calm');
+    const { unmount } = render(<Bar />);
+    openMenu();
+    expect((screen.getByTestId('game-screen-calm') as HTMLInputElement).checked).toBe(true);
+    expect(screen.getByTestId('game-screen-calm').parentElement?.textContent).toContain('Rustig');
+    unmount();
+    render(<Bar lang="en" />);
+    openMenu();
+    expect(screen.getByTestId('game-screen-calm').parentElement?.textContent).toContain('Calm');
+  });
+
+  it('Rustig is de vierde keuze, na Snel', () => {
+    render(<Bar />);
+    openMenu();
+    const ids = Array.from(
+      screen.getByTestId('game-screen-setting').querySelectorAll('input[type="radio"]'),
+    ).map((el) => (el as HTMLElement).dataset.testid);
+    expect(ids).toEqual([
+      'game-screen-classic',
+      'game-screen-compact',
+      'game-screen-quick',
+      'game-screen-calm',
+    ]);
+  });
+});

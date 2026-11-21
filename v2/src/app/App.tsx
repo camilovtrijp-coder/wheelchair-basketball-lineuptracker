@@ -44,6 +44,7 @@ import { GameSetupPanel } from '../ui/game/GameSetupPanel';
 import { LiveTrackingPanel } from '../ui/game/LiveTrackingPanel';
 import { CompactLivePanel } from '../ui/game/CompactLivePanel';
 import { QuickLivePanel } from '../ui/game/QuickLivePanel';
+import { CalmLivePanel } from '../ui/game/CalmLivePanel';
 import { useGameScreenPreference } from '../application/game/useGameScreen';
 import { TakeoverConfirmDialog } from '../ui/game/TakeoverConfirmDialog';
 import { useGameCloudViewer } from '../ui/game/useGameCloudViewer';
@@ -257,7 +258,9 @@ export function App({
       ? CompactLivePanel
       : gameScreen === 'quick'
         ? QuickLivePanel
-        : LiveTrackingPanel;
+        : gameScreen === 'calm'
+          ? CalmLivePanel
+          : LiveTrackingPanel;
   const [settings, setSettings] = useState<(Settings & Record<string, unknown>) | null>(null);
   const [roster, setRoster] = useState<Roster | null>(null);
   const [settingsUpdatedAt, setSettingsUpdatedAt] = useState<number | undefined>(undefined);
