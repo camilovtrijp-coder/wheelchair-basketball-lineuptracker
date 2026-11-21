@@ -502,3 +502,18 @@ export function commitRetroactiveSwap(game: ActiveGame, input: RetroSwapInput): 
     lastActionId: lastId,
   };
 }
+
+// ---------- huidige kloktijd ----------
+
+/**
+ * De huidige kloktijd als bovengrens voor `confirmSwapTime` (`nowSec`). Het
+ * scherm heeft geen lopende klok; de enige door de gebruiker ingestelde "nu" is
+ * het eindveld van het open segment (`endSec`). Staat dat nog op het begin
+ * (duur 0, het geval na elke wissel), dan is er niets bekend en geldt het einde
+ * van het kwart, zodat een tijd nooit buiten het kwart valt.
+ */
+export function currentClockSec(game: ActiveGame): number {
+  return clockDuration(game.clockDown, game.beginSec, game.endSec) > 0
+    ? game.endSec
+    : quarterEndSec(game.clockDown);
+}
