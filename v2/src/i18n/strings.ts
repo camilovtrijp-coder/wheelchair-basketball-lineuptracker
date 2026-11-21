@@ -902,6 +902,14 @@ const nl = {
   // Turnovers in Statistieken en Trends (eigen team; alleen weergave).
   statsTovWith: 'TO met hen',
   statsTovWithout: 'TO zonder hen',
+  // R5: lopende lineup, beide bases naast elkaar, weinig minuten.
+  statsRunningTitle: 'Lopende lineup',
+  statsRunningBadge: 'lopend · voorlopig',
+  statsRunningSince: 'sinds {time}',
+  statsLowMinutes: 'weinig minuten',
+  statsBasisTotal: 'totaal',
+  statsBasisPer10: 'per 10′',
+  statsOffTime: 'speeltijd zonder hen',
   trendsTovLabel: 'TURNOVERS',
   trendsAvgShort: 'gem.',
   trendsTovTotalLabel: 'Totaal turnovers',
@@ -1844,6 +1852,14 @@ const en = {
   // Turnovers in Statistieken en Trends (eigen team; alleen weergave).
   statsTovWith: 'TO with them',
   statsTovWithout: 'TO without them',
+  // R5: running lineup, both bases side by side, few minutes.
+  statsRunningTitle: 'Running lineup',
+  statsRunningBadge: 'running · provisional',
+  statsRunningSince: 'since {time}',
+  statsLowMinutes: 'few minutes',
+  statsBasisTotal: 'total',
+  statsBasisPer10: 'per 10′',
+  statsOffTime: 'time without them',
   trendsTovLabel: 'TURNOVERS',
   trendsAvgShort: 'avg.',
   trendsTovTotalLabel: 'Total turnovers',
