@@ -1,0 +1,399 @@
+/* Rustig wedstrijdscherm (Rustig-bouwplan R2). Alleen tokens uit tokens.css.
+   Doel: alles op één telefoonscherm (~400×800) zonder scrollen, en niets
+   verspringt: het slot, de melding en de kaartregels hebben een vaste hoogte.
+   Geen horizontale scroll vanaf 320px (min-width: 0 op alle grid-kinderen). */
+.calm-panel {
+  gap: var(--lt-space-2);
+}
+
+.calm-view {
+  margin: 0;
+}
+
+.calm-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--lt-space-2);
+  font-size: var(--lt-font-size-sm);
+}
+
+.calm-header__away {
+  font-size: var(--lt-font-size-xs);
+}
+
+/* ---------- stand ---------- */
+
+.calm-score {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--lt-space-2);
+}
+
+.calm-score__side {
+  gap: var(--lt-space-1);
+  padding: var(--lt-space-1) var(--lt-space-2);
+}
+
+.calm-score__top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--lt-space-1);
+  min-width: 0;
+}
+
+.calm-score__value {
+  flex: none;
+  min-width: 3rem;
+  min-height: 2.75rem;
+  padding: 0 var(--lt-space-1);
+  border: none;
+  background: transparent;
+  color: var(--lt-color-fg);
+  font-size: var(--lt-font-size-xl);
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+  cursor: pointer;
+}
+
+.calm-score__buttons {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--lt-space-1);
+}
+
+.calm-score__buttons .quick-score__btn {
+  min-width: 0;
+  min-height: 2.75rem;
+}
+
+/* ---------- turnover + ongedaan maken ---------- */
+
+.calm-actions {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--lt-space-2);
+}
+
+.calm-actions__btn {
+  min-width: 0;
+  min-height: 2.75rem;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Turnover-knop zonder score-context: eigen turnoverkleur. */
+.calm-actions .turnover-btn {
+  --score-color: var(--lt-color-turnover);
+  --score-fg: var(--lt-color-turnover-fg);
+  font-size: var(--lt-font-size-md);
+}
+
+/* Vaste hoogte: een melding duwt niets omlaag. */
+.calm-notice {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--lt-space-2);
+  height: 2.25rem;
+  padding: 0 var(--lt-space-2);
+  border-radius: var(--lt-radius-md);
+  font-size: var(--lt-font-size-xs);
+  overflow: hidden;
+}
+
+.calm-notice > span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.calm-notice--swap {
+  background: var(--lt-color-success);
+  color: var(--lt-color-on-success);
+}
+
+.calm-notice--info {
+  background: var(--lt-color-surface-alt);
+  color: var(--lt-color-fg);
+}
+
+.calm-notice--error {
+  background: var(--lt-color-danger);
+  color: var(--lt-color-on-danger);
+}
+
+.calm-link {
+  flex: none;
+  min-height: 2rem;
+  padding: 0 var(--lt-space-2);
+  border: none;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-weight: 600;
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+/* ---------- strook huidige vijf ---------- */
+
+.calm-strip {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--lt-space-2);
+  padding: var(--lt-space-1) var(--lt-space-2);
+  border: var(--lt-border-thin);
+  border-radius: var(--lt-radius-md);
+  background: var(--lt-color-surface);
+  font-size: var(--lt-font-size-sm);
+}
+
+.calm-strip > span:first-child {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.calm-strip__stats {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: var(--lt-space-2);
+  font-variant-numeric: tabular-nums;
+}
+
+/* ---------- spelers ---------- */
+
+.calm-grid {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: var(--lt-space-1);
+}
+
+.calm-chip {
+  min-width: 0;
+  min-height: 3.5rem;
+  padding: var(--lt-space-1) 0.15rem;
+  /* Ruimte voor de rand, zodat een selectie niets verschuift. */
+  border-width: 2px;
+}
+
+.calm-chip .chip__nr {
+  font-size: var(--lt-font-size-md);
+  font-weight: 700;
+}
+
+.calm-chip .chip__name {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--lt-font-size-xs);
+}
+
+/* Geselecteerd: duidelijke blauwe rand. */
+.calm-chip--selected {
+  border-color: var(--lt-color-primary);
+  outline: 3px solid var(--lt-color-primary);
+  outline-offset: 0;
+}
+
+/* Net ingekomen speler: kort groen omlijst. */
+.calm-chip--new {
+  border-color: var(--lt-color-success);
+  outline: 3px solid var(--lt-color-success);
+  outline-offset: 0;
+}
+
+.calm-chip__after {
+  padding: 0 0.3rem;
+  border-radius: var(--lt-radius-sm);
+  background: var(--lt-color-success);
+  color: var(--lt-color-on-success);
+  font-size: var(--lt-font-size-xs);
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.calm-chip__after--over {
+  background: var(--lt-color-danger);
+  color: var(--lt-color-on-danger);
+}
+
+/* ---------- vast slot ---------- */
+
+.calm-slot {
+  height: 9.5rem;
+}
+
+.calm-card {
+  display: flex;
+  flex-direction: column;
+  gap: var(--lt-space-1);
+  height: 100%;
+  box-sizing: border-box;
+  padding: var(--lt-space-2);
+  border: var(--lt-border-thin);
+  border-radius: var(--lt-radius-lg);
+  background: var(--lt-color-surface);
+  overflow: hidden;
+}
+
+.calm-card--help {
+  border-color: var(--lt-color-primary);
+}
+
+.calm-card--time {
+  border-color: var(--lt-color-accent);
+}
+
+.calm-card__title {
+  margin: 0;
+  font-weight: 600;
+  font-size: var(--lt-font-size-sm);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.calm-card__line,
+.calm-card__warn {
+  margin: 0;
+  min-height: 1.1rem;
+  font-size: var(--lt-font-size-xs);
+  color: var(--lt-color-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.calm-card__warn {
+  color: var(--lt-color-fg);
+}
+
+.calm-card__actions {
+  display: flex;
+  gap: var(--lt-space-2);
+  margin-top: auto;
+}
+
+.calm-card__actions > button {
+  flex: 1 1 0;
+  min-width: 0;
+  min-height: 2.75rem;
+}
+
+.calm-card__row {
+  display: flex;
+  align-items: center;
+  gap: var(--lt-space-2);
+}
+
+.calm-card__confirm {
+  flex: none;
+  min-height: 2.75rem;
+}
+
+.calm-card__foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--lt-space-2);
+  margin-top: auto;
+  min-height: 2rem;
+}
+
+.calm-card__error {
+  min-width: 0;
+  font-size: var(--lt-font-size-xs);
+  color: var(--lt-color-danger);
+}
+
+/* ---------- tijd invoeren ---------- */
+
+.calm-clock {
+  display: flex;
+  flex: 1 1 auto;
+  align-items: center;
+  gap: var(--lt-space-1);
+  min-width: 0;
+}
+
+.calm-clock__step {
+  flex: none;
+  min-height: 2.75rem;
+  padding: 0 var(--lt-space-2);
+}
+
+.calm-clock__input {
+  flex: 1 1 auto;
+  width: 0;
+  min-width: 3.5rem;
+  min-height: 2.75rem;
+  text-align: center;
+  font-size: var(--lt-font-size-lg);
+  font-variant-numeric: tabular-nums;
+}
+
+/* ---------- onderbalk ---------- */
+
+.calm-bottombar {
+  display: flex;
+  gap: var(--lt-space-2);
+}
+
+.calm-bottombar > button {
+  flex: 1 1 0;
+  min-width: 0;
+  min-height: 2.75rem;
+}
+
+/* ---------- bladen ---------- */
+
+.calm-sheet__label {
+  margin: var(--lt-space-2) 0 var(--lt-space-1);
+  font-size: var(--lt-font-size-sm);
+}
+
+.calm-list {
+  margin: 0;
+  padding-left: var(--lt-space-4);
+  font-size: var(--lt-font-size-sm);
+}
+
+.calm-boundary {
+  display: flex;
+  flex-direction: column;
+  gap: var(--lt-space-1);
+}
+
+.calm-boundary__item {
+  min-height: 2.75rem;
+  padding: 0 var(--lt-space-2);
+  border: var(--lt-border-thin);
+  border-radius: var(--lt-radius-md);
+  background: var(--lt-color-surface);
+  color: var(--lt-color-fg);
+  text-align: left;
+  font: inherit;
+  cursor: pointer;
+}
+
+.calm-boundary__item[aria-pressed='true'] {
+  border-color: var(--lt-color-primary);
+  outline: 3px solid var(--lt-color-primary);
+  outline-offset: 0;
+}
+
+/* "Ongedaan maken" past op één regel naast Turnover. */
+.calm-actions .btn-outline {
+  padding: 0 var(--lt-space-1);
+  font-size: var(--lt-font-size-sm);
+}
