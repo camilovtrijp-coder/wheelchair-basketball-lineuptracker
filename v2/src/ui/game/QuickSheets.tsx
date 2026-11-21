@@ -14,6 +14,12 @@ import { translate, type Lang, type StringKey } from '../../i18n/strings';
 import { useFocusTrap } from '../../application/a11y/useFocusTrap';
 import { fmtSec, liveErrorKey } from './LiveTrackingPanel';
 import { WheelPicker } from './WheelPicker';
+import { QuarterLineupChoice } from './QuarterLineupChoice';
+import {
+  defaultQuarterStartKind,
+  resolveQuarterStart,
+  type QuarterStartKind,
+} from '../../domain/game/quarterStart';
 
 /**
  * Onderbladen van het Snel-wedstrijdscherm: stand kiezen met een wiel en
@@ -181,7 +187,10 @@ export interface QuickTimeSheetProps {
   classification: ClassificationConfig;
   /** Voorgestelde eindtijd (bijv. uit het wisselschema); anders afgeleid van het vorige segment. */
   suggestedEndSec?: number;
-  /** Opstelling waarmee het volgende kwart begint (alleen bij `mode: 'quarter'`). */
+  /**
+   * Opstelling uit het wisselschema voor het volgende kwart (alleen bij `mode: 'quarter'`). Is die er,
+   * dan is het de standaardkeuze naast "zoals het veld nu staat" en "zelf samenstellen" (R3).
+   */
   nextOnCourt?: string[];
   onCommit: (next: ActiveGame) => void;
   onClose: () => void;
@@ -219,16 +228,26 @@ export function QuickTimeSheet({
   );
   const [error, setError] = useState<LiveCommandError | null>(null);
   const submitted = useRef(false);
+  // Keuze van de opstelling voor het volgende kwart (R3); standaard het schema als dat er is.
+  const planLineup = nextOnCourt ?? null;
+  const [startKind, setStartKind] = useState<QuarterStartKind>(() =>
+    defaultQuarterStartKind(planLineup),
+  );
+  const [custom, setCustom] = useState<string[]>(() => [...game.onCourt]);
 
   const period = periodLabel || t('quarterLabel');
   const lastPeriod = game.curQuarter >= quarterCount;
   const nextQuarter = lastPeriod ? game.curQuarter : game.curQuarter + 1;
+  const chosenLineup =
+    mode === 'quarter' && !lastPeriod
+      ? resolveQuarterStart(startKind, planLineup, custom)
+      : undefined;
   const lineup = game.pendingSwapLineup ?? game.onCourt;
   const lineupText = lineup.map((id) => game.players.find((p) => p.id === id)?.nr ?? '?').join('-');
   const segPm =
     history.scoreFor - history.segStartFor - (history.scoreAgainst - history.segStartAgainst);
   const dur = clockDuration(game.clockDown, game.beginSec, endSec);
-  const valid = mode === 'quarter' ? true : mode === 'swap' ? dur >= 0 : dur > 0;
+  const valid = mode === 'quarter' ? chosenLineup !== null : mode === 'swap' ? dur >= 0 : dur > 0;
 
   function setEnd(next: number) {
     setEndSec(clampClock(next));
@@ -254,7 +273,7 @@ export function QuickTimeSheet({
               nextQuarter,
               quarterCount,
               classification,
-              ...(nextOnCourt !== undefined ? { nextOnCourt } : {}),
+              ...(chosenLineup != null ? { nextOnCourt: chosenLineup } : {}),
             });
     if (!result.ok) {
       setError(result.error);
@@ -371,11 +390,26 @@ export function QuickTimeSheet({
           {lastPeriod
             ? t('compactLastPeriodNote')
             : fill(t('compactNextPeriodNote'), { period, n: nextQuarter })}
-          {!lastPeriod && nextOnCourt !== undefined
+          {!lastPeriod && startKind === 'plan' && planLineup != null
             ? ` ${fill(t('quickPlanNextQuarterLineup'), { period, n: nextQuarter })}`
             : ''}
         </p>
       )}
+
+      {mode === 'quarter' && !lastPeriod ? (
+        <QuarterLineupChoice
+          lang={lang}
+          game={game}
+          classification={classification}
+          periodLabel={periodLabel}
+          nextQuarter={nextQuarter}
+          planLineup={planLineup}
+          kind={startKind}
+          custom={custom}
+          onKindChange={setStartKind}
+          onCustomChange={setCustom}
+        />
+      ) : null}
 
       {errorKey != null ? (
         <p className="settings-error" role="alert" data-testid="quick-time-error">
