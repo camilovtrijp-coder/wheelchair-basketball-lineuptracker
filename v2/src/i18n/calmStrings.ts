@@ -59,6 +59,10 @@ export const calmNl = {
   calmRetroConfirm: 'Wissel vastleggen',
   calmErrorNothingToUndo: 'Er is niets om ongedaan te maken.',
   calmErrorInvalidSplit: 'Deze grens kan niet; kies een andere actie.',
+  calmPlayTimeToggleAria: 'Speeltijd per speler tonen',
+  calmPlayTimeTitle: 'Speeltijd per speler, t/m de laatste wissel',
+  calmPlayTimeNote: 'Speeltijd t/m laatste wissel; het lopende blok telt nog niet mee.',
+  calmPlayTimeChipTitle: '{name}: {time} gespeeld t/m laatste wissel',
 } as const;
 
 export const calmEn = {
@@ -114,4 +118,9 @@ export const calmEn = {
   calmRetroConfirm: 'Record substitution',
   calmErrorNothingToUndo: 'There is nothing to undo.',
   calmErrorInvalidSplit: 'That boundary is not possible; choose another action.',
+  calmPlayTimeToggleAria: 'Show playing time per player',
+  calmPlayTimeTitle: 'Playing time per player, up to the last substitution',
+  calmPlayTimeNote:
+    'Playing time up to the last substitution; the current stint is not counted yet.',
+  calmPlayTimeChipTitle: '{name}: {time} played up to the last substitution',
 } as const;

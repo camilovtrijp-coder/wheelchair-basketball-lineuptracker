@@ -18,11 +18,39 @@
   min-width: 0;
 }
 
+.calm-top .quick-view__btn {
+  min-width: 0;
+  padding-inline: var(--lt-space-1);
+  font-size: var(--lt-font-size-xs);
+  white-space: nowrap;
+}
+
 .calm-top__finish {
   flex: none;
   min-height: 2.25rem;
   padding: 0 var(--lt-space-2);
   font-size: var(--lt-font-size-xs);
+}
+
+/* Speeltijd-optie: schakelknop en tijd naast het rugnummer (geen extra hoogte). */
+.calm-top__playtime {
+  flex: none;
+  min-height: 2.25rem;
+  min-width: 2.25rem;
+  padding: 0;
+}
+
+.calm-top__playtime[aria-pressed='true'] {
+  border-color: var(--lt-color-accent);
+  box-shadow: 0 0 0 1px var(--lt-color-accent);
+}
+
+.calm-chip__time {
+  margin-left: var(--lt-space-1);
+  font-size: var(--lt-font-size-xs);
+  font-weight: 600;
+  color: var(--lt-color-muted);
+  font-variant-numeric: tabular-nums;
 }
 
 /* ---------- stand ---------- */
