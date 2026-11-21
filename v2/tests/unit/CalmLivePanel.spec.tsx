@@ -559,3 +559,51 @@ describe('Segmenten en afronden', () => {
     expect(u.getByTestId('finish-dialog')).toBeTruthy();
   });
 });
+
+describe('R7: speeltijd per speler', () => {
+  it('staat standaard uit: geen tijden op de tegels', () => {
+    const u = setup();
+    expect(u.getByTestId('calm-playtime-toggle').getAttribute('aria-pressed')).toBe('false');
+    expect(u.container.querySelectorAll('.calm-chip__time')).toHaveLength(0);
+  });
+
+  it('aan: elke tegel (veld en bank) toont de speeltijd t/m de laatste wissel', () => {
+    const u = setup();
+    pickSwap(u, 7, 12);
+    fireEvent.click(u.getByTestId('calm-swap-run')); // schatting 9:00: 1:00 voor de oude vijf
+    fireEvent.click(u.getByTestId('calm-playtime-toggle'));
+    expect(u.container.querySelectorAll('.calm-chip__time')).toHaveLength(8);
+    const time = (nr: number) => text(u.getByTestId(`calm-playtime-gp-${nr}`));
+    // Alex, Robin, Kim, Dani en Sam stonden 60 s; Noa, Bo en Jules nog niet.
+    expect([time(4), time(7), time(9), time(11), time(13)]).toEqual(Array(5).fill('1:00'));
+    expect([time(12), time(6), time(15)]).toEqual(['0:00', '0:00', '0:00']);
+    // Het open segment telt niet mee en dat staat in de tooltip en (zodra het slot vrij is) in de uitleg.
+    fireEvent.click(u.getByTestId('calm-time-ok'));
+    expect(text(u.getByTestId('calm-playtime-note'))).toContain('t/m laatste wissel');
+    expect(u.getByTestId('calm-chip-gp-7').getAttribute('title')).toContain('t/m laatste wissel');
+    expect(window.localStorage.getItem('lineup-tracker-v2-play-time')).toBe('on');
+  });
+
+  it('een bijgestelde tijd werkt direct door; de keuze blijft na opnieuw openen', () => {
+    const u = setup();
+    pickSwap(u, 7, 12);
+    fireEvent.click(u.getByTestId('calm-swap-run'));
+    fireEvent.click(u.getByTestId('calm-playtime-toggle'));
+    fireEvent.click(u.getByTestId('calm-time-earlier')); // 9:10 => 50 s gespeeld
+    fireEvent.click(u.getByTestId('calm-time-ok'));
+    expect(text(u.getByTestId('calm-playtime-gp-4'))).toBe('0:50');
+    const game = u.latest();
+    cleanup();
+    const again = setup({ game });
+    expect(again.getByTestId('calm-playtime-toggle').getAttribute('aria-pressed')).toBe('true');
+    expect(text(again.getByTestId('calm-playtime-gp-4'))).toBe('0:50');
+  });
+
+  it('toont Engelse teksten en uit zet de tijden weer weg', () => {
+    const u = setup({ lang: 'en' });
+    fireEvent.click(u.getByTestId('calm-playtime-toggle'));
+    expect(text(u.getByTestId('calm-playtime-note'))).toContain('up to the last substitution');
+    fireEvent.click(u.getByTestId('calm-playtime-toggle'));
+    expect(u.container.querySelectorAll('.calm-chip__time')).toHaveLength(0);
+  });
+});
