@@ -224,10 +224,15 @@ test.describe('v2 Stats-tab (PR 6.4)', () => {
     const card = page.getByTestId('stats-combo-1-2-3-4-5');
     await expect(card).toBeVisible();
     // Aanvankelijk: kale pm = 8+12 - 6-3 = +11 over 180+240=420s.
-    expect(card.getByText(/\+11\.0/)).toBeVisible();
+    // Alleen de ON-badge: het blok "stats-bases-on" toont het totaal sinds R5 ook als tekst.
+    const onBadge = card.locator('.badge-pm').first();
+    await expect(onBadge).toHaveText('+11.0');
+    await expect(page.getByTestId('stats-bases-on-1-2-3-4-5')).toContainText(
+      'totaal +11.0 · per 10′ +15.7',
+    );
     await page.getByTestId('stats-per10-toggle').click();
     // Na per10: (11 * 600) / 420 ≈ 15.7 → "+15.7"
-    await expect(card.getByText(/\+15\.7/)).toBeVisible();
+    await expect(onBadge).toHaveText('+15.7');
   });
 
   test('spelerfilter "moet op" is bereikbaar via de filter-modal', async ({ page }) => {

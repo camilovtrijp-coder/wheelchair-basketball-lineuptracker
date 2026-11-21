@@ -358,6 +358,38 @@ describe('Compact segmenteditor: stap F (verwijderen)', () => {
     expect(h.q('compact-edit-dialog')).not.toBeNull();
     expect(h.onChange).not.toHaveBeenCalled();
   });
+
+  it('R6: de verwijderknop staat los van de Opslaan/Annuleer-rij (eigen zone)', () => {
+    const h = setup();
+    openEditor(h, 0);
+    const del = h.$('compact-edit-delete');
+    const save = h.$('compact-edit-save');
+    const cancel = h.$('compact-edit-cancel');
+    expect(save.parentElement).toBe(cancel.parentElement);
+    expect(del.parentElement).not.toBe(save.parentElement);
+    expect(h.$('compact-edit-delete-zone').contains(del)).toBe(true);
+    expect(h.$('compact-edit-delete-zone').contains(save)).toBe(false);
+  });
+
+  it('R6: Klassiek verwijdert pas na inline bevestiging (geen window.confirm)', () => {
+    const confirmSpy = vi.spyOn(window, 'confirm');
+    const before = afterAtoD();
+    const h = setup({ game: before, panel: 'classic' });
+    const id = deriveGameHistory(before).segments[0]!.id;
+    h.click(`segment-item-${id}`);
+    h.click('edit-segment-delete');
+    expect(h.q('edit-segment-delete-confirm')).not.toBeNull();
+    expect(h.onChange).not.toHaveBeenCalled();
+    // Annuleren laat alles staan.
+    h.click('edit-segment-delete-cancel');
+    expect(h.q('edit-segment-delete-confirm')).toBeNull();
+    expect(h.onChange).not.toHaveBeenCalled();
+    h.click('edit-segment-delete');
+    h.click('edit-segment-delete-confirm-btn');
+    expect(h.latest().actions.at(-1)?.type).toBe('segment-deleted');
+    expect(deriveGameHistory(h.latest()).segments.map((s) => s.id)).not.toContain(id);
+    expect(confirmSpy).not.toHaveBeenCalled();
+  });
 });
 
 describe('Compact segmenteditor: weigeringen en classificatie', () => {

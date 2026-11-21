@@ -41,6 +41,9 @@ const nl = {
   tag1LabelLabel: 'Label categorie 1',
   tag1LabelHint: 'bijv. Vrouw',
   toggleTag2Default: 'Categorie 2',
+  // Standaardletters (V/J) op de wedstrijdschermen zolang de instellingen geen eigen label hebben.
+  tag1LetterDefault: 'Vrouw',
+  tag2LetterDefault: 'Jeugd',
   tag2LabelLabel: 'Label categorie 2',
   tag2LabelHint: 'bijv. Jeugd/U19',
   classBaseLimitSettingLabel: 'Basis classificatie (standaardwaarde)',
@@ -604,6 +607,13 @@ const nl = {
   turnoverPillPrefix: 'TO',
   historyTurnoversTotal: 'Turnovers totaal',
   historyTurnoversPer10: 'per 10 min',
+  lineupOverviewTitle: 'Lineups',
+  lineupOverviewHint: 'Op volgorde van eerste opkomst. Klassesom met F/J-tags en toegestane som.',
+  lineupOverviewStints: 'stints',
+  lineupOverviewPlayTime: 'Tijd',
+  lineupOverviewTurnovers: 'TO',
+  lineupOverviewAria: 'Lineup {lineup}',
+  lineupOverviewEmpty: 'Geen lineups om te tonen.',
 
   // PR 8.3c-1c: owner-only verwijderverzoek, opruimoverzicht en melding voor alle leden (NL).
   deletionTitle: 'Organisatie verwijderen',
@@ -904,6 +914,14 @@ const nl = {
   // Turnovers in Statistieken en Trends (eigen team; alleen weergave).
   statsTovWith: 'TO met hen',
   statsTovWithout: 'TO zonder hen',
+  // R5: lopende lineup, beide bases naast elkaar, weinig minuten.
+  statsRunningTitle: 'Lopende lineup',
+  statsRunningBadge: 'lopend · voorlopig',
+  statsRunningSince: 'sinds {time}',
+  statsLowMinutes: 'weinig minuten',
+  statsBasisTotal: 'totaal',
+  statsBasisPer10: 'per 10′',
+  statsOffTime: 'speeltijd zonder hen',
   trendsTovLabel: 'TURNOVERS',
   trendsAvgShort: 'gem.',
   trendsTovTotalLabel: 'Totaal turnovers',
@@ -1045,6 +1063,9 @@ const en = {
   tag1LabelLabel: 'Category 1 label',
   tag1LabelHint: 'e.g. Female',
   toggleTag2Default: 'Category 2',
+  // Default letters (F/Y) on the game screens while settings have no custom label.
+  tag1LetterDefault: 'Female',
+  tag2LetterDefault: 'Youth',
   tag2LabelLabel: 'Category 2 label',
   tag2LabelHint: 'e.g. Youth/U19',
   classBaseLimitSettingLabel: 'Base classification (default value)',
@@ -1556,6 +1577,13 @@ const en = {
   turnoverPillPrefix: 'TO',
   historyTurnoversTotal: 'Turnovers total',
   historyTurnoversPer10: 'per 10 min',
+  lineupOverviewTitle: 'Lineups',
+  lineupOverviewHint: 'In order of first appearance. Class total with F/J tags and allowed total.',
+  lineupOverviewStints: 'stints',
+  lineupOverviewPlayTime: 'Time',
+  lineupOverviewTurnovers: 'TO',
+  lineupOverviewAria: 'Lineup {lineup}',
+  lineupOverviewEmpty: 'No lineups to show.',
 
   // PR 8.3c-1c: owner-only deletion request, cleanup overview and notice for all members (EN, mirrors NL key-for-key).
   deletionTitle: 'Delete organization',
@@ -1848,6 +1876,14 @@ const en = {
   // Turnovers in Statistieken en Trends (eigen team; alleen weergave).
   statsTovWith: 'TO with them',
   statsTovWithout: 'TO without them',
+  // R5: running lineup, both bases side by side, few minutes.
+  statsRunningTitle: 'Running lineup',
+  statsRunningBadge: 'running · provisional',
+  statsRunningSince: 'since {time}',
+  statsLowMinutes: 'few minutes',
+  statsBasisTotal: 'total',
+  statsBasisPer10: 'per 10′',
+  statsOffTime: 'time without them',
   trendsTovLabel: 'TURNOVERS',
   trendsAvgShort: 'avg.',
   trendsTovTotalLabel: 'Total turnovers',
