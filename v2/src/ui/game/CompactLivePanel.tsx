@@ -1,5 +1,4 @@
 import { useEffect, useState } from 'preact/hooks';
-import type { GamePlayer } from '../../domain/game/types';
 import { discardSwaps } from '../../domain/game/liveCommands';
 import { canFinishGame } from '../../domain/game/finish';
 import { deriveGameHistory, isOverLimit, turnoverDeltaAction } from '../../domain/game/tracking';
@@ -14,6 +13,7 @@ import { CompactLiveDialog, type CompactDialogMode } from './CompactLiveDialog';
 import { CompactSegmentList } from './CompactSegmentList';
 import { CompactSegmentEditor } from './CompactSegmentEditor';
 import { FinishGameDialog } from './FinishGameDialog';
+import { playerTag } from './playerTag';
 
 /**
  * Compact wedstrijdscherm (bouwplan C2a/C2b). Zelfde props en dezelfde
@@ -26,12 +26,6 @@ import { FinishGameDialog } from './FinishGameDialog';
 export type CompactLivePanelProps = LiveTrackingPanelProps;
 
 type Team = 'for' | 'against';
-
-function playerTag(player: GamePlayer, tag1Label: string, tag2Label: string): string {
-  const tag1 = tag1Label.charAt(0).toUpperCase();
-  const tag2 = tag2Label.charAt(0).toUpperCase();
-  return player.vrouw ? (player.jeugd ? `${tag1}${tag2}` : tag1) : player.jeugd ? tag2 : '';
-}
 
 function signed(n: number): string {
   return `${n > 0 ? '+' : ''}${n}`;

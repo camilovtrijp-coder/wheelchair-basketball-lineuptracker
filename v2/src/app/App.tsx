@@ -255,6 +255,9 @@ export function App({
   useEffect(() => {
     if (typeof window.scrollTo === 'function') window.scrollTo(0, 0);
   }, [tab]);
+  // Na een herlaad opent de app op Wedstrijd als er een lopende wedstrijd is (één keer,
+  // afgeleid uit de opgeslagen wedstrijdfase, geen eigen opslag). Zie het laad-effect.
+  const openedOnRunningGameRef = useRef(false);
   // Apparaatvoorkeur Klassiek/Compact (nooit onderdeel van de wedstrijd): beide
   // schermen krijgen exact dezelfde props en dezelfde ActiveGame.
   const gameScreen = useGameScreenPreference();
@@ -493,6 +496,10 @@ export function App({
       stored !== null && completedGameRepo.list().some((g) => g.sourceGameId === stored.id);
     if (stored && stored.phase === 'tracking' && !alreadyArchived) {
       setGame(stored);
+      if (!openedOnRunningGameRef.current) {
+        openedOnRunningGameRef.current = true;
+        setTab('game');
+      }
       setV1MigrationCandidate(null);
     } else {
       setGame(null);
@@ -1561,6 +1568,10 @@ export function App({
   const otherLabel = t(other === 'en' ? 'switchToEn' : 'switchToNl');
   const tag1Label = (settings.tag1Label as string) || t('toggleTag1Default');
   const tag2Label = (settings.tag2Label as string) || t('toggleTag2Default');
+  // Wedstrijdschermen tonen alleen de eerste letter. Zonder eigen label per taal één
+  // notatie (NL V/J, EN F/Y) i.p.v. de beginletter van 'Categorie 1' (C).
+  const gameTag1Label = (settings.tag1Label as string) || t('tag1LetterDefault');
+  const gameTag2Label = (settings.tag2Label as string) || t('tag2LetterDefault');
 
   // PR 8.2b (bug 10) — `--team-primary-fg` is een afgeleide, gegarandeerd-
   // leesbare voorgrondkleur voor `.btn-primary` (zie
@@ -2005,8 +2016,8 @@ export function App({
                 bonusBoth: settings.bonusBoth as number,
               }}
               teamName={(settings.teamName as string) || ''}
-              tag1Label={tag1Label}
-              tag2Label={tag2Label}
+              tag1Label={gameTag1Label}
+              tag2Label={gameTag2Label}
               onGameChange={handleGameChange}
               onFinishGame={handleFinishGame}
               canWrite={canWriteGame && !isSelfBlockedByOtherWriter}

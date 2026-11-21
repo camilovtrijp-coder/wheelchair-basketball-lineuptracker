@@ -36,6 +36,7 @@ import {
   resolveLineup,
   withQuarterCount,
 } from '../../domain/game/rotationPlan';
+import { playerTag } from './playerTag';
 
 /**
  * Snel wedstrijdscherm (derde optie naast Klassiek en Compact). Zelfde props en
@@ -55,12 +56,6 @@ export type QuickLivePanelProps = LiveTrackingPanelProps;
 type Team = 'for' | 'against';
 type Selected = { id: string; where: 'court' | 'bench' };
 type Sheet = { kind: 'score'; team: Team } | { kind: 'time'; mode: QuickTimeMode };
-
-function playerTag(player: GamePlayer, tag1Label: string, tag2Label: string): string {
-  const tag1 = tag1Label.charAt(0).toUpperCase();
-  const tag2 = tag2Label.charAt(0).toUpperCase();
-  return player.vrouw ? (player.jeugd ? `${tag1}${tag2}` : tag1) : player.jeugd ? tag2 : '';
-}
 
 function signed(n: number): string {
   return `${n > 0 ? '+' : ''}${n}`;
