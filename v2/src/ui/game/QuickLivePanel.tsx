@@ -21,16 +21,19 @@ import { CompactSegmentEditor } from './CompactSegmentEditor';
 import { FinishGameDialog } from './FinishGameDialog';
 import { QuickScoreSheet, QuickTimeSheet, type QuickTimeMode } from './QuickSheets';
 import { QuickPlanEditor } from './QuickPlanEditor';
+import { QuickPlanChangeList, QuickPlanConfirmSheet } from './QuickPlanConfirm';
 import { useRotationPlan } from '../../application/game/useRotationPlan';
 import {
   adoptActualLineup,
   deviationPairs,
+  diffPlans,
   emptyPlan,
   lineupDiff,
   nextPlannedLineup,
   plannedEndSec,
   propagateDeviation,
   quarterStartLineup,
+  resolveLineup,
   withQuarterCount,
 } from '../../domain/game/rotationPlan';
 
@@ -136,7 +139,8 @@ export function QuickLivePanel({
     deriveGameHistory(game).segments.length === 0 ? 'plan' : 'game',
   );
   const [propagated, setPropagated] = useState(false);
-  const { plan, savePlan, readPrevious } = useRotationPlan(game.id);
+  const { plan, savePlan, clearPlan, readPrevious } = useRotationPlan(game.id);
+  const [propagateOpen, setPropagateOpen] = useState(false);
   const pending = game.pendingSwapLineup;
   useEffect(() => {
     if (pending == null) setPropagated(false);
@@ -146,7 +150,7 @@ export function QuickLivePanel({
   useGameScreenLock(
     canWrite && pending != null
       ? 'swap'
-      : sheet != null || editSegmentId != null || finishOpen
+      : sheet != null || editSegmentId != null || finishOpen || propagateOpen
         ? 'dialog'
         : null,
   );
@@ -202,7 +206,9 @@ export function QuickLivePanel({
     if (withTime) setSheet({ kind: 'time', mode: 'swap' });
   }
 
+  // Doorvoeren gebeurt pas na een bevestiging met overzicht van de wijzigingen (R4).
   function handlePropagate() {
+    setPropagateOpen(false);
     if (!canWrite || plan == null) return;
     savePlan(propagateDeviation(game, plan));
     setPropagated(true);
@@ -304,6 +310,19 @@ export function QuickLivePanel({
   const [leftTeam, rightTeam]: [Team, Team] = away ? ['against', 'for'] : ['for', 'against'];
   const bannerSelected = selected != null ? playerById(selected.id) : undefined;
 
+  // Starters in het schema aangepast vóór het eerste segment: zet ze ook op de vloer, zodat het
+  // live-scherm overeenkomt. Staat er een wissel open, dan zijn de starters de opstelling van vóór die wissel.
+  function handleStartersChange(rosterIds: number[]) {
+    if (!canWrite) return;
+    const ids = resolveLineup(game, rosterIds);
+    if (ids == null) return;
+    onGameChange(
+      game.pendingSwapLineup != null
+        ? { ...game, pendingSwapLineup: ids }
+        : { ...game, onCourt: ids },
+    );
+  }
+
   function handleCreatePlan() {
     const created = emptyPlan(game, quarterCount);
     if (created != null) savePlan(created);
@@ -342,11 +361,13 @@ export function QuickLivePanel({
           periodLabel={periodLabel}
           classification={classification}
           plan={plan}
-          hasPrevious={readPrevious() != null}
+          previousPlan={readPrevious()}
           canWrite={canWrite}
           onPlanChange={savePlan}
           onCreate={handleCreatePlan}
           onLoadPrevious={handleLoadPrevious}
+          onClear={clearPlan}
+          onStartersChange={handleStartersChange}
         />
       </section>
     );
@@ -526,7 +547,7 @@ export function QuickLivePanel({
                   className="btn-outline quick-swapbar__propagate"
                   disabled={!canWrite}
                   data-testid="quick-plan-propagate"
-                  onClick={handlePropagate}
+                  onClick={() => canWrite && setPropagateOpen(true)}
                 >
                   {t('quickPlanPropagate')}
                 </button>
@@ -651,6 +672,26 @@ export function QuickLivePanel({
         {t('finishGameBtn')}
       </button>
 
+      {propagateOpen && plan != null ? (
+        <QuickPlanConfirmSheet
+          lang={lang}
+          title={t('quickPlanPropagateTitle')}
+          testId="quick-plan-propagate-sheet"
+          confirmLabel={t('quickPlanPropagateConfirm')}
+          onConfirm={handlePropagate}
+          onCancel={() => setPropagateOpen(false)}
+        >
+          <p className="quick-sheet__meta">{t('quickPlanPropagateBody')}</p>
+          <QuickPlanChangeList
+            lang={lang}
+            changes={diffPlans(plan, propagateDeviation(game, plan))}
+            period={period}
+            label={(rosterId) =>
+              game.players.find((p) => p.rosterId === rosterId)?.naam ?? t('quickPlanMissingPlayer')
+            }
+          />
+        </QuickPlanConfirmSheet>
+      ) : null}
       {sheet?.kind === 'score' ? (
         <QuickScoreSheet
           lang={lang}

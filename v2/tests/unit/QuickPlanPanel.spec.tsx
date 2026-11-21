@@ -7,6 +7,7 @@ import { useState } from 'preact/hooks';
 import { render, cleanup, fireEvent } from '@testing-library/preact';
 import { QuickLivePanel } from '../../src/ui/game/QuickLivePanel';
 import { deriveGameHistory } from '../../src/domain/game/tracking';
+import { commitSegment } from '../../src/domain/game/liveCommands';
 import type { ActiveGame, GamePlayer } from '../../src/domain/game/types';
 import type { RotationPlan } from '../../src/domain/game/rotationPlan';
 import { readPlanForGame, storePlanForGame } from '../../src/infrastructure/game/rotationPlanStore';
@@ -176,6 +177,9 @@ describe('Wisselschema: maken en bewerken', () => {
     const { getByTestId } = setup();
     fireEvent.click(getByTestId('quick-view-plan'));
     fireEvent.click(getByTestId('quick-plan-load-previous'));
+    // Eerst een bevestiging: er is nog niets geladen.
+    expect(readPlanForGame('game-1')).toBeNull();
+    fireEvent.click(getByTestId('quick-plan-load-sheet-confirm'));
     expect(readPlanForGame('game-1')?.quarters['1']?.[0]).toEqual(plan().quarters['1']?.[0]);
   });
 
@@ -206,13 +210,13 @@ describe('Wisselschema: maken en bewerken', () => {
       { toSec: 300, lineup: [4, 7, 9, 11, 13] },
       { toSec: 0, lineup: [4, 7, 9, 11, 13] },
     ]);
-    // Het lopende blok: wisseltijd aan te passen, opstelling dicht en niet te verwijderen.
+    // Het lopende blok: wisseltijd aan te passen en niet te verwijderen. Zolang er nog niets
+    // gespeeld is, zijn de starters (kwart 1, blok 1) wel aan te passen (R4).
     fireEvent.click(getByTestId('quick-plan-block-1-0'));
     expect(getByTestId('quick-plan-time').textContent).toBe('5:00');
     fireEvent.click(getByTestId('quick-plan-later'));
     expect(getByTestId('quick-plan-time').textContent).toBe('4:30');
-    expect((getByTestId('quick-plan-court-0') as HTMLButtonElement).disabled).toBe(true);
-    expect((getByTestId('quick-plan-bench-12') as HTMLButtonElement).disabled).toBe(true);
+    expect((getByTestId('quick-plan-court-0') as HTMLButtonElement).disabled).toBe(false);
     expect(queryByTestId('quick-plan-delete-block')).toBeNull();
     fireEvent.click(getByTestId('quick-plan-done'));
     expect(readPlanForGame('game-1')?.quarters['1']?.[0]?.toSec).toBe(270);
@@ -367,6 +371,10 @@ describe('Wisselschema: afwijken van het schema', () => {
     expect(latest().pendingSwapLineup).not.toBeNull();
     expect(text(getByTestId('quick-plan-deviation'))).toContain('Noa i.p.v. Bo');
     fireEvent.click(getByTestId('quick-plan-propagate'));
+    // Pas na bevestiging wordt doorgevoerd.
+    expect(getByTestId('quick-plan-propagate-sheet')).toBeTruthy();
+    expect(readPlanForGame('game-1')).toEqual(plan());
+    fireEvent.click(getByTestId('quick-plan-propagate-sheet-confirm'));
     expect(() => getByTestId('quick-plan-deviation')).toThrow();
     const saved = readPlanForGame('game-1');
     // Kwart 2, blok 0 had 6 en 12: 12 ↔ 6 wordt geruild (beide stonden erin, dus ongewijzigd).
@@ -426,5 +434,205 @@ describe('Wisselschema: einde kwart', () => {
     fireEvent.click(getByTestId('quick-time-confirm'));
     expect(latest().curQuarter).toBe(2);
     expect(latest().onCourt).toEqual(['gp-4', 'gp-7', 'gp-9', 'gp-11', 'gp-13']);
+  });
+});
+
+/** Spel waarin kwart 1 al één segment heeft (opstelling van `onCourt`, tot `endSec`). */
+function gameWithSegment(onCourt: string[], endSec: number): ActiveGame {
+  const base = trackingGame({ onCourt });
+  const result = commitSegment(base, { endSec, classification: CLASSIFICATION });
+  if (!result.ok) throw new Error(`segment mislukt: ${result.error}`);
+  return result.game;
+}
+
+describe('R4: Schema wissen', () => {
+  it('vraagt bevestiging; annuleren laat het schema staan', () => {
+    storePlanForGame('game-1', plan());
+    const { getByTestId } = setup();
+    fireEvent.click(getByTestId('quick-view-plan'));
+    fireEvent.click(getByTestId('quick-plan-clear'));
+    expect(text(getByTestId('quick-plan-clear-sheet'))).toContain('Schema wissen?');
+    fireEvent.click(getByTestId('quick-plan-clear-sheet-cancel'));
+    expect(() => getByTestId('quick-plan-clear-sheet')).toThrow();
+    expect(readPlanForGame('game-1')).toEqual(plan());
+  });
+
+  it('bevestigen wist het schema lokaal en toont weer Schema maken; de wedstrijd blijft', () => {
+    storePlanForGame('game-0', plan());
+    storePlanForGame('game-1', plan());
+    const { getByTestId, latest } = setup();
+    const before = latest();
+    fireEvent.click(getByTestId('quick-view-plan'));
+    fireEvent.click(getByTestId('quick-plan-clear'));
+    fireEvent.click(getByTestId('quick-plan-clear-sheet-confirm'));
+    expect(readPlanForGame('game-1')).toBeNull();
+    // Het schema van een andere wedstrijd blijft ongemoeid.
+    expect(readPlanForGame('game-0')).toEqual(plan());
+    expect(getByTestId('quick-plan-create')).toBeTruthy();
+    expect(latest()).toBe(before);
+  });
+
+  it('zonder schrijfrechten is de knop uitgeschakeld', () => {
+    storePlanForGame('game-1', plan());
+    const { getByTestId } = setup({ canWrite: false });
+    fireEvent.click(getByTestId('quick-view-plan'));
+    expect((getByTestId('quick-plan-clear') as HTMLButtonElement).disabled).toBe(true);
+  });
+});
+
+describe('R4: Zelfde als vorige wedstrijd met overzicht', () => {
+  it('toont wat er verandert en laat het huidige schema staan bij annuleren', () => {
+    const previous = plan();
+    previous.quarters['1']![1] = { toSec: 0, lineup: [4, 7, 9, 11, 15] }; // Jules i.p.v. Bo
+    storePlanForGame('game-0', previous);
+    storePlanForGame('game-1', plan());
+    const { getByTestId } = setup();
+    fireEvent.click(getByTestId('quick-view-plan'));
+    fireEvent.click(getByTestId('quick-plan-load-previous'));
+    expect(text(getByTestId('quick-plan-changes'))).toContain('Kwart 1 · blok 2');
+    expect(text(getByTestId('quick-plan-changes'))).toContain('In: Jules · Uit: Bo');
+    fireEvent.click(getByTestId('quick-plan-load-sheet-cancel'));
+    expect(readPlanForGame('game-1')).toEqual(plan());
+  });
+
+  it('bevestigen vervangt het schema', () => {
+    const previous = plan();
+    previous.quarters['1']![1] = { toSec: 0, lineup: [4, 7, 9, 11, 15] };
+    storePlanForGame('game-0', previous);
+    storePlanForGame('game-1', plan());
+    const { getByTestId } = setup();
+    fireEvent.click(getByTestId('quick-view-plan'));
+    fireEvent.click(getByTestId('quick-plan-load-previous'));
+    fireEvent.click(getByTestId('quick-plan-load-sheet-confirm'));
+    expect(readPlanForGame('game-1')?.quarters['1']?.[1]?.lineup).toEqual([4, 7, 9, 11, 15]);
+  });
+
+  it('identiek schema: het overzicht meldt geen verschillen', () => {
+    storePlanForGame('game-0', plan());
+    storePlanForGame('game-1', plan());
+    const { getByTestId } = setup();
+    fireEvent.click(getByTestId('quick-view-plan'));
+    fireEvent.click(getByTestId('quick-plan-load-previous'));
+    expect(text(getByTestId('quick-plan-changes-none'))).toContain('Geen verschillen');
+  });
+});
+
+describe('R4: Rest van het schema aanpassen met bevestiging', () => {
+  it('annuleren voert niets door en laat de afwijking staan', () => {
+    storePlanForGame('game-1', plan());
+    const { getByTestId } = setup();
+    // Gepland: Bo (6) voor Dani (13). Echt: Jules (15) voor Dani.
+    fireEvent.click(getByTestId('quick-chip-gp-13'));
+    fireEvent.click(getByTestId('quick-chip-gp-15'));
+    fireEvent.click(getByTestId('quick-plan-propagate'));
+    expect(text(getByTestId('quick-plan-propagate-sheet'))).toContain(
+      'Rest van het schema aanpassen?',
+    );
+    // Kwart 2, blok 1 had Bo erin: Jules komt daarvoor in de plaats.
+    expect(text(getByTestId('quick-plan-changes'))).toContain('Kwart 2 · blok 1');
+    expect(text(getByTestId('quick-plan-changes'))).toContain('In: Jules · Uit: Bo');
+    fireEvent.click(getByTestId('quick-plan-propagate-sheet-cancel'));
+    expect(readPlanForGame('game-1')).toEqual(plan());
+    expect(getByTestId('quick-plan-deviation')).toBeTruthy();
+  });
+
+  it('bevestigen schrijft de wijziging weg en verbergt de knop', () => {
+    storePlanForGame('game-1', plan());
+    const { getByTestId } = setup();
+    fireEvent.click(getByTestId('quick-chip-gp-13'));
+    fireEvent.click(getByTestId('quick-chip-gp-15'));
+    fireEvent.click(getByTestId('quick-plan-propagate'));
+    fireEvent.click(getByTestId('quick-plan-propagate-sheet-confirm'));
+    expect(readPlanForGame('game-1')?.quarters['2']?.[0]?.lineup).toEqual([4, 7, 9, 15, 12]);
+    expect(() => getByTestId('quick-plan-propagate')).toThrow();
+  });
+});
+
+describe('R4: starters aanpasbaar', () => {
+  it('vóór het spelen is het starters-blok aan te passen, met uitleg', () => {
+    storePlanForGame('game-1', plan());
+    const { getByTestId } = setup();
+    fireEvent.click(getByTestId('quick-view-plan'));
+    fireEvent.click(getByTestId('quick-plan-block-1-0'));
+    expect((getByTestId('quick-plan-court-0') as HTMLButtonElement).disabled).toBe(false);
+    expect(text(getByTestId('quick-plan-sheet-note'))).toContain('starters');
+    fireEvent.click(getByTestId('quick-plan-court-0'));
+    fireEvent.click(getByTestId('quick-plan-bench-12'));
+    fireEvent.click(getByTestId('quick-plan-done'));
+    expect(readPlanForGame('game-1')?.quarters['1']?.[0]?.lineup).toEqual([12, 7, 9, 11, 13]);
+  });
+
+  it('een aangepaste starter komt ook op de vloer van het live-scherm', () => {
+    storePlanForGame('game-1', plan());
+    const { getByTestId, latest } = setup();
+    fireEvent.click(getByTestId('quick-view-plan'));
+    fireEvent.click(getByTestId('quick-plan-block-1-0'));
+    // Alex (4) eruit, Noa (12) erin.
+    fireEvent.click(getByTestId('quick-plan-court-0'));
+    fireEvent.click(getByTestId('quick-plan-bench-12'));
+    expect(latest().onCourt).toEqual(['gp-12', 'gp-7', 'gp-9', 'gp-11', 'gp-13']);
+    expect(latest().pendingSwapLineup).toBeNull();
+    // Een ander blok (niet de starters) laat de vloer ongemoeid.
+    fireEvent.click(getByTestId('quick-plan-done'));
+    fireEvent.click(getByTestId('quick-plan-block-1-1'));
+    fireEvent.click(getByTestId('quick-plan-court-1'));
+    fireEvent.click(getByTestId('quick-plan-bench-15'));
+    expect(latest().onCourt).toEqual(['gp-12', 'gp-7', 'gp-9', 'gp-11', 'gp-13']);
+  });
+
+  it('een extra wissel geeft een tweede uitvoeringsregel bij hetzelfde blok', () => {
+    storePlanForGame('game-1', plan());
+    const first = gameWithSegment(['gp-4', 'gp-7', 'gp-9', 'gp-11', 'gp-13'], 400);
+    const second = commitSegment(
+      { ...first, onCourt: ['gp-4', 'gp-7', 'gp-9', 'gp-11', 'gp-15'] },
+      { endSec: 300, classification: CLASSIFICATION },
+    );
+    if (!second.ok) throw new Error('segment mislukt');
+    const { getByTestId } = setup({ game: second.game });
+    fireEvent.click(getByTestId('quick-view-plan'));
+    expect(getByTestId('quick-plan-actual-1-0')).toBeTruthy();
+    expect(text(getByTestId('quick-plan-actual-1-0-1'))).toContain('Jules i.p.v. Dani');
+  });
+
+  it('na het eerste segment is het starters-blok dicht', () => {
+    storePlanForGame('game-1', plan());
+    const { getByTestId } = setup({
+      game: gameWithSegment(['gp-4', 'gp-7', 'gp-9', 'gp-11', 'gp-13'], 400),
+    });
+    fireEvent.click(getByTestId('quick-view-plan'));
+    expect((getByTestId('quick-plan-block-1-0') as HTMLButtonElement).disabled).toBe(true);
+  });
+});
+
+describe('R4: plan naast uitvoering', () => {
+  it('een gespeeld blok zoals gepland toont zoals gepland', () => {
+    storePlanForGame('game-1', plan());
+    const { getByTestId } = setup({
+      game: gameWithSegment(['gp-4', 'gp-7', 'gp-9', 'gp-11', 'gp-13'], 400),
+    });
+    fireEvent.click(getByTestId('quick-view-plan'));
+    const actual = getByTestId('quick-plan-actual-1-0');
+    expect(text(actual)).toContain('Gespeeld 10:00 – 6:40 · zoals gepland');
+    expect(actual.className).not.toContain('--diff');
+  });
+
+  it('een afwijkend gespeeld blok markeert het verschil', () => {
+    storePlanForGame('game-1', plan());
+    // Gespeeld: Jules (15) i.p.v. Dani (13).
+    const { getByTestId } = setup({
+      game: gameWithSegment(['gp-4', 'gp-7', 'gp-9', 'gp-11', 'gp-15'], 400),
+    });
+    fireEvent.click(getByTestId('quick-view-plan'));
+    const actual = getByTestId('quick-plan-actual-1-0');
+    expect(text(actual)).toContain('afwijkend: Jules i.p.v. Dani');
+    expect(actual.className).toContain('--diff');
+    expect(actual.querySelectorAll('.quick-plan__mini--diff')).toHaveLength(1);
+  });
+
+  it('een blok zonder segment toont geen uitvoering', () => {
+    storePlanForGame('game-1', plan());
+    const { getByTestId, queryByTestId } = setup();
+    fireEvent.click(getByTestId('quick-view-plan'));
+    expect(queryByTestId('quick-plan-actual-1-0')).toBeNull();
   });
 });

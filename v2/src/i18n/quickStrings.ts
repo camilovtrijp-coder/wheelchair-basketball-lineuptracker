@@ -84,6 +84,30 @@ export const quickNl = {
   quickPlanPropagate: 'Rest van het schema ook aanpassen',
   quickPlanPropagated: 'Rest van het schema aangepast.',
   quickPlanNextQuarterLineup: '{period} {n} start met de opstelling uit het schema.',
+  quickPlanClearBtn: 'Schema wissen',
+  quickPlanClearTitle: 'Schema wissen?',
+  quickPlanClearBody:
+    'Het schema van deze wedstrijd wordt van dit apparaat verwijderd. Gespeelde segmenten en de stand blijven ongewijzigd.',
+  quickPlanClearConfirm: 'Ja, schema wissen',
+  quickPlanLoadTitle: 'Schema van de vorige wedstrijd laden?',
+  quickPlanLoadBodyNew:
+    'Er staat nog geen schema. Het schema van de vorige wedstrijd wordt geladen.',
+  quickPlanLoadBodyReplace: 'Het huidige schema wordt vervangen. Dit verandert:',
+  quickPlanLoadConfirm: 'Ja, schema laden',
+  quickPlanPropagateTitle: 'Rest van het schema aanpassen?',
+  quickPlanPropagateBody:
+    'De afwijking wordt doorgevoerd in de blokken na de eerstvolgende wissel. Dit verandert:',
+  quickPlanPropagateConfirm: 'Ja, doorvoeren',
+  quickPlanChangesNone: 'Geen verschillen.',
+  quickPlanChangeWhere: '{period} {n} · blok {block}',
+  quickPlanChangeTime: 'wisselmoment {from} → {to}',
+  quickPlanChangeAdded: 'blok erbij',
+  quickPlanChangeRemoved: 'blok vervalt',
+  quickPlanChangesMore: '… en nog {n} andere wijzigingen',
+  quickPlanStartersNote:
+    'Dit zijn de starters in het schema. Aan te passen zolang er nog niet gespeeld is. De opstelling op de vloer wijzig je in Wedstrijd.',
+  quickPlanActualSame: 'Gespeeld {when} · zoals gepland',
+  quickPlanActualDiff: 'Gespeeld {when} · afwijkend: {pairs}',
 } as const;
 
 export const quickEn = {
@@ -164,4 +188,27 @@ export const quickEn = {
   quickPlanPropagate: 'Also adjust the rest of the plan',
   quickPlanPropagated: 'Rest of the plan adjusted.',
   quickPlanNextQuarterLineup: '{period} {n} starts with the lineup from the plan.',
+  quickPlanClearBtn: 'Clear plan',
+  quickPlanClearTitle: 'Clear the plan?',
+  quickPlanClearBody:
+    'The plan of this game is removed from this device. Played segments and the score stay unchanged.',
+  quickPlanClearConfirm: 'Yes, clear plan',
+  quickPlanLoadTitle: 'Load the plan of the previous game?',
+  quickPlanLoadBodyNew: 'There is no plan yet. The plan of the previous game will be loaded.',
+  quickPlanLoadBodyReplace: 'The current plan is replaced. This changes:',
+  quickPlanLoadConfirm: 'Yes, load plan',
+  quickPlanPropagateTitle: 'Adjust the rest of the plan?',
+  quickPlanPropagateBody:
+    'The deviation is carried over to the blocks after the next substitution. This changes:',
+  quickPlanPropagateConfirm: 'Yes, carry over',
+  quickPlanChangesNone: 'No differences.',
+  quickPlanChangeWhere: '{period} {n} · block {block}',
+  quickPlanChangeTime: 'substitution moment {from} → {to}',
+  quickPlanChangeAdded: 'block added',
+  quickPlanChangeRemoved: 'block removed',
+  quickPlanChangesMore: '… and {n} more changes',
+  quickPlanStartersNote:
+    'These are the starters in the plan. You can change them until play has started. Change the lineup on court in Game.',
+  quickPlanActualSame: 'Played {when} · as planned',
+  quickPlanActualDiff: 'Played {when} · different: {pairs}',
 } as const;

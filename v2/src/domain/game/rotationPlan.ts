@@ -386,3 +386,145 @@ export function removeBlock(plan: RotationPlan, q: number, i: number): RotationP
     rest.map((b, j) => (j === i - 1 ? { ...b, toSec: target.toSec } : b)),
   );
 }
+
+// ---------- starters ----------
+
+/** Is er nog niets gespeeld (kwart 1, geen segment)? Dan zijn de starters (kwart 1, blok 1) nog aan te passen. */
+export function startersEditable(game: ActiveGame): boolean {
+  return game.curQuarter === 1 && deriveGameHistory(game).segments.length === 0;
+}
+
+/**
+ * Mag de opstelling van blok `i` in kwart `q` nog worden aangepast? Gespeelde en lopende blokken zijn dicht,
+ * met één uitzondering: het starters-blok (kwart 1, blok 1) zolang er nog niets is gespeeld.
+ */
+export function isLineupEditable(
+  game: ActiveGame,
+  q: number,
+  i: number,
+  blockCount: number,
+): boolean {
+  if (q === 1 && i === 0 && startersEditable(game)) return true;
+  return i >= lockedBlockCount(game, q, blockCount);
+}
+
+// ---------- overzicht van wijzigingen ----------
+
+export type PlanChange =
+  | { kind: 'lineup'; quarter: number; block: number; ins: number[]; outs: number[] }
+  | { kind: 'time'; quarter: number; block: number; fromSec: number; toSec: number }
+  | { kind: 'added'; quarter: number; block: number }
+  | { kind: 'removed'; quarter: number; block: number };
+
+function numericQuarterKeys(...plans: Array<RotationPlan | null>): number[] {
+  const keys = new Set<number>();
+  for (const plan of plans) {
+    for (const key of Object.keys(plan?.quarters ?? {})) keys.add(Number(key));
+  }
+  return [...keys].sort((a, b) => a - b);
+}
+
+/**
+ * Wat verandert er als `from` (huidig schema, of `null`) door `to` wordt vervangen? Per kwart en blok:
+ * wie erin/eruit gaat, een verschoven wisselmoment, of een toegevoegd/verwijderd blok. Pure weergavehulp
+ * voor bevestigingsstappen; leeg = geen verschil.
+ */
+export function diffPlans(from: RotationPlan | null, to: RotationPlan): PlanChange[] {
+  const changes: PlanChange[] = [];
+  for (const quarter of numericQuarterKeys(from, to)) {
+    const before = from?.quarters[String(quarter)] ?? [];
+    const after = to.quarters[String(quarter)] ?? [];
+    const count = Math.max(before.length, after.length);
+    for (let block = 0; block < count; block++) {
+      const a = before[block];
+      const b = after[block];
+      if (a == null && b != null) {
+        changes.push({ kind: 'added', quarter, block });
+      } else if (a != null && b == null) {
+        changes.push({ kind: 'removed', quarter, block });
+      } else if (a != null && b != null) {
+        const ins = b.lineup.filter((r) => !a.lineup.includes(r));
+        const outs = a.lineup.filter((r) => !b.lineup.includes(r));
+        if (ins.length > 0) changes.push({ kind: 'lineup', quarter, block, ins, outs });
+        if (a.toSec !== b.toSec) {
+          changes.push({ kind: 'time', quarter, block, fromSec: a.toSec, toSec: b.toSec });
+        }
+      }
+    }
+  }
+  return changes;
+}
+
+// ---------- plan naast uitvoering ----------
+
+export interface PlanExecution {
+  block: number;
+  /** Geplande opstelling (`rosterId`'s). */
+  planned: number[];
+  /** Werkelijk gespeelde opstelling van het bijbehorende segment (`rosterId`'s). */
+  actual: number[];
+  /** Begin- en eindtijd van het gespeelde segment. */
+  beginSec: number;
+  endSec: number;
+  /** Op de vloer gestaan maar niet gepland (`rosterId`). */
+  extra: number[];
+  /** Gepland maar niet gespeeld (`rosterId`). */
+  missing: number[];
+  /** Paren "gespeeld i.p.v. gepland", op volgorde. */
+  pairs: Array<{ actual: number; planned: number }>;
+  same: boolean;
+}
+
+/**
+ * Bij welk blok hoort een segment dat op `beginSec` begint? Een blok loopt van zijn begin tot
+ * `toSec` (het wisselmoment); een segment dat precies op die grens begint, hoort al bij het
+ * volgende blok. Het laatste blok vangt de rest van het kwart op.
+ */
+export function blockIndexForTime(
+  blocks: PlanBlock[],
+  beginSec: number,
+  clockDown: boolean,
+): number {
+  for (let i = 0; i < blocks.length - 1; i++) {
+    const to = blocks[i]?.toSec;
+    if (to === undefined) continue;
+    const beforeLimit = clockDown ? beginSec > to : beginSec < to;
+    if (beforeLimit) return i;
+  }
+  return Math.max(0, blocks.length - 1);
+}
+
+/**
+ * Per gespeeld segment van kwart `q` de geplande opstelling van het blok waarin het begon, naast de
+ * werkelijk gespeelde. De koppeling gaat op TIJD (het blok waarin `beginSec` valt), niet op volgorde:
+ * een extra wissel die niet in het schema staat geeft een tweede uitvoering bij hetzelfde blok, en een
+ * overgeslagen blok krijgt geen uitvoering. Afgeleid uit de segmenten; er wordt niets opgeslagen. Het
+ * lopende blok (nog geen segment) komt er niet in voor.
+ */
+export function planVersusActual(game: ActiveGame, plan: RotationPlan, q: number): PlanExecution[] {
+  const blocks = plan.quarters[String(q)] ?? [];
+  if (blocks.length === 0) return [];
+  const segments = deriveGameHistory(game).segments.filter((s) => s.quarter === q);
+  const result: PlanExecution[] = [];
+  for (const segment of segments) {
+    const block = blockIndexForTime(blocks, segment.beginSec, game.clockDown);
+    const planBlock = blocks[block];
+    if (planBlock == null) continue;
+    const actual = rosterIdsOf(game, segment.lineup);
+    if (actual == null) continue;
+    const extra = actual.filter((r) => !planBlock.lineup.includes(r));
+    const missing = planBlock.lineup.filter((r) => !actual.includes(r));
+    result.push({
+      block,
+      planned: [...planBlock.lineup],
+      actual,
+      beginSec: segment.beginSec,
+      endSec: segment.endSec,
+      extra,
+      missing,
+      pairs: extra.map((r, k) => ({ actual: r, planned: missing[k] ?? -1 })),
+      same: extra.length === 0,
+    });
+  }
+  return result;
+}

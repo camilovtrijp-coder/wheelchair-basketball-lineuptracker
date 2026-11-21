@@ -673,3 +673,29 @@
 .quick-sheet__adjust {
   min-height: 2.75rem;
 }
+
+.quick-plan__mini--diff {
+  border-color: var(--lt-color-danger);
+}
+
+.quick-plan__actual {
+  display: flex;
+  flex-direction: column;
+  gap: var(--lt-space-1);
+  padding-top: var(--lt-space-2);
+  border-top: 1px dashed var(--lt-color-border);
+}
+
+.quick-plan__actual--diff .quick-plan__diff {
+  color: var(--lt-color-danger);
+}
+
+.quick-plan__changes {
+  margin: 0;
+  padding-left: var(--lt-space-4);
+  font-size: var(--lt-font-size-sm);
+}
+
+.quick-plan__clear {
+  min-height: 2.75rem;
+}
