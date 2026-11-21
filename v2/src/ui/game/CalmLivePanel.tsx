@@ -30,6 +30,11 @@ import {
   withQuarterCount,
   lineupDiff,
 } from '../../domain/game/rotationPlan';
+import {
+  readPlayTimePreference,
+  storePlayTimePreference,
+} from '../../infrastructure/game/playTimePreference';
+import { playTimeByPlayer } from '../../domain/game/playTime';
 import { readAwayPreference } from '../../infrastructure/game/compactAwayPreference';
 import {
   confirmAllSwapTimes,
@@ -90,9 +95,14 @@ function CalmChip({
   selected,
   highlight,
   disabled,
+  playTime,
+  playTimeTitle,
   onClick,
 }: {
   player: GamePlayer;
+  /** Speeltijd (m:ss) of `undefined` als de optie uit staat. */
+  playTime?: string;
+  playTimeTitle?: string;
   selected: boolean;
   highlight: boolean;
   disabled: boolean;
@@ -105,9 +115,17 @@ function CalmChip({
       data-testid={`calm-chip-${player.id}`}
       aria-pressed={selected}
       disabled={disabled}
+      title={playTimeTitle}
       onClick={onClick}
     >
-      <span className="chip__nr">{player.nr}</span>
+      <span className="chip__nr">
+        {player.nr}
+        {playTime !== undefined ? (
+          <span className="calm-chip__time" data-testid={`calm-playtime-${player.id}`}>
+            {playTime}
+          </span>
+        ) : null}
+      </span>
       <span className="chip__name">{player.naam}</span>
     </button>
   );
@@ -174,6 +192,13 @@ export function CalmLivePanel({
     return () => window.clearTimeout(timer);
   }, [justIn]);
 
+  const [showPlayTime, setShowPlayTime] = useState(() => readPlayTimePreference());
+  function togglePlayTime() {
+    const next = !showPlayTime;
+    setShowPlayTime(next);
+    storePlayTimePreference(next);
+  }
+
   const pending = game.pendingSwapLineup;
   useGameScreenLock(
     canWrite && pending != null
@@ -199,6 +224,18 @@ export function CalmLivePanel({
   const playerById = (id: string) => game.players.find((p) => p.id === id);
   const names = (ids: string[]) => ids.map((id) => playerById(id)?.naam ?? '?').join(', ');
   const nowSec = currentClockSec(game);
+  // Speeltijd t/m de laatste wissel (alleen vastgelegde segmenten, ook voorlopige tijden).
+  const playTimes = showPlayTime ? playTimeByPlayer(segments) : null;
+  const chipTime = (p: GamePlayer) =>
+    playTimes != null
+      ? {
+          playTime: fmtSec(playTimes[p.id] ?? 0),
+          playTimeTitle: fill(t('calmPlayTimeChipTitle'), {
+            name: p.naam,
+            time: fmtSec(playTimes[p.id] ?? 0),
+          }),
+        }
+      : {};
 
   // Open schattingen (oudste eerst) en de tijdkaart-wissel.
   const openEstimates = pendingTimeConfirmations(game, flow.unconfirmedSegmentIds);
@@ -573,6 +610,11 @@ export function CalmLivePanel({
     return (
       <div className="calm-card calm-card--idle" data-testid="calm-slot-idle">
         <p className="calm-card__meta">{t('swapHint')}</p>
+        {showPlayTime ? (
+          <p className="calm-card__meta" data-testid="calm-playtime-note">
+            {t('calmPlayTimeNote')}
+          </p>
+        ) : null}
       </div>
     );
   }
@@ -627,6 +669,17 @@ export function CalmLivePanel({
     <section className="tracking-panel quick-panel calm-panel" aria-label={t('gameTitle')}>
       <div className="calm-top">
         {viewSwitch}
+        <button
+          type="button"
+          className="btn-outline calm-top__playtime"
+          aria-pressed={showPlayTime}
+          aria-label={t('calmPlayTimeToggleAria')}
+          title={t('calmPlayTimeTitle')}
+          data-testid="calm-playtime-toggle"
+          onClick={togglePlayTime}
+        >
+          ⏱
+        </button>
         <button
           type="button"
           className="btn-outline calm-top__finish"
@@ -733,6 +786,7 @@ export function CalmLivePanel({
               selected={selected?.id === id}
               highlight={justIn.includes(id)}
               disabled={!canWrite}
+              {...chipTime(p)}
               onClick={() => handleTapPlayer(id)}
             />
           ) : null;
@@ -754,6 +808,7 @@ export function CalmLivePanel({
                 selected={selected?.id === p.id}
                 highlight={justIn.includes(p.id)}
                 disabled={!canWrite}
+                {...chipTime(p)}
                 onClick={() => handleTapPlayer(p.id)}
               />
               <span
