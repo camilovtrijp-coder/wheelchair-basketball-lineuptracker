@@ -249,6 +249,9 @@ export function App({
     onLangChange?.(lang);
   }, [lang, onLangChange]);
   const [tab, setTab] = useState<Tab>('settings');
+  // Na een herlaad opent de app op Wedstrijd als er een lopende wedstrijd is (één keer,
+  // afgeleid uit de opgeslagen wedstrijdfase, geen eigen opslag). Zie het laad-effect.
+  const openedOnRunningGameRef = useRef(false);
   // Apparaatvoorkeur Klassiek/Compact (nooit onderdeel van de wedstrijd): beide
   // schermen krijgen exact dezelfde props en dezelfde ActiveGame.
   const gameScreen = useGameScreenPreference();
@@ -487,6 +490,10 @@ export function App({
       stored !== null && completedGameRepo.list().some((g) => g.sourceGameId === stored.id);
     if (stored && stored.phase === 'tracking' && !alreadyArchived) {
       setGame(stored);
+      if (!openedOnRunningGameRef.current) {
+        openedOnRunningGameRef.current = true;
+        setTab('game');
+      }
       setV1MigrationCandidate(null);
     } else {
       setGame(null);
