@@ -166,6 +166,24 @@ describe('correctSegment: lineup (PR 7.7a)', () => {
     expect(r.game.segments[0]).toMatchObject({ classSum: 0, allowed: 0, over: false });
   });
 
+  it('weigert onbruikbare (niet-eindige) instellingen in plaats van een onleesbaar logitem', () => {
+    const r = correctSegment(game(), 's1', { lineup: NEW_LINEUP }, 'u1', {
+      ...OPTS,
+      classification: { ...CONFIG, bonusTag1Only: Number.NaN },
+    });
+    expect(r).toEqual({ ok: false, error: 'classification-unavailable' });
+  });
+
+  it('weigert een lineupcorrectie als het log vol is (MAX_CORRECTIONS = 50)', () => {
+    const first = correctSegment(game(), 's1', { pf: 7 }, 'u1', OPTS);
+    if (!first.ok) throw new Error(first.error);
+    const full = game({ corrections: Array.from({ length: 50 }, () => first.correction) });
+    expect(correctSegment(full, 's1', { lineup: NEW_LINEUP }, 'u1', OPTS)).toEqual({
+      ok: false,
+      error: 'log-full',
+    });
+  });
+
   it('muteert de invoer niet', () => {
     const g = game();
     const snapshot = JSON.stringify(g);
@@ -216,6 +234,28 @@ describe('replayCorrectionLog: lineup (PR 7.7a)', () => {
       after: { ...r.correction.after, lineup: ['p1', 'p2', 'p3', 'p4', 'p7'] },
     };
     expect(replayCorrectionLog(game(), [bad], 0)).toBeNull();
+  });
+
+  it('keurt een item af dat alleen de volgorde van de lineup "wijzigt"', () => {
+    const r = correctSegment(game(), 's1', { lineup: NEW_LINEUP }, 'u1', OPTS);
+    if (!r.ok) throw new Error(r.error);
+    const reordered = {
+      ...r.correction,
+      after: { ...r.correction.after, lineup: ['p5', 'p4', 'p3', 'p2', 'p1'], allowed: 14.5 },
+    };
+    expect(replayCorrectionLog(game(), [reordered], 0)).toBeNull();
+  });
+
+  it('keurt een item af met een niet-eindige allowed of een niet-string speler-ID', () => {
+    const r = correctSegment(game(), 's1', { lineup: NEW_LINEUP }, 'u1', OPTS);
+    if (!r.ok) throw new Error(r.error);
+    const inf = { ...r.correction, after: { ...r.correction.after, allowed: Infinity } };
+    const num = {
+      ...r.correction,
+      after: { ...r.correction.after, lineup: ['p1', 'p2', 'p3', 'p4', 6] as unknown as string[] },
+    };
+    expect(replayCorrectionLog(game(), [inf], 0)).toBeNull();
+    expect(replayCorrectionLog(game(), [num], 0)).toBeNull();
   });
 
   it('speelt een oud logitem zonder lineup nog steeds terug', () => {
