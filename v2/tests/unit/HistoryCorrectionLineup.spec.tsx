@@ -172,6 +172,18 @@ describe.each(['nl', 'en'] as const)('HistoryPanel — lineup corrigeren (%s)', 
     expect(q.queryByTestId('correct-lineup-option-p5')).toBeNull();
   });
 
+  it('na het kiezen gaat de focus terug naar de vervangen tegel (keuzelijst heeft een label)', () => {
+    const q = setup({ lang });
+    fireEvent.click(q.getByTestId('history-segment-s1'));
+    fireEvent.click(q.getByTestId('correct-lineup-slot-4'));
+    const group = q.getByRole('group');
+    expect(group.getAttribute('aria-label')).toContain('#8 Eva');
+    q.getByTestId('correct-lineup-option-p6').focus();
+    fireEvent.click(q.getByTestId('correct-lineup-option-p6'));
+    expect(q.queryByTestId('correct-lineup-picker')).toBeNull();
+    expect(document.activeElement).toBe(q.getByTestId('correct-lineup-slot-4'));
+  });
+
   it('speler vervangen: live klassesom, bevestiging vóór/ná, opslaan en logitem', () => {
     const q = setup({ lang });
     fireEvent.click(q.getByTestId('history-segment-s1'));

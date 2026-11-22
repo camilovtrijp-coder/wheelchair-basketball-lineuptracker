@@ -135,6 +135,15 @@ export function CorrectSegmentDialog({
   });
   const [lineupDraft, setLineupDraft] = useState<string[]>([...segment.lineup]);
   const [pickSlot, setPickSlot] = useState<number | null>(null);
+  // Toegankelijkheid: na het kiezen verdwijnt de gefocuste keuzeknop; zet de
+  // focus dan terug op de tegel die net is vervangen (binnen de focus trap).
+  const slotRefs = useRef<(HTMLButtonElement | null)[]>([]);
+  const [focusSlot, setFocusSlot] = useState<number | null>(null);
+  useEffect(() => {
+    if (focusSlot == null) return;
+    slotRefs.current[focusSlot]?.focus();
+    setFocusSlot(null);
+  }, [focusSlot]);
   const [errorKey, setErrorKey] = useState<StringKey | null>(null);
   const [saveFailed, setSaveFailed] = useState(false);
   const [review, setReview] = useState<ReturnType<typeof correctSegment> | null>(null);
@@ -345,6 +354,9 @@ export function CorrectSegmentDialog({
                         name: p?.naam ?? '',
                       })}
                       data-testid={`correct-lineup-slot-${i}`}
+                      ref={(el) => {
+                        slotRefs.current[i] = el;
+                      }}
                       onClick={() => setPickSlot(on ? null : i)}
                     >
                       <span className="chip__nr">{p?.nr ?? '?'}</span>
@@ -365,7 +377,13 @@ export function CorrectSegmentDialog({
                       {t('correctLineupNoCandidates')}
                     </p>
                   ) : (
-                    <div className="quick-grid">
+                    <div
+                      className="quick-grid"
+                      role="group"
+                      aria-label={fill(t('correctLineupPickTitle'), {
+                        name: playerLabel(game.players, pickedPlayer ?? ''),
+                      })}
+                    >
                       {candidates.map((p) => (
                         <button
                           key={p.id}
@@ -376,6 +394,7 @@ export function CorrectSegmentDialog({
                             setLineupDraft(
                               lineupDraft.map((id, i) => (i === pickSlot ? p.id : id)),
                             );
+                            setFocusSlot(pickSlot);
                             setPickSlot(null);
                             setErrorKey(null);
                           }}
