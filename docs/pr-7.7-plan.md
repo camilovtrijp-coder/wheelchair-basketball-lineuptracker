@@ -151,6 +151,17 @@ deelnemers kiesbaar. Uitwerking:
   bereik, `over == (classSum > allowed + 0.001)` en `classSum == 0` zonder
   klassegrens. De 1000-expressiegrens laat weinig marge in het worst-case-pad
   (5 nieuwe spelers, coach); zie de test "worst case".
+- **Review 7.7c**: de oorspronkelijke Rules weigerden in de emulator een geldige
+  coachcorrectie (lineup + tijd/score/turnovers, of 5 nieuwe spelers in een
+  middensegment van een groot document) op de 1000-expressiegrens. Opgelost door
+  de tombstonetak een correctie direct te laten verlaten (inhoudelijk overbodige
+  eerste vergelijking op `deletedAt`). Met de vrijgekomen ruimte controleren de
+  Rules nu ook: de lineup wijzigt echt (niet alleen de volgorde), elke index in
+  `lineupPlayerIndexes` wijst naar de juiste speler (ook voor blijvers) en
+  `-1e6 < allowed < 1e6`. Resterende marge in het duurste geteste pad (80
+  segmenten, 49 eerdere correcties, 5 nieuwe spelers + alle scalaire velden):
+  gemeten ca. 10 extra `1 == 1`-vergelijkingen; voeg geen controles toe zonder de
+  worst-case-tests opnieuw te draaien.
 - **Uitrol**: eerst de Rules publiceren, daarna pas clients met 7.7b/7.7c.
   Een client die de lineupcorrectie uploadt vóór de nieuwe Rules geeft
   `permission-denied` (status `actie-nodig`), de lokale correctie blijft staan.

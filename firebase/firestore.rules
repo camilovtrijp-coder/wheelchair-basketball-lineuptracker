@@ -282,11 +282,14 @@ rules_version = '2';
 //      - `before.lineup`/`before.allowed` = het oude segment, `after.lineup`/
 //        `after.allowed` = het nieuwe; het segment mag naast de zeven bestaande
 //        sleutels alleen `lineup`, `classSum`, `allowed`, `over` wijzigen.
-//      - elke speler van de nieuwe lineup stond al in de oude lineup van dit
-//        segment, óf `players[index]` is die speler en heeft `participate == true`.
-//        `players` zelf is onwijzigbaar (diff-allowlist hierboven).
-//      - `over == (classSum > allowed + 0.001)`, `0 <= classSum <= 100`, en
-//        `classSum == 0` als de wedstrijd geen klassegrens had.
+//      - de lineup wijzigt echt: niet dezelfde 5 spelers in (andere) volgorde.
+//      - voor elke positie k is `players[lineupPlayerIndexes[k]].id == lineup[k]`
+//        (ook voor spelers die blijven: het veld is altijd consistent), en die
+//        speler stond al in de oude lineup van dit segment óf heeft
+//        `participate == true`. `players` zelf is onwijzigbaar (diff-allowlist).
+//      - `over == (classSum > allowed + 0.001)`, `0 <= classSum <= 100`,
+//        `-1e6 < allowed < 1e6` (dus ook geen ±Infinity/NaN), en `classSum == 0`
+//        als de wedstrijd geen klassegrens had.
 //      EERLIJKE BEPERKINGEN: Rules kunnen `kl` (string) niet betrouwbaar optellen:
 //      de EXACTE classSum en de bijgestelde `allowed` (bonusverschil volgens de
 //      toen geldende instellingen, variant A) worden NIET in Rules nagerekend; die
@@ -294,7 +297,9 @@ rules_version = '2';
 //      bevoegde coach kan dus een intern consistente maar rekenkundig onjuiste
 //      classSum/allowed opslaan — net als bij tijd/score (punt 21). Om binnen de
 //      1000-expressiegrens te blijven is `before` alleen op sleutelaantal
-//      gecontroleerd (de inhoud moet gelijk zijn aan het oude segment) en de
+//      gecontroleerd (de inhoud moet via `diff` gelijk zijn aan het oude segment,
+//      dat bij aanmaak al gevalideerd is) en verlaat de tombstonetak een
+//      correctie al bij de eerste vergelijking. De
 //      worst case (5 nieuwe spelers, coach) heeft weinig marge: voeg hier geen
 //      controles toe zonder `firebase/tests/rules/completed-games-lineup-correction
 //      .spec.ts` ("worst case") opnieuw te draaien.
@@ -616,42 +621,37 @@ service cloud.firestore {
         (('tov' in s) ? s.tov : 0) == f.tov;
     }
 
-    // PR 7.7c: speler `id` uit de nieuwe lineup is toegestaan als hij al in de oude
-    // lineup van dit segment stond, of als `players[i]` (cloud-only index uit het
-    // logitem, net als `segmentIndex`; Rules kunnen niet zoeken in een lijst) die
-    // speler is en `participate` is. De korte-sluiting `in` houdt de kosten voor
-    // ongewijzigde spelers laag (1000-expressiegrens).
-    // `p` = `players[index]`; wordt alleen geëvalueerd voor een NIEUWE speler.
-    function newPlayerOk(p, id) {
-      return p.id == id && p.participate;
-    }
-
     // PR 7.7c: de lineupcorrectie van segment `o` -> `s` volgens logitem `c` in
     // wedstrijd `old`. `before.lineup`/`before.allowed` zijn gelijk aan het oude
     // segment, `after.lineup`/`after.allowed` aan het nieuwe, de lineup wijzigt
-    // echt en bestaat uit 5 unieke ID's, elke speler is al lid van de oude lineup
-    // of staat op `players[index]` en deed mee, en `classSum`/`over` zijn intern
-    // consistent.
+    // echt (niet alleen de volgorde: `!ol.hasAll(l)`) en bestaat uit 5 unieke ID's.
+    // Per positie k wijst `lineupPlayerIndexes[k]` (cloud-only, net als
+    // `segmentIndex`; Rules kunnen niet zoeken in een lijst) naar `players[i]` met
+    // `id == l[k]` (review: voor ELKE speler, zodat het veld altijd consistent is
+    // met `after.lineup`), en die speler stond al in de oude lineup of deed mee
+    // (`participate`). `classSum`/`allowed`/`over` zijn begrensd en intern consistent.
     // BEPERKING: Rules kunnen `kl` (string) niet betrouwbaar optellen, dus de
-    // exacte som wordt hier NIET nagerekend; gecontroleerd worden bereik,
-    // `classSum == 0` als er geen klassegrens was en `over == (classSum > allowed
-    // + 0.001)`. De som volgt uit de clientreplay (`correctSegment`).
+    // exacte som en de bijgestelde `allowed` worden hier NIET nagerekend; die
+    // volgen uit de clientreplay (`correctSegment`).
+    // Kosten: dit pad zit dicht tegen de 1000-expressiegrens; draai na elke
+    // wijziging de "worst case"-tests in completed-games-lineup-correction.spec.ts.
     function isValidLineupCorrection(o, s, c, old) {
       let l = c.after.lineup;
       let ol = c.before.lineup;
       let ix = c.lineupPlayerIndexes;
+      let p = old.players;
       return o.lineup == ol && s.lineup == l &&
-        l.size() == 5 && l.toSet().size() == 5 &&
+        l.size() == 5 && l.toSet().size() == 5 && !ol.hasAll(l) &&
         o.allowed == c.before.allowed && s.allowed == c.after.allowed &&
-        s.allowed < 1000000 && s.classSum >= 0 && s.classSum <= 100 &&
+        s.allowed > -1000000 && s.allowed < 1000000 && s.classSum >= 0 && s.classSum <= 100 &&
         (old.useClassLimit || s.classSum == 0) &&
         s.over == (s.classSum > s.allowed + 0.001) &&
         ix.size() == 5 &&
-        (l[0] in ol || newPlayerOk(old.players[ix[0]], l[0])) &&
-        (l[1] in ol || newPlayerOk(old.players[ix[1]], l[1])) &&
-        (l[2] in ol || newPlayerOk(old.players[ix[2]], l[2])) &&
-        (l[3] in ol || newPlayerOk(old.players[ix[3]], l[3])) &&
-        (l[4] in ol || newPlayerOk(old.players[ix[4]], l[4]));
+        p[ix[0]].id == l[0] && (p[ix[0]].participate || l[0] in ol) &&
+        p[ix[1]].id == l[1] && (p[ix[1]].participate || l[1] in ol) &&
+        p[ix[2]].id == l[2] && (p[ix[2]].participate || l[2] in ol) &&
+        p[ix[3]].id == l[3] && (p[ix[3]].participate || l[3] in ol) &&
+        p[ix[4]].id == l[4] && (p[ix[4]].participate || l[4] in ol);
     }
 
     // `o`/`s` = het aangewezen segment vóór/na, `c` = het nieuwe logitem, `wl` = het
@@ -1395,7 +1395,15 @@ service cloud.firestore {
           // zonder te gooien; ontbreken telt hier als de aanmaak-default
           // (`deletedAt: null`, `revision: 0`) — exact dezelfde defaulting
           // als `completedGameConverter.fromFirestore()` aan de leeskant.
-          allow update: if canManageTeamData(orgId, teamId) &&
+          //
+          // PR 7.7c-review: de eerste regel is inhoudelijk overbodig (dezelfde eis
+          // staat hieronder), maar laat elke andere update (correctie, punt 21/22)
+          // deze tak goedkoop verlaten vóór de rolcontrole en de documentdiff. Rules
+          // evalueren de `allow update`-takken binnen één budget van 1000
+          // expressies; zonder deze kortsluiting paste een lineup- + tijd/score-
+          // correctie van een coach er niet in.
+          allow update: if request.resource.data.get('deletedAt', null) == request.time &&
+            canManageTeamData(orgId, teamId) &&
             (!('deletedAt' in resource.data) || resource.data.deletedAt == null) &&
             request.resource.data.diff(resource.data).affectedKeys()
               .hasOnly(['deletedAt', 'deletedBy', 'revision']) &&

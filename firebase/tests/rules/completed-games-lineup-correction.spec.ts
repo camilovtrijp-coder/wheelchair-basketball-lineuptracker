@@ -255,6 +255,66 @@ describe('lineupcorrectie: toegestaan (positief)', () => {
     );
   });
 
+  // Review 7.7c: het duurste realistische pad. Gemeten in de emulator: de oorspronkelijke
+  // 7.7c-Rules weigerden deze GELDIGE correcties (1000-expressiegrens); daarom verlaat de
+  // tombstonetak een correctie nu meteen. Beide varianten: alle 5 spelers nieuw, en 4
+  // blijvers + 1 nieuw (blijvers kosten sinds de review ook een indexcontrole).
+  for (const [label, lineup, ix] of [
+    ['alle 5 spelers nieuw', ['gp-11', 'gp-12', 'gp-13', 'gp-14', 'gp-15'], [10, 11, 12, 13, 14]],
+    ['4 blijvers + 1 nieuw', ['gp-1', 'gp-2', 'gp-3', 'gp-4', 'gp-15'], [0, 1, 2, 3, 14]],
+  ] as [string, string[], number[]][]) {
+    it(`echte worst case: coach, 49 eerdere correcties, 80 segmenten, ${label} + tijd/score/turnovers tegelijk`, async () => {
+      const many = Array.from({ length: 15 }, (_, i) => ({
+        id: `gp-${i + 1}`,
+        rosterId: i + 1,
+        nr: String(i + 1),
+        naam: `Fictief Speler ${i + 1}`,
+        kl: '3.0',
+        vrouw: false,
+        jeugd: false,
+        participate: true,
+        start: i < 5,
+      }));
+      const segments = Array.from({ length: 80 }, (_, i) => ({ ...SEG1, id: `seg-${i + 1}` }));
+      const log = Array.from({ length: 49 }, (_, i) => ({
+        id: `old-${i}`,
+        segmentId: 'seg-1',
+        segmentIndex: 0,
+        at: '2026-02-01T10:00:00.000Z',
+        by: USERS.carol.uid,
+        before: { ...BASE1 },
+        after: { ...BASE1, pf: 5 },
+      }));
+      await seed(
+        'completed-worst',
+        baseGame({ players: many, segments, scoreFor: 320, scoreAgainst: 160, corrections: log, correctedAt: Timestamp.now(), revision: 49 }),
+      );
+      // Segment 40 (index 39): pf 4 -> 6, pa 2 -> 3, tov 0 -> 2, eind 480 -> 450 (duur
+      // 600 - 450 = 150). Eindscore 320 + 2 = 322, 160 + 1 = 161. Som 5 x 3.0 = 15 > 14.5.
+      const after = { quarter: 1, beginSec: 600, endSec: 450, pf: 6, pa: 3, tov: 2 };
+      const item = entry(USERS.carol.uid, {
+        id: 'corr-worst',
+        segmentId: 'seg-40',
+        segmentIndex: 39,
+        before: { ...BASE1, lineup: L_OLD, allowed: 14.5 },
+        after: { ...after, lineup, allowed: 14.5 },
+        lineupPlayerIndexes: ix,
+      });
+      await assertSucceeds(
+        updateDoc(ref(ctx(USERS.carol), 'completed-worst'), {
+          segments: segments.map((seg, i) =>
+            i === 39 ? { ...seg, ...after, durSec: 150, lineup, classSum: 15, allowed: 14.5, over: true } : seg,
+          ),
+          scoreFor: 322,
+          scoreAgainst: 161,
+          corrections: arrayUnion(item),
+          correctedAt: serverTimestamp(),
+          revision: 50,
+        }),
+      );
+    });
+  }
+
   it('zonder klassegrens (useClassLimit false) blijft classSum 0', async () => {
     const seg1 = { ...SEG1, classSum: 0, allowed: 0, over: false };
     await seed('completed-nolimit', baseGame({ useClassLimit: false, segments: [seg1, SEG2] }));
@@ -473,14 +533,33 @@ describe('lineupcorrectie: lineup-validatie (negatief)', () => {
     );
   });
 
-  it('een "lineupcorrectie" met dezelfde spelers in andere volgorde wordt geweigerd (geen echte wijziging)', async () => {
-    const reordered = ['gp-5', 'gp-4', 'gp-3', 'gp-2', 'gp-1'];
-    await assertFails(
-      updateDoc(ref(carol()), withLineup(reordered, {
-        after: { ...BASE1, lineup: reordered, allowed: 14.5 },
-        lineupPlayerIndexes: [4, 3, 2, 1, 0],
-      })),
-    );
+  it('een "lineupcorrectie" met dezelfde spelers (zelfde of andere volgorde) wordt geweigerd (geen echte wijziging)', async () => {
+    // Review: verder volledig consistent (allowed/classSum/over gelijk aan het oude
+    // segment, indexen kloppen), zodat ALLEEN de "lineup wijzigt echt"-eis weigert.
+    for (const [same, ix] of [
+      [['gp-5', 'gp-4', 'gp-3', 'gp-2', 'gp-1'], [4, 3, 2, 1, 0]],
+      [L_OLD, [0, 1, 2, 3, 4]],
+    ] as [string[], number[]][]) {
+      const item = entry(USERS.carol.uid, {
+        after: { ...BASE1, lineup: same, allowed: 14.5 },
+        lineupPlayerIndexes: ix,
+      });
+      await assertFails(
+        updateDoc(ref(carol()), patch(USERS.carol.uid, {
+          segments: [{ ...SEG1, lineup: same, classSum: 9, allowed: 14.5, over: false }, SEG2],
+          corrections: arrayUnion(item),
+        })),
+      );
+    }
+  });
+
+  it('een index van een al aanwezige speler moet ook naar die speler wijzen', async () => {
+    // gp-1 stond al in de oude lineup; index 7 (gp-8) of een niet-getal is inconsistent.
+    await assertFails(updateDoc(ref(carol()), withLineup(L_NEW, { lineupPlayerIndexes: [7, 1, 2, 3, 5] })));
+    await assertFails(updateDoc(ref(carol()), withLineup(L_NEW, { lineupPlayerIndexes: ['x', 1, 2, 3, 5] })));
+    await assertFails(updateDoc(ref(carol()), withLineup(L_NEW, { lineupPlayerIndexes: [99, 1, 2, 3, 5] })));
+    // Controle: dezelfde payload met de juiste indexen slaagt wel.
+    await assertSucceeds(updateDoc(ref(carol()), withLineup(L_NEW, { lineupPlayerIndexes: IX_NEW })));
   });
 });
 
@@ -511,11 +590,13 @@ describe('lineupcorrectie: vorm van before/after (negatief)', () => {
   });
 
   it('`allowed` niet-numeriek of niet-eindig wordt geweigerd', async () => {
-    for (const allowed of ['15.5', Number.NaN, Infinity]) {
+    for (const allowed of ['15.5', Number.NaN, Infinity, -Infinity, -2000000]) {
       const item = entry(USERS.carol.uid, { after: { ...BASE1, lineup: L_NEW, allowed } });
+      // `over` consistent met classSum 14 > allowed + 0.001, zodat alleen het bereik weigert.
+      const over = typeof allowed === 'number' ? 14 > allowed + 0.001 : false;
       await assertFails(
         updateDoc(ref(carol()), patch(USERS.carol.uid, {
-          segments: [{ ...SEG1_NEW, allowed }, SEG2],
+          segments: [{ ...SEG1_NEW, allowed, over }, SEG2],
           corrections: arrayUnion(item),
         })),
       );
