@@ -144,20 +144,35 @@
   opacity: 0.5;
 }
 
-/* −1: witte tekst, lichte rand, ook uitgeschakeld (alleen de rand dimt). */
+/* −1: witte tekst op een donkere knop in beide thema's (wit = primary-fg, in beide
+   thema's #fff). Donker: surface-alt met een lichte rand; licht: muted (donker
+   leisteen) met een fg-rand. Contrast wit op beide achtergronden ruim boven 4.5:1.
+   Ook uitgeschakeld blijft de tekst wit; alleen de rand dimt. */
+.calm-panel {
+  --calm-minus-bg: var(--lt-color-surface-alt);
+  --calm-minus-border: var(--lt-color-muted);
+  --calm-minus-border-off: var(--lt-color-border);
+}
+
+:root[data-theme='light'] .calm-panel {
+  --calm-minus-bg: var(--lt-color-muted);
+  --calm-minus-border: var(--lt-color-fg);
+  --calm-minus-border-off: var(--lt-color-muted);
+}
+
 .calm-score__btn--minus,
 .calm-actions__minus {
-  background: var(--lt-color-surface-alt);
-  color: var(--lt-color-fg);
-  border: 1.5px solid var(--lt-color-muted);
+  background: var(--calm-minus-bg);
+  color: var(--lt-color-primary-fg);
+  border: 1.5px solid var(--calm-minus-border);
   font-weight: 800;
 }
 
 .calm-score__btn--minus:disabled,
 .calm-actions__minus:disabled {
   opacity: 1;
-  color: var(--lt-color-fg);
-  border-color: var(--lt-color-border);
+  color: var(--lt-color-primary-fg);
+  border-color: var(--calm-minus-border-off);
   cursor: not-allowed;
 }
 
@@ -245,10 +260,12 @@
 
 /* ---------- turnover ---------- */
 
+/* Iets lucht boven en vooral onder de turnoverrij (mockup: ±10 px tot "Huidige vijf"). */
 .calm-actions {
   display: grid;
   grid-template-columns: minmax(0, 1fr) 4rem;
   gap: var(--lt-space-2);
+  margin-block: var(--lt-space-1) var(--lt-space-2);
 }
 
 .calm-actions__plus,
@@ -267,6 +284,7 @@
   border: 0;
   background: var(--lt-color-turnover);
   color: var(--lt-color-turnover-fg);
+  box-shadow: 0 0 14px -3px var(--lt-color-turnover);
   font-size: var(--lt-font-size-lg);
   font-weight: 800;
   white-space: nowrap;
@@ -293,7 +311,7 @@
   font-weight: 700;
   letter-spacing: 0.04em;
   text-transform: uppercase;
-  opacity: 0.8;
+  /* Geen opacity: in het lichte thema zakt wit op rood dan onder 4.5:1. */
 }
 
 /* ---------- huidige vijf ---------- */

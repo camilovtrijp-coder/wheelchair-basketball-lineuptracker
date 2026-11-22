@@ -180,6 +180,8 @@ export function CalmLivePanel({
 
   // Scorekeuzelijst (R9): welke kant is open, plus de elementen voor focus en buiten-tikken.
   const [pick, setPick] = useState<Team | null>(null);
+  // Optie met de tabstop in de lijst (roving tabindex); null = de huidige score.
+  const [pickFocus, setPickFocus] = useState<number | null>(null);
   const triggerRefs = useRef<Record<Team, HTMLButtonElement | null>>({ for: null, against: null });
   const pickerRef = useRef<HTMLDivElement | null>(null);
   function closePick() {
@@ -188,6 +190,7 @@ export function CalmLivePanel({
     if (team != null) triggerRefs.current[team]?.focus();
   }
   useEffect(() => {
+    setPickFocus(null);
     if (pick == null) return undefined;
     const grid = pickerRef.current?.querySelector<HTMLElement>('[role="listbox"]');
     const current = grid?.querySelector<HTMLElement>('[aria-selected="true"]');
@@ -410,7 +413,9 @@ export function CalmLivePanel({
     else if (e.key === 'End') next = options.length - 1;
     else return;
     e.preventDefault();
-    options[Math.min(options.length - 1, Math.max(0, next))]?.focus();
+    const to = Math.min(options.length - 1, Math.max(0, next));
+    setPickFocus(to);
+    options[to]?.focus();
   }
 
   /** Zet de geplande opstelling klaar; met `run` meteen vastleggen (Wissel uitvoeren). */
@@ -607,6 +612,8 @@ export function CalmLivePanel({
               type="button"
               role="option"
               className="calm-picker__opt"
+              // Eén tabstop in de lijst (de huidige score); pijltjes verplaatsen de focus.
+              tabIndex={value === (pickFocus ?? score) ? 0 : -1}
               aria-selected={value === score}
               data-testid={`calm-score-option-${value}`}
               onClick={() => chooseScore(team, value)}
@@ -674,22 +681,6 @@ export function CalmLivePanel({
         </div>
       );
     }
-    // De melding na een wissel (R9) staat in het vaste vak: kort zichtbaar of tot je erop tikt,
-    // daarna volgt weer de kaart die erbij hoort (tijdkaart, schema of hint).
-    if (notice != null) {
-      return (
-        <button
-          type="button"
-          className="calm-card calm-card--notice"
-          data-testid="calm-slot-notice"
-          onClick={() => setNotice(null)}
-        >
-          <span className="calm-card__title" data-testid="calm-notice-text">
-            {notice.text}
-          </span>
-        </button>
-      );
-    }
     // Open schattingen gaan voor het schema; een bevestigde wissel blijft bijstelbaar tot er iets anders te doen is.
     if (timeSegment != null && (timeIsEstimate || focus != null)) return timeCard();
     if (planDue && plannedNext != null && plannedEnd != null) {
@@ -730,6 +721,23 @@ export function CalmLivePanel({
       );
     }
     if (timeSegment != null) return timeCard();
+    // De melding na een wissel (R9) staat alleen in de rustige stand van het vak: de
+    // tijdkaart en het schema gaan altijd voor ("eerst wisselen, tijd achteraf"). Na het
+    // bevestigen van de tijd blijft hij kort staan, tot een tik, een score of een turnover.
+    if (notice != null) {
+      return (
+        <button
+          type="button"
+          className="calm-card calm-card--notice"
+          data-testid="calm-slot-notice"
+          onClick={() => setNotice(null)}
+        >
+          <span className="calm-card__title" data-testid="calm-notice-text">
+            {notice.text}
+          </span>
+        </button>
+      );
+    }
     return (
       <div className="calm-card calm-card--idle" data-testid="calm-slot-idle">
         <p className="calm-card__meta">{t('swapHint')}</p>

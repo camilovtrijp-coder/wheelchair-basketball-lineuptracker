@@ -6,7 +6,7 @@ import { describe, it, expect, afterEach, beforeEach, vi } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { useState } from 'preact/hooks';
-import { render, cleanup, fireEvent } from '@testing-library/preact';
+import { render, cleanup, fireEvent, act } from '@testing-library/preact';
 import { CalmLivePanel } from '../../src/ui/game/CalmLivePanel';
 import { deriveGameHistory } from '../../src/domain/game/tracking';
 import type { ActiveGame, GamePlayer } from '../../src/domain/game/types';
@@ -142,20 +142,13 @@ function pickSwap(u: Utils, out: number, inn: number) {
   fireEvent.click(u.getByTestId(`calm-chip-gp-${inn}`));
 }
 
-/** Voert de klaargezette wissel uit en sluit de melding (tik), zodat de tijdkaart zichtbaar wordt. */
+/** Voert de klaargezette wissel uit; de tijdkaart staat daarna direct in het vak (geen tik nodig). */
 function runSwap(u: Utils) {
   fireEvent.click(u.getByTestId('calm-swap-run'));
-  closeNotice(u);
 }
 
 function runPlan(u: Utils) {
   fireEvent.click(u.getByTestId('calm-plan-run'));
-  closeNotice(u);
-}
-
-function closeNotice(u: Utils) {
-  const notice = u.queryByTestId('calm-slot-notice');
-  if (notice != null) fireEvent.click(notice);
 }
 
 function segments(u: Utils) {
@@ -238,12 +231,13 @@ describe('S1/S2: wissel volgens schema, tijd bijstellen', () => {
     expect(seg?.lineup).toEqual(START);
     expect(u.latest().onCourt).toContain('gp-12');
     expect(u.latest().pendingSwapLineup).toBeNull();
-    expect(text(u.getByTestId('calm-notice-text'))).toBe('Wissel Noa ↔ Sam vastgelegd');
-    closeNotice(u);
     // Reviewpunt 2: de tijdkaart verschijnt ook bij een schematijd, zonder "geschat" en zonder teller.
     expect(text(u.getByTestId('calm-time-title'))).toBe('Wissel om 8:00 · klopt de tijd?');
     expect(() => u.getByTestId('calm-time-count')).toThrow();
     expect(readSwapFlowState('game-1').unconfirmedSegmentIds).toEqual([]);
+    // De melding volgt pas in de rustige stand, na Klopt.
+    fireEvent.click(u.getByTestId('calm-time-ok'));
+    expect(text(u.getByTestId('calm-notice-text'))).toBe('Wissel Noa ↔ Sam vastgelegd');
   });
 
   it('S1: Einde kwart na een schematijd vraagt geen open tijden (direct het kwartblad)', () => {
@@ -263,6 +257,9 @@ describe('S1/S2: wissel volgens schema, tijd bijstellen', () => {
     expect(segments(u)[0]?.endSec).toBe(490);
     expect(u.latest().beginSec).toBe(490);
     expect(text(u.getByTestId('calm-strip-title'))).toBe('Huidige vijf · sinds 8:10 · Q1');
+    // Na Klopt eerst kort de melding; een tik sluit hem en dan staat het vak in rust.
+    expect(u.getByTestId('calm-slot-notice')).toBeTruthy();
+    fireEvent.click(u.getByTestId('calm-slot-notice'));
     expect(u.getByTestId('calm-slot-idle')).toBeTruthy();
   });
 
@@ -343,7 +340,7 @@ describe('S3–S5: afwijken, meerdere wissels, klasse', () => {
     expect(segments(u)).toHaveLength(1);
     expect(segments(u)[0]?.lineup).toEqual(START);
     expect(segments(u)[0]?.pf).toBe(2);
-    expect(text(u.getByTestId('calm-notice-text'))).toContain('vastgelegd');
+    expect(u.getByTestId('calm-slot-time')).toBeTruthy();
   });
 
   it('S5: een rode speler blijft kiesbaar: waarschuwen, maar wel toestaan', () => {
@@ -426,6 +423,9 @@ describe('S9: wissel vergeten, met terugwerkende kracht', () => {
     expect([h.scoreFor - h.segStartFor, h.scoreAgainst - h.segStartAgainst]).toEqual([0, 2]);
     expect(u.latest().beginSec).toBe(400);
     expect(u.latest().pendingSwapLineup).toBeNull();
+    // Eerst de tijdkaart (bijstelbaar), na Klopt de melding.
+    expect(text(u.getByTestId('calm-time-title'))).toContain('6:40');
+    fireEvent.click(u.getByTestId('calm-time-ok'));
     expect(text(u.getByTestId('calm-notice-text'))).toBe('Wissel Noa ↔ Sam vastgelegd om 6:40');
   });
 
@@ -543,6 +543,7 @@ describe('R7: speeltijd per speler', () => {
     expect([time(12), time(6), time(15)]).toEqual(['0:00', '0:00', '0:00']);
     // Het open segment telt niet mee en dat staat in de tooltip en (zodra het slot vrij is) in de uitleg.
     fireEvent.click(u.getByTestId('calm-time-ok'));
+    fireEvent.click(u.getByTestId('calm-slot-notice'));
     expect(text(u.getByTestId('calm-playtime-note'))).toContain('t/m laatste wissel');
     expect(u.getByTestId('calm-chip-gp-7').getAttribute('title')).toContain('t/m laatste wissel');
     expect(window.localStorage.getItem('lineup-tracker-v2-play-time')).toBe('on');
@@ -621,9 +622,14 @@ describe('R9: −1 bij beide scores', () => {
   it('de witte tekst hangt niet aan de uitgeschakelde stand: alleen de rand dimt (CSS)', () => {
     const base = cssRule('.calm-score__btn--minus,\n.calm-actions__minus');
     const disabled = cssRule('.calm-score__btn--minus:disabled,\n.calm-actions__minus:disabled');
-    expect(base).toContain('color: var(--lt-color-fg)');
-    expect(base).toContain('background: var(--lt-color-surface-alt)');
-    expect(disabled).toContain('color: var(--lt-color-fg)');
+    // Wit in beide thema's (primary-fg is #fff in donker en licht) op een donkere knop.
+    expect(base).toContain('color: var(--lt-color-primary-fg)');
+    expect(base).toContain('background: var(--calm-minus-bg)');
+    expect(cssRule('.calm-panel')).toContain('--calm-minus-bg: var(--lt-color-surface-alt)');
+    expect(cssRule(":root[data-theme='light'] .calm-panel")).toContain(
+      '--calm-minus-bg: var(--lt-color-muted)',
+    );
+    expect(disabled).toContain('color: var(--lt-color-primary-fg)');
     expect(disabled).toContain('opacity: 1');
     expect(disabled).toContain('border-color');
     expect(cssRule('.calm-score__btn')).toContain('min-height: 2.75rem');
@@ -699,10 +705,60 @@ describe('R9: regel "Dit segment" en kwartlabel', () => {
 });
 
 describe('R9: melding in het vaste vak', () => {
+  it('de tijdkaart gaat voor: direct na de wissel te bevestigen, zonder wachten of tikken', () => {
+    const u = setup();
+    pickSwap(u, 7, 12);
+    fireEvent.click(u.getByTestId('calm-swap-run'));
+    expect(u.getByTestId('calm-slot-time')).toBeTruthy();
+    expect(u.queryByTestId('calm-slot-notice')).toBeNull();
+    fireEvent.click(u.getByTestId('calm-time-ok'));
+    expect(readSwapFlowState('game-1').unconfirmedSegmentIds).toEqual([]);
+    expect(u.getByTestId('calm-slot-notice')).toBeTruthy();
+  });
+
+  it('ook de schemakaart gaat voor de melding', () => {
+    const plan: RotationPlan = {
+      quarters: {
+        '1': [
+          { toSec: 480, lineup: [4, 7, 9, 11, 13] },
+          { toSec: 300, lineup: [4, 12, 9, 11, 13] },
+          { toSec: 0, lineup: [4, 12, 6, 11, 13] },
+        ],
+      },
+    };
+    const u = setup({ plan });
+    fireEvent.click(u.getByTestId('calm-plan-run'));
+    expect(u.getByTestId('calm-slot-plan')).toBeTruthy();
+    expect(u.queryByTestId('calm-slot-notice')).toBeNull();
+  });
+
+  it('verdwijnt na 8 seconden vanzelf; daarna de gewone hint', () => {
+    vi.useFakeTimers();
+    try {
+      const u = setup();
+      pickSwap(u, 7, 12);
+      fireEvent.click(u.getByTestId('calm-swap-run'));
+      fireEvent.click(u.getByTestId('calm-time-ok'));
+      expect(u.getByTestId('calm-slot-notice')).toBeTruthy();
+      act(() => {
+        vi.advanceTimersByTime(7900);
+      });
+      expect(u.getByTestId('calm-slot-notice')).toBeTruthy();
+      act(() => {
+        vi.advanceTimersByTime(200);
+      });
+      expect(u.queryByTestId('calm-slot-notice')).toBeNull();
+      expect(u.getByTestId('calm-slot-idle')).toBeTruthy();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it('staat in het slot (role=status) onder de vijf, niet meer in een eigen regel', () => {
     const u = setup();
     pickSwap(u, 7, 12);
     fireEvent.click(u.getByTestId('calm-swap-run'));
+    fireEvent.click(u.getByTestId('calm-time-ok'));
     const slot = u.getByTestId('calm-slot');
     expect(slot.getAttribute('role')).toBe('status');
     expect(slot.contains(u.getByTestId('calm-notice-text'))).toBe(true);
@@ -717,15 +773,18 @@ describe('R9: melding in het vaste vak', () => {
     expect(afterActions?.getAttribute('data-testid')).toBe('calm-strip');
   });
 
-  it('verdwijnt na een tik of na een score/turnover; daarna de tijdkaart', () => {
+  it('verdwijnt na een tik of na een score/turnover; daarna de gewone hint', () => {
     const u = setup();
     pickSwap(u, 7, 12);
     fireEvent.click(u.getByTestId('calm-swap-run'));
+    fireEvent.click(u.getByTestId('calm-time-ok'));
     fireEvent.click(u.getByTestId('calm-slot-notice'));
     expect(u.container.querySelector('[data-testid="calm-notice-text"]')).toBeNull();
-    expect(u.getByTestId('calm-time-title')).toBeTruthy();
+    expect(u.getByTestId('calm-slot-idle')).toBeTruthy();
     pickSwap(u, 9, 6);
     fireEvent.click(u.getByTestId('calm-swap-run'));
+    fireEvent.click(u.getByTestId('calm-time-ok'));
+    expect(u.getByTestId('calm-slot-notice')).toBeTruthy();
     fireEvent.click(u.getByTestId('calm-turnover-plus'));
     expect(u.container.querySelector('[data-testid="calm-notice-text"]')).toBeNull();
   });
@@ -734,6 +793,7 @@ describe('R9: melding in het vaste vak', () => {
     const u = setup({ lang: 'en' });
     pickSwap(u, 7, 12);
     fireEvent.click(u.getByTestId('calm-swap-run'));
+    fireEvent.click(u.getByTestId('calm-time-ok'));
     expect(text(u.getByTestId('calm-notice-text'))).toBe('Substitution Noa ↔ Sam recorded');
   });
 });
@@ -757,6 +817,9 @@ describe('R9: scorekeuzelijst', () => {
     const selected = options.filter((o) => o.getAttribute('aria-selected') === 'true');
     expect(selected.map((o) => o.textContent)).toEqual(['3']);
     expect(document.activeElement).toBe(selected[0]);
+    // Eén tabstop in de lijst: alleen de huidige score; Tab verlaat de lijst daarna.
+    const tabbable = options.filter((o) => o.getAttribute('tabindex') === '0');
+    expect(tabbable).toEqual(selected);
     // De lijst staat onder de twee scorekaarten.
     const score = u.getByTestId('calm-score');
     expect(score.lastElementChild).toBe(u.getByTestId('calm-score-picker'));
@@ -844,6 +907,9 @@ describe('R9: scorekeuzelijst', () => {
     expect(document.activeElement).toBe(u.getByTestId('calm-score-option-7'));
     fireEvent.keyDown(document.activeElement as Element, { key: 'End' });
     expect(document.activeElement).toBe(u.getByTestId('calm-score-option-150'));
+    // De tabstop schuift mee (roving tabindex).
+    const tabbable = u.container.querySelectorAll('[role="option"][tabindex="0"]');
+    expect(Array.from(tabbable)).toEqual([u.getByTestId('calm-score-option-150')]);
   });
 
   it('toont Engelse teksten', () => {

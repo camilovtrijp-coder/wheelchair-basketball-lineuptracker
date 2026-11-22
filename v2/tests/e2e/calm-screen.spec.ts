@@ -146,12 +146,10 @@ test.describe('Rustig wedstrijdscherm', () => {
     await pickSwap(page, 'Sam', 'Noa');
     await expect(page.getByTestId('calm-slot-pending')).toBeVisible();
     await page.getByTestId('calm-swap-run').click();
-    // De melding staat in het vaste vak onder de vijf; een tik sluit hem en toont de tijdkaart.
-    await expect(page.getByTestId('calm-slot').getByTestId('calm-notice-text')).toContainText(
-      'vastgelegd',
-    );
-    await page.getByTestId('calm-slot-notice').click();
+    // De tijdkaart staat direct in het vaste vak (eerst wisselen, tijd achteraf); de
+    // melding volgt pas in de rustige stand, na het bevestigen.
     await expect(page.getByTestId('calm-time-count')).toHaveText('1 tijd nog bevestigen');
+    await expect(page.getByTestId('calm-slot-notice')).toHaveCount(0);
     let game = await readActiveGame(page);
     let segs = liveSegments(game);
     expect(segs).toHaveLength(1);
@@ -162,6 +160,11 @@ test.describe('Rustig wedstrijdscherm', () => {
     await page.getByTestId('calm-time-earlier').click();
     await expect(page.getByTestId('calm-time-input')).toHaveValue('9:10');
     await page.getByTestId('calm-time-ok').click();
+    // Daarna kort de melding in het vak; een tik sluit hem.
+    await expect(page.getByTestId('calm-slot').getByTestId('calm-notice-text')).toContainText(
+      'vastgelegd',
+    );
+    await page.getByTestId('calm-slot-notice').click();
     await expect(page.getByTestId('calm-slot-idle')).toBeVisible();
     game = await readActiveGame(page);
     segs = liveSegments(game);
@@ -214,7 +217,6 @@ test.describe('Rustig wedstrijdscherm', () => {
     await startCalmGame(page);
     await pickSwap(page, 'Sam', 'Noa');
     await page.getByTestId('calm-swap-run').click();
-    await page.getByTestId('calm-slot-notice').click();
     await page.getByTestId('calm-end-quarter').click();
     await expect(page.getByTestId('calm-confirm-sheet')).toBeVisible();
     await page.getByTestId('calm-confirm-all').click();
@@ -229,7 +231,6 @@ test.describe('Rustig wedstrijdscherm', () => {
     await startCalmGame(page);
     await pickSwap(page, 'Sam', 'Noa');
     await page.getByTestId('calm-swap-run').click();
-    await page.getByTestId('calm-slot-notice').click();
     await expect(page.getByTestId('calm-time-count')).toBeVisible();
     await page.reload();
     // De app opent na herladen (nog) niet altijd op de Wedstrijd-tab (dat regelt R6);
@@ -262,5 +263,33 @@ test.describe('Rustig wedstrijdscherm', () => {
     await pickSwap(page, 'Sam', 'Noa');
     await expect(page.getByTestId('calm-swap-run')).toHaveText('Make substitution');
     await expectNoAxeViolations(page);
+  });
+
+  test('R9: −1 met witte tekst en axe-contrast in donker en licht', async ({ page }) => {
+    for (const theme of ['dark', 'light'] as const) {
+      await page.addInitScript(
+        (t) => window.localStorage.setItem('lineup-tracker-v2-theme', t),
+        theme,
+      );
+      if (theme === 'dark') {
+        await startCalmGame(page);
+      } else {
+        await page.reload();
+        const view = page.getByTestId('calm-view-game');
+        if ((await view.getAttribute('aria-pressed')) !== 'true') await view.click();
+      }
+      await expect(page.locator('html')).toHaveAttribute('data-theme', theme);
+      await page.getByTestId('calm-score-plus-for-2').click();
+      await page.getByTestId('calm-turnover-plus').click();
+      for (const id of [
+        'calm-score-minus-for',
+        'calm-score-minus-against',
+        'calm-turnover-minus',
+      ]) {
+        // Wit, ook als de knop uit staat (tegenstander op 0).
+        await expect(page.getByTestId(id)).toHaveCSS('color', 'rgb(255, 255, 255)');
+      }
+      await expectNoAxeViolations(page);
+    }
   });
 });
