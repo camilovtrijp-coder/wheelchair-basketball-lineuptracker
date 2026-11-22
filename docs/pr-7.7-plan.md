@@ -1,7 +1,8 @@
 # PR 7.7 — lineup van een segment corrigeren in Historie (voorstel)
 
-**Status: voorstel, wacht op akkoord van de eigenaar.** Er is nog geen code
-geschreven. Dit plan breidt de goedgekeurde uitzondering van PR 7.5 uit
+**Status: besluiten op de open vragen genomen (2026-11-22, zie §F);
+uitvoering per sub-PR gestart (7.7a = PR #156, 7.7b en 7.7c in uitvoering).**
+Dit plan breidt de goedgekeurde uitzondering van PR 7.5 uit
 ("afgeronde wedstrijd is standaard onveranderlijk") en raakt het datacontract
 van het correctielog en de Firestore Rules. Volgens `AGENTS.md` mag de
 implementatie pas starten na een expliciet besluit op de open vragen in §F.
@@ -109,21 +110,23 @@ Emulator Suite voor 7.7c) en rapportage van gewijzigde bestanden en open
 risico's. Echte-apparaat- en staging-verificatie van de cloudtak blijft
 (net als 7.3–7.5) handmatig open.
 
-## F. Open vragen voor de eigenaar
+## F. Besluiten van de eigenaar (2026-11-22)
 
-1. **Cloud direct meenemen?** Aanbeveling: ja, als 7.7c na 7.7a/b, omdat
-   ingediende wedstrijden normaal in de cloud staan en lokaal-alleen
-   verschillen tussen apparaten zou geven. Alternatief: eerst alleen lokaal.
-2. **Classificatiesom na lineupwissel.** `CompletedGame` bewaart de
-   klassegrens (`limitStr`) en bonusinstellingen niet; alleen
-   `useClassLimit`. Aanbeveling: `classSum` herberekenen uit de
-   spelersklassen in het snapshot, en `allowed` bijstellen met het
-   bonusverschil volgens de *huidige* instellingen (alleen als
-   `useClassLimit` aan stond). Alternatief: `allowed`/`over` ongewijzigd
-   laten en alleen `classSum` bijwerken (eenvoudiger, kan een verouderde
-   "boven de grens"-markering geven).
-3. **Alleen spelers die meededen?** Aanbeveling: alleen spelers met
-   `participate` uit het snapshot kiesbaar; een speler die niet meedeed kan
-   dus niet alsnog in een segment worden gezet.
-4. **Bewaartermijn correctielog.** Nu max. 50 items; lineupcorrecties
-   verbruiken dezelfde ruimte. Geen wijziging voorgesteld.
+1. **Cloud direct meenemen: ja** (7.7c hoort bij dit traject).
+2. **Classificatiesom: variant A.** `classSum` wordt herberekend uit de
+   spelersklassen in het snapshot en `allowed` wordt bijgesteld met het
+   bonusverschil volgens de *huidige* instellingen (alleen als `useClassLimit`
+   aan stond); `over` volgt daaruit. Bekend gevolg: zijn de instellingen
+   sinds de wedstrijd gewijzigd, dan kan `allowed` afwijken van de toenmalige
+   grens.
+3. **Alleen spelers die meededen** (`participate`) zijn kiesbaar.
+4. Bewaartermijn correctielog: ongewijzigd (max. 50 items, bij PR 8.3).
+
+## G. Afwijking van §C.2 bij uitvoering (7.7a)
+
+`lineup` en `allowed` staan alleen in `before`/`after` van een logitem als de
+lineup in die correctie wijzigt (niet "altijd"). Zo houden correcties van
+alleen tijd, score of turnovers exact de oude logvorm en blijven de bestaande
+Rules en oudere clients werken tot 7.7c is uitgerold. `allowed` wordt
+meegelogd zodat het terugspelen van het log deterministisch is, onafhankelijk
+van latere instellingen.
