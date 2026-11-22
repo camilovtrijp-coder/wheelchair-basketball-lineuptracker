@@ -1527,6 +1527,87 @@ describe('documentcontracten: weigeren malformed serverdata', () => {
     }
   });
 
+  // PR 7.7c: lineupcorrectie (lineup/allowed in before én after + cloud-only spelerindexen).
+  const lineupCorrection = {
+    ...validCorrection,
+    id: 'corr-lineup',
+    before: { ...validCorrection.before, lineup: ['gp-1', 'gp-2', 'gp-3', 'gp-4', 'gp-5'], allowed: 14.5 },
+    after: { ...validCorrection.after, lineup: ['gp-1', 'gp-2', 'gp-3', 'gp-4', 'gp-6'], allowed: 15 },
+    lineupPlayerIndexes: [0, 1, 2, 3, 5],
+  };
+
+  it('completedGame: leest een lineupcorrectie (PR 7.7c) en houdt lineup/allowed/spelerindexen vast', () => {
+    const out = completedGameConverter.fromFirestore!(
+      mockSnapshot(
+        {
+          ...validCompletedGame,
+          corrections: [validCorrection, lineupCorrection],
+          correctedAt: Timestamp.fromMillis(1_770_000_000_000),
+          revision: 2,
+        },
+        COMPLETED_GAME_PATH,
+      ),
+      {},
+    );
+    expect(out.corrections).toEqual([validCorrection, lineupCorrection]);
+    // Oud logitem zonder lineup blijft zonder lineup/allowed.
+    expect(out.corrections?.[0]?.before).not.toHaveProperty('lineup');
+    expect(out.corrections?.[0]).not.toHaveProperty('lineupPlayerIndexes');
+  });
+
+  it('completedGame: afwijkende lineupcorrecties worden geweigerd (PR 7.7c, fail-closed)', () => {
+    const four = ['gp-1', 'gp-2', 'gp-3', 'gp-4'];
+    for (const bad of [
+      // lineup alleen in after
+      { ...lineupCorrection, before: validCorrection.before },
+      // lineup alleen in before
+      { ...lineupCorrection, after: validCorrection.after },
+      // allowed zonder lineup
+      { ...lineupCorrection, before: { ...validCorrection.before, allowed: 14.5 } },
+      // lineup zonder allowed
+      {
+        ...lineupCorrection,
+        after: { ...lineupCorrection.after, allowed: undefined },
+      },
+      // 4 spelers
+      { ...lineupCorrection, after: { ...lineupCorrection.after, lineup: four } },
+      // dubbele speler
+      {
+        ...lineupCorrection,
+        after: { ...lineupCorrection.after, lineup: ['gp-1', 'gp-1', 'gp-3', 'gp-4', 'gp-6'] },
+      },
+      // lege speler-ID
+      {
+        ...lineupCorrection,
+        after: { ...lineupCorrection.after, lineup: ['gp-1', '', 'gp-3', 'gp-4', 'gp-6'] },
+      },
+      // niet-string in lineup
+      {
+        ...lineupCorrection,
+        after: { ...lineupCorrection.after, lineup: ['gp-1', 2, 'gp-3', 'gp-4', 'gp-6'] },
+      },
+      // allowed niet eindig of geen getal
+      { ...lineupCorrection, after: { ...lineupCorrection.after, allowed: Number.NaN } },
+      { ...lineupCorrection, after: { ...lineupCorrection.after, allowed: Infinity } },
+      { ...lineupCorrection, after: { ...lineupCorrection.after, allowed: '15' } },
+      // spelerindexen ontbreken bij een lineupcorrectie
+      { ...lineupCorrection, lineupPlayerIndexes: undefined },
+      // spelerindexen zonder lineupcorrectie
+      { ...validCorrection, lineupPlayerIndexes: [0, 1, 2, 3, 4] },
+      // verkeerde spelerindexen
+      { ...lineupCorrection, lineupPlayerIndexes: [0, 1, 2, 3] },
+      { ...lineupCorrection, lineupPlayerIndexes: [0, 1, 2, 3, -1] },
+      { ...lineupCorrection, lineupPlayerIndexes: [0, 1, 2, 3, 1.5] },
+    ]) {
+      expect(() =>
+        completedGameConverter.fromFirestore!(
+          mockSnapshot({ ...validCompletedGame, corrections: [bad] }, COMPLETED_GAME_PATH),
+          {},
+        ),
+      ).toThrow(DocumentValidationError);
+    }
+  });
+
   it('completedGame: ontbrekende sourceGameId wordt geweigerd', () => {
     const { sourceGameId: _sourceGameId, ...withoutSourceGameId } = validCompletedGame;
     expect(() =>

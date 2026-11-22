@@ -1,4 +1,8 @@
-import type { CompletedGame, CompletedGameCorrection } from '../../domain/game/types';
+import type {
+  CompletedGame,
+  CompletedGameCorrection,
+  CorrectableSegmentFields,
+} from '../../domain/game/types';
 import type {
   CompletedGameCorrectionPayload,
   CompletedGameSnapshotProjection,
@@ -54,6 +58,13 @@ export function projectCompletedGameSnapshot(
  * cloud-only `segmentIndex` toe (positie van het segment in `segments`, zie
  * firestore.rules punt 21). `null` als `correction.segmentId` niet in `game`
  * voorkomt — dan is er niets veilig te versturen.
+ *
+ * PR 7.7c: bij een lineupcorrectie (`lineup` + `allowed` in before én after,
+ * altijd samen) gaat ook het cloud-only `lineupPlayerIndexes` mee (positie van
+ * elke speler van `after.lineup` in `game.players`, zodat Rules zonder lus de
+ * deelname kunnen controleren). Fail-closed (`null`) bij een afwijkende vorm:
+ * lineup niet bij beide kanten, geen 5 unieke niet-lege ID's, geen eindige
+ * `allowed`, of een speler die niet in `game.players` staat.
  */
 export function projectCompletedGameCorrection(
   game: CompletedGame,
@@ -61,6 +72,14 @@ export function projectCompletedGameCorrection(
 ): CompletedGameCorrectionPayload | null {
   const segmentIndex = game.segments.findIndex((s) => s.id === correction.segmentId);
   if (segmentIndex < 0) return null;
+  const { before, after } = correction;
+  const hasLineup = after.lineup !== undefined || before.lineup !== undefined;
+  let lineupPlayerIndexes: number[] | undefined;
+  if (hasLineup) {
+    if (!isCloudLineupFields(before) || !isCloudLineupFields(after)) return null;
+    lineupPlayerIndexes = after.lineup.map((id) => game.players.findIndex((p) => p.id === id));
+    if (lineupPlayerIndexes.some((i) => i < 0)) return null;
+  }
   return {
     segments: game.segments.map(projectSegment),
     scoreFor: game.scoreFor,
@@ -71,8 +90,28 @@ export function projectCompletedGameCorrection(
       segmentIndex,
       at: correction.at,
       by: correction.by,
-      before: { ...correction.before },
-      after: { ...correction.after },
+      before: copyFields(before),
+      after: copyFields(after),
+      ...(lineupPlayerIndexes === undefined ? {} : { lineupPlayerIndexes }),
     },
   };
+}
+
+type LineupFields = CorrectableSegmentFields & { lineup: string[]; allowed: number };
+
+/** PR 7.7c: `lineup` (5 unieke niet-lege strings) en `allowed` (eindig getal) staan er beide. */
+function isCloudLineupFields(f: CorrectableSegmentFields): f is LineupFields {
+  return (
+    Array.isArray(f.lineup) &&
+    f.lineup.length === 5 &&
+    f.lineup.every((id) => typeof id === 'string' && id !== '') &&
+    new Set(f.lineup).size === 5 &&
+    typeof f.allowed === 'number' &&
+    Number.isFinite(f.allowed)
+  );
+}
+
+/** Kopie zonder gedeelde `lineup`-array met het domeinlogitem. */
+function copyFields(f: CorrectableSegmentFields): CorrectableSegmentFields {
+  return { ...f, ...(f.lineup === undefined ? {} : { lineup: [...f.lineup] }) };
 }

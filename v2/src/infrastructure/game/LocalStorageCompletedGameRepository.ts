@@ -60,17 +60,7 @@ function isValidCorrectionUpdate(existing: CompletedGame, incoming: CompletedGam
   }
   const sameStructure = existing.segments.every((segment, i) => {
     const other = incoming.segments[i];
-    return (
-      typeof other === 'object' &&
-      other !== null &&
-      other.id === segment.id &&
-      other.classSum === segment.classSum &&
-      other.allowed === segment.allowed &&
-      other.over === segment.over &&
-      Array.isArray(other.lineup) &&
-      other.lineup.length === segment.lineup.length &&
-      other.lineup.every((id, k) => id === segment.lineup[k])
-    );
+    return typeof other === 'object' && other !== null && other.id === segment.id;
   });
   if (!sameStructure) return false;
   const existingRevision = Number.isInteger(existing.revision) ? existing.revision : 0;
@@ -103,7 +93,16 @@ function isValidCorrectionUpdate(existing: CompletedGame, incoming: CompletedGam
       other.durSec === expected.durSec &&
       other.pf === expected.pf &&
       other.pa === expected.pa &&
-      segmentTurnovers(other) === segmentTurnovers(expected)
+      segmentTurnovers(other) === segmentTurnovers(expected) &&
+      // PR 7.7c: lineup/classSum/allowed/over mogen alleen wijzigen zoals het
+      // log (via `correctSegment()`) voorschrijft; voor niet-gelogde segmenten
+      // betekent dit dus onveranderd.
+      other.classSum === expected.classSum &&
+      other.allowed === expected.allowed &&
+      other.over === expected.over &&
+      Array.isArray(other.lineup) &&
+      other.lineup.length === expected.lineup.length &&
+      other.lineup.every((id, k) => id === expected.lineup[k])
     );
   });
 }
@@ -242,6 +241,12 @@ export class LocalStorageCompletedGameRepository implements CompletedGameReposit
           pa: incoming.pa,
           // Alleen overnemen als aanwezig: een segment zonder `tov` behoudt zijn vorm.
           ...(incoming.tov !== undefined ? { tov: incoming.tov } : {}),
+          // PR 7.7c: al gevalideerd tegen het log (zie `isValidCorrectionUpdate`);
+          // voor niet-gecorrigeerde lineups is dit identiek aan het opgeslagen segment.
+          lineup: [...incoming.lineup],
+          classSum: incoming.classSum,
+          allowed: incoming.allowed,
+          over: incoming.over,
         };
       }),
       scoreFor: game.scoreFor,

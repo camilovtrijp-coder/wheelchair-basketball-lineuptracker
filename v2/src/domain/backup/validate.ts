@@ -318,12 +318,22 @@ function validateCompletedGameFields(
 const CORRECTION_FIELD_KEYS = ['quarter', 'beginSec', 'endSec', 'pf', 'pa', 'tov'] as const;
 
 function isCorrectionFieldsShape(value: unknown): boolean {
+  if (!isPlainObject(value)) return false;
+  const base = CORRECTION_FIELD_KEYS.every((key) => {
+    const v = value[key];
+    return typeof v === 'number' && Number.isInteger(v) && v >= 0;
+  });
+  if (!base) return false;
+  // PR 7.7c: optioneel, en dan altijd samen: lineup (5 unieke niet-lege strings) + allowed.
+  if (value.lineup === undefined && value.allowed === undefined) return true;
+  const lineup = value.lineup;
   return (
-    isPlainObject(value) &&
-    CORRECTION_FIELD_KEYS.every((key) => {
-      const v = value[key];
-      return typeof v === 'number' && Number.isInteger(v) && v >= 0;
-    })
+    Array.isArray(lineup) &&
+    lineup.length === 5 &&
+    lineup.every((id) => typeof id === 'string' && id !== '') &&
+    new Set(lineup).size === 5 &&
+    typeof value.allowed === 'number' &&
+    Number.isFinite(value.allowed)
   );
 }
 

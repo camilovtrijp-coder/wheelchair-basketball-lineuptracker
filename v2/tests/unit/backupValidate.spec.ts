@@ -285,6 +285,44 @@ describe('domain/backup/validate — validateBackupData (plan §C.5/§G.3-4)', (
     expect(validateBackupData({ completedGames: [raw as unknown as CompletedGame] })).toEqual([]);
   });
 
+  // PR 7.7c: lineup/allowed in het correctielog zijn optioneel, maar altijd samen
+  // en met 5 unieke speler-ID's; anders fail-closed.
+  it('lineupcorrectie in het log: geldige vorm slaagt, afwijkende vorm wordt geweigerd (PR 7.7c)', () => {
+    const fields = { quarter: 1, beginSec: 600, endSec: 480, pf: 4, pa: 2, tov: 0 };
+    const lineupA = ['gp-1', 'gp-2', 'gp-3', 'gp-4', 'gp-5'];
+    const lineupB = ['gp-1', 'gp-2', 'gp-3', 'gp-4', 'gp-6'];
+    const withLog = (before: object, after: object) => ({
+      ...completedGame(),
+      revision: 1,
+      correctedAt: '2026-02-01T10:00:00.000Z',
+      corrections: [
+        { id: 'c-1', segmentId: 'seg-1', at: '2026-02-01T10:00:00.000Z', by: null, before, after },
+      ],
+    });
+    const check = (raw: object) =>
+      validateBackupData({ completedGames: [raw as unknown as CompletedGame] });
+    expect(
+      check(
+        withLog(
+          { ...fields, lineup: lineupA, allowed: 14.5 },
+          { ...fields, lineup: lineupB, allowed: 15.5 },
+        ),
+      ),
+    ).toEqual([]);
+    // oud logitem zonder lineup blijft geldig
+    expect(check(withLog(fields, fields))).toEqual([]);
+    for (const bad of [
+      { ...fields, lineup: lineupB },
+      { ...fields, allowed: 15.5 },
+      { ...fields, lineup: lineupB.slice(0, 4), allowed: 15.5 },
+      { ...fields, lineup: ['gp-1', 'gp-1', 'gp-3', 'gp-4', 'gp-6'], allowed: 15.5 },
+      { ...fields, lineup: lineupB, allowed: Number.NaN },
+    ]) {
+      const errors = check(withLog({ ...fields, lineup: lineupA, allowed: 14.5 }, bad));
+      expect(errors.some((e) => e.detail === 'field:corrections:game:0:0')).toBe(true);
+    }
+  });
+
   // Herreview op PR #52 (aug. 2026): twee wedstrijden met hetzelfde `id`
   // (of dezelfde `sourceGameId`) binnen ÉÉN payload werden niet
   // gedetecteerd — `replaceAll()` zou zo'n interne botsing zonder waarschuwing

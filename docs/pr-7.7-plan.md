@@ -127,3 +127,30 @@ risico's. Echte-apparaat- en staging-verificatie van de cloudtak blijft
    dus niet alsnog in een segment worden gezet.
 4. **Bewaartermijn correctielog.** Nu max. 50 items; lineupcorrecties
    verbruiken dezelfde ruimte. Geen wijziging voorgesteld.
+
+## G. Besluiten en uitwerking 7.7c (cloud + Rules)
+
+Besluiten van de eigenaar: cloud wordt meegenomen; variant A (zie F.2); alleen
+deelnemers kiesbaar. Uitwerking:
+
+- **Logitem in de cloud**: `before`/`after` dragen optioneel `lineup` (5 unieke
+  ID's) en `allowed`, altijd samen en alleen bij een lineupwijziging. Het
+  logitem krijgt het **cloud-only** veld `lineupPlayerIndexes` (positie van elke
+  speler van `after.lineup` in `players`, zelfde volgorde). Reden: Rules kunnen
+  niet zoeken in een lijst; met de index kunnen ze per nieuwe speler
+  `players[i].id == id && players[i].participate` controleren, net zoals
+  `segmentIndex` (7.5c) het segment aanwijst. Het domein kent het veld niet
+  (`completedGameFromDocument()` laat het weg). Oudere logitems zonder `lineup`
+  blijven geldig.
+- **Rules (punt 22)**: dezelfde rolcontrole als 7.5c (owner/admin/coach). Het
+  segment mag naast de bestaande sleutels `lineup`, `classSum`, `allowed`,
+  `over` wijzigen, alleen als het logitem een lineup draagt; alle andere
+  segmenten blijven gelijk; het log groeit met exact één item.
+- **Bekende beperking**: de exacte `classSum` (som van `kl`, een string) en de
+  bijgestelde `allowed` worden niet in Rules nagerekend. Rules controleren
+  bereik, `over == (classSum > allowed + 0.001)` en `classSum == 0` zonder
+  klassegrens. De 1000-expressiegrens laat weinig marge in het worst-case-pad
+  (5 nieuwe spelers, coach); zie de test "worst case".
+- **Uitrol**: eerst de Rules publiceren, daarna pas clients met 7.7b/7.7c.
+  Een client die de lineupcorrectie uploadt vóór de nieuwe Rules geeft
+  `permission-denied` (status `actie-nodig`), de lokale correctie blijft staan.
