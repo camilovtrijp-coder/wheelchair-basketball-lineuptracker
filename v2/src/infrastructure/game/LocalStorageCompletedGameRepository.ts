@@ -49,7 +49,8 @@ function matchesContext(
  * moet het opgeslagen log als voorvoegsel houden en alleen groeien; de nieuwe
  * logitems worden via `replayCorrectionLog()` (= `correctSegment()`, dus
  * dezelfde regels, geen tweede kopie) afgespeeld op de opgeslagen wedstrijd.
- * Segmenten, `scoreFor`/`scoreAgainst` en `durSec` van de binnenkomende
+ * Segmenten (incl. vanaf PR 7.7b `lineup`/`classSum`/`allowed`/`over`),
+ * `scoreFor`/`scoreAgainst` en `durSec` van de binnenkomende
  * wedstrijd moeten exact gelijk zijn aan dat resultaat: een niet-gelogd
  * gewijzigd segment of een vervalste score wordt dus geweigerd. Revisie moet
  * strikt hoger zijn (zie docstring van `update()`).
@@ -60,6 +61,8 @@ function isValidCorrectionUpdate(existing: CompletedGame, incoming: CompletedGam
   }
   const sameStructure = existing.segments.every((segment, i) => {
     const other = incoming.segments[i];
+    // PR 7.7b: lineup/classSum/allowed/over mogen wijzigen, maar uitsluitend
+    // zoals het gelogde herspelen ze oplevert (zie de eindcontrole hieronder).
     return typeof other === 'object' && other !== null && other.id === segment.id;
   });
   if (!sameStructure) return false;
@@ -94,9 +97,9 @@ function isValidCorrectionUpdate(existing: CompletedGame, incoming: CompletedGam
       other.pf === expected.pf &&
       other.pa === expected.pa &&
       segmentTurnovers(other) === segmentTurnovers(expected) &&
-      // PR 7.7c: lineup/classSum/allowed/over mogen alleen wijzigen zoals het
-      // log (via `correctSegment()`) voorschrijft; voor niet-gelogde segmenten
-      // betekent dit dus onveranderd.
+      // PR 7.7b/7.7c: lineup/classSum/allowed/over mogen alleen wijzigen zoals
+      // het log (via `correctSegment()`) voorschrijft; voor niet-gelogde
+      // segmenten betekent dit dus onveranderd.
       other.classSum === expected.classSum &&
       other.allowed === expected.allowed &&
       other.over === expected.over &&
@@ -241,7 +244,7 @@ export class LocalStorageCompletedGameRepository implements CompletedGameReposit
           pa: incoming.pa,
           // Alleen overnemen als aanwezig: een segment zonder `tov` behoudt zijn vorm.
           ...(incoming.tov !== undefined ? { tov: incoming.tov } : {}),
-          // PR 7.7c: al gevalideerd tegen het log (zie `isValidCorrectionUpdate`);
+          // PR 7.7b/7.7c: al gevalideerd tegen het log (zie `isValidCorrectionUpdate`);
           // voor niet-gecorrigeerde lineups is dit identiek aan het opgeslagen segment.
           lineup: [...incoming.lineup],
           classSum: incoming.classSum,

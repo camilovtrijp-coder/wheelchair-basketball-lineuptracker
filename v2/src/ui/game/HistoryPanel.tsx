@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'preact/hooks';
 import type { CompletedGame } from '../../domain/game/types';
 import { combinedCsvForGame, csvFilenameFor } from '../../domain/game/csv';
-import { segmentTurnovers } from '../../domain/game/tracking';
+import { segmentTurnovers, type ClassificationConfig } from '../../domain/game/tracking';
 import {
   fmtTurnoversPer10,
   sumTurnovers,
@@ -90,6 +90,12 @@ export interface HistoryPanelProps {
   onCorrectGame?: (corrected: CompletedGame) => boolean;
   /** PR 7.5b: uid voor het correctielogitem; `null`/afwezig in lokale modus. */
   correctedBy?: string | null;
+  /**
+   * PR 7.7b: HUIDIGE klasse-instellingen (uit Instellingen), voor het bijstellen
+   * van klassesom/limiet bij een lineupcorrectie. Zonder dit kan een lineup in een
+   * wedstrijd met klassegrens niet worden gecorrigeerd.
+   */
+  classification?: ClassificationConfig;
   /**
    * PR 7.2a: per-`CompletedGame.id` cloudsyncstatus, uitsluitend gevuld door
    * `App` in cloud-modus (net als `SyncStatusIndicator` elders — "gesynchro-
@@ -199,6 +205,7 @@ export function HistoryPanel({
   cloudReadError,
   onCorrectGame,
   correctedBy,
+  classification,
   correctionStatuses,
   correctionBlockedIds,
   onRetryCorrectionUploads,
@@ -527,10 +534,12 @@ export function HistoryPanel({
                     )}
                   </span>
                   <span className="correction-log__before">
-                    {t(lang, 'correctBeforeLabel')}: {describeCorrectableFields(c.before, lang)}
+                    {t(lang, 'correctBeforeLabel')}:{' '}
+                    {describeCorrectableFields(c.before, lang, open.players)}
                   </span>
                   <span className="correction-log__after">
-                    {t(lang, 'correctAfterLabel')}: {describeCorrectableFields(c.after, lang)}
+                    {t(lang, 'correctAfterLabel')}:{' '}
+                    {describeCorrectableFields(c.after, lang, open.players)}
                   </span>
                 </li>
               ))}
@@ -543,6 +552,7 @@ export function HistoryPanel({
             lang={lang}
             game={open}
             segment={correctingSegment}
+            classification={classification}
             by={correctedBy ?? null}
             onSave={(corrected) => {
               const ok = onCorrectGame(corrected);

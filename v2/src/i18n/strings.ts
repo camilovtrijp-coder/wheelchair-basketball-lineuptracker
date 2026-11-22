@@ -251,6 +251,14 @@ const nl = {
     'Kies precies 5 verschillende spelers die aan deze wedstrijd meededen.',
   correctErrorClassificationUnavailable:
     'De klassegrens van deze wedstrijd kan nu niet worden bijgewerkt. Probeer het opnieuw.',
+  // PR 7.7b: lineup van een segment corrigeren.
+  correctLineupTitle: 'Opstelling',
+  correctLineupHint: 'Tik op een speler om te vervangen door een andere deelnemer.',
+  correctLineupSlotAria: 'Speler vervangen: #{nr} {name}',
+  correctLineupPickTitle: 'Vervang {name} door',
+  correctLineupNoCandidates: 'Er zijn geen andere deelnemers om te kiezen.',
+  correctRowLineup: 'Opstelling',
+  correctRowClass: 'Klassesom / limiet',
   liveErrorScoreChangedAtZero:
     'De stand is gewijzigd terwijl er geen speeltijd is verstreken. Kies een tijd ná het begin van het segment, of zet de stand terug.',
   liveErrorScoreBelowSegmentStart:
@@ -1256,6 +1264,14 @@ const en = {
   correctErrorInvalidLineup: 'Choose exactly 5 different players who took part in this game.',
   correctErrorClassificationUnavailable:
     'The classification limit of this game cannot be updated right now. Please try again.',
+  // PR 7.7b: correcting the lineup of a segment.
+  correctLineupTitle: 'Lineup',
+  correctLineupHint: 'Tap a player to replace them with another participant.',
+  correctLineupSlotAria: 'Replace player: #{nr} {name}',
+  correctLineupPickTitle: 'Replace {name} with',
+  correctLineupNoCandidates: 'There are no other participants to choose from.',
+  correctRowLineup: 'Lineup',
+  correctRowClass: 'Class total / limit',
   liveErrorScoreChangedAtZero:
     'The score changed while no playing time has passed. Choose a time after the start of the segment, or restore the score.',
   liveErrorScoreBelowSegmentStart:
