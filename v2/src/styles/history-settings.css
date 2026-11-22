@@ -390,3 +390,27 @@
   margin: 0;
   color: var(--lt-color-muted);
 }
+
+/* ---------- PR 7.7b: lineup corrigeren ---------- */
+
+.correct-lineup {
+  display: flex;
+  flex-direction: column;
+  gap: var(--lt-space-2);
+  margin: var(--lt-space-2) 0;
+}
+
+.correct-lineup__title {
+  margin: 0;
+}
+
+.correct-lineup__pick {
+  display: flex;
+  flex-direction: column;
+  gap: var(--lt-space-1);
+}
+
+.correction-summary__note {
+  color: var(--lt-color-muted);
+  font-size: var(--lt-font-size-sm);
+}

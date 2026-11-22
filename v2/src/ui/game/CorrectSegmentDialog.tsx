@@ -6,7 +6,19 @@ import {
   type CorrectSegmentError,
 } from '../../domain/game/correction';
 import { sumTurnovers } from '../../domain/game/turnoverStats';
-import type { CompletedGame, CorrectableSegmentFields, Segment } from '../../domain/game/types';
+import {
+  adjustedAllowed,
+  isOverAllowed,
+  lineupClassSum,
+  sameLineupSet,
+} from '../../domain/game/segmentLineup';
+import type { ClassificationConfig } from '../../domain/game/tracking';
+import type {
+  CompletedGame,
+  CorrectableSegmentFields,
+  GamePlayer,
+  Segment,
+} from '../../domain/game/types';
 import { translate, type Lang, type StringKey } from '../../i18n/strings';
 import {
   fmtSec,
@@ -22,7 +34,13 @@ import {
  * corrigeren van één segment van een afgeronde wedstrijd. Alle validatie en
  * alle rekenwerk (duur, eindscore, revisie, logitem) komt uit
  * `correctSegment()`; deze UI mapt alleen invoer naar een patch en een
- * `CorrectSegmentError` naar een tekstsleutel. Geen lineup-selectie.
+ * `CorrectSegmentError` naar een tekstsleutel.
+ *
+ * PR 7.7b (docs/pr-7.7-plan.md §C.3): ook de vijf spelers van het segment zijn
+ * te corrigeren (alleen deelnemers van de wedstrijd). Klassesom en limiet worden
+ * live getoond uit dezelfde domeinfuncties als `correctSegment()` gebruikt;
+ * overschrijding waarschuwt maar blokkeert niet. Namen komen alleen in de UI,
+ * het logitem bevat uitsluitend speler-ID's.
  */
 
 export const CORRECT_ERROR_KEYS: Record<CorrectSegmentError, StringKey> = {
@@ -39,9 +57,31 @@ export const CORRECT_ERROR_KEYS: Record<CorrectSegmentError, StringKey> = {
   'classification-unavailable': 'correctErrorClassificationUnavailable',
 };
 
-/** Compacte, taalonafhankelijke weergave van de zes bewerkbare velden. */
-export function describeCorrectableFields(f: CorrectableSegmentFields, lang: Lang): string {
-  return `Q${f.quarter} · ${fmtSec(f.beginSec)} → ${fmtSec(f.endSec)} · ${f.pf}-${f.pa} · ${translate(lang, 'turnoverPillPrefix')} ${f.tov}`;
+/**
+ * Compacte, taalonafhankelijke weergave van de bewerkbare velden. Met
+ * `players` en een gelogde lineup komen de rugnummers erbij (PR 7.7b).
+ */
+export function describeCorrectableFields(
+  f: CorrectableSegmentFields,
+  lang: Lang,
+  players?: readonly GamePlayer[],
+): string {
+  const base = `Q${f.quarter} · ${fmtSec(f.beginSec)} → ${fmtSec(f.endSec)} · ${f.pf}-${f.pa} · ${translate(lang, 'turnoverPillPrefix')} ${f.tov}`;
+  if (players === undefined || f.lineup === undefined) return base;
+  const numbers = f.lineup.map((id) => players.find((p) => p.id === id)?.nr ?? '?').join('-');
+  return `${base} · ${translate(lang, 'correctRowLineup')} ${numbers}`;
+}
+
+function fill(template: string, values: Record<string, string>): string {
+  return Object.entries(values).reduce(
+    (text, [key, value]) => text.split(`{${key}}`).join(value),
+    template,
+  );
+}
+
+function playerLabel(players: readonly GamePlayer[], id: string): string {
+  const p = players.find((pl) => pl.id === id);
+  return p ? `#${p.nr} ${p.naam}`.trim() : '?';
 }
 
 interface Draft {
@@ -61,6 +101,11 @@ export interface CorrectSegmentDialogProps {
   lang: Lang;
   game: CompletedGame;
   segment: Segment;
+  /**
+   * PR 7.7b: HUIDIGE klasse-instellingen (variant A); nodig om `allowed` bij te
+   * stellen als de lineup wijzigt in een wedstrijd met klassegrens.
+   */
+  classification?: ClassificationConfig;
   /** uid van de corrigerende gebruiker; `null` zonder cloudcontext. */
   by: string | null;
   /** Slaat de gecorrigeerde wedstrijd op; `false` = opslaan mislukt. */
@@ -72,6 +117,7 @@ export function CorrectSegmentDialog({
   lang,
   game,
   segment,
+  classification,
   by,
   onSave,
   onClose,
@@ -87,6 +133,8 @@ export function CorrectSegmentDialog({
     pa: String(original.pa),
     tov: String(original.tov),
   });
+  const [lineupDraft, setLineupDraft] = useState<string[]>([...segment.lineup]);
+  const [pickSlot, setPickSlot] = useState<number | null>(null);
   const [errorKey, setErrorKey] = useState<StringKey | null>(null);
   const [saveFailed, setSaveFailed] = useState(false);
   const [review, setReview] = useState<ReturnType<typeof correctSegment> | null>(null);
@@ -106,11 +154,13 @@ export function CorrectSegmentDialog({
       // domeinvalidatie het afkeurt in plaats van stil de oude waarde te houden.
       if (candidate[key] !== original[key]) patch[key] = candidate[key];
     }
+    // PR 7.7b: alleen een andere samenstelling telt (volgorde niet).
+    if (!sameLineupSet(lineupDraft, segment.lineup)) patch.lineup = [...lineupDraft];
     return patch;
   }
 
   function handleReview() {
-    const result = correctSegment(game, segment.id, buildPatch(), by);
+    const result = correctSegment(game, segment.id, buildPatch(), by, { classification });
     if (!result.ok) {
       setErrorKey(CORRECT_ERROR_KEYS[result.error]);
       return;
@@ -143,6 +193,19 @@ export function CorrectSegmentDialog({
     headingRef.current?.focus();
   }, [reviewing]);
   const reviewOk = review != null && review.ok ? review : null;
+
+  const lineupChanged = !sameLineupSet(lineupDraft, segment.lineup);
+  const candidates = game.players.filter((p) => p.participate && !lineupDraft.includes(p.id));
+  const showClass = game.useClassLimit && (!lineupChanged || classification != null);
+  const liveSum = lineupChanged
+    ? lineupClassSum(lineupDraft, game.players, game.useClassLimit)
+    : segment.classSum;
+  const liveAllowed =
+    lineupChanged && classification != null
+      ? adjustedAllowed(segment.allowed, segment.lineup, lineupDraft, game.players, classification)
+      : segment.allowed;
+  const liveOver = isOverAllowed(liveSum, liveAllowed);
+  const pickedPlayer = pickSlot != null ? lineupDraft[pickSlot] : undefined;
 
   return (
     <div className="modal-overlay">
@@ -264,6 +327,81 @@ export function CorrectSegmentDialog({
                 />
               </label>
             </div>
+            <section className="correct-lineup" data-testid="correct-lineup">
+              <h3 className="correct-lineup__title">{t('correctLineupTitle')}</h3>
+              <p className="quick-sheet__meta">{t('correctLineupHint')}</p>
+              <div className="quick-grid">
+                {lineupDraft.map((id, i) => {
+                  const p = game.players.find((pl) => pl.id === id);
+                  const on = pickSlot === i;
+                  return (
+                    <button
+                      key={`${i}-${id}`}
+                      type="button"
+                      className={`chip quick-chip${on ? ' chip--selected' : ''}`}
+                      aria-pressed={on}
+                      aria-label={fill(t('correctLineupSlotAria'), {
+                        nr: p?.nr ?? '?',
+                        name: p?.naam ?? '',
+                      })}
+                      data-testid={`correct-lineup-slot-${i}`}
+                      onClick={() => setPickSlot(on ? null : i)}
+                    >
+                      <span className="chip__nr">{p?.nr ?? '?'}</span>
+                      <span className="chip__name">{p?.naam ?? ''}</span>
+                    </button>
+                  );
+                })}
+              </div>
+              {pickSlot != null ? (
+                <div className="correct-lineup__pick" data-testid="correct-lineup-picker">
+                  <p className="quick-sheet__meta">
+                    {fill(t('correctLineupPickTitle'), {
+                      name: playerLabel(game.players, pickedPlayer ?? ''),
+                    })}
+                  </p>
+                  {candidates.length === 0 ? (
+                    <p className="quick-sheet__meta" data-testid="correct-lineup-none">
+                      {t('correctLineupNoCandidates')}
+                    </p>
+                  ) : (
+                    <div className="quick-grid">
+                      {candidates.map((p) => (
+                        <button
+                          key={p.id}
+                          type="button"
+                          className="chip quick-chip"
+                          data-testid={`correct-lineup-option-${p.id}`}
+                          onClick={() => {
+                            setLineupDraft(
+                              lineupDraft.map((id, i) => (i === pickSlot ? p.id : id)),
+                            );
+                            setPickSlot(null);
+                            setErrorKey(null);
+                          }}
+                        >
+                          <span className="chip__nr">{p.nr}</span>
+                          <span className="chip__name">{p.naam}</span>
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              ) : null}
+              {showClass ? (
+                <p
+                  className={liveOver ? 'quarter-start__class--over' : 'quarter-start__class--ok'}
+                  data-testid="correct-lineup-class"
+                  role={liveOver ? 'alert' : undefined}
+                >
+                  {fill(t('quarterStartClass'), {
+                    sum: liveSum.toFixed(1),
+                    allowed: liveAllowed.toFixed(1),
+                  })}
+                  {liveOver ? ` · ${t('quarterStartOver')}` : ''}
+                </p>
+              ) : null}
+            </section>
             <label className="settings-field">
               <span className="settings-field__label">{t('turnoversLabel')}</span>
               <input
@@ -360,7 +498,11 @@ function CorrectionSummary({
   const timeText = (f: CorrectableSegmentFields, dur?: number): string =>
     `Q${f.quarter} · ${fmtSec(f.beginSec)} → ${fmtSec(f.endSec)}${dur != null ? ` (${fmtSec(dur)})` : ''}`;
   const oldSegment = before.segments.find((s) => s.id === after.correction.segmentId);
-  const rows: { label: string; from: string; to: string; testId: string }[] = [
+  const classText = (s: Segment): string =>
+    `${fill(t('quarterStartClass'), { sum: s.classSum.toFixed(1), allowed: s.allowed.toFixed(1) })}${
+      s.over ? ` · ${t('quarterStartOver')}` : ''
+    }`;
+  const rows: { label: string; from: string; to: string; testId: string; note?: string }[] = [
     {
       label: t('correctRowTime'),
       from: timeText(b, oldSegment?.durSec),
@@ -379,6 +521,36 @@ function CorrectionSummary({
       to: String(a.tov),
       testId: 'tov',
     },
+    ...(a.lineup !== undefined && b.lineup !== undefined
+      ? [
+          {
+            label: t('correctRowLineup'),
+            from: b.lineup.map((id) => playerLabel(before.players, id)).join(', '),
+            to: a.lineup.map((id) => playerLabel(before.players, id)).join(', '),
+            testId: 'lineup',
+            note: fill(t('quickPlanInOut'), {
+              ins: a.lineup
+                .filter((id) => !b.lineup?.includes(id))
+                .map((id) => playerLabel(before.players, id))
+                .join(', '),
+              outs: b.lineup
+                .filter((id) => !a.lineup?.includes(id))
+                .map((id) => playerLabel(before.players, id))
+                .join(', '),
+            }),
+          },
+        ]
+      : []),
+    ...(a.lineup !== undefined && before.useClassLimit && oldSegment && newSegment
+      ? [
+          {
+            label: t('correctRowClass'),
+            from: classText(oldSegment),
+            to: classText(newSegment),
+            testId: 'class',
+          },
+        ]
+      : []),
     {
       label: t('correctRowFinalScore'),
       from: `${before.scoreFor} - ${before.scoreAgainst}`,
@@ -404,6 +576,14 @@ function CorrectionSummary({
             <span className="correction-summary__to">
               <span className="correction-summary__tag">{t('correctAfterLabel')}</span> {r.to}
             </span>
+            {r.note !== undefined ? (
+              <span
+                className="correction-summary__note"
+                data-testid={`correct-summary-${r.testId}-note`}
+              >
+                {r.note}
+              </span>
+            ) : null}
           </dd>
         </div>
       ))}

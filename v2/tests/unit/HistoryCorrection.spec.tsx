@@ -284,8 +284,6 @@ describe('HistoryPanel — correctie: toegankelijkheid en teksten', () => {
     expect(within(dialog).getByLabelText('Turnovers')).toBeTruthy();
     expect(within(dialog).getByLabelText('Begin minuten')).toBeTruthy();
     expect(within(dialog).getByLabelText('Eind seconden')).toBeTruthy();
-    // Geen lineup-selectie.
-    expect(dialog.querySelector('[data-testid^="edit-lineup-"]')).toBeNull();
   });
 
   it('focus blijft in de dialoog: titel bij Controleren, terug naar de titel bij Terug', () => {
