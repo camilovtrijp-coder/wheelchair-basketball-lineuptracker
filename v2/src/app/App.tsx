@@ -1881,6 +1881,14 @@ export function App({
             correctedBy={
               repositories.gameSync ? (repositories.gameWriterContext?.authorUid ?? null) : null
             }
+            classification={{
+              useClassLimit: settings.useClassLimit === true,
+              classBaseLimit: settings.classBaseLimit as number,
+              maxBonus: settings.maxBonus as number,
+              bonusTag1Only: settings.bonusTag1Only as number,
+              bonusTag2Only: settings.bonusTag2Only as number,
+              bonusBoth: settings.bonusBoth as number,
+            }}
             correctionStatuses={repositories.gameSync ? correctionStatuses : undefined}
             correctionBlockedIds={repositories.gameSync ? correctionBlockedIds : undefined}
             onRetryCorrectionUploads={

@@ -49,7 +49,8 @@ function matchesContext(
  * moet het opgeslagen log als voorvoegsel houden en alleen groeien; de nieuwe
  * logitems worden via `replayCorrectionLog()` (= `correctSegment()`, dus
  * dezelfde regels, geen tweede kopie) afgespeeld op de opgeslagen wedstrijd.
- * Segmenten, `scoreFor`/`scoreAgainst` en `durSec` van de binnenkomende
+ * Segmenten (incl. vanaf PR 7.7b `lineup`/`classSum`/`allowed`/`over`),
+ * `scoreFor`/`scoreAgainst` en `durSec` van de binnenkomende
  * wedstrijd moeten exact gelijk zijn aan dat resultaat: een niet-gelogd
  * gewijzigd segment of een vervalste score wordt dus geweigerd. Revisie moet
  * strikt hoger zijn (zie docstring van `update()`).
@@ -60,17 +61,9 @@ function isValidCorrectionUpdate(existing: CompletedGame, incoming: CompletedGam
   }
   const sameStructure = existing.segments.every((segment, i) => {
     const other = incoming.segments[i];
-    return (
-      typeof other === 'object' &&
-      other !== null &&
-      other.id === segment.id &&
-      other.classSum === segment.classSum &&
-      other.allowed === segment.allowed &&
-      other.over === segment.over &&
-      Array.isArray(other.lineup) &&
-      other.lineup.length === segment.lineup.length &&
-      other.lineup.every((id, k) => id === segment.lineup[k])
-    );
+    // PR 7.7b: lineup/classSum/allowed/over mogen wijzigen, maar uitsluitend
+    // zoals het gelogde herspelen ze oplevert (zie de eindcontrole hieronder).
+    return typeof other === 'object' && other !== null && other.id === segment.id;
   });
   if (!sameStructure) return false;
   const existingRevision = Number.isInteger(existing.revision) ? existing.revision : 0;
@@ -103,7 +96,13 @@ function isValidCorrectionUpdate(existing: CompletedGame, incoming: CompletedGam
       other.durSec === expected.durSec &&
       other.pf === expected.pf &&
       other.pa === expected.pa &&
-      segmentTurnovers(other) === segmentTurnovers(expected)
+      segmentTurnovers(other) === segmentTurnovers(expected) &&
+      other.classSum === expected.classSum &&
+      other.allowed === expected.allowed &&
+      other.over === expected.over &&
+      Array.isArray(other.lineup) &&
+      other.lineup.length === expected.lineup.length &&
+      other.lineup.every((id, k) => id === expected.lineup[k])
     );
   });
 }
@@ -240,6 +239,11 @@ export class LocalStorageCompletedGameRepository implements CompletedGameReposit
           durSec: incoming.durSec,
           pf: incoming.pf,
           pa: incoming.pa,
+          // PR 7.7b: al gelijk aan het herspeelde log gecontroleerd (zie boven).
+          lineup: incoming.lineup,
+          classSum: incoming.classSum,
+          allowed: incoming.allowed,
+          over: incoming.over,
           // Alleen overnemen als aanwezig: een segment zonder `tov` behoudt zijn vorm.
           ...(incoming.tov !== undefined ? { tov: incoming.tov } : {}),
         };
