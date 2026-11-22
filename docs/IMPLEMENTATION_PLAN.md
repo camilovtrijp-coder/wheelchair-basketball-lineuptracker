@@ -780,6 +780,9 @@ onveranderlijk"; implementatie per sub-PR op eigen branch.
   op 2026-10-31, implementatie nog niet gestart).
 - Uitrolvolgorde: eerst de Firestore Rules publiceren, daarna pas clients met
   cloudcorrecties.
+- Voorstel PR 7.7 (lineup van een segment corrigeren in Historie, buiten de
+  goedgekeurde 7.5-scope): [`docs/pr-7.7-plan.md`](pr-7.7-plan.md), wacht op
+  akkoord van de eigenaar; nog geen implementatie.
 
 ### Trends: lineup-analyse (T1 tot en met T7)
 
