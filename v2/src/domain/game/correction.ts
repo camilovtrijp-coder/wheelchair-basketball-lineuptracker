@@ -1,4 +1,11 @@
-import { segmentTurnovers } from './tracking';
+import {
+  adjustedAllowed,
+  isOverAllowed,
+  isValidCorrectedLineup,
+  lineupClassSum,
+  sameLineupSet,
+} from './segmentLineup';
+import { segmentTurnovers, type ClassificationConfig } from './tracking';
 import {
   MAX_CLOCK_SECONDS,
   MAX_CORRECTIONS,
@@ -24,7 +31,9 @@ export type CorrectSegmentError =
   | 'invalid-time'
   | 'invalid-duration'
   | 'invalid-score'
-  | 'invalid-turnovers';
+  | 'invalid-turnovers'
+  | 'invalid-lineup'
+  | 'classification-unavailable';
 
 export type CorrectSegmentResult =
   | { ok: true; game: CompletedGame; correction: CompletedGameCorrection }
@@ -34,9 +43,14 @@ export type CorrectSegmentResult =
 export interface CorrectSegmentOptions {
   now?: Date;
   id?: string;
+  /**
+   * PR 7.7a (variant A): huidige klasse-instellingen, nodig om `allowed` bij te
+   * stellen als de lineup wijzigt in een wedstrijd met klassegrens.
+   */
+  classification?: ClassificationConfig;
 }
 
-/** De zes bewerkbare velden van een segment (ontbrekende `tov` telt als 0). */
+/** De zes bewerkbare basisvelden van een segment (ontbrekende `tov` telt als 0); `lineup`/`allowed` komen alleen bij een lineupcorrectie in het log. */
 export function correctableFieldsOf(segment: Segment): CorrectableSegmentFields {
   return {
     quarter: segment.quarter,
@@ -47,6 +61,8 @@ export function correctableFieldsOf(segment: Segment): CorrectableSegmentFields 
     tov: segmentTurnovers(segment),
   };
 }
+
+const BASE_KEYS = ['quarter', 'beginSec', 'endSec', 'pf', 'pa', 'tov'] as const;
 
 function isIntegerInRange(value: unknown, min: number, max: number): value is number {
   return typeof value === 'number' && Number.isInteger(value) && value >= min && value <= max;
@@ -78,14 +94,23 @@ export function correctSegment(
   if (old === undefined) return { ok: false, error: 'unknown-segment' };
   const before = correctableFieldsOf(old);
   const after: CorrectableSegmentFields = { ...before };
-  for (const key of Object.keys(before) as (keyof CorrectableSegmentFields)[]) {
+  for (const key of BASE_KEYS) {
     const value = patch[key];
     if (value !== undefined) after[key] = value;
   }
 
-  if (
-    (Object.keys(before) as (keyof CorrectableSegmentFields)[]).every((k) => before[k] === after[k])
-  ) {
+  // PR 7.7a: een lineup telt alleen als wijziging als de spelers verschillen
+  // (volgorde telt niet). Een ongeldige lineup wordt direct afgekeurd.
+  const lineupChanged = patch.lineup !== undefined && !sameLineupSet(patch.lineup, old.lineup);
+  if (patch.lineup !== undefined) {
+    if (!isValidCorrectedLineup(patch.lineup, game.players, old.lineup)) {
+      return { ok: false, error: 'invalid-lineup' };
+    }
+  } else if (patch.allowed !== undefined) {
+    return { ok: false, error: 'invalid-lineup' };
+  }
+
+  if (BASE_KEYS.every((k) => before[k] === after[k]) && !lineupChanged) {
     return { ok: false, error: 'no-change' };
   }
 
@@ -111,6 +136,39 @@ export function correctSegment(
 
   // Klokrichting uit het bestaande segment; bij gelijke begin/eind (kan niet
   // afgeleid worden) volstaat een positieve absolute duur.
+  let newAllowed = old.allowed;
+  let newClassSum = old.classSum;
+  if (lineupChanged && patch.lineup !== undefined) {
+    newClassSum = lineupClassSum(patch.lineup, game.players, game.useClassLimit);
+    if (patch.allowed !== undefined) {
+      // Terugspelen van het log: de gelogde waarde is de bron van waarheid.
+      if (typeof patch.allowed !== 'number' || !Number.isFinite(patch.allowed)) {
+        return { ok: false, error: 'invalid-lineup' };
+      }
+      newAllowed = patch.allowed;
+    } else if (game.useClassLimit) {
+      if (options.classification === undefined) {
+        return { ok: false, error: 'classification-unavailable' };
+      }
+      newAllowed = adjustedAllowed(
+        old.allowed,
+        old.lineup,
+        patch.lineup,
+        game.players,
+        options.classification,
+      );
+    }
+    // Fail-closed: onbruikbare (niet-eindige) instellingen geven nooit een
+    // logitem dat bij het terugspelen (`isFieldsShape`) wordt afgekeurd.
+    if (!Number.isFinite(newAllowed) || !Number.isFinite(newClassSum)) {
+      return { ok: false, error: 'classification-unavailable' };
+    }
+    before.lineup = [...old.lineup];
+    before.allowed = old.allowed;
+    after.lineup = [...patch.lineup];
+    after.allowed = newAllowed;
+  }
+
   const durSec =
     old.beginSec > old.endSec
       ? after.beginSec - after.endSec
@@ -143,6 +201,14 @@ export function correctSegment(
     pf: after.pf,
     pa: after.pa,
     tov: after.tov,
+    ...(lineupChanged && patch.lineup !== undefined
+      ? {
+          lineup: [...patch.lineup],
+          classSum: newClassSum,
+          allowed: newAllowed,
+          over: isOverAllowed(newClassSum, newAllowed),
+        }
+      : {}),
   };
   return {
     ok: true,
@@ -160,14 +226,28 @@ export function correctSegment(
 }
 
 function sameFields(a: CorrectableSegmentFields, b: CorrectableSegmentFields): boolean {
-  return (Object.keys(a) as (keyof CorrectableSegmentFields)[]).every((k) => a[k] === b[k]);
+  if (!BASE_KEYS.every((k) => a[k] === b[k])) return false;
+  // PR 7.7a: lineup/allowed staan er bij beide of bij geen van beide (zelfde volgorde).
+  if ((a.lineup === undefined) !== (b.lineup === undefined)) return false;
+  if (a.lineup !== undefined && b.lineup !== undefined) {
+    if (a.lineup.length !== b.lineup.length || a.lineup.some((id, i) => id !== b.lineup?.[i])) {
+      return false;
+    }
+  }
+  return a.allowed === b.allowed;
 }
 
 function isFieldsShape(value: unknown): value is CorrectableSegmentFields {
   if (typeof value !== 'object' || value === null) return false;
   const v = value as Record<string, unknown>;
-  return ['quarter', 'beginSec', 'endSec', 'pf', 'pa', 'tov'].every(
-    (k) => typeof v[k] === 'number',
+  if (!BASE_KEYS.every((k) => typeof v[k] === 'number')) return false;
+  // PR 7.7a: optioneel, en dan altijd samen: lineup (strings) + allowed (getal).
+  if (v.lineup === undefined && v.allowed === undefined) return true;
+  return (
+    Array.isArray(v.lineup) &&
+    v.lineup.every((id) => typeof id === 'string') &&
+    typeof v.allowed === 'number' &&
+    Number.isFinite(v.allowed)
   );
 }
 
@@ -216,8 +296,15 @@ export function replayCorrectionLog(
     // meegegeven velden op bereik, dus ongewijzigde oude waarden (bijv. een
     // beginSec boven MAX_CLOCK_SECONDS) blokkeren een geldige correctie niet.
     const changed: Partial<CorrectableSegmentFields> = {};
-    for (const key of Object.keys(entry.after) as (keyof CorrectableSegmentFields)[]) {
+    for (const key of BASE_KEYS) {
       if (entry.after[key] !== entry.before[key]) changed[key] = entry.after[key];
+    }
+    // PR 7.7a: lineup en allowed moeten bij before én after staan; de gelogde
+    // `allowed` wordt teruggespeeld (geen herberekening met andere instellingen).
+    if ((entry.before.lineup === undefined) !== (entry.after.lineup === undefined)) return null;
+    if (entry.after.lineup !== undefined) {
+      changed.lineup = entry.after.lineup;
+      changed.allowed = entry.after.allowed;
     }
     const result = correctSegment(current, entry.segmentId, changed, entry.by, {
       now: new Date(entry.at),
