@@ -158,6 +158,11 @@ export function correctSegment(
         options.classification,
       );
     }
+    // Fail-closed: onbruikbare (niet-eindige) instellingen geven nooit een
+    // logitem dat bij het terugspelen (`isFieldsShape`) wordt afgekeurd.
+    if (!Number.isFinite(newAllowed) || !Number.isFinite(newClassSum)) {
+      return { ok: false, error: 'classification-unavailable' };
+    }
     before.lineup = [...old.lineup];
     before.allowed = old.allowed;
     after.lineup = [...patch.lineup];
