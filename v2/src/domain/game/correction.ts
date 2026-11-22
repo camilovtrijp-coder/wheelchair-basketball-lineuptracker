@@ -225,7 +225,11 @@ export function correctSegment(
   };
 }
 
-function sameFields(a: CorrectableSegmentFields, b: CorrectableSegmentFields): boolean {
+/** PR 7.7c: veldgewijze vergelijking van twee logvelden (zes basisvelden + optioneel lineup/allowed). */
+export function sameCorrectionFields(
+  a: CorrectableSegmentFields,
+  b: CorrectableSegmentFields,
+): boolean {
   if (!BASE_KEYS.every((k) => a[k] === b[k])) return false;
   // PR 7.7a: lineup/allowed staan er bij beide of bij geen van beide (zelfde volgorde).
   if ((a.lineup === undefined) !== (b.lineup === undefined)) return false;
@@ -251,6 +255,26 @@ function isFieldsShape(value: unknown): value is CorrectableSegmentFields {
   );
 }
 
+/**
+ * PR 7.7c: de patch die een logitem voorstelt voor `correctSegment()`: alleen de
+ * gewijzigde basisvelden, plus `lineup` + `allowed` (de gelogde waarde is dan
+ * leidend, geen herberekening) als het item een lineupcorrectie is.
+ */
+export function correctionPatchOf(
+  before: CorrectableSegmentFields,
+  after: CorrectableSegmentFields,
+): Partial<CorrectableSegmentFields> {
+  const patch: Partial<CorrectableSegmentFields> = {};
+  for (const key of BASE_KEYS) {
+    if (after[key] !== before[key]) patch[key] = after[key];
+  }
+  if (after.lineup !== undefined) {
+    patch.lineup = [...after.lineup];
+    patch.allowed = after.allowed;
+  }
+  return patch;
+}
+
 /** Vergelijkt de zes bewerkbare velden plus id/segmentId/at/by; extra (cloud-only) velden tellen niet mee. */
 export function sameCorrectionEntry(
   a: CompletedGameCorrection,
@@ -265,8 +289,8 @@ export function sameCorrectionEntry(
     isFieldsShape(b.before) &&
     isFieldsShape(a.after) &&
     isFieldsShape(b.after) &&
-    sameFields(a.before, b.before) &&
-    sameFields(a.after, b.after)
+    sameCorrectionFields(a.before, b.before) &&
+    sameCorrectionFields(a.after, b.after)
   );
 }
 
@@ -311,7 +335,7 @@ export function replayCorrectionLog(
       id: entry.id,
     });
     if (!result.ok) return null;
-    if (!sameFields(result.correction.before, entry.before)) return null;
+    if (!sameCorrectionFields(result.correction.before, entry.before)) return null;
     // Bewaar het origineel van het item (incl. eventuele extra velden) in het log.
     current = { ...result.game, corrections: [...(current.corrections ?? []), entry] };
   }

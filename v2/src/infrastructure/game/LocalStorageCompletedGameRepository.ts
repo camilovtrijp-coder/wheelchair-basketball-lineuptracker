@@ -97,6 +97,9 @@ function isValidCorrectionUpdate(existing: CompletedGame, incoming: CompletedGam
       other.pf === expected.pf &&
       other.pa === expected.pa &&
       segmentTurnovers(other) === segmentTurnovers(expected) &&
+      // PR 7.7b/7.7c: lineup/classSum/allowed/over mogen alleen wijzigen zoals
+      // het log (via `correctSegment()`) voorschrijft; voor niet-gelogde
+      // segmenten betekent dit dus onveranderd.
       other.classSum === expected.classSum &&
       other.allowed === expected.allowed &&
       other.over === expected.over &&
@@ -239,13 +242,14 @@ export class LocalStorageCompletedGameRepository implements CompletedGameReposit
           durSec: incoming.durSec,
           pf: incoming.pf,
           pa: incoming.pa,
-          // PR 7.7b: al gelijk aan het herspeelde log gecontroleerd (zie boven).
-          lineup: incoming.lineup,
+          // Alleen overnemen als aanwezig: een segment zonder `tov` behoudt zijn vorm.
+          ...(incoming.tov !== undefined ? { tov: incoming.tov } : {}),
+          // PR 7.7b/7.7c: al gevalideerd tegen het log (zie `isValidCorrectionUpdate`);
+          // voor niet-gecorrigeerde lineups is dit identiek aan het opgeslagen segment.
+          lineup: [...incoming.lineup],
           classSum: incoming.classSum,
           allowed: incoming.allowed,
           over: incoming.over,
-          // Alleen overnemen als aanwezig: een segment zonder `tov` behoudt zijn vorm.
-          ...(incoming.tov !== undefined ? { tov: incoming.tov } : {}),
         };
       }),
       scoreFor: game.scoreFor,

@@ -1,7 +1,7 @@
 # PR 7.7 — lineup van een segment corrigeren in Historie (voorstel)
 
 **Status: besluiten op de open vragen genomen (2026-11-22, zie §F);
-uitvoering per sub-PR gestart (7.7a = PR #156, 7.7b en 7.7c in uitvoering).**
+7.7a = PR #156 en 7.7b = PR #157 gemerged, 7.7c = PR #158.**
 Dit plan breidt de goedgekeurde uitzondering van PR 7.5 uit
 ("afgeronde wedstrijd is standaard onveranderlijk") en raakt het datacontract
 van het correctielog en de Firestore Rules. Volgens `AGENTS.md` mag de
@@ -121,6 +121,8 @@ risico's. Echte-apparaat- en staging-verificatie van de cloudtak blijft
    grens.
 3. **Alleen spelers die meededen** (`participate`) zijn kiesbaar.
 4. Bewaartermijn correctielog: ongewijzigd (max. 50 items, bij PR 8.3).
+5. **Cloud-only logveld `lineupPlayerIndexes` goedgekeurd** (2026-11-22), op
+   voorwaarde dat projectie, converter en Rules gelijk blijven (zie §H).
 
 ## G. Afwijking van §C.2 bij uitvoering (7.7a)
 
@@ -130,3 +132,41 @@ alleen tijd, score of turnovers exact de oude logvorm en blijven de bestaande
 Rules en oudere clients werken tot 7.7c is uitgerold. `allowed` wordt
 meegelogd zodat het terugspelen van het log deterministisch is, onafhankelijk
 van latere instellingen.
+
+## H. Uitwerking 7.7c (cloud + Rules)
+
+Besluiten van de eigenaar: cloud wordt meegenomen; variant A (zie F.2); alleen
+deelnemers kiesbaar. Uitwerking:
+
+- **Logitem in de cloud**: `before`/`after` dragen optioneel `lineup` (5 unieke
+  ID's) en `allowed`, altijd samen en alleen bij een lineupwijziging. Het
+  logitem krijgt het **cloud-only** veld `lineupPlayerIndexes` (positie van elke
+  speler van `after.lineup` in `players`, zelfde volgorde). Reden: Rules kunnen
+  niet zoeken in een lijst; met de index kunnen ze per nieuwe speler
+  `players[i].id == id && players[i].participate` controleren, net zoals
+  `segmentIndex` (7.5c) het segment aanwijst. Het domein kent het veld niet
+  (`completedGameFromDocument()` laat het weg). Oudere logitems zonder `lineup`
+  blijven geldig.
+- **Rules (punt 22)**: dezelfde rolcontrole als 7.5c (owner/admin/coach). Het
+  segment mag naast de bestaande sleutels `lineup`, `classSum`, `allowed`,
+  `over` wijzigen, alleen als het logitem een lineup draagt; alle andere
+  segmenten blijven gelijk; het log groeit met exact één item.
+- **Bekende beperking**: de exacte `classSum` (som van `kl`, een string) en de
+  bijgestelde `allowed` worden niet in Rules nagerekend. Rules controleren
+  bereik, `over == (classSum > allowed + 0.001)` en `classSum == 0` zonder
+  klassegrens. De 1000-expressiegrens laat weinig marge in het worst-case-pad
+  (5 nieuwe spelers, coach); zie de test "worst case".
+- **Review 7.7c**: de oorspronkelijke Rules weigerden in de emulator een geldige
+  coachcorrectie (lineup + tijd/score/turnovers, of 5 nieuwe spelers in een
+  middensegment van een groot document) op de 1000-expressiegrens. Opgelost door
+  de tombstonetak een correctie direct te laten verlaten (inhoudelijk overbodige
+  eerste vergelijking op `deletedAt`). Met de vrijgekomen ruimte controleren de
+  Rules nu ook: de lineup wijzigt echt (niet alleen de volgorde), elke index in
+  `lineupPlayerIndexes` wijst naar de juiste speler (ook voor blijvers) en
+  `-1e6 < allowed < 1e6`. Resterende marge in het duurste geteste pad (80
+  segmenten, 49 eerdere correcties, 5 nieuwe spelers + alle scalaire velden):
+  gemeten ca. 10 extra `1 == 1`-vergelijkingen; voeg geen controles toe zonder de
+  worst-case-tests opnieuw te draaien.
+- **Uitrol**: eerst de Rules publiceren, daarna pas clients met 7.7b/7.7c.
+  Een client die de lineupcorrectie uploadt vóór de nieuwe Rules geeft
+  `permission-denied` (status `actie-nodig`), de lokale correctie blijft staan.

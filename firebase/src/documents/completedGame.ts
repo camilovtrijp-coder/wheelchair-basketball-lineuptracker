@@ -9,7 +9,9 @@ import {
   assertNonEmptyString,
   assertNullableString,
   assertNullableTimestamp,
+  assertNumber,
   assertPathContextField,
+  assertStringArray,
   isPlainObject,
   assertString,
   assertTimestamp,
@@ -37,6 +39,14 @@ export interface CompletedGameCorrectionFieldsDocument {
   pf: number;
   pa: number;
   tov: number;
+  /**
+   * PR 7.7c: alleen bij een lineupcorrectie (dan ook in `before` én `after`, altijd
+   * samen met `allowed`): exact 5 unieke speler-ID's, geen namen. Ontbreekt bij
+   * oudere logitems en bij correcties van alleen tijd/score/turnovers.
+   */
+  lineup?: string[];
+  /** PR 7.7c: toegestane klassesom van het segment; alleen samen met `lineup`. */
+  allowed?: number;
 }
 
 /**
@@ -57,6 +67,37 @@ export interface CompletedGameCorrectionDocument {
   by: string | null;
   before: CompletedGameCorrectionFieldsDocument;
   after: CompletedGameCorrectionFieldsDocument;
+  /**
+   * PR 7.7c: CLOUD-ONLY, net als `segmentIndex`. Alleen bij een lineupcorrectie:
+   * per speler van `after.lineup` (zelfde volgorde) de positie in `players`, zodat
+   * Rules zonder lus kunnen controleren dat elke speler in `players` staat en
+   * `participate` is. Het domein kent dit veld niet.
+   */
+  lineupPlayerIndexes?: number[];
+}
+
+/** PR 7.7c: `lineup` = 5 unieke niet-lege strings; `allowed` = eindig getal; altijd samen. */
+function assertCorrectionLineup(
+  field: string,
+  value: Record<string, unknown>,
+): { lineup?: string[]; allowed?: number } {
+  if (value.lineup === undefined && value.allowed === undefined) return {};
+  if (value.lineup === undefined || value.allowed === undefined) {
+    throw new DocumentValidationError(TYPE, field, 'lineup en allowed komen alleen samen voor');
+  }
+  const lineup = assertStringArray(TYPE, `${field}.lineup`, value.lineup);
+  if (lineup.length !== 5 || new Set(lineup).size !== 5 || lineup.some((id) => id === '')) {
+    throw new DocumentValidationError(
+      TYPE,
+      `${field}.lineup`,
+      'moet exact 5 unieke, niet-lege speler-ID\'s bevatten',
+    );
+  }
+  const allowed = assertNumber(TYPE, `${field}.allowed`, value.allowed);
+  if (!Number.isFinite(allowed)) {
+    throw new DocumentValidationError(TYPE, `${field}.allowed`, 'moet een eindig getal zijn');
+  }
+  return { lineup, allowed };
 }
 
 function assertCorrectionFields(
@@ -75,7 +116,19 @@ function assertCorrectionFields(
     pf: assertInteger(TYPE, `${field}.pf`, value.pf),
     pa: assertInteger(TYPE, `${field}.pa`, value.pa),
     tov,
+    ...assertCorrectionLineup(field, value),
   };
+}
+
+function assertLineupPlayerIndexes(field: string, value: unknown): number[] {
+  if (!Array.isArray(value) || value.length !== 5) {
+    throw new DocumentValidationError(TYPE, field, 'moet een array van 5 indexen zijn');
+  }
+  return value.map((item: unknown, index) => {
+    const n = assertInteger(TYPE, `${field}[${index}]`, item);
+    if (n < 0) throw new DocumentValidationError(TYPE, `${field}[${index}]`, 'moet ≥ 0 zijn');
+    return n;
+  });
 }
 
 function assertCorrections(field: string, value: unknown): CompletedGameCorrectionDocument[] {
@@ -91,14 +144,36 @@ function assertCorrections(field: string, value: unknown): CompletedGameCorrecti
     if (segmentIndex < 0) {
       throw new DocumentValidationError(TYPE, `${f}.segmentIndex`, 'moet ≥ 0 zijn');
     }
+    const before = assertCorrectionFields(`${f}.before`, item.before);
+    const after = assertCorrectionFields(`${f}.after`, item.after);
+    // PR 7.7c: lineup bij before én after of bij geen van beide; de cloud-only
+    // spelerindexen horen er precies dan bij (fail-closed bij een afwijkende vorm).
+    if ((before.lineup === undefined) !== (after.lineup === undefined)) {
+      throw new DocumentValidationError(TYPE, f, 'lineup moet bij before én after staan, of bij geen');
+    }
+    if ((item.lineupPlayerIndexes === undefined) !== (after.lineup === undefined)) {
+      throw new DocumentValidationError(
+        TYPE,
+        `${f}.lineupPlayerIndexes`,
+        'moet precies aanwezig zijn bij een lineupcorrectie',
+      );
+    }
     return {
       id: assertNonEmptyString(TYPE, `${f}.id`, item.id),
       segmentId: assertNonEmptyString(TYPE, `${f}.segmentId`, item.segmentId),
       segmentIndex,
       at: assertIsoTimestampString(TYPE, `${f}.at`, item.at),
       by: assertNullableString(TYPE, `${f}.by`, item.by),
-      before: assertCorrectionFields(`${f}.before`, item.before),
-      after: assertCorrectionFields(`${f}.after`, item.after),
+      before,
+      after,
+      ...(item.lineupPlayerIndexes === undefined
+        ? {}
+        : {
+            lineupPlayerIndexes: assertLineupPlayerIndexes(
+              `${f}.lineupPlayerIndexes`,
+              item.lineupPlayerIndexes,
+            ),
+          }),
     };
   });
 }

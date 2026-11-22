@@ -267,6 +267,42 @@ rules_version = '2';
 //      Een bevoegde coach kan dus nog steeds een onjuiste maar intern
 //      consistente tijd/score invoeren — dat is het doel van de functie;
 //      Rules bewaken wie, welk segment, welke velden en dat het logboek klopt.
+//
+// Nieuw in PR 7.7c — lineup van een segment corrigeren (docs/pr-7.7-plan.md §C.4):
+//  22. Dezelfde correctietak (punt 21, dus dezelfde rolcontrole: alleen owner/admin/
+//      coach; viewer, scorer, niet-lid en andere organisatie niet) accepteert een
+//      lineupcorrectie. Herkenning: `lineup` staat in `after` van het nieuwe
+//      logitem. Dan geldt aanvullend:
+//      - `before` en `after` dragen beide `lineup` (5 unieke ID's) + `allowed`
+//        (eindig getal); het logitem draagt het cloud-only `lineupPlayerIndexes`
+//        (positie van elke speler van `after.lineup` in `players`, net als
+//        `segmentIndex` een Rules-aanwijzer; het domein kent het niet). Zonder
+//        lineup in `after` zijn lineup/allowed/indexes NIET toegestaan, en mag het
+//        segment `lineup`/`classSum`/`allowed`/`over` niet wijzigen (oud gedrag).
+//      - `before.lineup`/`before.allowed` = het oude segment, `after.lineup`/
+//        `after.allowed` = het nieuwe; het segment mag naast de zeven bestaande
+//        sleutels alleen `lineup`, `classSum`, `allowed`, `over` wijzigen.
+//      - de lineup wijzigt echt: niet dezelfde 5 spelers in (andere) volgorde.
+//      - voor elke positie k is `players[lineupPlayerIndexes[k]].id == lineup[k]`
+//        (ook voor spelers die blijven: het veld is altijd consistent), en die
+//        speler stond al in de oude lineup van dit segment óf heeft
+//        `participate == true`. `players` zelf is onwijzigbaar (diff-allowlist).
+//      - `over == (classSum > allowed + 0.001)`, `0 <= classSum <= 100`,
+//        `-1e6 < allowed < 1e6` (dus ook geen ±Infinity/NaN), en `classSum == 0`
+//        als de wedstrijd geen klassegrens had.
+//      EERLIJKE BEPERKINGEN: Rules kunnen `kl` (string) niet betrouwbaar optellen:
+//      de EXACTE classSum en de bijgestelde `allowed` (bonusverschil volgens de
+//      toen geldende instellingen, variant A) worden NIET in Rules nagerekend; die
+//      volgen uit de clientreplay (`correctSegment`/`replayCorrectionLog`). Een
+//      bevoegde coach kan dus een intern consistente maar rekenkundig onjuiste
+//      classSum/allowed opslaan — net als bij tijd/score (punt 21). Om binnen de
+//      1000-expressiegrens te blijven is `before` alleen op sleutelaantal
+//      gecontroleerd (de inhoud moet via `diff` gelijk zijn aan het oude segment,
+//      dat bij aanmaak al gevalideerd is) en verlaat de tombstonetak een
+//      correctie al bij de eerste vergelijking. De
+//      worst case (5 nieuwe spelers, coach) heeft weinig marge: voeg hier geen
+//      controles toe zonder `firebase/tests/rules/completed-games-lineup-correction
+//      .spec.ts` ("worst case") opnieuw te draaien.
 
 service cloud.firestore {
   match /databases/{database}/documents {
@@ -552,10 +588,17 @@ service cloud.firestore {
     // Let op: Firestore Rules staan max. 1000 expressie-evaluaties per request
     // toe. Daarom gebruiken de functies hieronder `let`-bindings (elke
     // deelexpressie eenmaal evalueren) en zijn de controles bewust compact.
-    function correctionFieldsShape(f) {
-      return f is map &&
-        f.keys().hasOnly(['quarter', 'beginSec', 'endSec', 'pf', 'pa', 'tov']) &&
-        f.keys().hasAll(['quarter', 'beginSec', 'endSec', 'pf', 'pa', 'tov']) &&
+    //
+    // PR 7.7c: `before`/`after` mogen OPTIONEEL `lineup` (5 unieke strings) en
+    // `allowed` (eindig getal) dragen — alleen bij een lineupcorrectie, altijd
+    // samen. Oude logitems zonder die velden blijven dus geldig.
+    // `wl` = het logitem is een lineupcorrectie: dan heeft zowel `before` als `after`
+    // 8 sleutels (de zes basisvelden + `lineup` + `allowed`; hun inhoud wordt in
+    // `isValidLineupCorrection` gecontroleerd), anders precies de zes basisvelden.
+    // Deze functie typecheckt alleen `after`; `before` moet gelijk zijn aan het oude
+    // segment (`segmentMatchesCorrectionFields`) en wordt op sleutelaantal gecontroleerd.
+    function correctionFieldsShape(f, wl) {
+      return f is map && f.size() == (wl ? 8 : 6) &&
         f.quarter is int && f.beginSec is int && f.endSec is int &&
         f.pf is int && f.pa is int && f.tov is int && f.tov >= 0;
     }
@@ -569,39 +612,87 @@ service cloud.firestore {
     }
 
     // Het segment `s` heeft precies de bewerkbare waarden `f` (`tov` ontbreekt = 0).
+    // Compact via `diff`: alleen de sleutels die NIET in `f` staan (of afgeleid zijn)
+    // mogen verschillen; `quarter`/`beginSec`/`endSec`/`pf`/`pa` zijn dus gelijk.
+    // `lineup`/`allowed` staan in de lijst omdat `f` ze bij een niet-lineupcorrectie
+    // niet draagt; bij een lineupcorrectie worden ze apart gecontroleerd.
     function segmentMatchesCorrectionFields(s, f) {
-      return s.quarter == f.quarter && s.beginSec == f.beginSec && s.endSec == f.endSec &&
-        s.pf == f.pf && s.pa == f.pa && (('tov' in s) ? s.tov : 0) == f.tov;
+      return s.diff(f).affectedKeys().hasOnly(['id', 'durSec', 'classSum', 'over', 'lineup', 'allowed', 'tov']) &&
+        (('tov' in s) ? s.tov : 0) == f.tov;
     }
 
-    // `o`/`s` = het aangewezen segment vóór/na, `c` = het nieuwe logitem.
-    function isValidCorrectedSegment(o, s, c, oldTotals, nextTotals) {
-      return o is map && s is map &&
-        o.id == c.segmentId &&
-        s.diff(o).affectedKeys().hasOnly(['quarter', 'beginSec', 'endSec', 'durSec', 'pf', 'pa', 'tov']) &&
-        segmentMatchesCorrectionFields(o, c.before) &&
-        segmentMatchesCorrectionFields(s, c.after) &&
+    // PR 7.7c: de lineupcorrectie van segment `o` -> `s` volgens logitem `c` in
+    // wedstrijd `old`. `before.lineup`/`before.allowed` zijn gelijk aan het oude
+    // segment, `after.lineup`/`after.allowed` aan het nieuwe, de lineup wijzigt
+    // echt (niet alleen de volgorde: `!ol.hasAll(l)`) en bestaat uit 5 unieke ID's.
+    // Per positie k wijst `lineupPlayerIndexes[k]` (cloud-only, net als
+    // `segmentIndex`; Rules kunnen niet zoeken in een lijst) naar `players[i]` met
+    // `id == l[k]` (review: voor ELKE speler, zodat het veld altijd consistent is
+    // met `after.lineup`), en die speler stond al in de oude lineup of deed mee
+    // (`participate`). `classSum`/`allowed`/`over` zijn begrensd en intern consistent.
+    // BEPERKING: Rules kunnen `kl` (string) niet betrouwbaar optellen, dus de
+    // exacte som en de bijgestelde `allowed` worden hier NIET nagerekend; die
+    // volgen uit de clientreplay (`correctSegment`).
+    // Kosten: dit pad zit dicht tegen de 1000-expressiegrens; draai na elke
+    // wijziging de "worst case"-tests in completed-games-lineup-correction.spec.ts.
+    function isValidLineupCorrection(o, s, c, old) {
+      let l = c.after.lineup;
+      let ol = c.before.lineup;
+      let ix = c.lineupPlayerIndexes;
+      let p = old.players;
+      return o.lineup == ol && s.lineup == l &&
+        l.size() == 5 && l.toSet().size() == 5 && !ol.hasAll(l) &&
+        o.allowed == c.before.allowed && s.allowed == c.after.allowed &&
+        s.allowed > -1000000 && s.allowed < 1000000 && s.classSum >= 0 && s.classSum <= 100 &&
+        (old.useClassLimit || s.classSum == 0) &&
+        s.over == (s.classSum > s.allowed + 0.001) &&
+        ix.size() == 5 &&
+        p[ix[0]].id == l[0] && (p[ix[0]].participate || l[0] in ol) &&
+        p[ix[1]].id == l[1] && (p[ix[1]].participate || l[1] in ol) &&
+        p[ix[2]].id == l[2] && (p[ix[2]].participate || l[2] in ol) &&
+        p[ix[3]].id == l[3] && (p[ix[3]].participate || l[3] in ol) &&
+        p[ix[4]].id == l[4] && (p[ix[4]].participate || l[4] in ol);
+    }
+
+    // `o`/`s` = het aangewezen segment vóór/na, `c` = het nieuwe logitem, `wl` = het
+    // logitem is een lineupcorrectie. Zonder lineup blijven `lineup`/`classSum`/
+    // `allowed`/`over` onaangeroerd (alleen de oorspronkelijke zeven sleutels
+    // mogen wijzigen).
+    function isValidCorrectedSegment(o, s, c, oldTotals, nextTotals, wl) {
+      let a = c.after;
+      let b = c.before;
+      return o.id == c.segmentId &&
+        s.diff(o).affectedKeys().hasOnly(wl
+          ? ['quarter', 'beginSec', 'endSec', 'durSec', 'pf', 'pa', 'tov', 'lineup', 'classSum', 'allowed', 'over']
+          : ['quarter', 'beginSec', 'endSec', 'durSec', 'pf', 'pa', 'tov']) &&
+        segmentMatchesCorrectionFields(o, b) &&
+        segmentMatchesCorrectionFields(s, a) &&
         s.durSec is int && s.durSec > 0 &&
-        (s.durSec == c.after.beginSec - c.after.endSec || s.durSec == c.after.endSec - c.after.beginSec) &&
-        nextTotals.scoreFor == oldTotals.scoreFor + (c.after.pf - c.before.pf) &&
-        nextTotals.scoreAgainst == oldTotals.scoreAgainst + (c.after.pa - c.before.pa);
+        (s.durSec == a.beginSec - a.endSec || s.durSec == a.endSec - a.beginSec) &&
+        nextTotals.scoreFor == oldTotals.scoreFor + (a.pf - b.pf) &&
+        nextTotals.scoreAgainst == oldTotals.scoreAgainst + (a.pa - b.pa) &&
+        (!wl || isValidLineupCorrection(o, s, c, oldTotals));
     }
 
     // `c` is het ene nieuwe logitem; `old`/`next` zijn het document vóór/na.
+    // PR 7.7c: een lineupcorrectie (`lineup` in `after`) heeft 8 sleutels (de 7
+    // gebruikelijke + cloud-only `lineupPlayerIndexes`), anders precies 7.
     function isValidCorrectionEntry(old, next, c) {
+      let a = c.after;
+      let b = c.before;
+      let wl = 'lineup' in a;
       return c is map &&
-        c.keys().hasOnly(['id', 'segmentId', 'segmentIndex', 'at', 'by', 'before', 'after']) &&
-        c.keys().hasAll(['id', 'segmentId', 'segmentIndex', 'at', 'by', 'before', 'after']) &&
+        c.size() == (wl ? 8 : 7) &&
         c.id is string && c.id.size() > 0 && c.id.size() <= 100 &&
         c.segmentId is string && c.segmentId.size() > 0 &&
         c.segmentIndex is int && c.segmentIndex >= 0 && c.segmentIndex < old.segments.size() &&
         c.at is string && isIsoTimestampShape(c.at) &&
         (c.by == null || c.by == request.auth.uid) &&
-        correctionFieldsShape(c.before) && correctionFieldsShape(c.after) &&
-        correctionAfterInRange(c.before, c.after, old.quarterCount) &&
+        b is map && b.size() == (wl ? 8 : 6) && correctionFieldsShape(a, wl) &&
+        correctionAfterInRange(b, a, old.quarterCount) &&
         next.scoreFor is int && next.scoreAgainst is int &&
         next.scoreFor >= 0 && next.scoreAgainst >= 0 &&
-        isValidCorrectedSegment(old.segments[c.segmentIndex], next.segments[c.segmentIndex], c, old, next);
+        isValidCorrectedSegment(old.segments[c.segmentIndex], next.segments[c.segmentIndex], c, old, next, wl);
     }
 
     // Alle ANDERE segmenten blijven byte-gelijk: de lijst is even lang en de
@@ -1304,7 +1395,15 @@ service cloud.firestore {
           // zonder te gooien; ontbreken telt hier als de aanmaak-default
           // (`deletedAt: null`, `revision: 0`) — exact dezelfde defaulting
           // als `completedGameConverter.fromFirestore()` aan de leeskant.
-          allow update: if canManageTeamData(orgId, teamId) &&
+          //
+          // PR 7.7c-review: de eerste regel is inhoudelijk overbodig (dezelfde eis
+          // staat hieronder), maar laat elke andere update (correctie, punt 21/22)
+          // deze tak goedkoop verlaten vóór de rolcontrole en de documentdiff. Rules
+          // evalueren de `allow update`-takken binnen één budget van 1000
+          // expressies; zonder deze kortsluiting paste een lineup- + tijd/score-
+          // correctie van een coach er niet in.
+          allow update: if request.resource.data.get('deletedAt', null) == request.time &&
+            canManageTeamData(orgId, teamId) &&
             (!('deletedAt' in resource.data) || resource.data.deletedAt == null) &&
             request.resource.data.diff(resource.data).affectedKeys()
               .hasOnly(['deletedAt', 'deletedBy', 'revision']) &&

@@ -100,13 +100,17 @@
 //   `conflict`: niets wordt samengevoegd of overschreven. Oplossen = de lokale
 //   kopie verwijderen (`remove()`; de cloudkopie blijft) en opnieuw corrigeren.
 
-import { correctSegment } from '../../domain/game/correction';
+import {
+  correctSegment,
+  correctionPatchOf,
+  sameCorrectionFields,
+} from '../../domain/game/correction';
 import {
   compareCorrectionLineage,
   pickHigherRevision,
   revisionOf,
 } from '../../domain/game/correctionLineage';
-import type { CompletedGame, CorrectableSegmentFields } from '../../domain/game/types';
+import type { CompletedGame } from '../../domain/game/types';
 import type { SyncState } from '../../domain/syncState';
 import type {
   CompletedGameRepository,
@@ -155,13 +159,6 @@ export interface CompletedGameCorrectionWriter {
     expectedRevision: number,
     payload: CompletedGameCorrectionPayload,
   ): Promise<CompletedGameCorrectionResult>;
-}
-
-const CORRECTABLE_KEYS = ['quarter', 'beginSec', 'endSec', 'pf', 'pa', 'tov'] as const;
-
-/** Veldgewijze vergelijking (niet afhankelijk van sleutelvolgorde zoals JSON.stringify). */
-function sameFields(a: CorrectableSegmentFields, b: CorrectableSegmentFields): boolean {
-  return CORRECTABLE_KEYS.every((key) => a[key] === b[key]);
 }
 
 /** Foutcodes die een nieuwe poging niet zal oplossen (Rules/auth/validatie). */
@@ -470,10 +467,8 @@ export class CompositeCompletedGameRepository implements CompletedGameRepository
     // `correctSegment()` op de cloudkopie met het vastgelegde tijdstip/ID.
     // Review PR #134: alleen de velden die de correctie WIJZIGDE gaan als patch mee;
     // ongewijzigde velden (bijv. een oude `beginSec`) mogen de replay niet blokkeren.
-    const patch: Partial<CorrectableSegmentFields> = {};
-    for (const key of CORRECTABLE_KEYS) {
-      if (next.after[key] !== next.before[key]) patch[key] = next.after[key];
-    }
+    // PR 7.7c: bij een lineupcorrectie gaan `lineup` + gelogde `allowed` mee.
+    const patch = correctionPatchOf(next.before, next.after);
     const replay = correctSegment(cloud, next.segmentId, patch, next.by, {
       now: new Date(next.at),
       id: next.id,
@@ -483,8 +478,8 @@ export class CompositeCompletedGameRepository implements CompletedGameRepository
       : null;
     const consistent =
       replay.ok &&
-      sameFields(replay.correction.before, next.before) &&
-      sameFields(replay.correction.after, next.after);
+      sameCorrectionFields(replay.correction.before, next.before) &&
+      sameCorrectionFields(replay.correction.after, next.after);
     if (!replay.ok || !consistent || payload === null) {
       // De lokale en cloudkopie sluiten niet op elkaar aan: niet gokken.
       this.setCorrectionOutcome(local.id, 'conflict');

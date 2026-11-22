@@ -113,8 +113,9 @@ export function completedGameFromDocument(id: string, doc: CompletedGameDocument
             segmentId: c.segmentId,
             at: c.at,
             by: c.by,
-            before: { ...c.before },
-            after: { ...c.after },
+            // PR 7.7c: `lineup` kopiëren; `lineupPlayerIndexes` (cloud-only) vervalt.
+            before: { ...c.before, ...(c.before.lineup ? { lineup: [...c.before.lineup] } : {}) },
+            after: { ...c.after, ...(c.after.lineup ? { lineup: [...c.after.lineup] } : {}) },
           })),
         }),
     ...(doc.correctedAt === undefined
