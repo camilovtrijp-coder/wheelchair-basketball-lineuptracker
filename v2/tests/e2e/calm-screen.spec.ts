@@ -137,7 +137,7 @@ async function expectNoAxeViolations(page: Page): Promise<void> {
 }
 
 test.describe('Rustig wedstrijdscherm', () => {
-  test('hoofdflow: wissel uitvoeren, tijd bevestigen, ongedaan maken', async ({ page }) => {
+  test('hoofdflow: wissel uitvoeren, tijd bevestigen, tweede wissel', async ({ page }) => {
     await startCalmGame(page);
     await page.getByTestId('calm-score-plus-for-2').click();
     await page.getByTestId('calm-turnover-plus').click();
@@ -146,7 +146,11 @@ test.describe('Rustig wedstrijdscherm', () => {
     await pickSwap(page, 'Sam', 'Noa');
     await expect(page.getByTestId('calm-slot-pending')).toBeVisible();
     await page.getByTestId('calm-swap-run').click();
-    await expect(page.getByTestId('calm-notice-text')).toContainText('vastgelegd');
+    // De melding staat in het vaste vak onder de vijf; een tik sluit hem en toont de tijdkaart.
+    await expect(page.getByTestId('calm-slot').getByTestId('calm-notice-text')).toContainText(
+      'vastgelegd',
+    );
+    await page.getByTestId('calm-slot-notice').click();
     await expect(page.getByTestId('calm-time-count')).toHaveText('1 tijd nog bevestigen');
     let game = await readActiveGame(page);
     let segs = liveSegments(game);
@@ -163,23 +167,54 @@ test.describe('Rustig wedstrijdscherm', () => {
     segs = liveSegments(game);
     expect([segs[0]!.endSec, game.beginSec]).toEqual([550, 550]);
 
-    // Nog een wissel en die meteen ongedaan maken: vorige vijf en segmentstart terug.
+    // Tweede wissel: nieuw segment; Ongedaan maken bestaat niet meer in Rustig (R9).
     await pickSwap(page, 'Robin', 'Bo');
     await page.getByTestId('calm-swap-run').click();
     await expect(page.getByTestId('calm-segments-btn')).toHaveText('Segmenten (2)');
-    await page.getByTestId('calm-undo').click();
-    await expect(page.getByTestId('calm-notice-text')).toContainText('teruggedraaid');
-    await expect(page.getByTestId('calm-segments-btn')).toHaveText('Segmenten (1)');
-    await expect(page.getByTestId('calm-undo')).toBeDisabled();
+    await expect(page.getByTestId('calm-undo')).toHaveCount(0);
     game = await readActiveGame(page);
-    expect(game.beginSec).toBe(550);
-    expect(nrsOf(game, game.onCourt)).toEqual(['4', '12', '9', '11', '13']);
+    expect(game.beginSec).toBeLessThan(550);
+    expect(nrsOf(game, game.onCourt)).toEqual(['4', '12', '6', '11', '13']);
+  });
+
+  test('scorebediening: −1, turnover per segment en de scorekeuzelijst', async ({ page }) => {
+    await startCalmGame(page);
+    await expect(page.getByTestId('calm-strip-title')).toHaveText(/Q1$/);
+    await expect(page.getByTestId('calm-score-minus-for')).toBeDisabled();
+    await page.getByTestId('calm-score-plus-for-3').click();
+    await page.getByTestId('calm-score-minus-for').click();
+    await expect(page.getByTestId('calm-score-value-for')).toHaveText('2');
+    await expect(page.getByTestId('calm-segline-for')).toContainText('+2');
+
+    await expect(page.getByTestId('calm-turnover-minus')).toBeDisabled();
+    await page.getByTestId('calm-turnover-plus').click();
+    await expect(page.getByTestId('calm-turnover-count')).toHaveText('1');
+    await page.getByTestId('calm-turnover-minus').click();
+    await expect(page.getByTestId('calm-turnover-count')).toHaveText('0');
+
+    // Keuzelijst: opent met de huidige score in beeld, kiezen zet de score, Escape sluit.
+    await page.getByTestId('calm-score-value-against').click();
+    await expect(page.getByTestId('calm-score-option-0')).toBeFocused();
+    await page.getByTestId('calm-score-option-48').scrollIntoViewIfNeeded();
+    await page.getByTestId('calm-score-option-48').click();
+    await expect(page.getByTestId('calm-score-value-against')).toHaveText('48');
+    await expect(page.getByTestId('calm-score-picker')).toHaveCount(0);
+    await expect(page.getByTestId('calm-score-value-against')).toBeFocused();
+    await page.getByTestId('calm-score-value-for').click();
+    await expect(page.getByTestId('calm-score-option-2')).toBeFocused();
+    await page.keyboard.press('Escape');
+    await expect(page.getByTestId('calm-score-picker')).toHaveCount(0);
+    const overflowX = await page.evaluate(
+      () => document.documentElement.scrollWidth - window.innerWidth,
+    );
+    expect(overflowX, 'pagina scrolt horizontaal').toBeLessThanOrEqual(1);
   });
 
   test('Einde kwart vraagt eerst de open tijden; Klopt allemaal gaat door', async ({ page }) => {
     await startCalmGame(page);
     await pickSwap(page, 'Sam', 'Noa');
     await page.getByTestId('calm-swap-run').click();
+    await page.getByTestId('calm-slot-notice').click();
     await page.getByTestId('calm-end-quarter').click();
     await expect(page.getByTestId('calm-confirm-sheet')).toBeVisible();
     await page.getByTestId('calm-confirm-all').click();
@@ -194,6 +229,7 @@ test.describe('Rustig wedstrijdscherm', () => {
     await startCalmGame(page);
     await pickSwap(page, 'Sam', 'Noa');
     await page.getByTestId('calm-swap-run').click();
+    await page.getByTestId('calm-slot-notice').click();
     await expect(page.getByTestId('calm-time-count')).toBeVisible();
     await page.reload();
     // De app opent na herladen (nog) niet altijd op de Wedstrijd-tab (dat regelt R6);
@@ -220,7 +256,8 @@ test.describe('Rustig wedstrijdscherm', () => {
 
   test('toegankelijk (axe) en Engelse teksten', async ({ page }) => {
     await startCalmGame(page, 'en');
-    await expect(page.getByTestId('calm-undo')).toHaveText('Undo');
+    await expect(page.getByTestId('calm-undo')).toHaveCount(0);
+    await expect(page.getByTestId('calm-segline')).toContainText('This segment');
     await expect(page.getByTestId('calm-segments-btn')).toHaveText('Segments (0)');
     await pickSwap(page, 'Sam', 'Noa');
     await expect(page.getByTestId('calm-swap-run')).toHaveText('Make substitution');

@@ -1,3 +1,4 @@
+import { useEffect, useState } from 'preact/hooks';
 import type { ActiveGame } from '../../domain/game/types';
 import {
   duplicateStartNumbers,
@@ -17,6 +18,10 @@ import {
   type WriterClaimErrorCode,
 } from '../../domain/game/writerClaim';
 import type { PwaReadinessStatus } from '../../domain/pwa/pwaReadiness';
+import {
+  readAwayPreference,
+  storeAwayPreference,
+} from '../../infrastructure/game/compactAwayPreference';
 import { translate, type Lang, type StringKey } from '../../i18n/strings';
 
 export interface GameSetupPanelProps {
@@ -131,6 +136,22 @@ export function GameSetupPanel({
   onRetryClaim,
   pwaReadiness,
 }: GameSetupPanelProps) {
+  // Uitwedstrijd (R9): lokale voorkeur per apparaat en wedstrijd-ID, nooit op ActiveGame.
+  // Zelfde opslag als Snel/Compact; lezen en schrijven falen stil (try/catch in de opslag).
+  const gameId = game?.id ?? '';
+  const [awayState, setAwayState] = useState(() => ({
+    id: gameId,
+    away: readAwayPreference(gameId),
+  }));
+  useEffect(() => {
+    if (awayState.id !== gameId) setAwayState({ id: gameId, away: readAwayPreference(gameId) });
+  }, [gameId, awayState.id]);
+  const away = awayState.id === gameId ? awayState.away : readAwayPreference(gameId);
+  function handleAwayChange(next: boolean) {
+    setAwayState({ id: gameId, away: next });
+    storeAwayPreference(gameId, next);
+  }
+
   if (game === null || game.phase === 'tracking') return null;
 
   const vp = validPlayers(game);
@@ -244,6 +265,18 @@ export function GameSetupPanel({
           data-testid="game-competition"
           onChange={(e) => onGameChange(setCompetition(game, (e.target as HTMLInputElement).value))}
         />
+      </label>
+
+      <label className="settings-field settings-field--row switch-field game-field-card">
+        <input
+          type="checkbox"
+          checked={away}
+          data-testid="game-away"
+          onChange={(e) => handleAwayChange((e.target as HTMLInputElement).checked)}
+        />
+        <span className="settings-field__label">
+          {t(lang, 'compactAwayGame')} <span>{t(lang, 'calmAwayHint')}</span>
+        </span>
       </label>
 
       {useClassLimit ? (

@@ -5,16 +5,26 @@
 // `cloudClaim` op `'confirmed'` staat, toont per `WriterClaimErrorCode` een
 // eigen NL-herstelmelding op `'blocked'`, en blijft ongewijzigd (geen
 // claim-eis) in alleen-lokale modus (`'not-required'`).
-import { describe, it, expect, afterEach, vi } from 'vitest';
-import { render, cleanup } from '@testing-library/preact';
+import { describe, it, expect, afterEach, beforeEach, vi } from 'vitest';
+import { render, cleanup, fireEvent } from '@testing-library/preact';
 import { GameSetupPanel } from '../../src/ui/game/GameSetupPanel';
+import { CalmLivePanel } from '../../src/ui/game/CalmLivePanel';
+import {
+  COMPACT_AWAY_STORAGE_KEY,
+  parseAwayGameIds,
+  readAwayPreference,
+  storeAwayPreference,
+} from '../../src/infrastructure/game/compactAwayPreference';
 import type { ActiveGame, GamePlayer } from '../../src/domain/game/types';
 import type { CloudClaimStatus } from '../../src/domain/game/writerClaim';
 import type { PwaReadinessStatus } from '../../src/domain/pwa/pwaReadiness';
 
 const READY: PwaReadinessStatus = { kind: 'ready' };
 
-afterEach(() => cleanup());
+afterEach(() => {
+  cleanup();
+  vi.restoreAllMocks();
+});
 
 function player(overrides: Partial<GamePlayer> = {}): GamePlayer {
   return {
@@ -258,4 +268,124 @@ describe('ui/game/GameSetupPanel: pre-game PWA-readinesscheck (PR 8.1b)', () => 
     const { getByTestId } = renderPanel({ kind: 'pending' }, vi.fn(), { kind: 'broken' });
     expect(getByTestId('game-start-btn').textContent).toBe('Wedstrijd claimen…');
   });
+});
+
+describe('ui/game/GameSetupPanel: Uitwedstrijd (R9)', () => {
+  function renderAway(lang: 'nl' | 'en' = 'nl', game: ActiveGame = readyGame()) {
+    return render(
+      <GameSetupPanel
+        lang={lang}
+        game={game}
+        useClassLimit={false}
+        onGameChange={vi.fn()}
+        onGoToRoster={vi.fn()}
+        canWrite={true}
+        saveError={false}
+        cloudClaim={{ kind: 'not-required' }}
+        onRetryClaim={vi.fn()}
+        pwaReadiness={READY}
+      />,
+    );
+  }
+
+  beforeEach(() => window.localStorage.clear());
+
+  it('staat standaard uit en toont de uitleg (NL en EN)', () => {
+    const nl = renderAway();
+    const toggle = nl.getByTestId('game-away') as HTMLInputElement;
+    expect(toggle.checked).toBe(false);
+    const label = toggle.closest('label');
+    expect(label?.textContent).toContain('Uitwedstrijd');
+    expect(label?.textContent).toContain('de tegenstander staat links');
+    cleanup();
+    const en = renderAway('en');
+    expect(en.getByTestId('game-away').closest('label')?.textContent).toContain('Away game');
+    expect(en.getByTestId('game-away').closest('label')?.textContent).toContain(
+      'the opponent is on the left',
+    );
+  });
+
+  it('schrijft de voorkeur per wedstrijd-ID naar de bestaande opslag en leest haar terug', () => {
+    const first = renderAway();
+    fireEvent.click(first.getByTestId('game-away'));
+    expect(readAwayPreference('game-1')).toBe(true);
+    expect(parseAwayGameIds(window.localStorage.getItem(COMPACT_AWAY_STORAGE_KEY))).toEqual([
+      'game-1',
+    ]);
+    // Geen nieuwe key en niets op het spel zelf.
+    expect(window.localStorage.length).toBe(1);
+    cleanup();
+    const again = renderAway();
+    expect((again.getByTestId('game-away') as HTMLInputElement).checked).toBe(true);
+    fireEvent.click(again.getByTestId('game-away'));
+    expect(readAwayPreference('game-1')).toBe(false);
+    cleanup();
+    const other = renderAway('nl', readyGame({ id: 'game-2' }));
+    expect((other.getByTestId('game-away') as HTMLInputElement).checked).toBe(false);
+  });
+
+  it('is dezelfde voorkeur als in Snel en Compact (storeAwayPreference → schakelaar)', () => {
+    storeAwayPreference('game-1', true);
+    const u = renderAway();
+    expect((u.getByTestId('game-away') as HTMLInputElement).checked).toBe(true);
+  });
+
+  it('Rustig draait de volgorde van de stand om zodra de opzetpagina Uitwedstrijd aanzet', () => {
+    const setupPanel = renderAway();
+    fireEvent.click(setupPanel.getByTestId('game-away'));
+    cleanup();
+    const live = render(
+      <CalmLivePanel
+        lang="nl"
+        game={readyGame({ phase: 'tracking', onCourt: ['gp-1', 'gp-2', 'gp-3', 'gp-4', 'gp-5'] })}
+        quarterCount={4}
+        periodLabel="Kwart"
+        classification={{
+          useClassLimit: false,
+          classBaseLimit: 15,
+          maxBonus: 2.5,
+          bonusTag1Only: 1.5,
+          bonusTag2Only: 1,
+          bonusBoth: 2,
+        }}
+        teamName="Eigen"
+        tag1Label=""
+        tag2Label=""
+        onGameChange={vi.fn()}
+        onFinishGame={vi.fn()}
+        canWrite={true}
+        saveError={false}
+      />,
+    );
+    fireEvent.click(live.getByTestId('calm-view-game'));
+    const order = Array.from(live.getByTestId('calm-score').children).map((c) =>
+      c.getAttribute('data-testid'),
+    );
+    expect(order).toEqual(['calm-score-against', 'calm-score-for']);
+  });
+
+  it('blijft werken als localStorage lezen en schrijven weigert (foutpad)', () => {
+    vi.spyOn(Storage.prototype, 'getItem').mockImplementation(() => {
+      throw new Error('storage uit');
+    });
+    vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => {
+      throw new Error('storage vol');
+    });
+    const u = renderAway();
+    const toggle = u.getByTestId('game-away') as HTMLInputElement;
+    expect(toggle.checked).toBe(false);
+    expect(() => fireEvent.click(toggle)).not.toThrow();
+    // De keuze geldt dan alleen voor deze sessie: de schakelaar volgt de tik.
+    expect((u.getByTestId('game-away') as HTMLInputElement).checked).toBe(true);
+    vi.restoreAllMocks();
+  });
+
+  it.each(['niet-json{', '{"game-1":true}', '[1,null,{}]'])(
+    'valt bij ongeldige opslag (%s) terug op thuis',
+    (raw) => {
+      window.localStorage.setItem(COMPACT_AWAY_STORAGE_KEY, raw);
+      const u = renderAway();
+      expect((u.getByTestId('game-away') as HTMLInputElement).checked).toBe(false);
+    },
+  );
 });

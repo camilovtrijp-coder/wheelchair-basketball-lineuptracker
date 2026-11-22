@@ -168,4 +168,25 @@ test.describe('v2 wedstrijdopzet (PR 6.1)', () => {
     await expect(page.getByText('Speler 1 Hernoemd')).toBeVisible();
     await expect(page.getByText('Speler 6')).toBeVisible();
   });
+
+  test('R9: Uitwedstrijd staat op de opzetpagina en bewaart de lokale voorkeur', async ({
+    page,
+  }) => {
+    await addFiveNamedPlayersAndReload(page);
+    await page.getByTestId('nav-game').click();
+    const away = page.getByTestId('game-away');
+    await expect(away).not.toBeChecked();
+    await expect(away.locator('xpath=ancestor::label')).toContainText('Uitwedstrijd');
+    await away.check();
+    const stored = await page.evaluate(() =>
+      window.localStorage.getItem('lineup-tracker-v2-compact-away'),
+    );
+    expect(JSON.parse(stored ?? '[]')).toHaveLength(1);
+    // De voorkeur hoort niet bij de wedstrijd zelf.
+    const game = JSON.stringify(await readActiveGame(page));
+    expect(game).not.toContain('away');
+    await page.reload();
+    await page.getByTestId('nav-game').click();
+    await expect(page.getByTestId('game-away')).toBeChecked();
+  });
 });
