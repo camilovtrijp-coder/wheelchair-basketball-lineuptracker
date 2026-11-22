@@ -185,8 +185,19 @@ test.describe('v2 wedstrijdopzet (PR 6.1)', () => {
     // De voorkeur hoort niet bij de wedstrijd zelf.
     const game = JSON.stringify(await readActiveGame(page));
     expect(game).not.toContain('away');
+    // De wedstrijd-ID blijft hetzelfde van opzet tot live: Rustig draait de stand om.
+    await page.addInitScript(() =>
+      window.localStorage.setItem('lineup-tracker-v2-game-screen', 'calm'),
+    );
     await page.reload();
     await page.getByTestId('nav-game').click();
-    await expect(page.getByTestId('game-away')).toBeChecked();
+    await page.getByTestId('game-away').check();
+    await page.getByTestId('game-start-btn').click();
+    await page.getByTestId('calm-view-game').click();
+    const order = await page
+      .getByTestId('calm-score')
+      .locator('> div')
+      .evaluateAll((els) => els.map((el) => el.getAttribute('data-testid')));
+    expect(order).toEqual(['calm-score-against', 'calm-score-for']);
   });
 });

@@ -275,7 +275,8 @@ export function GameSetupPanel({
           onChange={(e) => handleAwayChange((e.target as HTMLInputElement).checked)}
         />
         <span className="settings-field__label">
-          {t(lang, 'compactAwayGame')} <span>{t(lang, 'calmAwayHint')}</span>
+          {t(lang, 'compactAwayGame')}
+          <span className="game-away__hint">{t(lang, 'calmAwayHint')}</span>
         </span>
       </label>
 
