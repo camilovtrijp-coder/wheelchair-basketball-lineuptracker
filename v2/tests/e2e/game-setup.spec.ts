@@ -168,4 +168,36 @@ test.describe('v2 wedstrijdopzet (PR 6.1)', () => {
     await expect(page.getByText('Speler 1 Hernoemd')).toBeVisible();
     await expect(page.getByText('Speler 6')).toBeVisible();
   });
+
+  test('R9: Uitwedstrijd staat op de opzetpagina en bewaart de lokale voorkeur', async ({
+    page,
+  }) => {
+    await addFiveNamedPlayersAndReload(page);
+    await page.getByTestId('nav-game').click();
+    const away = page.getByTestId('game-away');
+    await expect(away).not.toBeChecked();
+    await expect(away.locator('xpath=ancestor::label')).toContainText('Uitwedstrijd');
+    await away.check();
+    const stored = await page.evaluate(() =>
+      window.localStorage.getItem('lineup-tracker-v2-compact-away'),
+    );
+    expect(JSON.parse(stored ?? '[]')).toHaveLength(1);
+    // De voorkeur hoort niet bij de wedstrijd zelf.
+    const game = JSON.stringify(await readActiveGame(page));
+    expect(game).not.toContain('away');
+    // De wedstrijd-ID blijft hetzelfde van opzet tot live: Rustig draait de stand om.
+    await page.addInitScript(() =>
+      window.localStorage.setItem('lineup-tracker-v2-game-screen', 'calm'),
+    );
+    await page.reload();
+    await page.getByTestId('nav-game').click();
+    await page.getByTestId('game-away').check();
+    await page.getByTestId('game-start-btn').click();
+    await page.getByTestId('calm-view-game').click();
+    const order = await page
+      .getByTestId('calm-score')
+      .locator('> div')
+      .evaluateAll((els) => els.map((el) => el.getAttribute('data-testid')));
+    expect(order).toEqual(['calm-score-against', 'calm-score-for']);
+  });
 });

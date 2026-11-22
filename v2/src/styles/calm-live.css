@@ -89,22 +89,47 @@
   padding-left: var(--lt-space-2);
 }
 
+/* Het cijfer is een knop: tik opent de scorekeuzelijst. Het pijltje is CSS, zodat
+   de tekst van de knop alleen het getal is. */
 .calm-score__value {
+  position: relative;
+  width: 100%;
+  min-height: 2.75rem;
+  padding: 0;
+  border: 0;
+  border-radius: var(--lt-radius-md);
+  background: transparent;
+  color: var(--lt-color-fg);
   text-align: center;
-  font-size: 2rem;
+  font-size: 2.4rem;
   font-weight: 800;
-  line-height: 1.1;
+  line-height: 1;
   font-variant-numeric: tabular-nums;
+}
+
+.calm-score__value::after {
+  content: '⇅';
+  position: absolute;
+  right: var(--lt-space-2);
+  top: 50%;
+  transform: translateY(-50%);
+  font-size: var(--lt-font-size-sm);
+  font-weight: 700;
+  color: var(--lt-color-muted);
+}
+
+.calm-score__value--open {
+  background: var(--lt-color-surface-alt);
 }
 
 .calm-score__buttons {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(3, minmax(0, 1fr)) minmax(0, 0.85fr);
   gap: var(--lt-space-1);
 }
 
 .calm-score__btn {
-  min-height: 2.5rem;
+  min-height: 2.75rem;
   min-width: 0;
   padding: 0;
   font-size: var(--lt-font-size-md);
@@ -119,62 +144,174 @@
   opacity: 0.5;
 }
 
-/* ---------- turnover en ongedaan maken ---------- */
+/* −1: witte tekst op een donkere knop in beide thema's (wit = primary-fg, in beide
+   thema's #fff). Donker: surface-alt met een lichte rand; licht: muted (donker
+   leisteen) met een fg-rand. Contrast wit op beide achtergronden ruim boven 4.5:1.
+   Ook uitgeschakeld blijft de tekst wit; alleen de rand dimt. */
+.calm-panel {
+  --calm-minus-bg: var(--lt-color-surface-alt);
+  --calm-minus-border: var(--lt-color-muted);
+  --calm-minus-border-off: var(--lt-color-border);
+}
 
-.calm-actions {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+:root[data-theme='light'] .calm-panel {
+  --calm-minus-bg: var(--lt-color-muted);
+  --calm-minus-border: var(--lt-color-fg);
+  --calm-minus-border-off: var(--lt-color-muted);
+}
+
+.calm-score__btn--minus,
+.calm-actions__minus {
+  background: var(--calm-minus-bg);
+  color: var(--lt-color-primary-fg);
+  border: 1.5px solid var(--calm-minus-border);
+  font-weight: 800;
+}
+
+.calm-score__btn--minus:disabled,
+.calm-actions__minus:disabled {
+  opacity: 1;
+  color: var(--lt-color-primary-fg);
+  border-color: var(--calm-minus-border-off);
+  cursor: not-allowed;
+}
+
+/* Scorekeuzelijst: raster 0 t/m 150 onder de twee scorekaarten. */
+.calm-picker {
+  --pick-color: var(--team-primary, var(--lt-color-primary));
+  --pick-fg: var(--team-primary-fg, var(--lt-color-primary-fg));
+  grid-column: 1 / -1;
+  display: flex;
+  flex-direction: column;
   gap: var(--lt-space-2);
-}
-
-.calm-actions__btn {
-  min-height: 2.75rem;
   min-width: 0;
-  white-space: nowrap;
+  padding: var(--lt-space-2);
+  border: 1px solid var(--pick-color);
+  border-radius: var(--lt-radius-md);
+  background: var(--lt-color-surface);
 }
 
-.calm-notice {
+.calm-picker--against {
+  --pick-color: var(--lt-color-opponent);
+  --pick-fg: var(--lt-color-opponent-fg);
+}
+
+.calm-picker__head {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: var(--lt-space-2);
-  min-height: 1.5rem;
-  padding: 0 var(--lt-space-2);
-  border-radius: var(--lt-radius-md);
-  font-size: var(--lt-font-size-xs);
+  font-size: var(--lt-font-size-sm);
+  color: var(--lt-color-muted);
 }
 
-.calm-notice--ok {
-  background: color-mix(in srgb, var(--lt-color-success) 18%, var(--lt-color-bg));
-  border: 1px solid var(--lt-color-success);
-}
-
-.calm-notice--info {
-  background: var(--lt-color-surface-alt);
+.calm-picker__close {
+  min-height: 2.5rem;
+  padding: 0 var(--lt-space-3);
   border: var(--lt-border-thin);
+  border-radius: var(--lt-radius-md);
+  background: var(--lt-color-surface-alt);
+  color: var(--lt-color-fg);
+  font-weight: 700;
 }
 
-.calm-notice__text,
-.calm-notice__error {
+.calm-picker__grid {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: var(--lt-space-1);
+  max-height: 10.75rem;
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+.calm-picker__opt {
+  min-height: 2.5rem;
   min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  padding: 0;
+  border: var(--lt-border-thin);
+  border-radius: var(--lt-radius-md);
+  background: var(--lt-color-bg);
+  color: var(--lt-color-fg);
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.calm-picker__opt[aria-selected='true'] {
+  background: var(--pick-color);
+  color: var(--pick-fg);
+  border-color: var(--pick-color);
+}
+
+/* Punten van het open segment onder de stand. */
+.calm-segline {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--lt-space-1) var(--lt-space-3);
+  padding: 0 2px;
+  font-size: var(--lt-font-size-xs);
+  color: var(--lt-color-muted);
+}
+
+.calm-segline b {
+  color: var(--lt-color-fg);
+  font-variant-numeric: tabular-nums;
+}
+
+/* ---------- turnover ---------- */
+
+/* Iets lucht boven en vooral onder de turnoverrij (mockup: ±10 px tot "Huidige vijf"). */
+.calm-actions {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 4rem;
+  gap: var(--lt-space-2);
+  margin-block: var(--lt-space-1) var(--lt-space-2);
+}
+
+.calm-actions__plus,
+.calm-actions__minus {
+  min-height: 3rem;
+  min-width: 0;
+  border-radius: var(--lt-radius-md);
+}
+
+.calm-actions__plus {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--lt-space-2);
+  padding: 0 var(--lt-space-3) 0 var(--lt-space-4);
+  border: 0;
+  background: var(--lt-color-turnover);
+  color: var(--lt-color-turnover-fg);
+  box-shadow: 0 0 14px -3px var(--lt-color-turnover);
+  font-size: var(--lt-font-size-lg);
+  font-weight: 800;
   white-space: nowrap;
 }
 
-.calm-notice__error {
-  color: var(--lt-color-danger);
+.calm-actions__plus:disabled {
+  opacity: 0.5;
 }
 
-.calm-notice__undo {
-  flex: none;
-  min-height: 1.75rem;
-  padding: 0 var(--lt-space-2);
-  border: 0;
-  background: transparent;
-  color: var(--lt-color-accent);
+.calm-actions__count {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  line-height: 1.05;
+}
+
+.calm-actions__count b {
+  font-size: 1.35rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.calm-actions__count small {
+  font-size: 0.65rem;
   font-weight: 700;
-  text-decoration: underline;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  /* Geen opacity: in het lichte thema zakt wit op rood dan onder 4.5:1. */
 }
 
 /* ---------- huidige vijf ---------- */
@@ -196,6 +333,11 @@
   white-space: nowrap;
   font-weight: 700;
   color: var(--lt-color-fg);
+}
+
+.calm-strip__tov {
+  color: var(--lt-color-turnover);
+  font-weight: 700;
 }
 
 .calm-strip__stats {
@@ -249,6 +391,18 @@
   overflow: hidden;
 }
 
+/* Bij een foutmelding groeit het vak mee (zeldzaam), zodat de kaart heel blijft. */
+.calm-slot--error {
+  height: auto;
+  min-height: 6.5rem;
+}
+
+.calm-slot__error {
+  margin: 0 0 var(--lt-space-1);
+  font-size: var(--lt-font-size-xs);
+  color: var(--lt-color-danger);
+}
+
 .calm-card {
   display: flex;
   flex-direction: column;
@@ -269,7 +423,8 @@
 }
 
 .calm-card--pending,
-.calm-card--plan {
+.calm-card--plan,
+.calm-card--notice {
   border-color: var(--lt-color-success);
 }
 
@@ -279,6 +434,21 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.calm-card--notice {
+  width: 100%;
+  text-align: left;
+  color: var(--lt-color-fg);
+  cursor: pointer;
+}
+
+.calm-card--notice .calm-card__title {
+  display: block;
+  margin: 0;
+  white-space: normal;
+  font-weight: 700;
+  color: var(--lt-color-success);
 }
 
 .calm-card__meta,

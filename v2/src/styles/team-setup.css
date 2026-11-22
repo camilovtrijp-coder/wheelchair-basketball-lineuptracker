@@ -189,6 +189,15 @@
   flex: 1;
 }
 
+/* Uitwedstrijd (R9): de korte uitleg staat onder de naam, niet erachter. */
+.app .switch-field .game-away__hint {
+  display: block;
+  margin-top: var(--lt-space-1);
+  font-size: var(--lt-font-size-xs);
+  font-weight: 400;
+  color: var(--lt-color-muted);
+}
+
 .app .switch-field input[type='checkbox'] {
   appearance: none;
   -webkit-appearance: none;

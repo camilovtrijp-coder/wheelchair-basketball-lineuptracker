@@ -1,6 +1,6 @@
-import { useEffect, useState } from 'preact/hooks';
-import type { GamePlayer, Segment } from '../../domain/game/types';
-import { discardSwaps } from '../../domain/game/liveCommands';
+import { useEffect, useRef, useState } from 'preact/hooks';
+import { MAX_SCORE, type GamePlayer, type Segment } from '../../domain/game/types';
+import { discardSwaps, openSegmentSummary, setScore } from '../../domain/game/liveCommands';
 import { canFinishGame } from '../../domain/game/finish';
 import {
   deriveGameHistory,
@@ -13,12 +13,9 @@ import {
   commitSwapWithProvisionalTime,
   confirmSwapTime,
   currentClockSec,
-  lastUndoableAction,
   pendingTimeConfirmations,
   swapTimeBounds,
-  undoLastAction,
   type SwapFlowError,
-  type UndoneAction,
 } from '../../domain/game/swapFlow';
 import {
   adoptActualLineup,
@@ -60,7 +57,7 @@ import { CalmConfirmSheet, CalmRetroSheet, swapErrorKey } from './CalmSheets';
  * Rustig wedstrijdscherm (vierde optie naast Klassiek, Compact en Snel; bouwplan
  * wedstrijdscherm-rustig R2). Zelfde props en dezelfde `ActiveGame`; geen
  * wijziging van het datacontract. Alles staat op één scherm, zonder scrollen:
- * stand, turnover en ongedaan maken, de huidige vijf, één vast slot dat om beurten
+ * stand (met −1 en een keuzelijst), turnover, de huidige vijf, één vast slot dat om beurten
  * de schemakaart, hulpkaart of tijdkaart toont, de bank met klassesom en een
  * onderbalk met Segmenten en Einde kwart.
  *
@@ -74,7 +71,7 @@ export type CalmLivePanelProps = LiveTrackingPanelProps;
 type Team = 'for' | 'against';
 type Selected = { id: string; where: 'court' | 'bench' };
 type Sheet = 'segments' | 'confirm' | 'quarter' | 'retro' | null;
-type Notice = { text: string; kind: 'ok' | 'info'; undo: boolean };
+type Notice = { text: string };
 
 const NOTICE_MS = 8000;
 const HIGHLIGHT_MS = 4000;
@@ -157,7 +154,7 @@ export function CalmLivePanel({
   );
   const { plan, savePlan, clearPlan, readPrevious } = useRotationPlan(game.id);
 
-  // Lokale wisselflow-toestand (open tijden, undo-blokkade); volgt de wedstrijd-ID.
+  // Lokale wisselflow-toestand (open tijden, blokkade voor ongedaan maken in andere schermen); volgt de wedstrijd-ID.
   const [flowState, setFlowState] = useState(() => ({
     id: game.id,
     flow: readSwapFlowState(game.id),
@@ -180,6 +177,45 @@ export function CalmLivePanel({
   const [notice, setNotice] = useState<Notice | null>(null);
   const [justIn, setJustIn] = useState<string[]>([]);
   const [error, setError] = useState<SwapFlowError | null>(null);
+
+  // Scorekeuzelijst (R9): welke kant is open, plus de elementen voor focus en buiten-tikken.
+  const [pick, setPick] = useState<Team | null>(null);
+  // Optie met de tabstop in de lijst (roving tabindex); null = de huidige score.
+  const [pickFocus, setPickFocus] = useState<number | null>(null);
+  const triggerRefs = useRef<Record<Team, HTMLButtonElement | null>>({ for: null, against: null });
+  const pickerRef = useRef<HTMLDivElement | null>(null);
+  function closePick() {
+    const team = pick;
+    setPick(null);
+    if (team != null) triggerRefs.current[team]?.focus();
+  }
+  useEffect(() => {
+    setPickFocus(null);
+    if (pick == null) return undefined;
+    const grid = pickerRef.current?.querySelector<HTMLElement>('[role="listbox"]');
+    const current = grid?.querySelector<HTMLElement>('[aria-selected="true"]');
+    if (grid != null && current != null) {
+      grid.scrollTop = Math.max(0, current.offsetTop - grid.offsetTop - 44);
+      current.focus({ preventScroll: true });
+    }
+    const team = pick;
+    function onKey(e: KeyboardEvent) {
+      if (e.key !== 'Escape') return;
+      setPick(null);
+      triggerRefs.current[team]?.focus();
+    }
+    function onClick(e: MouseEvent) {
+      const el = e.target instanceof Element ? e.target : null;
+      if (el?.closest('.calm-picker') != null || el?.closest('[data-calm-pick]') != null) return;
+      setPick(null);
+    }
+    document.addEventListener('keydown', onKey);
+    document.addEventListener('click', onClick);
+    return () => {
+      document.removeEventListener('keydown', onKey);
+      document.removeEventListener('click', onClick);
+    };
+  }, [pick]);
 
   useEffect(() => {
     if (notice == null) return undefined;
@@ -208,7 +244,7 @@ export function CalmLivePanel({
         : null,
   );
 
-  // Uitwedstrijd: alleen lezen van de voorkeur die Snel/Compact al bewaren; Rustig heeft geen eigen schakelaar.
+  // Uitwedstrijd: alleen lezen; de schakelaar staat sinds R9 op de opzetpagina (zelfde lokale voorkeur).
   const away = readAwayPreference(game.id);
 
   const history = deriveGameHistory(game);
@@ -217,6 +253,7 @@ export function CalmLivePanel({
   const segDeltaAgainst = history.scoreAgainst - history.segStartAgainst;
   const segPM = segDeltaFor - segDeltaAgainst;
   const segTurnovers = history.turnovers - history.segStartTurnovers;
+  const openSegment = openSegmentSummary(game);
   const ownName = teamName || t('teamFallbackLabel');
   const opponentName = t('teamOpponent');
   const period = periodLabel || t('quarterLabel');
@@ -283,11 +320,13 @@ export function CalmLivePanel({
 
   function addScore(team: Team, delta: number) {
     if (!canWrite) return;
+    setNotice(null);
     onGameChange({ ...game, actions: [...game.actions, scoreDeltaAction(team, delta)] });
   }
 
   function addTurnover(delta: number) {
     if (!canWrite) return;
+    setNotice(null);
     onGameChange({ ...game, actions: [...game.actions, turnoverDeltaAction(delta)] });
   }
 
@@ -338,10 +377,45 @@ export function CalmLivePanel({
     reloadFlow();
     setJustIn(diff.ins);
     setNotice({
-      kind: 'ok',
-      undo: result.segmentId != null,
       text: fill(t('calmSwapDone'), { ins: names(diff.ins), outs: names(diff.outs) }),
     });
+  }
+
+  /** Kiest een score uit de lijst: vervangt de stand; het open segment verwerkt het verschil. */
+  function chooseScore(team: Team, value: number) {
+    if (!canWrite) return;
+    const result = setScore(game, team, value);
+    if (result.ok) {
+      if (result.game !== game) {
+        setNotice(null);
+        onGameChange(result.game);
+      }
+      setError(null);
+    }
+    closePick();
+  }
+
+  /** Pijltjestoetsen in de lijst: ±1 (links/rechts) en ±6 (omhoog/omlaag, zes kolommen). */
+  function handlePickKey(e: KeyboardEvent) {
+    const steps: Record<string, number> = {
+      ArrowLeft: -1,
+      ArrowRight: 1,
+      ArrowUp: -6,
+      ArrowDown: 6,
+    };
+    const options = Array.from(
+      pickerRef.current?.querySelectorAll<HTMLElement>('[role="option"]') ?? [],
+    );
+    const at = options.findIndex((el) => el === document.activeElement);
+    let next = -1;
+    if (e.key in steps && at >= 0) next = at + (steps[e.key] ?? 0);
+    else if (e.key === 'Home') next = 0;
+    else if (e.key === 'End') next = options.length - 1;
+    else return;
+    e.preventDefault();
+    const to = Math.min(options.length - 1, Math.max(0, next));
+    setPickFocus(to);
+    options[to]?.focus();
   }
 
   /** Zet de geplande opstelling klaar; met `run` meteen vastleggen (Wissel uitvoeren). */
@@ -351,37 +425,6 @@ export function CalmLivePanel({
     setSelected(null);
     if (run) executeSwap(next);
     else onGameChange(next);
-  }
-
-  function describeUndone(undone: UndoneAction): string {
-    if (undone.kind === 'score') {
-      return fill(t('calmUndoneScore'), {
-        points: signed(undone.delta),
-        team: undone.team === 'for' ? ownName : opponentName,
-      });
-    }
-    if (undone.kind === 'turnover') return t('calmUndoneTurnover');
-    return fill(t('calmUndoneSwap'), { ins: names(undone.ins), outs: names(undone.outs) });
-  }
-
-  const undoable =
-    canWrite && pending == null && lastUndoableAction(game, flow.undoBlockedActionId) != null;
-
-  function handleUndo() {
-    if (!undoable) return;
-    const result = undoLastAction(game, flow.undoBlockedActionId);
-    if (!result.ok) {
-      setError(result.error);
-      return;
-    }
-    setError(null);
-    onGameChange(result.game);
-    setUndoBlockedAction(game.id, result.lastActionId);
-    if (result.undone.kind === 'swap') markSwapTimeConfirmed(game.id, result.undone.segmentId);
-    reloadFlow();
-    setSelected(null);
-    setJustIn([]);
-    setNotice({ kind: 'info', undo: false, text: describeUndone(result.undone) });
   }
 
   function handleConfirmTime() {
@@ -490,9 +533,22 @@ export function CalmLivePanel({
         data-testid={`calm-score-${team}`}
       >
         <span className="calm-score__name">{name}</span>
-        <span className="calm-score__value" data-testid={`calm-score-value-${team}`}>
+        <button
+          type="button"
+          ref={(el) => {
+            triggerRefs.current[team] = el;
+          }}
+          className={`calm-score__value${pick === team ? ' calm-score__value--open' : ''}`}
+          data-testid={`calm-score-value-${team}`}
+          data-calm-pick={team}
+          disabled={!canWrite}
+          aria-haspopup="listbox"
+          aria-expanded={pick === team}
+          aria-label={fill(t('calmScorePickAria'), { team: name, n: score })}
+          onClick={() => canWrite && setPick(pick === team ? null : team)}
+        >
           {score}
-        </span>
+        </button>
         <div className="calm-score__buttons">
           {[1, 2, 3].map((n) => (
             <button
@@ -505,6 +561,64 @@ export function CalmLivePanel({
               onClick={() => addScore(team, n)}
             >
               +{n}
+            </button>
+          ))}
+          <button
+            type="button"
+            className="calm-score__btn calm-score__btn--minus"
+            disabled={!canWrite || score <= 0}
+            aria-label={fill(t('calmScoreMinusAria'), { team: name })}
+            data-testid={`calm-score-minus-${team}`}
+            onClick={() => score > 0 && addScore(team, -1)}
+          >
+            −1
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  function scorePicker(team: Team) {
+    const name = team === 'for' ? ownName : opponentName;
+    const score = team === 'for' ? history.scoreFor : history.scoreAgainst;
+    return (
+      <div
+        className={`calm-picker calm-picker--${team}`}
+        ref={pickerRef}
+        data-testid="calm-score-picker"
+      >
+        <div className="calm-picker__head">
+          <span>{fill(t('calmScorePickTitle'), { team: name })}</span>
+          <button
+            type="button"
+            className="calm-picker__close"
+            data-testid="calm-score-picker-close"
+            onClick={closePick}
+          >
+            {t('calmCloseAria')}
+          </button>
+        </div>
+        <div
+          className="calm-picker__grid"
+          role="listbox"
+          tabIndex={-1}
+          aria-label={t('calmScoreListAria')}
+          data-testid="calm-score-list"
+          onKeyDown={handlePickKey}
+        >
+          {Array.from({ length: MAX_SCORE + 1 }, (_, value) => (
+            <button
+              key={value}
+              type="button"
+              role="option"
+              className="calm-picker__opt"
+              // Eén tabstop in de lijst (de huidige score); pijltjes verplaatsen de focus.
+              tabIndex={value === (pickFocus ?? score) ? 0 : -1}
+              aria-selected={value === score}
+              data-testid={`calm-score-option-${value}`}
+              onClick={() => chooseScore(team, value)}
+            >
+              {value}
             </button>
           ))}
         </div>
@@ -607,6 +721,23 @@ export function CalmLivePanel({
       );
     }
     if (timeSegment != null) return timeCard();
+    // De melding na een wissel (R9) staat alleen in de rustige stand van het vak: de
+    // tijdkaart en het schema gaan altijd voor ("eerst wisselen, tijd achteraf"). Na het
+    // bevestigen van de tijd blijft hij kort staan, tot een tik, een score of een turnover.
+    if (notice != null) {
+      return (
+        <button
+          type="button"
+          className="calm-card calm-card--notice"
+          data-testid="calm-slot-notice"
+          onClick={() => setNotice(null)}
+        >
+          <span className="calm-card__title" data-testid="calm-notice-text">
+            {notice.text}
+          </span>
+        </button>
+      );
+    }
     return (
       <div className="calm-card calm-card--idle" data-testid="calm-slot-idle">
         <p className="calm-card__meta">{t('swapHint')}</p>
@@ -706,65 +837,54 @@ export function CalmLivePanel({
       <div className="calm-score" data-testid="calm-score" data-away={away}>
         {scoreSide(leftTeam)}
         {scoreSide(rightTeam)}
+        {pick != null ? scorePicker(pick) : null}
+      </div>
+
+      <div className="calm-segline" data-testid="calm-segline">
+        <span className="calm-segline__label">{t('calmSegLine')}</span>
+        <span data-testid="calm-segline-for">
+          {ownName} <b>{signed(openSegment.pointsFor)}</b>
+        </span>
+        <span data-testid="calm-segline-against">
+          {opponentName} <b>{signed(openSegment.pointsAgainst)}</b>
+        </span>
       </div>
 
       <div className="calm-actions" data-testid="calm-actions">
         <button
           type="button"
-          className="turnover-btn calm-actions__btn"
+          className="calm-actions__plus"
           disabled={!canWrite}
+          aria-label={fill(t('calmTurnoverPlusAria'), { n: segTurnovers })}
           data-testid="calm-turnover-plus"
           onClick={() => addTurnover(1)}
         >
-          {t('turnoverPlusBtn')}
+          <span>{t('turnoverPlusBtn')}</span>
+          <span className="calm-actions__count">
+            <b data-testid="calm-turnover-count">{segTurnovers}</b>
+            <small>{t('calmTurnoverSegment')}</small>
+          </span>
         </button>
         <button
           type="button"
-          className="btn-outline calm-actions__btn"
-          disabled={!undoable}
-          aria-label={t('calmUndoAria')}
-          data-testid="calm-undo"
-          onClick={handleUndo}
+          className="calm-actions__minus"
+          disabled={!canWrite || segTurnovers <= 0}
+          aria-label={t('turnoverMinusAria')}
+          data-testid="calm-turnover-minus"
+          onClick={() => segTurnovers > 0 && addTurnover(-1)}
         >
-          {t('calmUndoBtn')}
+          −1
         </button>
-      </div>
-
-      <div
-        className={notice != null ? `calm-notice calm-notice--${notice.kind}` : 'calm-notice'}
-        role="status"
-        aria-live="polite"
-        data-testid="calm-notice"
-      >
-        {notice != null ? (
-          <>
-            <span className="calm-notice__text" data-testid="calm-notice-text">
-              {notice.text}
-            </span>
-            {notice.undo && undoable ? (
-              <button
-                type="button"
-                className="calm-notice__undo"
-                data-testid="calm-notice-undo"
-                onClick={handleUndo}
-              >
-                {t('calmUndoBtn')}
-              </button>
-            ) : null}
-          </>
-        ) : errorKey != null ? (
-          <span className="calm-notice__error" role="alert" data-testid="calm-error">
-            {t(errorKey)}
-          </span>
-        ) : null}
       </div>
 
       <div className="calm-strip" data-testid="calm-strip">
         <span className="calm-strip__title" data-testid="calm-strip-title">
-          {fill(t('calmStripTitle'), { time: fmtSec(game.beginSec) })}
+          {fill(t('calmStripTitle'), { time: fmtSec(game.beginSec), q: game.curQuarter })}
         </span>
         <span className="calm-strip__stats" data-testid="calm-strip-stats">
-          {fill(t('calmStripStats'), { pm: signed(segPM), tov: segTurnovers })}
+          {fill(t('calmStripPm'), { pm: signed(segPM) })}
+          {' · '}
+          <span className="calm-strip__tov">{fill(t('calmStripTov'), { tov: segTurnovers })}</span>
           {classification.useClassLimit ? (
             <span
               className={courtLimit.over ? 'class-badge class-badge--over' : 'class-badge'}
@@ -793,7 +913,17 @@ export function CalmLivePanel({
         })}
       </div>
 
-      <div className="calm-slot" data-testid="calm-slot">
+      <div
+        className={errorKey != null ? 'calm-slot calm-slot--error' : 'calm-slot'}
+        role="status"
+        aria-live="polite"
+        data-testid="calm-slot"
+      >
+        {errorKey != null ? (
+          <p className="calm-slot__error" role="alert" data-testid="calm-error">
+            {t(errorKey)}
+          </p>
+        ) : null}
         {slot()}
       </div>
 
@@ -948,8 +1078,6 @@ export function CalmLivePanel({
             setTimeTargetId(info.segmentId);
             setJustIn(diff.ins);
             setNotice({
-              kind: 'ok',
-              undo: false,
               text: fill(t('calmSwapDoneRetro'), {
                 ins: names(diff.ins),
                 outs: names(diff.outs),

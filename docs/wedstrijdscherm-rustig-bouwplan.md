@@ -209,3 +209,21 @@ onderliggende PR wordt de basis `main`.
   PR's aanstaat.
 - Golf 2 en 3 starten pas na de review van de golf ervoor. Afhankelijk van
   de bouwtijd staan die 's ochtends mogelijk nog open.
+
+## 8. R9 — scorebediening (Rustig)
+
+**Wat.** Aanpassingen aan het scherm Rustig en aan de opzetpagina, op basis van een door de eigenaar goedgekeurde interactieve mockup:
+
+- **Ongedaan maken is uit Rustig verwijderd** (knop en "ongedaan"-link in de melding). Het wordt vervangen door **−1**: een vierde, smallere knop naast +1/+2/+3 bij beide scores (gewone `score-delta` van −1; uit bij 0) en een eigen −1 naast Turnover (`turnover-delta` van −1; uit als het segmentaantal 0 is). De −1-knoppen hebben in beide thema's witte tekst op een donkere knop (donker: `surface-alt`, licht: `muted`; alleen bestaande tokens). Een verkeerde wissel of score corrigeer je voortaan via Segmenten. De domeinfuncties (`undoLastAction`, `lastUndoableAction`, de undo-blokkade in `swapFlowStore`) en de andere schermen blijven ongewijzigd; alleen de ongebruikte Rustig-teksten zijn vervallen.
+- **Turnover** is weer rood (turnover-token), ca. 48 px hoog, met het aantal van het **huidige segment** op de knop (`game.turnovers - game.segStartTurnovers`). Het label "dit segment" heeft geen opacity (contrast in het lichte thema); de rij heeft iets lucht tot "Huidige vijf" (mockup).
+- **Regel "Dit segment"** onder de stand, uit `openSegmentSummary` (ongewijzigd).
+- **Balk "Huidige vijf"** toont ook het kwart (`Q{n}`); de statistiekregel houdt +/-, TO (rood) en klassesom.
+- **Melding na een wissel** staat in het vaste vak (slot, `role="status"`) onder de vijf, niet meer in een eigen regel. Er is dus geen lege ruimte meer tussen Turnover en "Huidige vijf". De melding staat alleen in de rustige stand van het vak (waar anders de hint staat): hulpkaart, wisselkaart, tijdkaart en schemakaart gaan altijd voor, zodat je direct na een wissel de tijd kunt bevestigen ("eerst wisselen, tijd achteraf"). Na Klopt blijft de melding kort staan; hij verdwijnt 8 seconden na de wissel, na een tik erop, of zodra je een score of turnover invoert.
+- **Scorekeuzelijst**: tik op het cijfer opent onder de twee scorekaarten een raster 0 t/m `MAX_SCORE` (150), met de huidige score gemarkeerd en in beeld. Kiezen zet de score via `setScore` (een `score-set`; het open segment verwerkt het verschil) en sluit de lijst. Sluiten kan ook met "Sluiten", Escape of buiten tikken. Toegankelijk als listbox (`aria-haspopup`, `aria-expanded`, `role="option"`, `aria-selected`, één tabstop op de huidige optie, focus naar de huidige optie en terug naar het cijfer, pijltjestoetsen). Alleen-lezen: alle knoppen uit.
+- **Uitwedstrijd verhuist naar de opzetpagina** (schakelaar bij Tegenstander/Competitie, met korte uitleg). Rustig heeft geen eigen schakelaar meer en leest de voorkeur alleen. Het is dezelfde lokale voorkeur als in Snel en Compact (`compactAwayPreference.ts`, per apparaat en wedstrijd-ID, nooit op `ActiveGame`). Snel en Compact houden hun eigen schakelaar op het wedstrijdscherm.
+
+**Waarom.** Besluit van de eigenaar na een interactieve mockup: een −1 naast elke teller is directer dan één niveau Ongedaan maken, en de turnover-teller per segment en de segmentregel tonen wat er in het open segment staat zonder naar Segmenten te gaan.
+
+**Geen wijziging** aan datacontract, CSV, localStorage-keys of statistiekformules. De −1-knop in Rustig gebruikt dezelfde score-delta als Snel.
+
+**Opmerking.** De opzetpagina bewaart een niet-gestarte wedstrijd niet over een herlaadmoment (v1-pariteit); na herladen hoort de schakelaar dus bij een nieuw wedstrijd-ID. Vanaf het starten blijft het ID gelijk.

@@ -3,13 +3,16 @@
 // docs/wedstrijdscherm-rustig-bouwplan.md §5b, met fictieve spelers. De
 // domeinregels zelf staan in swapFlow.spec.ts; hier gaat het om de bediening.
 import { describe, it, expect, afterEach, beforeEach, vi } from 'vitest';
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import { useState } from 'preact/hooks';
-import { render, cleanup, fireEvent } from '@testing-library/preact';
+import { render, cleanup, fireEvent, act } from '@testing-library/preact';
 import { CalmLivePanel } from '../../src/ui/game/CalmLivePanel';
 import { deriveGameHistory } from '../../src/domain/game/tracking';
 import type { ActiveGame, GamePlayer } from '../../src/domain/game/types';
 import type { RotationPlan } from '../../src/domain/game/rotationPlan';
 import { storePlanForGame } from '../../src/infrastructure/game/rotationPlanStore';
+import { storeAwayPreference } from '../../src/infrastructure/game/compactAwayPreference';
 import { readSwapFlowState } from '../../src/infrastructure/game/swapFlowStore';
 import type { Lang } from '../../src/i18n/strings';
 
@@ -139,6 +142,15 @@ function pickSwap(u: Utils, out: number, inn: number) {
   fireEvent.click(u.getByTestId(`calm-chip-gp-${inn}`));
 }
 
+/** Voert de klaargezette wissel uit; de tijdkaart staat daarna direct in het vak (geen tik nodig). */
+function runSwap(u: Utils) {
+  fireEvent.click(u.getByTestId('calm-swap-run'));
+}
+
+function runPlan(u: Utils) {
+  fireEvent.click(u.getByTestId('calm-plan-run'));
+}
+
 function segments(u: Utils) {
   return deriveGameHistory(u.latest()).segments;
 }
@@ -157,7 +169,7 @@ describe('CalmLivePanel: beginweergave en schakelaar', () => {
   it('opent op Wedstrijd zodra er een segment is vastgelegd', () => {
     const first = setup();
     pickSwap(first, 7, 12);
-    fireEvent.click(first.getByTestId('calm-swap-run'));
+    runSwap(first);
     const game = first.latest();
     cleanup();
     const u = setup({ openGameView: false, game });
@@ -166,16 +178,19 @@ describe('CalmLivePanel: beginweergave en schakelaar', () => {
 });
 
 describe('CalmLivePanel: hoofdscherm', () => {
-  it('toont stand, turnover, ongedaan maken, strook, vloer, bank en onderbalk', () => {
+  it('toont stand, turnover, strook, vloer, bank en onderbalk (zonder Ongedaan maken)', () => {
     const u = setup();
     expect(u.container.querySelectorAll('[data-testid="calm-court"] .calm-chip')).toHaveLength(5);
     expect(u.container.querySelectorAll('[data-testid="calm-bench"] .calm-chip')).toHaveLength(3);
-    expect(text(u.getByTestId('calm-strip-title'))).toBe('Huidige vijf · sinds 10:00');
+    expect(text(u.getByTestId('calm-strip-title'))).toBe('Huidige vijf · sinds 10:00 · Q1');
     expect(text(u.getByTestId('calm-segments-btn'))).toBe('Segmenten (0)');
     expect(text(u.getByTestId('calm-end-quarter'))).toContain('Einde kwart');
     // Geen losse Opslaan-knop in Rustig.
     expect(u.container.querySelector('[data-testid="quick-primary"]')).toBeNull();
-    expect((u.getByTestId('calm-undo') as HTMLButtonElement).disabled).toBe(true);
+    // Ongedaan maken bestaat niet meer in Rustig (R9): wissels corrigeer je via Segmenten.
+    expect(u.container.querySelector('[data-testid="calm-undo"]')).toBeNull();
+    expect(u.container.querySelector('[data-testid="calm-notice-undo"]')).toBeNull();
+    expect(u.container.textContent).not.toContain('Ongedaan');
   });
 
   it('+1/+2/+3 voor en tegen en Turnover tellen mee in het open segment', () => {
@@ -200,9 +215,9 @@ describe('CalmLivePanel: hoofdscherm', () => {
 
   it('toont Engelse teksten', () => {
     const u = setup({ lang: 'en' });
-    expect(text(u.getByTestId('calm-undo'))).toBe('Undo');
+    expect(u.container.textContent).not.toContain('Undo');
     expect(text(u.getByTestId('calm-segments-btn'))).toBe('Segments (0)');
-    expect(text(u.getByTestId('calm-strip-title'))).toBe('Current five · since 10:00');
+    expect(text(u.getByTestId('calm-strip-title'))).toBe('Current five · since 10:00 · Q1');
   });
 });
 
@@ -220,12 +235,14 @@ describe('S1/S2: wissel volgens schema, tijd bijstellen', () => {
     expect(text(u.getByTestId('calm-time-title'))).toBe('Wissel om 8:00 · klopt de tijd?');
     expect(() => u.getByTestId('calm-time-count')).toThrow();
     expect(readSwapFlowState('game-1').unconfirmedSegmentIds).toEqual([]);
+    // De melding volgt pas in de rustige stand, na Klopt.
+    fireEvent.click(u.getByTestId('calm-time-ok'));
     expect(text(u.getByTestId('calm-notice-text'))).toBe('Wissel Noa ↔ Sam vastgelegd');
   });
 
   it('S1: Einde kwart na een schematijd vraagt geen open tijden (direct het kwartblad)', () => {
     const u = setup({ plan: planQ1() });
-    fireEvent.click(u.getByTestId('calm-plan-run'));
+    runPlan(u);
     fireEvent.click(u.getByTestId('calm-end-quarter'));
     expect(u.getByTestId('quick-time-sheet')).toBeTruthy();
     expect(() => u.getByTestId('calm-confirm-sheet')).toThrow();
@@ -233,19 +250,22 @@ describe('S1/S2: wissel volgens schema, tijd bijstellen', () => {
 
   it('S2: bijstellen met −10s (eerder) legt de nieuwe tijd vast en sluit de tijdkaart', () => {
     const u = setup({ plan: planQ1() });
-    fireEvent.click(u.getByTestId('calm-plan-run'));
+    runPlan(u);
     fireEvent.click(u.getByTestId('calm-time-earlier'));
     expect((u.getByTestId('calm-time-input') as HTMLInputElement).value).toBe('8:10');
     fireEvent.click(u.getByTestId('calm-time-ok'));
     expect(segments(u)[0]?.endSec).toBe(490);
     expect(u.latest().beginSec).toBe(490);
-    expect(text(u.getByTestId('calm-strip-title'))).toBe('Huidige vijf · sinds 8:10');
+    expect(text(u.getByTestId('calm-strip-title'))).toBe('Huidige vijf · sinds 8:10 · Q1');
+    // Na Klopt eerst kort de melding; een tik sluit hem en dan staat het vak in rust.
+    expect(u.getByTestId('calm-slot-notice')).toBeTruthy();
+    fireEvent.click(u.getByTestId('calm-slot-notice'));
     expect(u.getByTestId('calm-slot-idle')).toBeTruthy();
   });
 
   it('S2: +10s (later) en typen mm:ss; ongeldige invoer blokkeert Klopt', () => {
     const u = setup({ plan: planQ1() });
-    fireEvent.click(u.getByTestId('calm-plan-run'));
+    runPlan(u);
     fireEvent.click(u.getByTestId('calm-time-later'));
     expect((u.getByTestId('calm-time-input') as HTMLInputElement).value).toBe('7:50');
     const input = u.getByTestId('calm-time-input') as HTMLInputElement;
@@ -274,7 +294,7 @@ describe('S3–S5: afwijken, meerdere wissels, klasse', () => {
     expect(u.latest().onCourt).toContain('gp-6');
     expect(u.latest().onCourt).not.toContain('gp-12');
     expect(u.getByTestId('calm-slot-pending')).toBeTruthy();
-    fireEvent.click(u.getByTestId('calm-swap-run'));
+    runSwap(u);
     expect(segments(u)[0]?.lineup).toEqual(START);
     expect(u.latest().onCourt).toContain('gp-6');
   });
@@ -320,7 +340,7 @@ describe('S3–S5: afwijken, meerdere wissels, klasse', () => {
     expect(segments(u)).toHaveLength(1);
     expect(segments(u)[0]?.lineup).toEqual(START);
     expect(segments(u)[0]?.pf).toBe(2);
-    expect(text(u.getByTestId('calm-notice-text'))).toContain('vastgelegd');
+    expect(u.getByTestId('calm-slot-time')).toBeTruthy();
   });
 
   it('S5: een rode speler blijft kiesbaar: waarschuwen, maar wel toestaan', () => {
@@ -329,7 +349,7 @@ describe('S3–S5: afwijken, meerdere wissels, klasse', () => {
     expect(u.getByTestId('calm-class-warning')).toBeTruthy();
     expect(text(u.getByTestId('calm-class-warning'))).toContain('16.5');
     expect((u.getByTestId('calm-swap-run') as HTMLButtonElement).disabled).toBe(false);
-    fireEvent.click(u.getByTestId('calm-swap-run'));
+    runSwap(u);
     expect(segments(u)).toHaveLength(1);
     expect(u.latest().onCourt).toContain('gp-12');
   });
@@ -348,12 +368,12 @@ describe('S6: twee wissels snel na elkaar', () => {
   it('toont "n tijden nog bevestigen", oudste eerst, en de volgorde blijft geldig', () => {
     const u = setup();
     pickSwap(u, 7, 12);
-    fireEvent.click(u.getByTestId('calm-swap-run')); // schatting 9:00
+    runSwap(u); // schatting 9:00
     expect(text(u.getByTestId('calm-time-count'))).toBe('1 tijd nog bevestigen');
     expect(text(u.getByTestId('calm-time-title'))).toContain('9:00');
     expect(text(u.getByTestId('calm-time-title'))).toContain('geschat');
     pickSwap(u, 9, 6);
-    fireEvent.click(u.getByTestId('calm-swap-run')); // schatting 8:00
+    runSwap(u); // schatting 8:00
     expect(text(u.getByTestId('calm-time-count'))).toBe('2 tijden nog bevestigen');
     // Oudste eerst: de kaart toont nog de eerste wissel (9:00).
     expect(text(u.getByTestId('calm-time-title'))).toContain('9:00');
@@ -368,66 +388,9 @@ describe('S6: twee wissels snel na elkaar', () => {
   });
 });
 
-describe('S7: verkeerde speler ingetikt', () => {
-  it('ongedaan maken na Wissel uitvoeren zet de vorige vijf, de begintijd en de punten terug', () => {
-    const u = setup();
-    fireEvent.click(u.getByTestId('calm-score-plus-for-2'));
-    fireEvent.click(u.getByTestId('calm-turnover-plus'));
-    pickSwap(u, 7, 12);
-    fireEvent.click(u.getByTestId('calm-swap-run'));
-    expect(segments(u)).toHaveLength(1);
-    fireEvent.click(u.getByTestId('calm-undo'));
-    expect(u.latest().onCourt).toEqual(START);
-    expect(u.latest().beginSec).toBe(600);
-    expect(segments(u)).toHaveLength(0);
-    const h = deriveGameHistory(u.latest());
-    expect([h.scoreFor, h.segStartFor, h.turnovers, h.segStartTurnovers]).toEqual([2, 0, 1, 0]);
-    expect(text(u.getByTestId('calm-notice-text'))).toBe('Wissel Sam ↔ Noa teruggedraaid');
-    // De wissel hoeft zijn tijd niet meer te bevestigen, en de knop staat uit tot een nieuwe actie.
-    expect(readSwapFlowState('game-1').unconfirmedSegmentIds).toEqual([]);
-    expect((u.getByTestId('calm-undo') as HTMLButtonElement).disabled).toBe(true);
-    expect(text(u.getByTestId('calm-strip-title'))).toBe('Huidige vijf · sinds 10:00');
-  });
-
-  it('de melding bij een wissel heeft zelf ook "Ongedaan maken"', () => {
-    const u = setup();
-    pickSwap(u, 7, 12);
-    fireEvent.click(u.getByTestId('calm-swap-run'));
-    fireEvent.click(u.getByTestId('calm-notice-undo'));
-    expect(u.latest().onCourt).toEqual(START);
-  });
-
-  it('één niveau: na een teruggedraaide score staat de knop uit; een nieuwe actie zet hem weer aan', () => {
-    const u = setup();
-    fireEvent.click(u.getByTestId('calm-score-plus-for-3'));
-    fireEvent.click(u.getByTestId('calm-undo'));
-    expect(deriveGameHistory(u.latest()).scoreFor).toBe(0);
-    expect(text(u.getByTestId('calm-notice-text'))).toBe('+3 punten Eigen teruggedraaid');
-    expect((u.getByTestId('calm-undo') as HTMLButtonElement).disabled).toBe(true);
-    fireEvent.click(u.getByTestId('calm-turnover-plus'));
-    expect((u.getByTestId('calm-undo') as HTMLButtonElement).disabled).toBe(false);
-    fireEvent.click(u.getByTestId('calm-undo'));
-    expect(deriveGameHistory(u.latest()).turnovers).toBe(0);
-    expect(text(u.getByTestId('calm-notice-text'))).toBe('Turnover teruggedraaid');
-  });
-
-  it('de blokkade overleeft herladen (lokale opslag)', () => {
-    const u = setup();
-    fireEvent.click(u.getByTestId('calm-score-plus-for-2'));
-    fireEvent.click(u.getByTestId('calm-undo'));
-    const game = u.latest();
-    cleanup();
-    const again = setup({ game });
-    expect((again.getByTestId('calm-undo') as HTMLButtonElement).disabled).toBe(true);
-  });
-
-  it('S8: tijdens een openstaande wissel staat ongedaan maken uit (gebruik Annuleer wissel)', () => {
-    const u = setup();
-    fireEvent.click(u.getByTestId('calm-score-plus-for-2'));
-    pickSwap(u, 7, 12);
-    expect((u.getByTestId('calm-undo') as HTMLButtonElement).disabled).toBe(true);
-  });
-});
+// S7/S8 (verkeerde speler of te late score): in Rustig bestaat Ongedaan maken niet meer (R9).
+// Een verkeerde wissel of score corrigeer je via Segmenten; de domeinfuncties
+// (`undoLastAction`, enz.) zijn gedekt door swapFlow.spec.ts en de andere schermen.
 
 describe('S9: wissel vergeten, met terugwerkende kracht', () => {
   it('kiest een tijd en een grens in de lijst; de punten worden gesplitst', () => {
@@ -460,9 +423,10 @@ describe('S9: wissel vergeten, met terugwerkende kracht', () => {
     expect([h.scoreFor - h.segStartFor, h.scoreAgainst - h.segStartAgainst]).toEqual([0, 2]);
     expect(u.latest().beginSec).toBe(400);
     expect(u.latest().pendingSwapLineup).toBeNull();
+    // Eerst de tijdkaart (bijstelbaar), na Klopt de melding.
+    expect(text(u.getByTestId('calm-time-title'))).toContain('6:40');
+    fireEvent.click(u.getByTestId('calm-time-ok'));
     expect(text(u.getByTestId('calm-notice-text'))).toBe('Wissel Noa ↔ Sam vastgelegd om 6:40');
-    // De gesplitste wissel is niet met één stap terug te draaien.
-    expect((u.getByTestId('calm-undo') as HTMLButtonElement).disabled).toBe(true);
   });
 
   it('"Niets hoorde bij de oude vijf" geeft alles aan de nieuwe vijf', () => {
@@ -491,9 +455,9 @@ describe('S10: Einde kwart met open tijdbevestigingen', () => {
   function withTwoEstimates() {
     const u = setup();
     pickSwap(u, 7, 12);
-    fireEvent.click(u.getByTestId('calm-swap-run'));
+    runSwap(u);
     pickSwap(u, 9, 6);
-    fireEvent.click(u.getByTestId('calm-swap-run'));
+    runSwap(u);
     return u;
   }
 
@@ -525,9 +489,9 @@ describe('S13: herladen midden in een kwart', () => {
   it('de open tijdbevestigingen blijven staan na opnieuw openen', () => {
     const first = setup();
     pickSwap(first, 7, 12);
-    fireEvent.click(first.getByTestId('calm-swap-run'));
+    runSwap(first);
     pickSwap(first, 9, 6);
-    fireEvent.click(first.getByTestId('calm-swap-run'));
+    runSwap(first);
     const game = first.latest();
     cleanup();
     const again = setup({ game });
@@ -543,7 +507,7 @@ describe('Segmenten en afronden', () => {
     const u = setup();
     fireEvent.click(u.getByTestId('calm-score-plus-for-2'));
     pickSwap(u, 7, 12);
-    fireEvent.click(u.getByTestId('calm-swap-run'));
+    runSwap(u);
     expect(text(u.getByTestId('calm-segments-btn'))).toBe('Segmenten (1)');
     fireEvent.click(u.getByTestId('calm-segments-btn'));
     expect(u.getByTestId('calm-segments-sheet')).toBeTruthy();
@@ -554,7 +518,7 @@ describe('Segmenten en afronden', () => {
     const u = setup();
     expect((u.getByTestId('calm-finish-game') as HTMLButtonElement).disabled).toBe(true);
     pickSwap(u, 7, 12);
-    fireEvent.click(u.getByTestId('calm-swap-run'));
+    runSwap(u);
     fireEvent.click(u.getByTestId('calm-finish-game'));
     expect(u.getByTestId('finish-dialog')).toBeTruthy();
   });
@@ -570,7 +534,7 @@ describe('R7: speeltijd per speler', () => {
   it('aan: elke tegel (veld en bank) toont de speeltijd t/m de laatste wissel', () => {
     const u = setup();
     pickSwap(u, 7, 12);
-    fireEvent.click(u.getByTestId('calm-swap-run')); // schatting 9:00: 1:00 voor de oude vijf
+    runSwap(u); // schatting 9:00: 1:00 voor de oude vijf
     fireEvent.click(u.getByTestId('calm-playtime-toggle'));
     expect(u.container.querySelectorAll('.calm-chip__time')).toHaveLength(8);
     const time = (nr: number) => text(u.getByTestId(`calm-playtime-gp-${nr}`));
@@ -579,6 +543,7 @@ describe('R7: speeltijd per speler', () => {
     expect([time(12), time(6), time(15)]).toEqual(['0:00', '0:00', '0:00']);
     // Het open segment telt niet mee en dat staat in de tooltip en (zodra het slot vrij is) in de uitleg.
     fireEvent.click(u.getByTestId('calm-time-ok'));
+    fireEvent.click(u.getByTestId('calm-slot-notice'));
     expect(text(u.getByTestId('calm-playtime-note'))).toContain('t/m laatste wissel');
     expect(u.getByTestId('calm-chip-gp-7').getAttribute('title')).toContain('t/m laatste wissel');
     expect(window.localStorage.getItem('lineup-tracker-v2-play-time')).toBe('on');
@@ -587,7 +552,7 @@ describe('R7: speeltijd per speler', () => {
   it('een bijgestelde tijd werkt direct door; de keuze blijft na opnieuw openen', () => {
     const u = setup();
     pickSwap(u, 7, 12);
-    fireEvent.click(u.getByTestId('calm-swap-run'));
+    runSwap(u);
     fireEvent.click(u.getByTestId('calm-playtime-toggle'));
     fireEvent.click(u.getByTestId('calm-time-earlier')); // 9:10 => 50 s gespeeld
     fireEvent.click(u.getByTestId('calm-time-ok'));
@@ -605,5 +570,382 @@ describe('R7: speeltijd per speler', () => {
     expect(text(u.getByTestId('calm-playtime-note'))).toContain('up to the last substitution');
     fireEvent.click(u.getByTestId('calm-playtime-toggle'));
     expect(u.container.querySelectorAll('.calm-chip__time')).toHaveLength(0);
+  });
+});
+
+// ---------- R9: scorebediening ----------
+
+// Vitest draait vanuit v2/.
+const CALM_CSS = readFileSync(resolve(process.cwd(), 'src/styles/calm-live.css'), 'utf8');
+
+function cssRule(selector: string): string {
+  const escaped = selector.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const match = new RegExp(`(?:^|\\n)${escaped}\\s*\\{([^}]*)\\}`).exec(CALM_CSS);
+  return match?.[1] ?? '';
+}
+
+const btn = (u: Utils, id: string) => u.getByTestId(id) as HTMLButtonElement;
+
+describe('R9: −1 bij beide scores', () => {
+  it('−1 haalt een punt eraf met een gewone score-delta-actie; ondergrens 0', () => {
+    const u = setup();
+    expect(btn(u, 'calm-score-minus-for').disabled).toBe(true);
+    expect(btn(u, 'calm-score-minus-against').disabled).toBe(true);
+    fireEvent.click(u.getByTestId('calm-score-plus-for-2'));
+    fireEvent.click(u.getByTestId('calm-score-plus-against-3'));
+    expect(btn(u, 'calm-score-minus-for').disabled).toBe(false);
+    fireEvent.click(u.getByTestId('calm-score-minus-for'));
+    fireEvent.click(u.getByTestId('calm-score-minus-against'));
+    const h = deriveGameHistory(u.latest());
+    expect([h.scoreFor, h.scoreAgainst]).toEqual([1, 2]);
+    const last = u.latest().actions.at(-1);
+    expect(last).toMatchObject({ type: 'score-delta', team: 'against', delta: -1 });
+    fireEvent.click(u.getByTestId('calm-score-minus-for'));
+    expect(btn(u, 'calm-score-minus-for').disabled).toBe(true);
+    // Een tik op de uitgeschakelde knop doet niets: de score blijft 0 en er komt geen actie bij.
+    const before = u.latest().actions.length;
+    fireEvent.click(u.getByTestId('calm-score-minus-for'));
+    expect(u.latest().actions).toHaveLength(before);
+    expect(deriveGameHistory(u.latest()).scoreFor).toBe(0);
+  });
+
+  it('de −1-knoppen staan in dezelfde rij als +1/+2/+3 en hebben een eigen toegankelijke naam', () => {
+    const u = setup();
+    const row = u.getByTestId('calm-score-minus-for').parentElement;
+    expect(row?.querySelectorAll('button')).toHaveLength(4);
+    expect(row?.contains(u.getByTestId('calm-score-plus-for-1'))).toBe(true);
+    expect(u.getByTestId('calm-score-minus-for').getAttribute('aria-label')).toBe(
+      'Eigen: een punt eraf',
+    );
+  });
+
+  it('de witte tekst hangt niet aan de uitgeschakelde stand: alleen de rand dimt (CSS)', () => {
+    const base = cssRule('.calm-score__btn--minus,\n.calm-actions__minus');
+    const disabled = cssRule('.calm-score__btn--minus:disabled,\n.calm-actions__minus:disabled');
+    // Wit in beide thema's (primary-fg is #fff in donker en licht) op een donkere knop.
+    expect(base).toContain('color: var(--lt-color-primary-fg)');
+    expect(base).toContain('background: var(--calm-minus-bg)');
+    expect(cssRule('.calm-panel')).toContain('--calm-minus-bg: var(--lt-color-surface-alt)');
+    expect(cssRule(":root[data-theme='light'] .calm-panel")).toContain(
+      '--calm-minus-bg: var(--lt-color-muted)',
+    );
+    expect(disabled).toContain('color: var(--lt-color-primary-fg)');
+    expect(disabled).toContain('opacity: 1');
+    expect(disabled).toContain('border-color');
+    expect(cssRule('.calm-score__btn')).toContain('min-height: 2.75rem');
+  });
+});
+
+describe('R9: turnover met segmentteller', () => {
+  it('+1 en −1 werken op het huidige segment; −1 is uit bij 0', () => {
+    const u = setup();
+    expect(text(u.getByTestId('calm-turnover-count'))).toBe('0');
+    expect(btn(u, 'calm-turnover-minus').disabled).toBe(true);
+    fireEvent.click(u.getByTestId('calm-turnover-plus'));
+    fireEvent.click(u.getByTestId('calm-turnover-plus'));
+    expect(text(u.getByTestId('calm-turnover-count'))).toBe('2');
+    expect(text(u.getByTestId('calm-turnover-plus'))).toContain('dit segment');
+    expect(btn(u, 'calm-turnover-minus').disabled).toBe(false);
+    fireEvent.click(u.getByTestId('calm-turnover-minus'));
+    expect(text(u.getByTestId('calm-turnover-count'))).toBe('1');
+    expect(u.latest().actions.at(-1)).toMatchObject({ type: 'turnover-delta', delta: -1 });
+    expect(text(u.getByTestId('calm-strip-stats'))).toContain('TO 1');
+  });
+
+  it('na een wissel telt het nieuwe segment vanaf 0; het totaal blijft staan en −1 is uit', () => {
+    const u = setup();
+    fireEvent.click(u.getByTestId('calm-turnover-plus'));
+    pickSwap(u, 7, 12);
+    runSwap(u);
+    expect(text(u.getByTestId('calm-turnover-count'))).toBe('0');
+    expect(btn(u, 'calm-turnover-minus').disabled).toBe(true);
+    expect(deriveGameHistory(u.latest()).turnovers).toBe(1);
+    fireEvent.click(u.getByTestId('calm-turnover-plus'));
+    expect(text(u.getByTestId('calm-turnover-count'))).toBe('1');
+    expect(deriveGameHistory(u.latest()).turnovers).toBe(2);
+  });
+
+  it('de knop is rood (turnover-token) en iets lager dan voorheen (CSS)', () => {
+    const plus = cssRule('.calm-actions__plus');
+    expect(plus).toContain('background: var(--lt-color-turnover)');
+    expect(plus).toContain('color: var(--lt-color-turnover-fg)');
+    expect(cssRule('.calm-actions__plus,\n.calm-actions__minus')).toContain('min-height: 3rem');
+    expect(cssRule('.calm-strip__tov')).toContain('var(--lt-color-turnover)');
+  });
+});
+
+describe('R9: regel "Dit segment" en kwartlabel', () => {
+  it('toont de punten van beide teams in het open segment en begint weer bij 0 na een wissel', () => {
+    const u = setup();
+    fireEvent.click(u.getByTestId('calm-score-plus-for-3'));
+    fireEvent.click(u.getByTestId('calm-score-plus-against-2'));
+    fireEvent.click(u.getByTestId('calm-score-plus-against-1'));
+    expect(text(u.getByTestId('calm-segline'))).toContain('Dit segment');
+    expect(text(u.getByTestId('calm-segline-for'))).toBe('Eigen +3');
+    expect(text(u.getByTestId('calm-segline-against'))).toBe('Tegenstander +3');
+    pickSwap(u, 7, 12);
+    runSwap(u);
+    expect(text(u.getByTestId('calm-segline-for'))).toBe('Eigen 0');
+    expect(text(u.getByTestId('calm-segline-against'))).toBe('Tegenstander 0');
+  });
+
+  it('toont het kwart in de balk: Q{n}, NL en EN, plus +/−, TO en klassesom', () => {
+    const nl = setup({ game: trackingGame({ curQuarter: 3 }) });
+    expect(text(nl.getByTestId('calm-strip-title'))).toBe('Huidige vijf · sinds 10:00 · Q3');
+    fireEvent.click(nl.getByTestId('calm-score-plus-for-2'));
+    fireEvent.click(nl.getByTestId('calm-turnover-plus'));
+    expect(text(nl.getByTestId('calm-strip-stats'))).toContain('+/− +2 · TO 1');
+    expect(text(nl.getByTestId('calm-class-badge'))).toBe('15.0/15.0');
+    cleanup();
+    const en = setup({ lang: 'en', game: trackingGame({ curQuarter: 2 }) });
+    expect(text(en.getByTestId('calm-strip-title'))).toBe('Current five · since 10:00 · Q2');
+    expect(text(en.getByTestId('calm-segline'))).toContain('This segment');
+    expect(text(en.getByTestId('calm-turnover-plus'))).toContain('this segment');
+  });
+});
+
+describe('R9: melding in het vaste vak', () => {
+  it('de tijdkaart gaat voor: direct na de wissel te bevestigen, zonder wachten of tikken', () => {
+    const u = setup();
+    pickSwap(u, 7, 12);
+    fireEvent.click(u.getByTestId('calm-swap-run'));
+    expect(u.getByTestId('calm-slot-time')).toBeTruthy();
+    expect(u.queryByTestId('calm-slot-notice')).toBeNull();
+    fireEvent.click(u.getByTestId('calm-time-ok'));
+    expect(readSwapFlowState('game-1').unconfirmedSegmentIds).toEqual([]);
+    expect(u.getByTestId('calm-slot-notice')).toBeTruthy();
+  });
+
+  it('ook de schemakaart gaat voor de melding', () => {
+    const plan: RotationPlan = {
+      quarters: {
+        '1': [
+          { toSec: 480, lineup: [4, 7, 9, 11, 13] },
+          { toSec: 300, lineup: [4, 12, 9, 11, 13] },
+          { toSec: 0, lineup: [4, 12, 6, 11, 13] },
+        ],
+      },
+    };
+    const u = setup({ plan });
+    fireEvent.click(u.getByTestId('calm-plan-run'));
+    expect(u.getByTestId('calm-slot-plan')).toBeTruthy();
+    expect(u.queryByTestId('calm-slot-notice')).toBeNull();
+  });
+
+  it('verdwijnt na 8 seconden vanzelf; daarna de gewone hint', () => {
+    vi.useFakeTimers();
+    try {
+      const u = setup();
+      pickSwap(u, 7, 12);
+      fireEvent.click(u.getByTestId('calm-swap-run'));
+      fireEvent.click(u.getByTestId('calm-time-ok'));
+      expect(u.getByTestId('calm-slot-notice')).toBeTruthy();
+      act(() => {
+        vi.advanceTimersByTime(7900);
+      });
+      expect(u.getByTestId('calm-slot-notice')).toBeTruthy();
+      act(() => {
+        vi.advanceTimersByTime(200);
+      });
+      expect(u.queryByTestId('calm-slot-notice')).toBeNull();
+      expect(u.getByTestId('calm-slot-idle')).toBeTruthy();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('staat in het slot (role=status) onder de vijf, niet meer in een eigen regel', () => {
+    const u = setup();
+    pickSwap(u, 7, 12);
+    fireEvent.click(u.getByTestId('calm-swap-run'));
+    fireEvent.click(u.getByTestId('calm-time-ok'));
+    const slot = u.getByTestId('calm-slot');
+    expect(slot.getAttribute('role')).toBe('status');
+    expect(slot.contains(u.getByTestId('calm-notice-text'))).toBe(true);
+    expect(text(slot)).toContain('Wissel Noa ↔ Sam vastgelegd');
+    expect(u.container.querySelector('[data-testid="calm-notice"]')).toBeNull();
+    // Volgorde in de pagina: de vijf, dan het slot, dan de bank.
+    const kids = Array.from(u.getByTestId('calm-court').parentElement?.children ?? []);
+    expect(kids.indexOf(u.getByTestId('calm-court'))).toBeLessThan(kids.indexOf(slot));
+    expect(kids.indexOf(slot)).toBeLessThan(kids.indexOf(u.getByTestId('calm-bench')));
+    // Geen lege regel tussen turnover en "Huidige vijf".
+    const afterActions = u.getByTestId('calm-actions').nextElementSibling;
+    expect(afterActions?.getAttribute('data-testid')).toBe('calm-strip');
+  });
+
+  it('verdwijnt na een tik of na een score/turnover; daarna de gewone hint', () => {
+    const u = setup();
+    pickSwap(u, 7, 12);
+    fireEvent.click(u.getByTestId('calm-swap-run'));
+    fireEvent.click(u.getByTestId('calm-time-ok'));
+    fireEvent.click(u.getByTestId('calm-slot-notice'));
+    expect(u.container.querySelector('[data-testid="calm-notice-text"]')).toBeNull();
+    expect(u.getByTestId('calm-slot-idle')).toBeTruthy();
+    pickSwap(u, 9, 6);
+    fireEvent.click(u.getByTestId('calm-swap-run'));
+    fireEvent.click(u.getByTestId('calm-time-ok'));
+    expect(u.getByTestId('calm-slot-notice')).toBeTruthy();
+    fireEvent.click(u.getByTestId('calm-turnover-plus'));
+    expect(u.container.querySelector('[data-testid="calm-notice-text"]')).toBeNull();
+  });
+
+  it('toont de melding in het Engels', () => {
+    const u = setup({ lang: 'en' });
+    pickSwap(u, 7, 12);
+    fireEvent.click(u.getByTestId('calm-swap-run'));
+    fireEvent.click(u.getByTestId('calm-time-ok'));
+    expect(text(u.getByTestId('calm-notice-text'))).toBe('Substitution Noa ↔ Sam recorded');
+  });
+});
+
+describe('R9: scorekeuzelijst', () => {
+  const trigger = (u: Utils, team: 'for' | 'against') => btn(u, `calm-score-value-${team}`);
+
+  it('tik op het cijfer opent de lijst 0 t/m 150 met de huidige score gemarkeerd en gefocust', () => {
+    const u = setup();
+    fireEvent.click(u.getByTestId('calm-score-plus-for-3'));
+    expect(trigger(u, 'for').getAttribute('aria-haspopup')).toBe('listbox');
+    expect(trigger(u, 'for').getAttribute('aria-expanded')).toBe('false');
+    expect(u.container.querySelector('[data-testid="calm-score-picker"]')).toBeNull();
+    fireEvent.click(trigger(u, 'for'));
+    expect(trigger(u, 'for').getAttribute('aria-expanded')).toBe('true');
+    const list = u.getByTestId('calm-score-list');
+    expect(list.getAttribute('role')).toBe('listbox');
+    const options = Array.from(list.querySelectorAll('[role="option"]'));
+    expect(options).toHaveLength(151);
+    expect([options[0]?.textContent, options[150]?.textContent]).toEqual(['0', '150']);
+    const selected = options.filter((o) => o.getAttribute('aria-selected') === 'true');
+    expect(selected.map((o) => o.textContent)).toEqual(['3']);
+    expect(document.activeElement).toBe(selected[0]);
+    // Eén tabstop in de lijst: alleen de huidige score; Tab verlaat de lijst daarna.
+    const tabbable = options.filter((o) => o.getAttribute('tabindex') === '0');
+    expect(tabbable).toEqual(selected);
+    // De lijst staat onder de twee scorekaarten.
+    const score = u.getByTestId('calm-score');
+    expect(score.lastElementChild).toBe(u.getByTestId('calm-score-picker'));
+    // De opties zijn knoppen (≥ 40 px via CSS) en het raster scrolt alleen verticaal.
+    expect(cssRule('.calm-picker__opt')).toContain('min-height: 2.5rem');
+    expect(cssRule('.calm-picker__grid')).toContain('overflow-x: hidden');
+  });
+
+  it('kiezen zet de score via score-set, sluit de lijst en geeft de focus terug', () => {
+    const u = setup();
+    fireEvent.click(u.getByTestId('calm-score-plus-for-2'));
+    fireEvent.click(trigger(u, 'for'));
+    fireEvent.click(u.getByTestId('calm-score-option-17'));
+    const h = deriveGameHistory(u.latest());
+    expect(h.scoreFor).toBe(17);
+    expect(u.latest().actions.at(-1)).toMatchObject({ type: 'score-set', team: 'for', value: 17 });
+    expect(text(u.getByTestId('calm-score-value-for'))).toBe('17');
+    expect(u.container.querySelector('[data-testid="calm-score-picker"]')).toBeNull();
+    expect(document.activeElement).toBe(trigger(u, 'for'));
+    // Het open segment verrekent het verschil; het volgende segment neemt het over.
+    expect(text(u.getByTestId('calm-segline-for'))).toBe('Eigen +17');
+    pickSwap(u, 7, 12);
+    runSwap(u);
+    expect(segments(u)[0]?.pf).toBe(17);
+  });
+
+  it('kiest de grenzen 0 en 150 en laat bij dezelfde waarde geen actie achter', () => {
+    const u = setup();
+    fireEvent.click(trigger(u, 'against'));
+    fireEvent.click(u.getByTestId('calm-score-option-150'));
+    expect(deriveGameHistory(u.latest()).scoreAgainst).toBe(150);
+    fireEvent.click(trigger(u, 'against'));
+    fireEvent.click(u.getByTestId('calm-score-option-0'));
+    expect(deriveGameHistory(u.latest()).scoreAgainst).toBe(0);
+    const count = u.latest().actions.length;
+    fireEvent.click(trigger(u, 'against'));
+    fireEvent.click(u.getByTestId('calm-score-option-0'));
+    expect(u.latest().actions).toHaveLength(count);
+  });
+
+  it('sluit met Escape, met de knop Sluiten en door buiten te tikken; de focus gaat terug', () => {
+    const u = setup();
+    const isClosed = () =>
+      u.container.querySelector('[data-testid="calm-score-picker"]') == null &&
+      trigger(u, 'for').getAttribute('aria-expanded') === 'false';
+
+    fireEvent.click(trigger(u, 'for'));
+    fireEvent.keyDown(document, { key: 'Escape' });
+    expect(isClosed()).toBe(true);
+    expect(document.activeElement).toBe(trigger(u, 'for'));
+
+    fireEvent.click(trigger(u, 'for'));
+    fireEvent.click(u.getByTestId('calm-score-picker-close'));
+    expect(isClosed()).toBe(true);
+    expect(document.activeElement).toBe(trigger(u, 'for'));
+
+    fireEvent.click(trigger(u, 'for'));
+    fireEvent.click(document.body);
+    expect(isClosed()).toBe(true);
+
+    // Een tik in de lijst sluit niet; een tik op het cijfer sluit wel.
+    fireEvent.click(trigger(u, 'for'));
+    fireEvent.click(u.getByTestId('calm-score-list'));
+    expect(u.getByTestId('calm-score-picker')).toBeTruthy();
+    fireEvent.click(trigger(u, 'for'));
+    expect(isClosed()).toBe(true);
+  });
+
+  it('opent per team en wisselt van team zonder twee lijsten tegelijk', () => {
+    const u = setup();
+    fireEvent.click(trigger(u, 'for'));
+    fireEvent.click(trigger(u, 'against'));
+    expect(u.container.querySelectorAll('[data-testid="calm-score-picker"]')).toHaveLength(1);
+    expect(trigger(u, 'for').getAttribute('aria-expanded')).toBe('false');
+    expect(trigger(u, 'against').getAttribute('aria-expanded')).toBe('true');
+    expect(text(u.getByTestId('calm-score-picker'))).toContain('Tegenstander');
+  });
+
+  it('pijltjestoetsen verplaatsen de focus door de opties', () => {
+    const u = setup();
+    fireEvent.click(trigger(u, 'for'));
+    fireEvent.keyDown(document.activeElement as Element, { key: 'ArrowRight' });
+    expect(document.activeElement).toBe(u.getByTestId('calm-score-option-1'));
+    fireEvent.keyDown(document.activeElement as Element, { key: 'ArrowDown' });
+    expect(document.activeElement).toBe(u.getByTestId('calm-score-option-7'));
+    fireEvent.keyDown(document.activeElement as Element, { key: 'End' });
+    expect(document.activeElement).toBe(u.getByTestId('calm-score-option-150'));
+    // De tabstop schuift mee (roving tabindex).
+    const tabbable = u.container.querySelectorAll('[role="option"][tabindex="0"]');
+    expect(Array.from(tabbable)).toEqual([u.getByTestId('calm-score-option-150')]);
+  });
+
+  it('toont Engelse teksten', () => {
+    const u = setup({ lang: 'en' });
+    expect(trigger(u, 'for').getAttribute('aria-label')).toBe('Eigen: choose score, now 0');
+    fireEvent.click(trigger(u, 'for'));
+    expect(text(u.getByTestId('calm-score-picker'))).toContain('Choose Eigen score');
+    expect(text(u.getByTestId('calm-score-picker-close'))).toBe('Close');
+  });
+});
+
+describe('R9: alleen-lezen en uitwedstrijd', () => {
+  it('zonder schrijfrechten staan −1, het cijfer, turnover −1 en de lijst uit', () => {
+    const u = setup({ canWrite: false });
+    for (const id of [
+      'calm-score-minus-for',
+      'calm-score-minus-against',
+      'calm-score-value-for',
+      'calm-score-value-against',
+      'calm-turnover-plus',
+      'calm-turnover-minus',
+    ]) {
+      expect(btn(u, id).disabled).toBe(true);
+    }
+    fireEvent.click(u.getByTestId('calm-score-value-for'));
+    expect(u.container.querySelector('[data-testid="calm-score-picker"]')).toBeNull();
+  });
+
+  it('Rustig draait de stand om met de voorkeur van de opzetpagina en heeft geen eigen schakelaar', () => {
+    storeAwayPreference('game-1', true);
+    const u = setup();
+    const order = Array.from(u.getByTestId('calm-score').children).map((c) =>
+      c.getAttribute('data-testid'),
+    );
+    expect(order).toEqual(['calm-score-against', 'calm-score-for']);
+    expect(u.container.querySelector('input[type="checkbox"]')).toBeNull();
+    expect(u.container.querySelector('[data-testid="compact-away"]')).toBeNull();
   });
 });

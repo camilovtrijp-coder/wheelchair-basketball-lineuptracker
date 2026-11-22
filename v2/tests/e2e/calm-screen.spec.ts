@@ -137,7 +137,7 @@ async function expectNoAxeViolations(page: Page): Promise<void> {
 }
 
 test.describe('Rustig wedstrijdscherm', () => {
-  test('hoofdflow: wissel uitvoeren, tijd bevestigen, ongedaan maken', async ({ page }) => {
+  test('hoofdflow: wissel uitvoeren, tijd bevestigen, tweede wissel', async ({ page }) => {
     await startCalmGame(page);
     await page.getByTestId('calm-score-plus-for-2').click();
     await page.getByTestId('calm-turnover-plus').click();
@@ -146,8 +146,10 @@ test.describe('Rustig wedstrijdscherm', () => {
     await pickSwap(page, 'Sam', 'Noa');
     await expect(page.getByTestId('calm-slot-pending')).toBeVisible();
     await page.getByTestId('calm-swap-run').click();
-    await expect(page.getByTestId('calm-notice-text')).toContainText('vastgelegd');
+    // De tijdkaart staat direct in het vaste vak (eerst wisselen, tijd achteraf); de
+    // melding volgt pas in de rustige stand, na het bevestigen.
     await expect(page.getByTestId('calm-time-count')).toHaveText('1 tijd nog bevestigen');
+    await expect(page.getByTestId('calm-slot-notice')).toHaveCount(0);
     let game = await readActiveGame(page);
     let segs = liveSegments(game);
     expect(segs).toHaveLength(1);
@@ -158,22 +160,57 @@ test.describe('Rustig wedstrijdscherm', () => {
     await page.getByTestId('calm-time-earlier').click();
     await expect(page.getByTestId('calm-time-input')).toHaveValue('9:10');
     await page.getByTestId('calm-time-ok').click();
+    // Daarna kort de melding in het vak; een tik sluit hem.
+    await expect(page.getByTestId('calm-slot').getByTestId('calm-notice-text')).toContainText(
+      'vastgelegd',
+    );
+    await page.getByTestId('calm-slot-notice').click();
     await expect(page.getByTestId('calm-slot-idle')).toBeVisible();
     game = await readActiveGame(page);
     segs = liveSegments(game);
     expect([segs[0]!.endSec, game.beginSec]).toEqual([550, 550]);
 
-    // Nog een wissel en die meteen ongedaan maken: vorige vijf en segmentstart terug.
+    // Tweede wissel: nieuw segment; Ongedaan maken bestaat niet meer in Rustig (R9).
     await pickSwap(page, 'Robin', 'Bo');
     await page.getByTestId('calm-swap-run').click();
     await expect(page.getByTestId('calm-segments-btn')).toHaveText('Segmenten (2)');
-    await page.getByTestId('calm-undo').click();
-    await expect(page.getByTestId('calm-notice-text')).toContainText('teruggedraaid');
-    await expect(page.getByTestId('calm-segments-btn')).toHaveText('Segmenten (1)');
-    await expect(page.getByTestId('calm-undo')).toBeDisabled();
+    await expect(page.getByTestId('calm-undo')).toHaveCount(0);
     game = await readActiveGame(page);
-    expect(game.beginSec).toBe(550);
-    expect(nrsOf(game, game.onCourt)).toEqual(['4', '12', '9', '11', '13']);
+    expect(game.beginSec).toBeLessThan(550);
+    expect(nrsOf(game, game.onCourt)).toEqual(['4', '12', '6', '11', '13']);
+  });
+
+  test('scorebediening: −1, turnover per segment en de scorekeuzelijst', async ({ page }) => {
+    await startCalmGame(page);
+    await expect(page.getByTestId('calm-strip-title')).toHaveText(/Q1$/);
+    await expect(page.getByTestId('calm-score-minus-for')).toBeDisabled();
+    await page.getByTestId('calm-score-plus-for-3').click();
+    await page.getByTestId('calm-score-minus-for').click();
+    await expect(page.getByTestId('calm-score-value-for')).toHaveText('2');
+    await expect(page.getByTestId('calm-segline-for')).toContainText('+2');
+
+    await expect(page.getByTestId('calm-turnover-minus')).toBeDisabled();
+    await page.getByTestId('calm-turnover-plus').click();
+    await expect(page.getByTestId('calm-turnover-count')).toHaveText('1');
+    await page.getByTestId('calm-turnover-minus').click();
+    await expect(page.getByTestId('calm-turnover-count')).toHaveText('0');
+
+    // Keuzelijst: opent met de huidige score in beeld, kiezen zet de score, Escape sluit.
+    await page.getByTestId('calm-score-value-against').click();
+    await expect(page.getByTestId('calm-score-option-0')).toBeFocused();
+    await page.getByTestId('calm-score-option-48').scrollIntoViewIfNeeded();
+    await page.getByTestId('calm-score-option-48').click();
+    await expect(page.getByTestId('calm-score-value-against')).toHaveText('48');
+    await expect(page.getByTestId('calm-score-picker')).toHaveCount(0);
+    await expect(page.getByTestId('calm-score-value-against')).toBeFocused();
+    await page.getByTestId('calm-score-value-for').click();
+    await expect(page.getByTestId('calm-score-option-2')).toBeFocused();
+    await page.keyboard.press('Escape');
+    await expect(page.getByTestId('calm-score-picker')).toHaveCount(0);
+    const overflowX = await page.evaluate(
+      () => document.documentElement.scrollWidth - window.innerWidth,
+    );
+    expect(overflowX, 'pagina scrolt horizontaal').toBeLessThanOrEqual(1);
   });
 
   test('Einde kwart vraagt eerst de open tijden; Klopt allemaal gaat door', async ({ page }) => {
@@ -220,10 +257,39 @@ test.describe('Rustig wedstrijdscherm', () => {
 
   test('toegankelijk (axe) en Engelse teksten', async ({ page }) => {
     await startCalmGame(page, 'en');
-    await expect(page.getByTestId('calm-undo')).toHaveText('Undo');
+    await expect(page.getByTestId('calm-undo')).toHaveCount(0);
+    await expect(page.getByTestId('calm-segline')).toContainText('This segment');
     await expect(page.getByTestId('calm-segments-btn')).toHaveText('Segments (0)');
     await pickSwap(page, 'Sam', 'Noa');
     await expect(page.getByTestId('calm-swap-run')).toHaveText('Make substitution');
     await expectNoAxeViolations(page);
+  });
+
+  test('R9: −1 met witte tekst en axe-contrast in donker en licht', async ({ page }) => {
+    for (const theme of ['dark', 'light'] as const) {
+      await page.addInitScript(
+        (t) => window.localStorage.setItem('lineup-tracker-v2-theme', t),
+        theme,
+      );
+      if (theme === 'dark') {
+        await startCalmGame(page);
+      } else {
+        await page.reload();
+        const view = page.getByTestId('calm-view-game');
+        if ((await view.getAttribute('aria-pressed')) !== 'true') await view.click();
+      }
+      await expect(page.locator('html')).toHaveAttribute('data-theme', theme);
+      await page.getByTestId('calm-score-plus-for-2').click();
+      await page.getByTestId('calm-turnover-plus').click();
+      for (const id of [
+        'calm-score-minus-for',
+        'calm-score-minus-against',
+        'calm-turnover-minus',
+      ]) {
+        // Wit, ook als de knop uit staat (tegenstander op 0).
+        await expect(page.getByTestId(id)).toHaveCSS('color', 'rgb(255, 255, 255)');
+      }
+      await expectNoAxeViolations(page);
+    }
   });
 });
