@@ -35,6 +35,8 @@ export const CORRECT_ERROR_KEYS: Record<CorrectSegmentError, StringKey> = {
   'invalid-duration': 'correctErrorInvalidDuration',
   'invalid-score': 'correctErrorInvalidScore',
   'invalid-turnovers': 'correctErrorInvalidTurnovers',
+  'invalid-lineup': 'correctErrorInvalidLineup',
+  'classification-unavailable': 'correctErrorClassificationUnavailable',
 };
 
 /** Compacte, taalonafhankelijke weergave van de zes bewerkbare velden. */
@@ -90,7 +92,7 @@ export function CorrectSegmentDialog({
   const [review, setReview] = useState<ReturnType<typeof correctSegment> | null>(null);
 
   function buildPatch(): Partial<CorrectableSegmentFields> {
-    const candidate: CorrectableSegmentFields = {
+    const candidate = {
       quarter: draft.quarter,
       beginSec: draft.beginSec,
       endSec: draft.endSec,
@@ -99,7 +101,7 @@ export function CorrectSegmentDialog({
       tov: toNumber(draft.tov),
     };
     const patch: Partial<CorrectableSegmentFields> = {};
-    for (const key of Object.keys(candidate) as (keyof CorrectableSegmentFields)[]) {
+    for (const key of Object.keys(candidate) as (keyof typeof candidate)[]) {
       // Number.isNaN: een leeg/ongeldig veld telt als gewijzigd zodat de
       // domeinvalidatie het afkeurt in plaats van stil de oude waarde te houden.
       if (candidate[key] !== original[key]) patch[key] = candidate[key];

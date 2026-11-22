@@ -136,8 +136,9 @@ export interface ActiveGame {
 
 /**
  * PR 7.5a (docs/pr-7.5-plan.md §D.1): de zes velden van een afgeronde
- * segment die gecorrigeerd mogen worden. `durSec` wordt afgeleid en `lineup`/
- * `classSum`/`allowed`/`over` blijven buiten scope.
+ * segment die gecorrigeerd mogen worden. `durSec` wordt afgeleid. Vanaf PR 7.7a
+ * kan ook de `lineup` (met afgeleide `classSum`/`allowed`/`over`) gecorrigeerd
+ * worden; die velden staan alleen in het logitem als de lineup wijzigt.
  */
 export interface CorrectableSegmentFields {
   quarter: number;
@@ -147,6 +148,15 @@ export interface CorrectableSegmentFields {
   pa: number;
   /** Altijd een geheel getal >= 0 (een ontbrekende `Segment.tov` telt als 0). */
   tov: number;
+  /**
+   * PR 7.7a (docs/pr-7.7-plan.md): alleen aanwezig in `before`/`after` van een
+   * logitem waarin de lineup is gecorrigeerd (dan altijd samen met `allowed`);
+   * dan exact 5 `GamePlayer.id`'s, zonder namen. Correcties van alleen tijd,
+   * score of turnovers houden de oorspronkelijke zes velden.
+   */
+  lineup?: string[];
+  /** PR 7.7a: toegestane klassesom van het segment vóór/na de lineupcorrectie. */
+  allowed?: number;
 }
 
 /**

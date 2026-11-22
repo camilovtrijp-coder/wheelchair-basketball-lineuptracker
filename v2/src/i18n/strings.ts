@@ -247,6 +247,10 @@ const nl = {
   correctErrorInvalidScore:
     'De score is ongeldig (hele getallen, niet negatief, binnen het maximum).',
   correctErrorInvalidTurnovers: 'Turnovers moeten een geheel getal van 0 of hoger zijn.',
+  correctErrorInvalidLineup:
+    'Kies precies 5 verschillende spelers die aan deze wedstrijd meededen.',
+  correctErrorClassificationUnavailable:
+    'De klassegrens van deze wedstrijd kan nu niet worden bijgewerkt. Probeer het opnieuw.',
   liveErrorScoreChangedAtZero:
     'De stand is gewijzigd terwijl er geen speeltijd is verstreken. Kies een tijd ná het begin van het segment, of zet de stand terug.',
   liveErrorScoreBelowSegmentStart:
@@ -1249,6 +1253,9 @@ const en = {
   correctErrorInvalidScore:
     'The score is invalid (whole numbers, not negative, within the maximum).',
   correctErrorInvalidTurnovers: 'Turnovers must be a whole number of 0 or more.',
+  correctErrorInvalidLineup: 'Choose exactly 5 different players who took part in this game.',
+  correctErrorClassificationUnavailable:
+    'The classification limit of this game cannot be updated right now. Please try again.',
   liveErrorScoreChangedAtZero:
     'The score changed while no playing time has passed. Choose a time after the start of the segment, or restore the score.',
   liveErrorScoreBelowSegmentStart:
